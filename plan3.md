@@ -1,12 +1,13 @@
-# lisploop — plan 3
+# lisploop --- plan 3
 
 ## A small recursive synthesizer that can learn how to search
 
 Planning proposal, 2026-10-22. Supersedes the experimental scope of plan2.
+For further general background and motivation, please refer to that; this document is not immediately interpretable without it.  
 This document specifies experiments; it does not report an implementation or successful results.
 Revised 2026-10-23: integer bootstrapping without inverse-value enumeration; frame-local reorientation of experiments; known-factorization controls; and scoped child-to-parent messages.
 
-**Aim.** Build a small generator of complexity: a synthesizer that can turn an unsuccessful direct search into a new, explicitly related synthesis problem, and eventually learn which such decisions are worth trying.
+**Aim.** Build a small generator of complexity: a synthesizer that can factorize exponential to super-exponential direct search into a explicitly related synthesis sub-problems, in the process learning heuristics ('small programs') to guide the search process itself.
 
 The first objective is understanding. Every demonstration should admit a short trace showing the observations, proposed transformation, child problem, completed decoder, and cost. Generality and speed are questions to investigate after that trace works.
 
@@ -36,7 +37,7 @@ Provide only the following mechanisms:
 
 These mechanisms are prior knowledge. Listing them is more informative than claiming a knowledge-free learner. Every new handwritten primitive or proposal shortcut must join this list.
 
-**Working interpretation of “omit operators.”** In milestone 1, provide addition and multiplication over both GF(P) and the integers, while withholding subtraction, division, and inverse as named synthesis primitives. Integer expressions admit signed integer literals, including -1; otherwise the desired subtraction program would be inexpressible in this grammar. Support operator-valued holes in the representation, but initially keep the operator vocabulary fixed. If “omit operators” meant hiding the operator labels in the observations, that is a separate identification experiment and is deferred.
+**Working interpretation of "omit operators."** In milestone 1, provide addition and multiplication over both GF(P) and the integers, while withholding subtraction, division, and inverse as named synthesis primitives. Integer expressions admit signed integer literals, including -1; otherwise the desired subtraction program would be inexpressible in this grammar. Support operator-valued holes in the representation, but initially keep the operator vocabulary fixed. If "omit operators" meant hiding the operator labels in the observations, that is a separate identification experiment and is deferred.
 
 The environment supplies the prime P. Field values and metadata integers are different types: P is not a nonzero element of GF(P). Supply ordinary metadata operations only when a demonstration actually needs them, and record their contribution to the prior.
 
@@ -122,15 +123,15 @@ Learned programs are not confined to their source frames. They may be proposed e
 
 Let a proposed decoder d reconstruct a parent target y from available context c and a child value z:
 
-\[
+$$
 y=d(c,z).
-\]
+$$
 
 For parent row i with allowed target set A_i, construct the child requirement
 
-\[
+$$
 B_i=\{z\in Z : d(c_i,z)\in A_i\}.
-\]
+$$
 
 Let pi(c) be the explicitly selected, computable child context; identity is the default. The child frame has rows (key_i, pi(c_i), B_i). Its checker retains the parent requirement, but its predictor receives only pi(c_i). Synthesize g satisfying these rows, then test the composition d(c,g(pi(c))) on the original parent.
 
@@ -138,9 +139,9 @@ The context program pi belongs to the originating call and assembled model; coun
 
 The domain Z must be stated, but it need not be finite. The default construction retains the requirement as a predicate:
 
-\[
+$$
 B_i(z)\ \Longleftrightarrow\ A_i(d(c_i,z)).
-\]
+$$
 
 Here A_i is interpreted as a membership predicate. To test a candidate child program g, evaluate d(c_i,g(pi(c_i))) and check the parent requirement. This uses forward execution only; it does not compute or enumerate compatible z values beforehand. On integers, exact + and * suffice for checking the corresponding equations.
 
@@ -166,9 +167,9 @@ This construction follows the inverse-specification lesson of FlashMeta [R2]. Re
 
 Given aligned trees t_i, syntactic anti-unification produces a common pattern p and substitutions theta_i with
 
-\[
+$$
 p[\theta_i]=t_i.
-\]
+$$
 
 Pattern instantiation is the decoder. The substitutions become the child targets. Recursive synthesis tries to describe those substitutions from the available context.
 
@@ -198,7 +199,7 @@ Use syntactic AU throughout the initial experiments. If two programs are equival
 
 This is incomplete semantic abstraction search, but its incompleteness is visible and adjustable through a budget. Adding a primitive requires a signature and evaluator; it need not require a new complete equational AU algorithm.
 
-The corrected Alpuente results concern the existence and computation of suitable complete sets of equational generalizations, including difficulties introduced by identity axioms [R1]. “Nullary” does not simply mean that no generalizer exists: a common-typed fresh variable can still be a generalizer. The issue can be the absence of an appropriate minimal complete basis.
+The corrected Alpuente results concern the existence and computation of suitable complete sets of equational generalizations, including difficulties introduced by identity axioms [R1]. "Nullary" does not simply mean that no generalizer exists: a common-typed fresh variable can still be a generalizer. The issue can be the absence of an appropriate minimal complete basis.
 
 This does not remove the user's concern. Efficient semantic search may still need specialized knowledge. The experiment asks how far fixed syntax, execution, and learned shortcuts get before specialization pays for itself. Recording a shortcut as another expression makes it representable; it does not discover or justify it.
 
@@ -265,7 +266,7 @@ Generate decoder contexts from the same typed expression grammar by adding a dis
 
 Multiple holes belong to the same child tuple until there is a justified conditional decomposition. Do not split correlated holes into independently solved problems.
 
-Every admitted decoder context has a finite description and a declared child domain. Trivial “call the same goal again” contexts are skipped. More general repeated-goal detection includes known context, active language, and limits.
+Every admitted decoder context has a finite description and a declared child domain. Trivial "call the same goal again" contexts are skipped. More general repeated-goal detection includes known context, active language, and limits.
 
 ### 5.1 How this traverses the whole table
 
@@ -342,9 +343,9 @@ For S, a simple reproducible encoding can be the UTF-8 byte length of canonical 
 
 One completed explanation has score
 
-\[
+$$
 J(M)=S(M)+S(E\mid M)+\lambda_{\rm run}W_{\rm run}(M).
-\]
+$$
 
 E is the original observation set. Residual tables, selectors, guards, anchors, shapes, and new library definitions belong in the description. Count each required definition once at the declared task-batch boundary, and count its uses. Do not separately charge a residual both inside M and again in E given M.
 
@@ -354,9 +355,9 @@ Satisfying a set-valued specification means producing one permitted witness. Los
 
 Compare search procedures through
 
-\[
+$$
 J(M_{\rm best})+\lambda_{\rm search}W_{\rm search}.
-\]
+$$
 
 Past search work is sunk when choosing between two already available descriptions. It matters when comparing the procedures that found them.
 
@@ -376,9 +377,9 @@ Use two demonstrations, each with an inspectable trace.
 
 For several primes, solve a + b = c for b using only field + and * in the candidate language. A possible family of witnessed solutions is
 
-\[
+$$
 b=c+k_Pa.
-\]
+$$
 
 AU can expose k_P as a hole. The child problem asks how k_P depends on the environment.
 
@@ -431,7 +432,7 @@ Only the log is needed before milestone 3. The estimator and policy options belo
 
 ### 8.1 A replayable action and a small observation
 
-An action means “resume this proposal job for at most b work units.” Fix b initially. Freeze the starting language/library and learned preference function during each episode. In-episode candidate reuse, exact-goal caching, and checked scoped messages remain active. Initially promote new global definitions and update learned preference parameters between episodes.
+An action means "resume this proposal job for at most b work units." Fix b initially. Freeze the starting language/library and learned preference function during each episode. In-episode candidate reuse, exact-goal caching, and checked scoped messages remain active. Initially promote new global definitions and update learned preference parameters between episodes.
 
 The true state includes the goal, open decoders, pending jobs, limits, incumbent, and caches. A heuristic sees a cheap projection phi(s), initially just:
 
@@ -450,23 +451,23 @@ Let B_t be the score of the best completed, verified root explanation at decisio
 
 Define
 
-\[
+$$
 r_t=B_t-B_{t+1}-\lambda_{\rm search}\Delta W_t.
-\]
+$$
 
 Then, without discounting,
 
-\[
+$$
 \sum_t r_t=B_0-B_T-\lambda_{\rm search}W_{\rm search}.
-\]
+$$
 
 A partial transformation receives no invented compression gain. It can still be useful because a later composed decoder improves the root incumbent.
 
 At the end of the bounded episode, a decision at time t can receive the observed continuation return
 
-\[
+$$
 G_t=B_t-B_T-\lambda_{\rm search}(W_T-W_t).
-\]
+$$
 
 Do not finalize a child's credit when it returns; its effect may appear only when the parent is assembled.
 
@@ -480,10 +481,10 @@ For a pure synthesis specification where literal memorization is not an admissib
 
 Begin with a count and return sum for each coarse context/action group k:
 
-\[
+$$
 \widehat G_k=
 \frac{\kappa G_{0,k}+\sum_{i:k_i=k}G_i}{\kappa+n_k}.
-\]
+$$
 
 The prior score G_0 expresses the initial canonical/locality ordering; kappa controls shrinkage. Sparse groups stay near the prior. Start with one fixed kappa and treat sensitivity to it as a decision point.
 
@@ -498,7 +499,7 @@ Distinguish:
 | Exhausted bounded space | No solution in this explicit finite search space |
 | Work limit reached | No qualifying result was found within this budget |
 
-A timeout is a negative observation for “success within b,” but it is censored evidence about eventual success. It is never a permanent impossibility certificate.
+A timeout is a negative observation for "success within b," but it is censored evidence about eventual success. It is never a permanent impossibility certificate.
 
 ### 8.4 Then synthesize a short heuristic
 
@@ -509,11 +510,11 @@ Start with tiny piecewise-constant programs using comparisons, conditionals, and
 There are two small implementation options:
 
 1. Fit a predictor to quantized returns and explicitly describe the prediction errors.
-2. Predict “improved by at least delta within b work” and fit a finite probabilistic table.
+2. Predict "improved by at least delta within b work" and fit a finite probabilistic table.
 
 Choose one after inspecting the first traces. Such labels are noisy observations, not exact mathematical functions. A longer heuristic must earn its extra description and evaluation cost across multiple tasks.
 
-If the initial synthesizer requires exact frames, model the training labels as “heuristic prediction plus literal error.” This reuses the existing decoder/child mechanism. At deployment the policy evaluates only the heuristic; its training residuals do not accompany it. A dedicated statistical learner is an alternative only if this exact-coding route proves too awkward.
+If the initial synthesizer requires exact frames, model the training labels as "heuristic prediction plus literal error." This reuses the existing decoder/child mechanism. At deployment the policy evaluates only the heuristic; its training residuals do not accompany it. A dedicated statistical learner is an alternative only if this exact-coding route proves too awkward.
 
 Select candidates using training/validation tasks, then assess them on untouched task families by rerunning the **whole search**. Include policy inference, policy training, and library construction costs at an explicit amortization horizon. Predictive fit alone is not the deployment criterion.
 
@@ -525,9 +526,9 @@ A heuristic partition phi may merge states and discard residual distinctions fro
 
 Thus
 
-\[
+$$
 \phi(s_1)=\phi(s_2)
-\]
+$$
 
 permits sharing a preference estimate. It does not establish that s_1 and s_2 have the same solutions, interchangeable continuations, or equal program semantics.
 
@@ -539,14 +540,14 @@ Implement only what the current milestone needs. The intended result is a handfu
 
 | Milestone | Smallest experiment | Exit evidence |
 |---|---|---|
-| **0 — frames and simulator** | One finite relation, one partition, one lossless quotient, one AU substitution frame | Exact replay; joint constraints preserved; decoder cannot read withheld targets; all work is metered |
-| **0a — known AST factorizations** | Tiny planted templates, substitutions, and occurrence paths; hide them in stages | Recover and reconstruct admissible factorizations; correct costs and repeated/operator holes; bounded reference answers |
-| **1 — algebra over GF(P) and integers** | Forward-generated arithmetic examples; solve-rule synthesis with inverse-value enumeration disabled | Integer addition inverse learned from +, *, and signed literals; finite-field counterpart; reuse of learned rules; declared domains and representation limits |
-| **1a — costs** | Compare literal, formula, and table-based descriptions under the same workload | Complete size/execution/search ledger; failed attempts included; published encoding, work tariff, and chosen tradeoffs |
-| **2 — recursive calls** | Parameter child plus the two-stage arithmetic trace | Same solver for parent and child; full reconstruction; temporary cost increase; results return to the correct originating decision |
-| **2a — backtracking, depth, GC** | Resume a cutoff; revisit with larger limits; reclaim abandoned branches | Deeper solutions remain reachable; late messages retain their scopes; no timeout becomes a false refutation |
-| **2b — explanation reuse (later gate)** | One checked structural conflict and one partition conflict reused in another branch | A small reason excludes several impossible continuations without excluding a repaired context; useful findings survive parent failure |
-| **3 — heuristic induction** | Canonical/locality order, shrunk table, then one short synthesized policy | Comparable frozen-policy runs on held-out task families; policy overhead included; lossy features do not change exact answers |
+| **0 --- frames and simulator** | One finite relation, one partition, one lossless quotient, one AU substitution frame | Exact replay; joint constraints preserved; decoder cannot read withheld targets; all work is metered |
+| **0a --- known AST factorizations** | Tiny planted templates, substitutions, and occurrence paths; hide them in stages | Recover and reconstruct admissible factorizations; correct costs and repeated/operator holes; bounded reference answers |
+| **1 --- algebra over GF(P) and integers** | Forward-generated arithmetic examples; solve-rule synthesis with inverse-value enumeration disabled | Integer addition inverse learned from +, *, and signed literals; finite-field counterpart; reuse of learned rules; declared domains and representation limits |
+| **1a --- costs** | Compare literal, formula, and table-based descriptions under the same workload | Complete size/execution/search ledger; failed attempts included; published encoding, work tariff, and chosen tradeoffs |
+| **2 --- recursive calls** | Parameter child plus the two-stage arithmetic trace | Same solver for parent and child; full reconstruction; temporary cost increase; results return to the correct originating decision |
+| **2a --- backtracking, depth, GC** | Resume a cutoff; revisit with larger limits; reclaim abandoned branches | Deeper solutions remain reachable; late messages retain their scopes; no timeout becomes a false refutation |
+| **2b --- explanation reuse (later gate)** | One checked structural conflict and one partition conflict reused in another branch | A small reason excludes several impossible continuations without excluding a repaired context; useful findings survive parent failure |
+| **3 --- heuristic induction** | Canonical/locality order, shrunk table, then one short synthesized policy | Comparable frozen-policy runs on held-out task families; policy overhead included; lossy features do not change exact answers |
 
 ### 9.1 Milestone 0: the essential checks
 
@@ -597,7 +598,7 @@ Finite tests establish those instances only. A universal claim over integers nee
 
 **Multiplication and expressivity.** Retain a*b = c as a predicate. In a field, b is unique when a is nonzero, arbitrary when a = c = 0, and nonexistent when a = 0 but c is nonzero. Over integers, a nonzero a also requires c to be divisible by a. Forward-generated triples cover only solvable inputs. Their recorded b values are valid singleton inverse targets only on a functional inverse region; at a = c = 0 use the relation rather than requiring every observed b as a separate singleton output.
 
-Do not promise a general integer multiplication solver in a straight-line language containing only +, *, and integer literals. Such expressions are integer-coefficient polynomials and cannot express general exact division. Decide explicitly whether to admit a division primitive or suitable iteration, or keep general multiplicative inversion outside this first gate. Neither option is counted as having learned an unavailable operation from nothing. Guarded partial solving and reporting “no solution” also require explicit specifications.
+Do not promise a general integer multiplication solver in a straight-line language containing only +, *, and integer literals. Such expressions are integer-coefficient polynomials and cannot express general exact division. Decide explicitly whether to admit a division primitive or suitable iteration, or keep general multiplicative inversion outside this first gate. Neither option is counted as having learned an unavailable operation from nothing. Guarded partial solving and reporting "no solution" also require explicit specifications.
 
 Retain bounded alternative syntax within validated finite-domain equivalence buckets or explicitly labeled empirical-agreement buckets. Choosing one permitted witness remains distinct from losslessly encoding the original relation.
 
@@ -654,7 +655,7 @@ The foremost empirical problem is simpler: does recursive decomposition expose e
 
 Each source contributes one lesson. None establishes the whole proposed pipeline.
 
-**[R1] Alpuente, Escobar, Meseguer, and Sapiña. _Order-sorted Equational Generalization Algorithm Revisited._**  
+**[R1] Alpuente, Escobar, Meseguer, and Sapi`\~{n}`{=latex}a. _Order-sorted Equational Generalization Algorithm Revisited._**  
 [Primary preprint](https://elp.webs.upv.es/papers/AMAI2021-preprint.pdf). Use the corrected account of identity axioms, incompleteness of the earlier algorithm, and restrictions supporting finitary results. This motivates a fixed syntactic kernel and explicit semantic budgets; it does not imply that the particular finite-field experiment has a nullary AU theory.
 
 **[R2] Polozov and Gulwani. _FlashMeta: A Framework for Inductive Program Synthesis_ (OOPSLA 2015).**  
