@@ -87,6 +87,50 @@ Models contain plain typed data and syntax, with no host functions or store
 pointers. Treat trees, schemas, rows, and language records as immutable after
 constructing a job; the implementation uses structural sharing.
 
+```{=latex}
+\begin{figure}[tbp]
+\centering
+\setlength{\fboxsep}{10pt}
+\fbox{\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
+\small
+```
+
+**Encoding example: where do 11, 41, and 71 bytes come from?**
+
+Description size is computed as `(length (canonical-string expression))`.
+The encoding is ASCII, so every character, including parentheses and spaces,
+occupies one byte. In this GF(5) experiment:
+
+- Literal `2` encodes as `(0 (3 5) 2)`: **11 bytes**. The leading `0` marks
+  a literal; `(3 5)` identifies the field type and its modulus.
+- Variable `a`, with ID 0, encodes as `(1 0 (3 5))`: **11 bytes**.
+- The typed addition operator encodes as `(3 0 (3 5))`: **11 bytes**.
+
+The complete expression `a + b` encodes as:
+
+`(2 (3 0 (3 5)) ((1 0 (3 5)) (1 1 (3 5))))`
+
+The application tag, surrounding parentheses, and spaces add eight bytes to
+the operator and its two operands. Thus the operator and application together
+add 19 bytes beyond the operands:
+
+$$
+\begin{aligned}
+S(a+b) &= 8+11+11+11 = 41,\\
+S(a+(b+b)) &= 19+11+41 = 71.
+\end{aligned}
+$$
+
+These sizes depend on the types and payloads: integer `2` encodes as `(0 0 2)`
+and occupies seven bytes. Much of the current encoding is punctuation and
+repeated type information; a more compact codec could change the thresholds
+and compression comparison. Execution work is measured separately.
+
+```{=latex}
+\end{minipage}}
+\end{figure}
+```
+
 `finite-allowed` retains sets of **whole** values. A correlated tuple set is not
 split into independent columns. `predicate-allowed` takes a checked Boolean AST
 whose only free variable is the proposed value, ID 0. No Lisp callback is accepted.
@@ -120,7 +164,9 @@ reconstruct the full ordered object from encoded data, including multiplicity.
 (let* ((field (gf 5))
        (frame (orient-observations
                (list field field) '((0 0 0) (1 1 2) (2 2 4)) '(0) '(1)))
-       (job (start-search frame (make-language field (schema-inputs (frame-schema frame))))))
+       (language (make-language field
+                                (schema-inputs (frame-schema frame))))
+       (job (start-search frame language)))
   (resume-search job 41 10)       ; cumulative work ceiling, not an increment
   (resume-search job 41 100000)   ; same continuation, larger ceiling
   (search-job-best job))
