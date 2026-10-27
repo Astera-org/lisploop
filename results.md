@@ -35,6 +35,14 @@ nine other valid expressions. Isolated decoding and replay succeed on all 25
 inputs. Resumed and uninterrupted searches have identical candidates and work
 totals. This is exhaustive validation over GF(5), not a claim about integers.
 
+The search has two limits: the maximum encoded size of a candidate program and
+the computation budget. **Interruption** means deliberately stopping when the
+computation budget is reached, while keeping the search position and any unfinished
+evaluation in memory; **resumption** continues that saved state with more work
+available. **Extension** raises the program-size limit, here from 41 to 71 bytes,
+so larger expressions become eligible. The experiment script chooses these limits
+to check that pausing preserves progress and that larger solutions remain reachable.
+
 | Representation | Description bytes | Execution work on 25 inputs |
 |---|---:|---:|
 | First verified formula | 71 | 2,000 |
