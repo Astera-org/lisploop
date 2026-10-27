@@ -3,9 +3,18 @@
 # is left to the TeX installation's default paper.
 PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt
 
-DOCS = plan.pdf plan2.pdf plan3.pdf plan4.pdf
+DOCS = plan.pdf plan2.pdf plan3.pdf plan4.pdf results.pdf
+SBCL ?= sbcl
+
+.PHONY: all clean test m1
 
 all: $(DOCS)
+
+test:
+	$(SBCL) --script tests.lisp
+
+m1:
+	$(SBCL) --script milestone1.lisp
 
 %.pdf: %.md
 	pandoc $< -o $@ $(PANDOC_FLAGS)
