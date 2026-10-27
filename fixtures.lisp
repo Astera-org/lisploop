@@ -29,12 +29,11 @@
           (assert (and (eq (evaluation-status check) :value) (evaluation-value check))))))
     work))
 
-(defun gf5-transition-fixture (&key (starts '((0 0) (0 1))) (steps 5)
-                                  (shift-b 4) (key-prefix :training) ledger)
+(defun additive-transition-fixture (domain starts steps shift-b key-prefix ledger)
   "Record forward transitions T(a,b)=(a+1,b+SHIFT-B). Return the frame and start keys.
 The transition is supplied fixture machinery; no invariant sketch enters search."
   (assert (and (integerp steps) (plusp steps)))
-  (let* ((field (gf 5)) (state-type (tuple-type field field))
+  (let* ((field domain) (state-type (tuple-type field field))
          (inputs (list (cons 0 field) (cons 1 field)))
          (transition (app (op :tuple state-type)
                           (app (op :+ field) (var 0 field) (lit field 1))
@@ -52,3 +51,18 @@ The transition is supplied fixture machinery; no invariant sketch enters search.
             (setf state (evaluation-value run))))))
     (values (make-frame (make-schema :inputs inputs :target state-type) (nreverse rows))
             (nreverse anchors))))
+
+(defun gf5-transition-fixture (&key (starts '((0 0) (0 1))) (steps 5)
+                                  (shift-b 4) (key-prefix :training) ledger)
+  (additive-transition-fixture (gf 5) starts steps shift-b key-prefix ledger))
+
+(defun integer-transition-fixture (&key (starts '((-3 1) (0 0) (2 3))) (steps 3)
+                                       (shift-b -1) (key-prefix :integer-training) ledger)
+  (additive-transition-fixture :int starts steps shift-b key-prefix ledger))
+
+(defun integer-held-out-starts ()
+  "Exact cancellation, adjacent large integers, and positive/negative large outputs."
+  (let ((n (ash 1 256)))
+    (list (list n (- n)) (list (1+ n) (- n))
+          (list (- n) n) (list (- (1+ n)) n)
+          (list n n) (list (- n) (- n)))))

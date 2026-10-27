@@ -13,7 +13,7 @@
    #:orient-observations #:lookup-model #:pullback-frame #:compose-model
    #:partition-rows #:reassemble-partition #:quotient-values #:restore-quotient
    #:partition-model #:quotient-model
-   #:make-language #:language-domain #:language-inputs #:language-operators
+   #:make-language #:language-domain #:language-inputs #:language-operators #:language-literals
    #:start-search #:resume-search #:search-job-results #:search-job-best
    #:search-job-ledger #:search-job-completed-bound #:search-job-messages
    #:candidate-expression #:candidate-size #:candidate-run-work

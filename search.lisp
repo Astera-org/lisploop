@@ -1,18 +1,23 @@
 (in-package #:lisploop)
 
-(defstruct (language (:constructor %make-language)) domain inputs operators (version 1))
+(defstruct (language (:constructor %make-language)) domain inputs operators (literals :all) (version 1))
 
-(defun make-language (domain inputs &key (operators (list (op :+ domain) (op :* domain))))
-  "The baseline grammar: declared variables, every domain literal, binary primitives.
+(defun make-language (domain inputs &key (operators (list (op :+ domain) (op :* domain))) (literals :all))
+  "The baseline grammar: declared variables, domain literals, binary primitives.
+LITERALS defaults to :ALL, or declares a finite vocabulary without bounding values.
 No observational deduplication, algebraic rewrites, lookup proposals, or sketches."
   (assert (or (eq domain :int) (and (consp domain) (eq (first domain) :gf))))
+  (assert (or (eq literals :all)
+              (and (listp literals) (every (lambda (value) (value-p value domain)) literals))))
   (dolist (operator operators)
     (assert (= 2 (length (second (operator-type operator))))))
   (%make-language :domain (copy-tree domain) :inputs (copy-tree inputs)
-                  :operators (remove-duplicates (copy-tree operators) :test #'equal)))
+                  :operators (remove-duplicates (copy-tree operators) :test #'equal)
+                  :literals (if (eq literals :all) :all
+                                (remove-duplicates (copy-list literals) :from-end t))))
 
 (defstruct (enumerator (:constructor make-enumerator (language)))
-  language (size 1) (phase :variables) (cursor 0) (literal-pass 0)
+  language (size 1) (phase :variables) (cursor 0) (literal-pass 0) (literal-index 0)
   literal-next literal-end (operator-index 0) (split 1) (left-index 0) (right-index 0)
   (buckets (make-hash-table :test #'equal)))
 
@@ -47,6 +52,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
   (setf (enumerator-phase enumerator) :variables
         (enumerator-cursor enumerator) 0
         (enumerator-literal-pass enumerator) 0
+        (enumerator-literal-index enumerator) 0
         (enumerator-literal-next enumerator) nil
         (enumerator-operator-index enumerator) 0
         (enumerator-split enumerator) 1
@@ -68,6 +74,15 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                    (return-from enumeration-step (values expression :candidate)))))
              (setf (enumerator-phase enumerator) :literals))))
       (:literals
+       (unless (eq (language-literals language) :all)
+         (let ((tail (nthcdr (enumerator-literal-index enumerator) (language-literals language))))
+           (if tail
+               (let ((expression (lit (language-domain language) (first tail))))
+                 (incf (enumerator-literal-index enumerator))
+                 (when (= size (description-size expression))
+                   (return-from enumeration-step (values expression :candidate))))
+               (setf (enumerator-phase enumerator) :applications)))
+         (return-from enumeration-step (values nil :progress)))
        (if (>= (enumerator-literal-pass enumerator) 2)
            (setf (enumerator-phase enumerator) :applications)
            (progn

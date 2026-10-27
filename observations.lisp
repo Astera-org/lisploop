@@ -23,6 +23,7 @@ they stay outside predictor arguments. Allowed sets are not used by this index."
           (schema-target schema) (copy-tree (schema-target schema))
           (language-domain snapshot) (copy-tree (language-domain language))
           (language-inputs snapshot) (copy-tree (language-inputs language))
+          (language-literals snapshot) (copy-tree (language-literals language))
           (language-operators snapshot) (copy-tree (language-operators language)))
     (labels ((index (key)
                (or (position key rows :key #'row-key :test #'equal)

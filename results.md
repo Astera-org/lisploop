@@ -14,7 +14,7 @@ The milestone 2 extension and its evidence are recorded below.
 ```sh
 make test                       # contract checks and independent tiny references
 make m1                         # save the GF(5) experiment trace in intermediate_results/
-make m2                         # save the observed-equivalence experiment trace
+make m2                         # save the GF(5) and integer observation traces
 make benchmark                  # repeat the scaling and tariff measurements
 make results.pdf                # build this document with Pandoc
 sbcl --load load.lisp            # inspect the kernel at a REPL
@@ -88,8 +88,9 @@ values follow that order. Keys are unique occurrence identities and never enter
 the predictor environment. Equal-valued rows with different keys remain distinct.
 
 Types are `:int`, `:bool`, `:index`, `(:gf p)`, `(:tuple ...)`, and `(:seq type)`.
-Field literals must already be canonical residues. Arithmetic results are reduced
-modulo the declared prime. An integer and a field element remain different typed
+Field literals must already be canonical residues. Field arithmetic results are
+reduced modulo the declared prime; integer arithmetic is exact and has no fixed
+bit-width limit. An integer and a field element remain different typed
 objects even if their payloads are equal.
 
 Expressions are `(:lit type value)`, `(:var id type)`, and
@@ -540,11 +541,52 @@ or search-speedup claim. The independent reference in the tests exhausts the tin
 single-application syntax bound and checks its output vectors; that establishes
 the enumeration mechanism, not a universal semantic law.
 
+### Integer-domain controls
+
+The same observation machinery is tested over the unbounded integers (an infinite
+ring, rather than a field). The transition is now $T(a,b)=(a+1,b-1)$, recorded for
+three steps from each of `(-3,1)`, `(0,0)`, and `(2,3)`. These nine pairs give 18
+probes containing negative, zero, and positive values. Search again discovers
+`a+b` and `b+a`: their values stay at $-2$, $0$, and $5$, respectively, along the
+three trajectories. Constant expressions fail the variation requirement.
+
+This experiment explicitly declares the literal vocabulary `{-1,0,1}`, alongside
+the two variables, `+`, and `*`. This restricts candidate syntax, **not integer
+inputs or computed values**. It is a necessary practical distinction here: with
+the default all-integer vocabulary and the existing text encoding, more than
+$10^{22}$ literal expressions are shorter than the 29-byte integer `a+b`.
+Each byte bound is finite, but exhausting that default grammar is impractical.
+The default remains available; this control makes no discovery claim for it.
+Within the declared vocabulary, a 31-byte bound covers five leaves and all fifty
+ordered single applications, including the extra byte for each negative literal.
+An independent arithmetic reference checks this complete set and its output vectors.
+
+The 55 expressions form 19 buckets, with one informative invariant bucket retaining
+both sums. Each sum costs **29 description bytes and 659 execution units** over
+the 18 probes. Discovery costs **41,204 work units**, plus 896 for original
+transition generation and 54 for reorientation. These costs use the existing
+encoding and tariffs; they are not a speed comparison with the GF(5) experiment.
+
+Fresh replay uses six starts with $N=2^{256}$:
+$(N,-N)$, $(N+1,-N)$, $(-N,N)$, $(-N-1,N)$, $(N,N)$, and $(-N,-N)$.
+Both programs preserve the exact sums $0,1,0,-1,2N,-2N$ across their transitions.
+This checks cancellation, signs, large outputs, and the distinction between
+adjacent large integers. Replay costs 13,384 units, with 5,550 for fresh acquisition
+and orientation. Changing the transition to $(a+1,b-2)$ rejects both invariants.
+
+The integer `x` versus `x*x` control likewise splits its original agreement on
+`{0,1}` when tested on `{0,1,-1,2,N,N+1}`; all 36 expressions remain stored.
+Exact squares are checked against host integer arithmetic. Unit-step and batched
+jobs agree at successive work cutoffs even during large multiplications, checking
+that larger values incur their bit-sensitive work and resume correctly.
+All these results remain **finite, scoped observations**. They test the machinery
+needed downstream without establishing laws over all integers or learning inverses.
+
 ### Scaffold and use
 
 `observations.lisp` adds an observation scope, per-expression execution records,
 and an index of buckets over an ordinary frame. The scope retains a snapshot of
-the input rows, domain and language version, simulator version, typed-value equality,
+the input rows, domain, literal vocabulary and language version, simulator version, typed-value equality,
 and any pair/start selections. Row requirements are not consulted by this index;
 each candidate receives only the declared input values. Neither duplicate input
 values nor shuffled storage removes occurrence identity.
@@ -557,6 +599,11 @@ record; `observation-invariants` returns the informative buckets. Supplying
 `:expressions` starts a replay job for an explicit list, useful when testing retained
 syntax on a new scope. Its `:replay-complete` message covers only that list; it
 does not claim to have exhausted the grammar.
+
+`make-language` accepts `:literals :all` (the default) or an explicit list of
+domain values, such as `:literals '(-1 0 1)` for the integer controls. Duplicate
+literals are removed, and each remaining literal is enumerated at its actual
+encoded size. The scope copies this vocabulary along with the rest of the grammar.
 
 Complete output vectors enter buckets only after all probes finish. Errors retain
 their work, failing row, and diagnostic but supply no equality evidence. Interrupted
@@ -575,7 +622,7 @@ It reuses the recorded transition data, but does not yet cache execution prefixe
 agreement, type/scope isolation, occurrence, error, and interruption controls.
 Single-unit and batched execution must preserve the complete saved state and every
 work category at matching cutoffs, including large integer instruction costs.
-The combined suite passes **21 tests and 967 checks**.
+The combined suite passes **25 tests and 1,081 checks**.
 
 Run `make m2` for the complete trace and per-stage work ledgers in
 [milestone2.txt](intermediate_results/milestone2.txt). The evidence records and retained
