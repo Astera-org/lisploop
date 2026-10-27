@@ -445,6 +445,8 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (= 10 (ledger-total (search-job-ledger batch))))
     (check (= 1 (cdr (assoc :validation (ledger-counts (search-job-ledger batch))))))))
 
+(load (merge-pathnames "observation-tests.lisp" *load-truename*))
+
 (let ((start (get-internal-real-time)))
   (dolist (test (reverse *tests*))
     (format t "~&~A ... " test)

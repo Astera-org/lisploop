@@ -18,5 +18,18 @@
    #:search-job-ledger #:search-job-completed-bound #:search-job-messages
    #:candidate-expression #:candidate-size #:candidate-run-work
    #:candidate-discovery-work #:message-call-id #:message-claim #:message-evidence
+   #:make-observation-scope #:observation-scope-id #:observation-scope-frame
+   #:observation-scope-language #:observation-scope-equality #:observation-scope-evidence
+   #:observation-scope-simulator-version
+   #:transition-probes #:start-observation-search #:resume-observation-search
+   #:observation-job-records #:observation-job-buckets #:observation-job-ledger
+   #:observation-job-completed-bound #:observation-job-messages
+   #:find-observation #:observed-agreement-p #:observation-invariants
+   #:observed-expression-scope #:observed-expression-expression #:observed-expression-type
+   #:observed-expression-status #:observed-expression-values #:observed-expression-run-work
+   #:observed-expression-error #:observed-expression-failed-key
+   #:observation-bucket-scope #:observation-bucket-type #:observation-bucket-values
+   #:observation-bucket-members #:observation-bucket-invariant-p
+   #:observation-bucket-informative-p #:observation-bucket-counterexample
    #:match-pattern #:anti-unify))
 (in-package #:lisploop)

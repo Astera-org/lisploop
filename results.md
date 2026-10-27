@@ -9,10 +9,12 @@ milestone: typed data and programs, isolated execution, finite-description
 enumeration, resumable checking, and explicit description/work accounting.
 This retains the SBCL implementation choice from plans 1 and 2; milestone
 numbers follow plan 4. The algebra-discovery experiments belong to milestone 4.
+The milestone 2 extension and its evidence are recorded below.
 
 ```sh
 make test                       # contract checks and independent tiny references
 make m1                         # save the GF(5) experiment trace in intermediate_results/
+make m2                         # save the observed-equivalence experiment trace
 make benchmark                  # repeat the scaling and tariff measurements
 make results.pdf                # build this document with Pandoc
 sbcl --load load.lisp            # inspect the kernel at a REPL
@@ -75,8 +77,10 @@ charges processing without rerunning the experiment.
 | `sim.lisp` | Deterministic stack machine, explicit errors, work ledger |
 | `frames.lisp` | Schema/rows, joint requirements, reorientation, pullback, paid lookups and reconstruction |
 | `search.lisp` | Exact-size bottom-up enumerator, resumable verification, candidates and messages |
+| `observations.lisp` | Scoped output vectors, empirical buckets, and observed invariants |
 | `au.lisp` | Typed first-order matching and aligned syntactic anti-unification |
 | `fixtures.lisp`, `tests.lisp`, `milestone1.lisp` | Separate oracle fixtures, controls, and experiment |
+| `observation-tests.lisp`, `milestone2.lisp` | Milestone 2 controls and experiment |
 
 The only frame is `Frame(schema, rows)`; each row has `key`, `known`, and
 `allowed`. Schema inputs are an alist of numeric variable IDs to types. Known
@@ -470,7 +474,112 @@ syntax buckets, messages, candidate order, and every ledger category.
 
 The supplied child trace uses the same search API and composes/rechecks its result.
 Automatic view/decoder proposal scheduling, multi-level recursive orchestration,
-backtracking, cross-call conflict routing, memory eviction, learned equivalences,
-laws, and library learning remain subsequent milestones. No binders, generated
+backtracking, cross-call conflict routing, memory eviction, laws, inverse learning,
+and library learning remain subsequent milestones. No binders, generated
 recursion, e-graphs, general graph matching, or semantic pruning are implemented.
 Checkpoints currently live in memory, and syntax retention grows with the bound.
+
+## Milestone 2: observed equivalence and invariants
+
+Milestone 2 adds a way to retain agreements discovered by execution. An expression's
+**output vector** is the ordered list of its results on the declared input rows.
+Expressions with the same result type and output vector share a **bucket**. Every
+expression within the description bound remains in that bucket, so different
+syntax remains available for later matching and abstraction. These are agreements
+on particular observations; membership does not authorize rewriting other programs
+or removing syntax from the canonical search.
+
+The experiment records ten transitions under $T(a,b)=(a+1,b+4)$ over GF(5): five
+successive steps starting at `(0,0)` and five starting at `(0,1)`. Each starting
+state returns to itself after those five steps. Reorienting these records produces
+20 input probes, one before and one after each transition. Their occurrence keys,
+pair links, and the two selected starting rows remain outside predictor inputs.
+The original transition frame is retained; making this view charges processing
+work without executing the transition again.
+
+The search enumerates expressions $h(a,b)$ using the existing field literals,
+variables, addition, and multiplication. It seeks both $h(s)=h(T(s))$ on every
+recorded pair and different values at the two starting states. Constant expressions
+satisfy the first condition but fail the second. This is a search for an informative
+observable; it does not yet reconstruct or compress the original observations.
+
+### Result and controls
+
+After an intentional cutoff at 100 work units and resumption with a 1,000,000-unit
+ceiling, the search completes the 41-byte bound: **105 expressions form 25 output
+buckets**. Exactly one bucket passes both
+conditions, containing `a+b` and `b+a`. Both produce 0 throughout the first recorded
+cycle and 1 throughout the second. All syntax alternatives, including constant
+expressions and those that fail invariance, remain stored.
+
+| Expression | Description bytes | Execution work on 20 probes | Observed result |
+|---|---:|---:|---|
+| `a+b` | 41 | 940 | Invariant and varies between starts |
+| `b+a` | 41 | 940 | Same output vector; retained separately |
+| Constant `0` | 11 | 300 | Invariant but uninformative |
+
+Discovery costs **108,840 work units**, including enumeration, execution, scheduling,
+and indexing. Original transition generation costs 1,270 and reorientation costs
+60, for **110,170 units** through discovery. The two returned expressions then pass
+six fresh transition pairs, starting at `(0,2)`, `(0,3)`, `(0,4)`, `(2,0)`, `(2,1)`,
+and `(2,2)`; these source states were absent from discovery. Replaying both programs
+costs 1,350 units, with another 798 for the fresh observations and their input view.
+Changing the transition to `(a+1,b+3)` rejects both programs, recording the first
+pair on which their values differ.
+
+A separate control demonstrates why the scope matters. On inputs `{0,1}`, `x`
+and `x*x` both produce `(0,1)` and share a bucket. Rechecking the retained expressions
+on `{0,1,2}` gives `(0,1,2)` and `(0,1,4)`, respectively, so they occupy different
+buckets in the new scope. All 78 expressions survive this recheck; the number of
+buckets increases from 13 to 14. The original records still correctly describe
+agreement on `{0,1}` and are left intact.
+
+The evidence is **replayed observations**, including the fresh tests. There is no
+full-domain law validation or symmetry-group inference here, and no compression
+or search-speedup claim. The independent reference in the tests exhausts the tiny
+single-application syntax bound and checks its output vectors; that establishes
+the enumeration mechanism, not a universal semantic law.
+
+### Scaffold and use
+
+`observations.lisp` adds an observation scope, per-expression execution records,
+and an index of buckets over an ordinary frame. The scope retains a snapshot of
+the input rows, domain and language version, simulator version, typed-value equality,
+and any pair/start selections. Row requirements are not consulted by this index;
+each candidate receives only the declared input values. Neither duplicate input
+values nor shuffled storage removes occurrence identity.
+
+`make-observation-scope` establishes that context, and `start-observation-search`
+uses the existing enumerator and VM. `resume-observation-search` accepts a growing
+description bound and a cumulative work ceiling. It preserves unfinished setup,
+construction, evaluation, and indexing work. `find-observation` retrieves a program's
+record; `observation-invariants` returns the informative buckets. Supplying
+`:expressions` starts a replay job for an explicit list, useful when testing retained
+syntax on a new scope. Its `:replay-complete` message covers only that list; it
+does not claim to have exhausted the grammar.
+
+Complete output vectors enter buckets only after all probes finish. Errors retain
+their work, failing row, and diagnostic but supply no equality evidence. Interrupted
+evaluations remain unknown. `observed-agreement-p` requires complete records with
+matching types in the exact same scope; matching scope labels alone are insufficient.
+The records are treated as immutable after construction.
+
+The evaluator and description tariffs remain unchanged. Observation jobs additionally
+charge setup by the input payload and selection counts, and indexing by the output
+payload size plus pair/start comparison counts. These are deterministic abstract
+tariffs; wall time is reported separately. Rechecking a larger frame currently
+executes the retained programs on all its rows again, including the earlier inputs.
+It reuses the recorded transition data, but does not yet cache execution prefixes.
+
+`make test` includes the new discovery, fresh-data, changed-transition, accidental
+agreement, type/scope isolation, occurrence, error, and interruption controls.
+Single-unit and batched execution must preserve the complete saved state and every
+work category at matching cutoffs, including large integer instruction costs.
+The combined suite passes **21 tests and 967 checks**.
+
+Run `make m2` for the complete trace and per-stage work ledgers in
+[milestone2.txt](intermediate_results/milestone2.txt). The evidence records and retained
+syntax are the interface for later law proposals; the original frames remain
+available for later prediction orientations. **Milestones 3 and 4 are not implemented
+or run:** there is no learned-law application, inverse-rule search, inverse-value
+enumeration, or semantic pruning.
