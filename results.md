@@ -12,7 +12,8 @@ numbers follow plan 4. The algebra-discovery experiments belong to milestone 4.
 
 ```sh
 make test                       # contract checks and independent tiny references
-make m1                         # the reproducible GF(5) experiment and trace
+make m1                         # save the GF(5) experiment trace in intermediate_results/
+make benchmark                  # repeat the scaling and tariff measurements
 make results.pdf                # build this document with Pandoc
 sbcl --load load.lisp            # inspect the kernel at a REPL
 ```
@@ -56,8 +57,8 @@ comparison demonstrates a search speedup. Completing the 71-byte search costs
 876,490 work units, including failures; its first solution arrives at 31,138.
 Observation generation, baseline construction, and independent replay add
 29,825 units to this experiment. Wall time and a separate supplied-decomposition
-control appear in [milestone1.txt](milestone1.txt). Regenerate that record with
-`sbcl --script milestone1.lisp > milestone1.txt`.
+control appear in [milestone1.txt](intermediate_results/milestone1.txt).
+Regenerate that record with `make m1`.
 
 The objectives are declared before the experiment: pure description
 `(lambda_run, lambda_search) = (0,0)` and positive work `(1/100,1/1000)`.
@@ -143,12 +144,30 @@ and compression comparison. Execution work is measured separately.
 split into independent columns. `predicate-allowed` takes a checked Boolean AST
 whose only free variable is the proposed value, ID 0. No Lisp callback is accepted.
 
-`pullback-frame` compiles `A(d(c,z))` into that predicate using encoded observations.
-The child's input bindings are separately type-checked against the parent's
-declared inputs. Only their computed values reach the child predictor.
-`compose-model` substitutes both the binding and child program into the decoder;
-the resulting AST includes and pays for all duplicated syntax. Explicit fibers
-are used only as independent tiny test oracles, never by search or pullback.
+`pullback-frame` builds a child requirement by passing a proposed child value
+through a supplied parent decoder. For example, let the parent inputs be `(a,b)`,
+the decoder be `y = a + z`, and the child's input binding select only `b`.
+For the GF(5) observation `(a,b,y) = (1,2,0)`, the child receives `b = 2` and
+proposes `z = g(2)`; a separate checker tests `(1 + z) mod 5 = 0`. The child
+program cannot read `a`, `y`, the row key, or the checker. The synthesizer may
+inspect the observations during discovery; this restriction concerns the
+candidate program's runtime inputs. Bindings may select inputs or compute new
+values from them, and are type-checked against the parent's declared inputs.
+
+A **fiber** is the set of acceptable child values, here `{4}`. Pullback represents
+it implicitly as a typed predicate in the child row's `allowed` field, without
+listing its members. Tests independently enumerate tiny finite domains to check
+that these predicates accept exactly the correct values. Synthesis does not
+enumerate inverse fibers: this keeps pullback applicable to unbounded integers
+and supports the later experiment of learning inverse rules. Ordinary explicit
+finite sets remain supported: `finite-allowed` encodes their members as a typed
+sequence literal inside a membership predicate. A fiber describes compatible
+values; a **residual** is a particular value or index retained for reconstruction.
+
+`compose-model` substitutes the child program and its input bindings into the
+decoder. A child `g(b) = b+b` therefore produces the assembled program `a+(b+b)`.
+The resulting AST includes and pays for all duplicated syntax; composition does
+not require an explicit fiber table.
 
 The runtime primitives are arithmetic `+`, `*`, equality, tuple construction,
 membership, encoded lookup, and indexed gather. The last four support requirements
@@ -157,12 +176,23 @@ search grammar enumerates only `+`, `*`, variables, and domain literals.** No
 inverse, division, view sketch, AU pattern, or metadata shortcut is supplied to
 the GF(5) discovery run.
 
-A lookup requires explicit task permission and actual finite witnesses. For
-repeated inputs it intersects the allowed sets; incompatible requirements or
-predicate-only requirements cannot fabricate entries. Its entries live in a
-priced literal inside the model. Partitions retain an inverse permutation;
-quotients retain an index for every occurrence. Their closed `gather` programs
-reconstruct the full ordered object from encoded data, including multiplicity.
+Encoded lookup tables provide storage for residuals and incompressible data in
+later models. The current `lookup-model` builder requires `:lookup-p t` in the
+frame's schema, declaring that lookup models are admissible for the experiment,
+and finite lists of concrete acceptable outputs, called **witnesses**. For repeated
+inputs, one output must satisfy every corresponding row: if input `7` allows
+`{1,2}` in one row and `{2,3}` in another, the table stores `7 -> 2`. Disjoint
+allowed sets cause rejection. A predicate alone supplies a test but no explicit
+witness list; the current builder does not solve it to obtain table entries.
+
+The entries are stored as a typed literal inside the model, and their full
+description size is charged. Lookup keys must come from declared runtime inputs
+or computations on them. Occurrence-specific residuals therefore need an available
+coordinate or an encoded selection/reassembly procedure; internal row keys do
+not automatically become predictor inputs. Partitions retain an inverse
+permutation; quotients retain an index for every occurrence. Their closed
+`gather` programs reconstruct the full ordered object from encoded data,
+including multiplicity.
 
 ## Search and interruption
 
@@ -180,19 +210,68 @@ reconstruct the full ordered object from encoded data, including multiplicity.
   (search-job-best job))
 ```
 
-The enumerator advances through canonical byte sizes. It retains every syntax
-alternative in typed size buckets. Application sizes are exactly the operator/tag
-overhead plus child sizes. Every child is smaller than its parent, so completed
-smaller buckets suffice to enumerate every ordered operand combination.
-Variables come from a finite declared interface. Field literals are finite;
-integer literals are generated lazily by exact signed decimal payload length.
-Thus every finite byte bound has finitely many candidates, including over integers.
+The enumerator advances through canonical byte sizes and retains every syntax
+alternative in **buckets indexed by result type and encoded size**. These are
+separate attributes: `(GF(5), 11 bytes)` contains `a`, `b`, and literals `0`
+through `4`; `(GF(5), 41 bytes)` contains single-operation expressions such as
+`a+b` and `a*b`. The size index selects operands that fit the requested program
+length; the type index selects operands compatible with the operator's signature.
+All expressions in this first arithmetic experiment have type GF(5), so the type
+index becomes useful when a search language includes multiple result types.
 
-Each search quantum advances a cursor, constructs/indexes syntax, schedules a row,
-or advances one interpreter/checker work unit. The canonical path gets all work;
-there is no learned preference or semantic pruning. Failed candidates stop at a
-counterexample. Successful candidates check every row and remain available after
-an incumbent has been found. Ranking supports a nonnegative execution-work weight.
+Construction proceeds from smaller expressions already cached in completed
+buckets. For example, a 71-byte application can combine an 11-byte operand and
+a 41-byte operand, plus 19 bytes of operator/application overhead. Here a
+"child" means an operand in the syntax tree; the earlier pullback discussion
+uses "child" for a synthesis subproblem. Both operand orders are considered,
+retaining alternatives such as `a+b` and `b+a`.
+
+Available variables are listed explicitly in the frame schema's `inputs` field
+and copied into the search language by `make-language`. The GF(5) fixture selects
+columns 0 and 1 as inputs, giving variables `a` and `b`; column 2 is the target
+`y`, available to the checker. Each row supplies values for those input variables.
+The interface is finite because it lists finitely many variables, even when their
+types, such as integers, admit infinitely many values.
+
+This interface is fixed for a particular search job, but can change between
+questions. `orient-observations` already supports different input/target selections:
+recorded triples `c=a+b` can supply either `(a,b) -> c` or `(a,c) -> b`.
+`pullback-frame` also supports computed child inputs, using values available to
+the parent. Later rule and algebra experiments can choose suitable typed variables
+for each question, and learned library calls will have declared parameter
+signatures. Automatic interface selection and learned library calls remain future
+work; the current interfaces are supplied explicitly.
+
+Field literals are finite; integer literals are generated lazily by exact signed
+decimal payload length. Together with the finite variable and operator vocabulary,
+this ensures that every finite byte bound has finitely many candidates, including
+over integers.
+
+The search saves its enumeration position in an `enumerator` structure: the
+current size and phase, position among variables or literals, current operator,
+operand-size split, and indexes into the operand buckets. These **cursors** are
+stored loop counters identifying the next combination to try. The surrounding
+search job also retains the current candidate, remaining example rows, and any
+unfinished evaluator state, so resumption continues without restarting that work.
+Search charges enumeration, construction/indexing, row scheduling, and interpreter/
+checker work according to the tariff below. Construction and evaluation charges
+are now applied in batches, capped by the remaining work budget. An insufficient
+budget leaves the unpaid portion in the saved state, so even a one-unit cutoff
+remains exact. All work goes to the fixed enumeration and checking procedure;
+there is no learned preference or equivalence-based pruning.
+
+A **counterexample** is a supplied observation on which a complete candidate
+fails its requirement. For `y = a + 2*b` over GF(5), the row `(a,b,y) = (0,1,2)`
+rejects candidate `a+b`, which returns `1`. Search executes the candidate on each
+row and checks its result against the allowed set or predicate, stopping at the
+first failure. These counterexamples come from the supplied rows; the current
+implementation counts the rejection without learning a generalized explanation.
+
+A rejected candidate remains in its syntax bucket for use as a **subexpression**.
+For example, `b` fails as a complete predictor but is essential inside `a+(b+b)`;
+an operand need not produce the final target value. Successful candidates check
+every row and remain available after a best solution has been found. They can be
+ranked by description size plus a nonnegative weighted execution cost.
 
 The VM retains its task stack, value stack, and any partially paid instruction.
 Its statuses are `:unknown`, `:value`, and `:error`. A work cutoff leaves
@@ -222,8 +301,21 @@ reader dispatch and reader evaluation are disabled. Encoding fixes the allocatio
 | `+`, `*`, `=`, tuple, membership, lookup, gather | Operator IDs `0` through `6` |
 
 Every literal payload is included recursively. Booleans encode as `0`/`1`;
-sequences and tuples encode their complete contents. Model holes have a codec
-for pricing patterns but fail executable model validation until instantiated.
+sequences and tuples encode their complete contents. The **codec** is simply the
+encoder/decoder for this representation, including syntax holes. A hole with ID 0
+expecting a GF(5) expression encodes as `(4 0 (3 5))`, occupying 11 bytes: `4`
+marks a hole, `0` is its identifier, and `(3 5)` specifies its type. This lets the
+system measure the description size of a pattern before its missing syntax is chosen.
+
+**Instantiation** means substituting concrete syntax for those holes. For the
+pattern `?h + ?h`, replacing `?h` with the literal `2` produces `2 + 2`;
+replacing it with the declared variable `b` produces `b + b`. Both occurrences
+of the same hole receive the same replacement. This is template substitution:
+the expression itself is being completed. Lazy evaluation instead postpones
+execution of an already specified expression. The current evaluator rejects
+unfilled holes; a completed program may still read its declared runtime variables.
+Pattern size measures only the template, so a complete reconstruction must also
+account for its substitutions or the resulting instantiated program.
 
 The work units are a published abstract tariff, not CPU instructions:
 
@@ -241,24 +333,140 @@ The work units are a published abstract tariff, not CPU instructions:
   Pullback/composition charge generated bytes; orientation and supplied views
   charge their data traversal. Matching/AU meter visited terms.
 
-The evaluator prepays an instruction in interruptible work quanta, then executes
-its host operation atomically. This is **not wall-clock preemption of a bignum
-operation**, a Lisp sandbox for hostile code, or a hardware cost model. Wall time
-also includes implementation overhead. Reporting/printing and test harness work
-are outside the discovery ledger. `W_run` is a separate future deployment
-measurement; replay during acquisition is charged to `W_search`.
+The evaluator calculates an instruction's tariff, then charges the smaller of
+its unpaid cost and the available budget in one update. Once the instruction
+is fully paid, its host operation executes atomically. A work cutoff preserves
+any unpaid cost; it does not impose a wall-clock deadline on an individual host
+operation. The tariff is an abstract cost measure, while wall time also includes
+implementation overhead. Reporting/printing and test harness work are outside
+the discovery ledger. `W_run` is a separate future deployment measurement;
+replay during acquisition is charged to `W_search`.
+
+## Scaling and batched accounting
+
+The first implementation returned through the search loop for every tariff unit,
+including each unit of a precomputed construction or instruction cost. The evaluator
+already supported larger budgets, but search passed it only one unit at a time.
+Search now batches those charges up to the remaining budget within each phase.
+`resume-search` accepts an optional `:quantum` cap; `:quantum 1` retains one-unit
+stepping for diagnostics. Candidate order, cutoff positions, and tariff version 1
+are preserved. All 688 checks pass, including comparisons of the full saved states
+and ledger categories between batched and one-unit execution.
+
+The following measurements compare a frozen copy of the original kernel with
+the batched implementation. Each run uses a fresh SBCL 2.6.4 process on the same
+machine, a 2 GiB dynamic-space allowance, and all 25 GF(5) input pairs. The targets
+are `a+2*b` at 71 bytes, `a+b*(b+2)` at 101 bytes, and `a+b*b*b*b` at 131 bytes.
+Times are for **completing the entire bound**, rather than finding the first
+solution. The two smaller cases report medians of three runs per implementation;
+the largest reports one run per implementation. Loading, fixture generation, and
+the final GC used to measure retained memory are excluded; GC during search is
+included. Runs were serial and unprofiled.
+
+| Bound (bytes) | Expressions retained | Before (s) | Batched (s) | Speedup |
+|---:|---:|---:|---:|---:|
+| 71 | 2,849 | 0.044 | 0.024 | 1.83x |
+| 101 | 98,889 | 1.720 | 0.920 | 1.87x |
+| 131 | 3,863,657 | 83.132 | 44.356 | 1.87x |
+
+The largest run's CPU time falls from 83.09 to 44.33 seconds, closely tracking
+elapsed time. Its additional live heap remains about 328 MiB and peak process
+memory about 477 MiB, including the Lisp runtime. Cumulative allocation remains
+about 67 GiB, mostly temporary objects; that is allocation traffic, not simultaneous
+memory use. CPU time was the immediate bottleneck in these runs. Batching reduces
+accounting overhead without reducing the number of retained expressions.
+The discovery totals are unchanged: 876,490, 36,625,916, and 1,772,480,257 work
+units, respectively. The earlier description and execution-cost results therefore
+remain comparable under the same tariff.
+
+A separate evaluator microbenchmark illustrates why batching matters most for
+large instruction charges. For one multiplication of two 4096-bit integers, the
+updated measurement is about **0.300 seconds with one-unit advances versus
+0.092 milliseconds with batched advances**, roughly 3,300x faster. Both executions
+produce the same result and charge exactly 16,782,182 work units. These are averages
+of 3 and 1,000 executions, respectively. The earlier measurement of roughly
+0.29 seconds versus 0.11 milliseconds was about 2,600x, not 2.6x. These ratios
+describe this isolated evaluator operation; the complete searches above improve
+by about 1.9x because enumeration, serialization, validation, and allocation still
+consume time.
+
+Wall-clock time is already an appropriate measure of practical search latency.
+Report it alongside CPU time, peak/live memory, candidate counts, and the
+deterministic tariff. The tariff supports reproducible budgets and interruption
+checks; it is not a calibrated runtime predictor across implementations and
+workloads. Use consistent hardware and repeated timings for short runs.
+Repeated serialization and type/size computation remain candidates for future
+optimization. Exhaustive retention also remains a scaling limit: the next
+five-operation bound, 161 bytes, would contain about 162 million expressions
+cumulatively in this grammar. That count is calculated, not a completed run.
+The measured programs are still shallow; deep recursive synthesis remains untested.
+
+Run the measurement suite with:
+
+```sh
+make benchmark
+make benchmark-profile          # optional, separate CPU profile
+```
+
+`make benchmark` runs `benchmark.lisp` in fresh, serial SBCL processes with a
+2 GiB dynamic-space allowance. For both current one-unit and batched execution,
+it repeats the 71-byte and 101-byte cases three times each and the 131-byte case
+once, then runs the evaluator microbenchmark. Use the median of each set of three
+timings when comparing the small cases. Allow a few minutes on the measured
+machine; elapsed times depend on hardware and system load. A search that reaches
+a cutoff makes the target fail, leaving the partial report for inspection.
+The default wall cap is 300 seconds per search; override it with, for example,
+`make benchmark BENCHMARK_SECONDS=600`.
+
+Generated text reports live in the Git-ignored `intermediate_results/` directory.
+Each invocation replaces [benchmark-unit.txt](intermediate_results/benchmark-unit.txt),
+[benchmark-batch.txt](intermediate_results/benchmark-batch.txt), and
+[benchmark-meter.txt](intermediate_results/benchmark-meter.txt). The search reports
+include source hashes, completion status, timings, memory, candidate counts, and
+work ledgers. The optional profile goes to
+[benchmark-profile.txt](intermediate_results/benchmark-profile.txt).
+
+These reruns compare the current kernel's two dispatch modes; the table's original
+baseline used the frozen pre-change kernel, so its exact timing comparison is
+historical. The original measurements and kernel hashes are preserved separately
+in [scaling-before-batching.txt](intermediate_results/scaling-before-batching.txt)
+and [scaling-batched.txt](intermediate_results/scaling-batched.txt). The initial
+investigation remains in [scaling.txt](intermediate_results/scaling.txt), with its
+CPU profile in [scaling-profile.txt](intermediate_results/scaling-profile.txt).
 
 ## Scope of the controls
 
 `make test` covers the milestone 1 contract and the immediately recommended tiny
-syntax controls: input isolation and reorientation, charged lookup replay,
-joint predicate/fiber agreement, impossible fibers, partition/quotient reconstruction,
-typed substitutions, operator holes, repeated holes, matching, and aligned AU.
+syntax controls: input isolation and reorientation, lookup replay with explicit
+size and work costs, joint predicate/fiber agreement, empty fibers,
+partition/quotient reconstruction, typed substitutions, operator holes, repeated
+holes, matching, and aligned AU. Three of these controls mean:
+
+- **Lookup replay with explicit costs:** the table is encoded inside the model,
+  contributes to its description size, and consumes tariff units when executed.
+  This is what "charged" means. Replay runs the encoded model again using only
+  its contents and declared inputs; the test checks that it reproduces the outputs
+  without access to the original observation table.
+- **Joint predicate/fiber agreement:** the generated predicate must accept exactly
+  the child values that satisfy the parent requirement. "Joint" preserves constraints
+  on whole tuples: an allowed set `{(0,0), (1,1)}` must reject `(0,1)` and `(1,0)`,
+  even though either coordinate alone may be `0` or `1`. Tests independently
+  enumerate tiny finite domains and compare the acceptable values (the fiber)
+  with the predicate's answers.
+- **Empty fibers:** no child value satisfies the requirement through the chosen
+  decoder. For example, `d(z) = (z,z)` cannot produce `(0,1)` or `(1,0)`.
+  The test checks that the generated predicate rejects every possible `z` in
+  the tiny domain. This establishes impossibility for that requirement and
+  decoder, not for every possible decomposition.
+
 The AU reference exhausts the finite flat patterns for all 64 pairs of single
 GF(2) applications; it makes no unrestricted abstraction-optimality claim.
 Other controls cover exact integer payload bounds, explicit errors, bit-sensitive
 work, contradictory rows, shuffling, mid-check interruption, increasing limits,
-and repeatable cost totals.
+and repeatable cost totals. Batched and one-unit execution are compared at
+matching budget cutoffs, including partially paid construction and instructions,
+candidate discovery, and errors. The comparisons include complete saved states,
+syntax buckets, messages, candidate order, and every ledger category.
 
 The supplied child trace uses the same search API and composes/rechecks its result.
 Automatic view/decoder proposal scheduling, multi-level recursive orchestration,

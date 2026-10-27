@@ -376,6 +376,75 @@ For this finite shape these orderings select the LGG; no general optimality is c
       (check (eq :bounded-exhaustion (message-claim (resume-search job bound 10000))))
       (check (search-job-best job)))))
 
+(deftest batched-search-preserves-continuations-and-costs
+  (multiple-value-bind (frame oracle) (gf5-fixture)
+    (let* ((language (make-language (gf 5) (schema-inputs (frame-schema frame))))
+           (unit (start-search frame language :call-id :batch-parity))
+           (batch (start-search frame language :call-id :batch-parity))
+           (bound (description-size oracle)))
+      ;; Cross partial construction, execution/checking instructions, the first
+      ;; successful return, and the exact completion boundary at different budgets.
+      (dolist (limit (append (loop for n from 0 to 400 by 7 collect n)
+                             (loop for n from 400 to 2500 by 137 collect n)
+                             '(31137 31138 31139 100000 876489 876490 1000000)))
+        (resume-search unit bound limit :quantum 1)
+        (resume-search batch bound limit)
+        (check (<= (ledger-total (search-job-ledger batch)) limit))
+        ;; Includes buckets, VM stacks/debt, messages, result order, and every
+        ;; ledger category, not merely the best expression or final total.
+        (check (equalp unit batch)))
+      (check (= 876490 (ledger-total (search-job-ledger batch))))
+      (check (= 10 (length (search-job-results batch))))
+      (check (= 31138 (reduce #'min (search-job-results batch) :key #'candidate-discovery-work)))
+      (raises (resume-search batch bound 1000000 :quantum 0)))))
+
+(deftest batched-checker-debt-and-errors
+  (let* ((big (1- (ash 1 128)))
+         (heavy (app (op := :int)
+                      (app (op :* :int) (lit :int big) (lit :int big))
+                      (lit :int (* big big))))
+         (entry-type (tuple-type :int :int))
+         (missing-lookup
+           (app (op := :int)
+                (app (op :lookup entry-type) (var 0 :int)
+                     (lit (sequence-type entry-type) nil))
+                (lit :int 0))))
+    (loop for predicate in (list heavy missing-lookup) for expected-count in '(10 0) do
+      (let* ((frame (make-frame (make-schema :inputs nil :target :int)
+                                (list (make-row :key 0 :known nil
+                                                :allowed (predicate-allowed :int predicate)))))
+             (language (make-language :int nil :operators nil))
+             (unit (start-search frame language :call-id :checker-parity))
+             (batch (start-search frame language :call-id :checker-parity))
+             (bound (description-size (lit :int 0))))
+        (dolist (limit '(0 8 80 160 161 1000 16384 17000 50000 200000))
+          (resume-search unit bound limit :quantum 1)
+          (resume-search batch bound limit)
+          (check (<= (ledger-total (search-job-ledger batch)) limit))
+          (check (equalp unit batch)))
+        (check (= bound (search-job-completed-bound batch)))
+        (check (= expected-count (length (search-job-results batch))))))))
+
+(deftest unpaid-instruction-error-after-batched-work
+  ;; Exercise an instruction-cost failure after earlier instructions in the same
+  ;; batch. This must retain the reference search's one validation-error unit.
+  (let* ((frame (simple-frame :int nil '((nil 0))))
+         (language (make-language :int nil :operators nil))
+         (unit (start-search frame language :call-id :error-parity))
+         (batch (start-search frame language :call-id :error-parity)))
+    (dolist (job (list unit batch))
+      (let ((state (start-evaluation (lit :int 0) nil nil)))
+        (setf (evaluation-tasks state)
+              (append (evaluation-tasks state) (list (list :invalid-instruction)))
+              (search-job-evaluation job) state
+              (search-job-phase job) :evaluate)))
+    (loop while (eq :evaluate (search-job-phase unit)) do (search-step unit))
+    (search-step batch 100)
+    (check (equalp unit batch))
+    (check (eq :error (evaluation-status (search-job-evaluation batch))))
+    (check (= 10 (ledger-total (search-job-ledger batch))))
+    (check (= 1 (cdr (assoc :validation (ledger-counts (search-job-ledger batch))))))))
+
 (let ((start (get-internal-real-time)))
   (dolist (test (reverse *tests*))
     (format t "~&~A ... " test)

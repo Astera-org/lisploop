@@ -100,10 +100,14 @@
 (defun advance-evaluation (state budget &optional ledger (category :simulation))
   "Spend at most BUDGET units, retaining unpaid instructions on interruption.
 Host arithmetic executes atomically once prepaid; this is an abstract work meter,
-not an operating-system wall-clock preemption facility."
+not an operating-system wall-clock preemption facility.
+The second value reports an error before any work was charged for its instruction,
+so search can account for that failed validation even after earlier batched work."
   (assert (and (integerp budget) (>= budget 0)))
-  (handler-case
+  (let ((instruction-paid-p nil) (unpaid-error-p nil))
+    (handler-case
       (loop while (and (plusp budget) (eq (evaluation-status state) :unknown)) do
+        (setf instruction-paid-p nil)
         (let ((task (first (evaluation-tasks state))))
           (when (zerop (evaluation-remaining-cost state))
             (setf (evaluation-remaining-cost state) (instruction-cost state task)))
@@ -111,7 +115,8 @@ not an operating-system wall-clock preemption facility."
             (decf budget spent)
             (decf (evaluation-remaining-cost state) spent)
             (incf (evaluation-work state) spent)
-            (charge ledger category spent))
+            (charge ledger category spent)
+            (setf instruction-paid-p t))
           (when (zerop (evaluation-remaining-cost state))
             (pop (evaluation-tasks state))
             (execute-instruction state task)
@@ -119,10 +124,11 @@ not an operating-system wall-clock preemption facility."
               (assert (= (length (evaluation-stack state)) 1))
               (setf (evaluation-status state) :value
                     (evaluation-value state) (first (evaluation-stack state)))))))
-    (error (condition)
-      (setf (evaluation-status state) :error
-            (evaluation-error state) (princ-to-string condition))))
-  state)
+      (error (condition)
+        (setf (evaluation-status state) :error
+              (evaluation-error state) (princ-to-string condition)
+              unpaid-error-p (not instruction-paid-p))))
+    (values state unpaid-error-p)))
 
 (defun evaluate (expression inputs values &key (budget 1000000) ledger)
   (advance-evaluation (start-evaluation expression inputs values) budget ledger))

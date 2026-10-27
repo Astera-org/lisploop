@@ -157,8 +157,20 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                         :evidence candidate) (search-job-messages job))
     (setf (search-job-phase job) :enumerate)))
 
-(defun search-step (job)
-  "One metered quantum. A partial evaluator/checker survives the quantum unchanged."
+(defun advance-search-evaluation (job budget category)
+  "Batch VM work and preserve the single-unit charge for an unpaid validation error."
+  (let* ((ledger (search-job-ledger job)) (before (ledger-total ledger)))
+    (multiple-value-bind (state unpaid-error-p)
+        (advance-evaluation (search-job-evaluation job) budget ledger category)
+      (when (or unpaid-error-p (= before (ledger-total ledger)))
+        (charge ledger :validation))
+      state)))
+
+(defun search-step (job &optional (budget 1))
+  "Advance one search phase using at most BUDGET tariff units.
+Construction debt and VM instructions are paid in batches; single-unit stepping
+remains available for diagnostics. Any unpaid work stays in the continuation."
+  (assert (and (integerp budget) (plusp budget)))
   (let ((ledger (search-job-ledger job))
         (schema (frame-schema (search-job-frame job))))
     (ecase (search-job-phase job)
@@ -174,8 +186,10 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
             (setf (search-job-completed-bound job)
                   (1- (enumerator-size (search-job-enumerator job))))))))
       (:construct
-       (charge ledger :construction)
-       (when (zerop (decf (search-job-construction-debt job)))
+       (let ((spent (min budget (search-job-construction-debt job))))
+         (charge ledger :construction spent)
+         (decf (search-job-construction-debt job) spent))
+       (when (zerop (search-job-construction-debt job))
          (let ((type (index-expression (search-job-enumerator job) (search-job-expression job))))
            (if (equal type (schema-target schema))
                (setf (search-job-rows job) (frame-rows (search-job-frame job))
@@ -191,9 +205,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                                    (row-known (first (search-job-rows job))))
                  (search-job-phase job) :evaluate)))
       (:evaluate
-       (let* ((state (search-job-evaluation job)) (before (ledger-total ledger)))
-         (advance-evaluation state 1 ledger :evaluation)
-         (when (= before (ledger-total ledger)) (charge ledger :validation))
+       (let ((state (advance-search-evaluation job budget :evaluation)))
          (case (evaluation-status state)
            (:error (reject-candidate job))
            (:value
@@ -208,9 +220,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                                (list (search-job-predicted job)))
              (search-job-phase job) :check))
       (:check
-       (let* ((state (search-job-evaluation job)) (before (ledger-total ledger)))
-         (advance-evaluation state 1 ledger :checking)
-         (when (= before (ledger-total ledger)) (charge ledger :validation))
+       (let ((state (advance-search-evaluation job budget :checking)))
          (case (evaluation-status state)
            (:error (reject-candidate job))
            (:value
@@ -218,15 +228,19 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                 (progn (pop (search-job-rows job)) (setf (search-job-phase job) :row))
                 (reject-candidate job)))))))))
 
-(defun resume-search (job description-limit work-limit)
+(defun resume-search (job description-limit work-limit &key quantum)
   "Absolute cumulative work limit, finite canonical-byte limit. Return a scoped
 cutoff or completed bounded exhaustion; neither claims the goal is impossible.
-All successful programs remain available, including after an incumbent is found."
+All successful programs remain available, including after an incumbent is found.
+Batch up to the remaining budget within each phase. Optional QUANTUM caps the
+batch size; QUANTUM=1 reproduces single-unit stepping without changing the tariff."
   (assert (and (integerp description-limit) (>= description-limit 0)
                (integerp work-limit) (>= work-limit 0)))
+  (assert (or (null quantum) (and (integerp quantum) (plusp quantum))))
   (loop while (and (< (search-job-completed-bound job) description-limit)
                    (< (ledger-total (search-job-ledger job)) work-limit))
-        do (search-step job))
+        do (let ((remaining (- work-limit (ledger-total (search-job-ledger job)))))
+             (search-step job (if quantum (min quantum remaining) remaining))))
   (let ((message
           (make-message
            :call-id (search-job-call-id job)
