@@ -1,20 +1,41 @@
 (in-package #:lisploop)
 
-(defstruct (language (:constructor %make-language)) domain inputs operators (literals :all) (version 1))
+(defstruct (language (:constructor %make-language))
+  domain inputs operators (literals :all) (cost-model :bytes-v1) (version 1))
 
-(defun make-language (domain inputs &key (operators (list (op :+ domain) (op :* domain))) (literals :all))
+(defun make-language (domain inputs &key (operators (list (op :+ domain) (op :* domain)))
+                                        (literals :all) (cost-model :bytes-v1))
   "The baseline grammar: declared variables, domain literals, binary primitives.
 LITERALS defaults to :ALL, or declares a finite vocabulary without bounding values.
+COST-MODEL selects legacy text bytes or standalone binary packet bits.
 No observational deduplication, algebraic rewrites, lookup proposals, or sketches."
   (assert (or (eq domain :int) (and (consp domain) (eq (first domain) :gf))))
+  (assert (member cost-model '(:bytes-v1 :bits-v2)))
+  ;; v2 enumeration initially covers the homogeneous arithmetic grammar.
+  ;; The packet codec also supports the richer DSL used for explicit baselines.
+  (when (eq cost-model :bits-v2)
+    (assert (every (lambda (input) (equal domain (cdr input))) inputs))
+    (assert (every (lambda (operator) (and (member (second operator) '(:+ :*))
+                                          (equal domain (third operator)))) operators)))
   (assert (or (eq literals :all)
               (and (listp literals) (every (lambda (value) (value-p value domain)) literals))))
   (dolist (operator operators)
     (assert (= 2 (length (second (operator-type operator))))))
-  (%make-language :domain (copy-tree domain) :inputs (copy-tree inputs)
+  (%make-language :domain (copy-tree domain) :inputs (copy-tree inputs) :cost-model cost-model
                   :operators (remove-duplicates (copy-tree operators) :test #'equal)
                   :literals (if (eq literals :all) :all
                                 (remove-duplicates (copy-list literals) :from-end t))))
+
+(defun language-expression-size (language expression)
+  (ecase (language-cost-model language)
+    (:bytes-v1 (description-size expression))
+    (:bits-v2 (bit-description-size expression (language-inputs language)))))
+
+(defun language-application-overhead (language operator)
+  (ecase (language-cost-model language)
+    (:bytes-v1 (1+ (description-size (app operator))))
+    ;; Each operand bucket includes a header. The assembled tree pays it once.
+    (:bits-v2 (- 2 (bit-header-size (language-inputs language) (language-domain language))))))
 
 (defstruct (enumerator (:constructor make-enumerator (language)))
   language (size 1) (phase :variables) (cursor 0) (literal-pass 0) (literal-index 0)
@@ -29,7 +50,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
          (type (expression-type expression (language-inputs language)))
          (key (list type (enumerator-size enumerator)))
          (buckets (enumerator-buckets enumerator)))
-    (assert (= (enumerator-size enumerator) (description-size expression)))
+    (assert (= (enumerator-size enumerator) (language-expression-size language expression)))
     (unless (gethash key buckets)
       (setf (gethash key buckets) (make-array 0 :adjustable t :fill-pointer 0)))
     (vector-push-extend expression (gethash key buckets))
@@ -46,6 +67,23 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                       (expt 10 (1- magnitude-digits))))
               (hi (1- (expt 10 magnitude-digits))))
           (values lo (if (eq domain :int) hi (min hi (1- (second domain)))))))))
+
+(defun language-literal-range (language size pass)
+  "Exact payload intervals, without visiting integers outside the current bound."
+  (if (eq (language-cost-model language) :bytes-v1)
+      (literal-range (language-domain language) size pass)
+      (let* ((domain (language-domain language))
+             (payload (- size 2 (bit-header-size (language-inputs language) domain))))
+        (if (eq domain :int)
+            (let ((width (loop for width from 1 to payload
+                               when (= payload (+ width (* 2 (1- (integer-length width))))) return width)))
+              (if (null width) (values 1 0)
+                  (let ((lo (ash 1 (1- width))) (hi (1- (ash 1 width))))
+                    (if (= pass 0)
+                        (values (ceiling (1- lo) 2) (floor (1- hi) 2))
+                        (values (max 1 (ceiling lo 2)) (floor hi 2))))))
+            (if (and (= pass 0) (= payload (integer-length (1- (second domain)))))
+                (values 0 (1- (second domain))) (values 1 0))))))
 
 (defun reset-enumerator-bound (enumerator)
   (incf (enumerator-size enumerator))
@@ -70,7 +108,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
              (progn
                (incf (enumerator-cursor enumerator))
                (let ((expression (var (car input) (cdr input))))
-                 (when (= size (description-size expression))
+                 (when (= size (language-expression-size language expression))
                    (return-from enumeration-step (values expression :candidate)))))
              (setf (enumerator-phase enumerator) :literals))))
       (:literals
@@ -79,7 +117,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
            (if tail
                (let ((expression (lit (language-domain language) (first tail))))
                  (incf (enumerator-literal-index enumerator))
-                 (when (= size (description-size expression))
+                 (when (= size (language-expression-size language expression))
                    (return-from enumeration-step (values expression :candidate))))
                (setf (enumerator-phase enumerator) :applications)))
          (return-from enumeration-step (values nil :progress)))
@@ -88,8 +126,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
            (progn
              (unless (enumerator-literal-next enumerator)
                (multiple-value-bind (lo hi)
-                   (literal-range (language-domain language) size
-                                  (enumerator-literal-pass enumerator))
+                   (language-literal-range language size (enumerator-literal-pass enumerator))
                  (setf (enumerator-literal-next enumerator) lo
                        (enumerator-literal-end enumerator) hi)))
              (if (> (enumerator-literal-next enumerator) (enumerator-literal-end enumerator))
@@ -106,7 +143,7 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
          (if (null operator)
              (setf (enumerator-phase enumerator) :finish)
              (let* ((types (second (operator-type operator)))
-                    (overhead (1+ (description-size (app operator))))
+                    (overhead (language-application-overhead language operator))
                     (left-size (enumerator-split enumerator))
                     (right-size (- size overhead left-size)))
                (if (< right-size 1)
@@ -160,7 +197,8 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
 
 (defun accept-candidate (job)
   (let ((candidate (make-candidate :expression (search-job-expression job)
-                                   :size (description-size (search-job-expression job))
+                                   :size (language-expression-size (search-job-language job)
+                                                                  (search-job-expression job))
                                    :run-work (search-job-run-work job)
                                    :discovery-work (ledger-total (search-job-ledger job)))))
     (push candidate (search-job-results job))
@@ -194,6 +232,7 @@ remains available for diagnostics. Any unpaid work stays in the continuation."
        (multiple-value-bind (expression event) (enumeration-step (search-job-enumerator job))
          (case event
            (:candidate
+            ;; Work tariff v1 stays text-based; the selected cost model orders syntax.
             (setf (search-job-expression job) expression
                   (search-job-construction-debt job) (description-size expression)
                   (search-job-phase job) :construct))
@@ -244,7 +283,7 @@ remains available for diagnostics. Any unpaid work stays in the continuation."
                 (reject-candidate job)))))))))
 
 (defun resume-search (job description-limit work-limit &key quantum)
-  "Absolute cumulative work limit, finite canonical-byte limit. Return a scoped
+  "Absolute cumulative work limit, finite description limit in the language's units. Return a scoped
 cutoff or completed bounded exhaustion; neither claims the goal is impossible.
 All successful programs remain available, including after an incumbent is found.
 Batch up to the remaining budget within each phase. Optional QUANTUM caps the
@@ -265,6 +304,7 @@ batch size; QUANTUM=1 reproduces single-unit stepping without changing the tarif
                            :completed-bound (search-job-completed-bound job)
                            :work (ledger-total (search-job-ledger job))
                            :phase (search-job-phase job)
+                           :cost-model (language-cost-model (search-job-language job))
                            :language-version (language-version (search-job-language job))))))
     (push message (search-job-messages job))
     message))

@@ -1,5 +1,10 @@
 # lisploop --- results
 
+The byte-based results below use encoding v1. The later
+[bit-cost experiment](#bit-cost-experiment-encoding-v2) tests a compact encoding v2
+on both milestones, with unrestricted integer literals. Both versions remain
+reproducible; their description bounds and objectives use different units.
+
 ## Milestone 1: search and the synthesis kernel
 
 27 October 2026. Implementation and experiment record for milestone 1 of plan 4.
@@ -15,6 +20,7 @@ The milestone 2 extension and its evidence are recorded below.
 make test                       # contract checks and independent tiny references
 make m1                         # save the GF(5) experiment trace in intermediate_results/
 make m2                         # save the GF(5) and integer observation traces
+make cost-model                 # rerun milestones 1 and 2 with bit encoding v2
 make benchmark                  # repeat the scaling and tariff measurements
 make results.pdf                # build this document with Pandoc
 sbcl --load load.lisp            # inspect the kernel at a REPL
@@ -74,6 +80,7 @@ charges processing without rerunning the experiment.
 | File | Responsibility |
 |---|---|
 | `syntax.lisp` | Types, tagged expressions, simultaneous substitution, canonical codec |
+| `bit-codec.lisp` | Versioned binary packets, self-delimiting integer payloads, exact bit sizes |
 | `sim.lisp` | Deterministic stack machine, explicit errors, work ledger |
 | `frames.lisp` | Schema/rows, joint requirements, reorientation, pullback, paid lookups and reconstruction |
 | `search.lisp` | Exact-size bottom-up enumerator, resumable verification, candidates and messages |
@@ -81,6 +88,7 @@ charges processing without rerunning the experiment.
 | `au.lisp` | Typed first-order matching and aligned syntactic anti-unification |
 | `fixtures.lisp`, `tests.lisp`, `milestone1.lisp` | Separate oracle fixtures, controls, and experiment |
 | `observation-tests.lisp`, `milestone2.lisp` | Milestone 2 controls and experiment |
+| `bit-tests.lisp`, `bit-experiments.lisp` | Bit-codec controls and milestone 1/2 comparisons |
 
 The only frame is `Frame(schema, rows)`; each row has `key`, `known`, and
 `allowed`. Schema inputs are an alist of numeric variable IDs to types. Known
@@ -439,6 +447,31 @@ and [scaling-batched.txt](intermediate_results/scaling-batched.txt). The initial
 investigation remains in [scaling.txt](intermediate_results/scaling.txt), with its
 CPU profile in [scaling-profile.txt](intermediate_results/scaling-profile.txt).
 
+### Deferred option: runtime compilation of DSL expressions
+
+Revisit selective lowering of validated DSL expressions to compiled Lisp when
+repeated execution warrants it. The evaluator itself is compiled, but DSL
+expressions currently remain interpreted data. Likely first targets are frequently
+reused frame predicates, accepted models, and later library functions; transient
+search candidates may be discarded before compilation pays off. Frames would
+remain structured data, with their executable expressions eligible for compilation.
+
+Keep the typed AST, canonical encoding, and provenance as the authoritative
+representation, with compiled functions cached by expression, input schema, and
+relevant implementation versions. Preserve integer and finite-field semantics,
+declared-input isolation, explicit errors, and exact tariff cutoffs. Compilation
+would need budget checks and resumable state, or a fast path used only when the
+budget is known to suffice, with VM fallback otherwise. Integer instruction costs
+depend on intermediate values and cannot generally be prepaid as one fixed total.
+
+First consider caching encoded sizes and validation results, then measure selective
+compilation against that baseline. The break-even condition is
+$C_{\rm compile} < N(T_{\rm interpreted}-T_{\rm compiled})$, where $N$ is the number
+of subsequent executions and both execution times include required bookkeeping.
+Include compilation time and retained code memory in the measurements; any abstract
+compilation charge requires a declared tariff policy. This option is deferred,
+with no DSL compiler implemented or speedup measured yet.
+
 ## Scope of the controls
 
 `make test` covers the milestone 1 contract and the immediately recommended tiny
@@ -622,7 +655,7 @@ It reuses the recorded transition data, but does not yet cache execution prefixe
 agreement, type/scope isolation, occurrence, error, and interruption controls.
 Single-unit and batched execution must preserve the complete saved state and every
 work category at matching cutoffs, including large integer instruction costs.
-The combined suite passes **25 tests and 1,081 checks**.
+Before the bit-codec extension, the combined suite passed **25 tests and 1,081 checks**.
 
 Run `make m2` for the complete trace and per-stage work ledgers in
 [milestone2.txt](intermediate_results/milestone2.txt). The evidence records and retained
@@ -630,3 +663,148 @@ syntax are the interface for later law proposals; the original frames remain
 available for later prediction orientations. **Milestones 3 and 4 are not implemented
 or run:** there is no learned-law application, inverse-rule search, inverse-value
 enumeration, or semantic pruning.
+
+## Bit-cost experiment: encoding v2
+
+The v1 integer control exposed a description-cost problem: punctuation and repeated
+type annotations made `a+b` cost 29 bytes, while more than $10^{22}$ integer
+literals were shorter. Merely converting byte counts to bits leaves that ordering
+unchanged. Encoding v2 replaces the text representation used for description cost
+with a compact, decodable binary representation. Text serialization remains useful
+for inspection, and the default `:bytes-v1` experiments above retain their meaning.
+
+`bit-codec.lisp` supplies an actual encoder and decoder, not just a weighting formula.
+`bit-description-size` counts the bits emitted by that encoder. A standalone packet
+contains the encoding version, ordered input IDs and types, result type, profile
+selector, and expression body. The header is charged **once per model**; nested
+expressions do not repeat it. Both total and body sizes are reported below. Input
+IDs and types declare the argument interface; replay supplies only the declared
+row values.
+
+### Coding choices and scope
+
+The arithmetic profile uses the following prefix tags. Operator arity and operand
+types follow from the declared arithmetic domain, so no parentheses or repeated
+internal type annotations are needed.
+
+| Tag | Node | Additional bits |
+|---|---|---|
+| `00` | Variable | Slot in the ordered input schema |
+| `01` | Literal | Typed value payload |
+| `10` | Addition | Two expression bodies |
+| `11` | Multiplication | Two expression bodies |
+
+A variable slot costs $\lceil\log_2 m\rceil$ bits for $m$ declared inputs (zero
+bits when there is only one). A GF($p$) literal costs $\lceil\log_2 p\rceil$
+payload bits; unused bit patterns are rejected. Integer $n$ maps to a positive
+integer $z=2n+1$ for $n\geq0$, or $z=-2n$ for $n<0$. With
+$L=\lfloor\log_2 z\rfloor+1$, its self-delimiting payload costs
+
+$$D(z)=L+2\lfloor\log_2 L\rfloor.$$
+
+Concretely, encode the bit length $L$ as its binary representation preceded by
+one fewer zero than its own bit length; then append the lower $L-1$ bits of $z$.
+The decoder can recover each boundary without separators. Including the literal
+tag, `0` costs 3 bits, `-1` and `1` cost 6, and `-3,-2,2,3` cost 7. Integer
+`a+b` has an 8-bit body, so exactly seven integer literals are strictly shorter.
+An integer of magnitude $2^{256}$ has a 276-bit literal body; there is no maximum
+integer value or restricted vocabulary in the v2 runs.
+
+The header uses the same positive-integer code for version `2`, input count plus
+one, and each input ID plus one. Three-bit type tags identify integers, Booleans,
+indices, fields, tuples, and sequences; field moduli and tuple arities are encoded
+explicitly. The profile selector costs one bit. The two-input integer header costs
+23 bits; the GF(5) header costs 38 bits. A general profile supports the rest of
+the current executable DSL, including lookup tables, tuples, sequences, predicates,
+and reconstruction. It uses three-bit node tags, with a fourth bit distinguishing
+lookup from gather, and encodes operand types when the result type does not
+determine them. Sequence lengths and index values use the positive-integer code
+after adding one; tuple values concatenate their typed components. The decoder
+rejects truncated packets, trailing bits, and noncanonical profile choices.
+
+The profiles and code allocation are supplied prior knowledge. Search v2 currently
+covers the homogeneous arithmetic grammar; the richer profile encodes explicit
+baselines and replay models. No learned coding distribution or free library has
+been introduced.
+
+For this experiment, **execution and acquisition tariffs stay at v1**. In particular,
+construction and validation still charge the text-size tariff, while integer
+arithmetic still charges operand bit lengths. Only description scores and enumeration
+order use v2 bits. Thus the same program on the same inputs has the same execution
+work under both descriptions. Search messages identify the selected cost model.
+
+### Milestone results
+
+| Run | Completed bound, bits | Retained expressions | Result size: header + body | Discovery work |
+|---|---:|---:|---:|---:|
+| M1 GF(5), `y=a+2b` | 53 | 649 | `a+(b+b)`: $38+13=51$ | 250,320 |
+| M1 integers, `y=a+2b` | 36 | 435 | `a+(b+b)`: $23+13=36$ | 79,411 |
+| M2 GF(5), invariant | 46 | 15 | `a+b`, `b+a`: $38+8=46$ | 16,870 |
+| M2 integers, invariant | 31 | 27 | `a+b`, `b+a`: $23+8=31$ | 18,990 |
+
+The GF(5) M1 run first completes 46 bits without a predictor, then extends to
+53 bits, the encoded size of the supplied data-generating oracle `a+2*b`.
+It retains ten valid formulas and first accepts `a+(b+b)` at 33,250 work units.
+Its execution work remains 2,000 over the complete 25-row domain. Original
+acquisition, lookup construction, and independent replay add 29,825 work units.
+The contradictory-output control still finds no predictor.
+
+The same codec gives the executable lookup baseline **313 bits** and the literal
+25-output sequence **104 bits**, versus 51 for the formula. This changes the
+description-size ordering relative to v1's 71-byte formula and 65-byte sequence.
+The function and ordered sequence still represent different tasks: a complete
+sequence-compression claim must account for its input grid and ordering too.
+Lookup execution remains 22,325 work units, and both models decode and replay
+successfully. The v2 objectives use weights $(0,0)$ and $(1/100,1/1000)$ with
+description measured in bits; these are newly declared objectives, not numerically
+equivalent conversions of the byte-based objectives.
+
+The integer M1 control uses all 25 inputs in $[-2,2]^2$. It retains six valid
+formulas and first accepts `a+(b+b)` at 28,812 work units. The returned formula
+passes six fresh signed input pairs around $2^{256}$, with execution work 1,562
+on training rows and 4,368 on fresh rows. Both datasets are generated through
+the metered simulator. This is finite observational validation over integers.
+
+M2 uses the same transitions and observations as the earlier experiments. Exactly
+one informative bucket retains both `a+b` and `b+a`; constants still fail the
+variation requirement. Both expressions pass six fresh transition pairs and fail
+when the transition changes. The integer fresh inputs include cancellation and
+adjacent values around $2^{256}$. The `x` versus `x*x` controls split agreement
+when new inputs are added, retaining all syntax and the original scoped evidence.
+The larger-value execution costs and fresh-data work remain as reported for v1.
+
+There is an important comparison at a matched syntax set: extending GF(5) M2 to
+**50 total bits (12 body bits)** includes exactly the same 105 expressions as
+v1's 41-byte bound. This costs **114,512** work units, versus **108,840** for v1.
+The current size-indexed enumerator spends more cursor steps scanning empty sizes
+and operand splits. The lower work at the 46-bit bound therefore reflects a smaller
+candidate set, not a general implementation speedup. Likewise the two M1 bounds
+include different syntax sets: v2 does not simply rescale the old search.
+
+### What this establishes, and what remains adjustable
+
+The change removes the immediate integer-literal bottleneck without restricting
+the domain or vocabulary, and preserves interruption, extension, replay, and
+scope boundaries. The tests compare enumeration against independent trees built
+by application count, verify output vectors against host arithmetic, test signed
+payload boundaries and malformed packets, and compare complete saved states under
+unit-step and batched execution. The combined suite passes **31 tests and 8,697
+checks**. No milestone 3 or 4 work is performed.
+
+Further amendments should retain a decoder and an explicit accounting boundary.
+In particular, shared schema costs could be amortized once per declared batch;
+the integer code and the special arithmetic profile express prior preferences
+that could be compared with other published codes; and enumeration can avoid
+scanning impossible sizes without changing the objective. If we change work
+tariffs to match binary processing too, that should be a separate version and
+experiment. Finite bit bounds still have exponentially many possible payloads;
+this pilot fixes the severe small-expression distortion, not general search growth.
+
+Run `make cost-model`, or `make m1-bits` and `make m2-bits` separately. Their full
+ledgers are [milestone1-bits.txt](intermediate_results/milestone1-bits.txt) and
+[milestone2-bits.txt](intermediate_results/milestone2-bits.txt). At the API level,
+select `make-language ... :cost-model :bits-v2`, use
+`language-expression-size` for bounds and scores, and use `encode-bit-model` /
+`decode-bit-model` for standalone binary replay. `description-size` continues to
+mean v1 text bytes. The in-memory bit vector has an exact bit length; byte-file
+padding, if introduced later, must be separately framed and counted.

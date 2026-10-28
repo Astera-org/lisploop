@@ -66,3 +66,15 @@ The transition is supplied fixture machinery; no invariant sketch enters search.
     (list (list n (- n)) (list (1+ n) (- n))
           (list (- n) n) (list (- (1+ n)) n)
           (list n n) (list (- n) (- n)))))
+
+(defun integer-linear-fixture (&key (starts (loop for a from -2 to 2 append
+                                            (loop for b from -2 to 2 collect (list a b)))) ledger)
+  "Generate integer y=a+2b observations through the same metered simulator."
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (oracle (app (op :+ :int) (var 0 :int) (app (op :* :int) (lit :int 2) (var 1 :int))))
+         (records (loop for values in starts for key from 0 collect
+                    (let ((run (evaluate oracle inputs values :ledger ledger)))
+                      (assert (eq :value (evaluation-status run)))
+                      (list key (first values) (second values) (evaluation-value run))))))
+    (values (orient-observations '(:int :int :int) records '(0 1) '(2) :lookup-p t :ledger ledger)
+            oracle records)))

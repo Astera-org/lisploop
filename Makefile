@@ -7,9 +7,9 @@ DOCS = plan.pdf plan2.pdf plan3.pdf plan4.pdf results.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
-BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp sim.lisp frames.lisp search.lisp observations.lisp au.lisp benchmark.lisp
+BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp bit-codec.lisp sim.lisp frames.lisp search.lisp observations.lisp au.lisp benchmark.lisp
 
-.PHONY: all clean test m1 m2 benchmark benchmark-profile
+.PHONY: all clean test m1 m2 m1-bits m2-bits cost-model benchmark benchmark-profile
 
 all: $(DOCS)
 
@@ -23,6 +23,16 @@ m1: | $(RESULTS_DIR)
 m2: | $(RESULTS_DIR)
 	@$(SBCL) --script milestone2.lisp > $(RESULTS_DIR)/milestone2.txt
 	@printf 'Milestone 2 report: %s/milestone2.txt\n' '$(RESULTS_DIR)'
+
+cost-model: m1-bits m2-bits
+
+m1-bits: | $(RESULTS_DIR)
+	@$(SBCL) --script bit-experiments.lisp m1 > $(RESULTS_DIR)/milestone1-bits.txt
+	@printf 'Milestone 1 bit-cost report: %s/milestone1-bits.txt\n' '$(RESULTS_DIR)'
+
+m2-bits: | $(RESULTS_DIR)
+	@$(SBCL) --script bit-experiments.lisp m2 > $(RESULTS_DIR)/milestone2-bits.txt
+	@printf 'Milestone 2 bit-cost report: %s/milestone2-bits.txt\n' '$(RESULTS_DIR)'
 
 $(RESULTS_DIR):
 	mkdir -p $@

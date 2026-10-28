@@ -92,7 +92,8 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
                                      :enumerator (unless supplied-p (make-enumerator language)))))
     (dolist (expression queue)
       (expression-type expression (language-inputs language)))
-    (setf (observation-job-queue job) (stable-sort queue #'< :key #'description-size))
+    (setf (observation-job-queue job)
+          (stable-sort queue #'< :key (lambda (expression) (language-expression-size language expression))))
     (setf (observation-job-phase job) :setup
           (observation-job-debt job)
             (+ (length queue) (length (observation-scope-pairs scope))
@@ -240,10 +241,11 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
       (>= (observation-job-completed-bound job) bound)
       (and (eq (observation-job-phase job) :enumerate)
            (or (null (observation-job-queue job))
-               (> (description-size (first (observation-job-queue job))) bound)))))
+               (> (language-expression-size (observation-scope-language (observation-job-scope job))
+                                             (first (observation-job-queue job))) bound)))))
 
 (defun resume-observation-search (job description-limit work-limit &key quantum)
-  "Resume empirical observation work under growing byte limits and cumulative work
+  "Resume empirical observation work under growing description limits and cumulative work
 ceilings. Replay completion explicitly covers only the supplied expression list."
   (assert (and (integerp description-limit)
                (>= description-limit (observation-job-requested-bound job))
@@ -266,6 +268,7 @@ ceilings. Replay completion explicitly covers only the supplied expression list.
                                     :completed-bound (observation-job-completed-bound job)
                                     :work (ledger-total (observation-job-ledger job))
                                     :phase (observation-job-phase job)
+                                    :cost-model (language-cost-model (observation-scope-language scope))
                                     :syntax-coverage (if enumerated :grammar :listed-expressions)))))
       (push message (observation-job-messages job))
       message)))
