@@ -1,4 +1,4 @@
-(load (merge-pathnames "export.lisp" *load-truename*))
+(load (merge-pathnames "../visualizer/export.lisp" *load-truename*))
 (in-package #:lisploop-visualizer)
 
 ;;; Export must preserve correlated sets, empty sets, predicates and exact payloads.
@@ -65,8 +65,8 @@
            (json (with-output-to-string (out) (write-json data out))))
       (assert (plusp (length json)))
       (assert (string= before (sexp-text job)))
-      (assert (= 4 (gethash "encodingVersion" data)))
-      (assert (= 3 (gethash "tariffVersion" data)))
+      (assert (= 7 (gethash "encodingVersion" data)))
+      (assert (= 7 (gethash "tariffVersion" data)))
       (loop for record across (gethash "records" data) do
         (assert (= (length (gethash "packet" record)) (gethash "size" record)))
         (assert (= (gethash "size" record) (+ (gethash "headerBits" record) (gethash "bodyBits" record)))))
@@ -93,4 +93,14 @@
     (assert (stringp (gethash "error" record)))
     (assert (string= ":MISSING" (gethash "failedKey" record)))))
 
-(format t "Visualizer exporter checks passed (joint targets, exact values, escaping, read-only snapshots, errors).~%")
+;;; Quoted values display as syntax, including programs which would error if run.
+(let* ((type (code-type '((99 . :int)) :int))
+       (term (app (op :/ :int) (var 99 :int) (lit :int 0)))
+       (frame (make-frame (make-schema :inputs (list (cons 0 type)) :target type)
+                          (list (make-row :key :quoted :known (list term)
+                                          :allowed (finite-allowed type (list term))))))
+       (row (aref (gethash "rows" (frame-data frame)) 0)))
+  (assert (string= (sexp-text term) (aref (gethash "known" row) 0)))
+  (assert (string= (sexp-text term) (aref (gethash "values" (gethash "allowed" row)) 0))))
+
+(format t "Visualizer exporter checks passed (joint targets, exact/quoted values, escaping, read-only snapshots, errors).~%")

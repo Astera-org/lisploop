@@ -1,5 +1,10 @@
 (in-package #:lisploop)
 
+(defun pattern-has-holes-p (term)
+  (case (first term)
+    (:hole t)
+    (:app (or (pattern-has-holes-p (second term)) (some #'pattern-has-holes-p (third term))))))
+
 (defun term-sort (term inputs)
   (if (eq (first term) :op) (operator-type term) (expression-type term inputs t)))
 

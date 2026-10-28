@@ -97,10 +97,8 @@
                  (start-evaluation (law-guard law) (law-inputs law) (law-validation-values state))
                  (law-validation-phase state) :guard)))
       (otherwise
-       (let* ((evaluation (law-validation-evaluation state)) (before (ledger-total ledger)))
-         (multiple-value-bind (result unpaid) (advance-evaluation evaluation budget ledger :law-checking)
-           (declare (ignore result))
-           (when (or unpaid (= before (ledger-total ledger))) (charge ledger :validation-error)))
+       (let ((evaluation (law-validation-evaluation state)))
+         (advance-accounted-evaluation evaluation budget ledger :law-checking :validation-error)
          (cond
            ((eq :unknown (evaluation-status evaluation)))
            ((or (eq :error (evaluation-status evaluation))
@@ -130,24 +128,13 @@
   "A new conjecture in another domain; no certificate transfers with the syntax."
   (labels ((walk (tree)
              (cond ((equal tree (law-domain law)) (copy-tree domain))
-                   ((consp tree) (mapcar #'walk tree)) (t tree))))
+                   ((consp tree) (cons (walk (car tree)) (walk (cdr tree)))) (t tree))))
     (let ((equation (walk (law-equation law))))
       (make-law domain (mapcar (lambda (input) (cons (car input) (walk (cdr input)))) (law-inputs law))
                 (first (third equation)) (second (third equation))
                 :guard (walk (law-guard law)) :origin (list :retyped-from (law-domain law))))))
 
-(defun expression-variables (expression)
-  (case (first expression)
-    (:var (list (second expression)))
-    (:app (remove-duplicates (mapcan #'expression-variables (third expression))))))
-
-(defun expression-pattern (expression)
-  (case (first expression)
-    (:var (hole (second expression) (third expression)))
-    (:app (apply #'app (second expression) (mapcar #'expression-pattern (third expression))))
-    (otherwise expression)))
-
-(defstruct (rewrite-rule (:constructor %make-rewrite-rule)) pattern replacement guard)
+(defstruct (rewrite-rule (:constructor %make-rewrite-rule)) inputs pattern replacement guard)
 (defstruct (rewrite-library (:constructor %make-rewrite-library)) domain rules (setup-work 0))
 
 (defun prepare-rewrite-library (validations domain)
@@ -168,57 +155,63 @@
               (when (and (eq :app (first from))
                          (subsetp (append (expression-variables to) (expression-variables (law-guard law)))
                                   (expression-variables from)))
-                (push (%make-rewrite-rule :pattern (expression-pattern (copy-tree from))
-                                          :replacement (expression-pattern (copy-tree to))
-                                          :guard (expression-pattern (copy-tree (law-guard law)))) rules)))))))
+                (push (%make-rewrite-rule
+                       :inputs (copy-tree (remove-if-not (lambda (input) (member (car input) (expression-variables from)))
+                                                        (law-inputs law)))
+                       :pattern (copy-tree from) :replacement (copy-tree to)
+                       :guard (copy-tree (law-guard law))) rules)))))))
     (%make-rewrite-library :domain (copy-tree domain) :rules (nreverse rules) :setup-work work)))
-
-(defun provably-total-p (expression)
-  "Conservative termination/error check for substitution into a checked equation."
-  (case (first expression)
-    ((:var :lit) t)
-    (:app
-     (let ((name (second (second expression))) (args (third expression)))
-       (case name
-         (:/ (and (every #'provably-total-p args) (eq :lit (first (second args)))
-                  (not (zerop (third (second args))))))
-         ((:lookup :gather) nil)
-         (:if (and (provably-total-p (first args))
-                   (if (eq :lit (first (first args)))
-                       (provably-total-p (if (third (first args)) (second args) (third args)))
-                       (every #'provably-total-p (rest args)))))
-         (otherwise (every #'provably-total-p args)))))))
-
-(defun expression-less-p (left right inputs)
-  "Well-founded order: packet bits, then lexicographic bits at equal length."
-  (let ((a (encode-model left inputs)) (b (encode-model right inputs)))
-    (or (< (length a) (length b))
-        (and (= (length a) (length b))
-             (loop for x across a for y across b
-                   when (/= x y) return (< x y))))))
 
 (defun negate-predicate (expression)
   (app (op :if :bool) expression (lit :bool nil) (lit :bool t)))
 
+(defun compile-rule-transformer (rule inputs)
+  "Lower a frozen checked direction to an ordinary DSL program on quoted syntax.
+Inputs are source code and established Boolean-code assumptions. No EVAL, host
+callback, certificate lookup, or hidden substitutions occur in the program."
+  (let* ((parameters (rewrite-rule-inputs rule))
+         (sort (expression-type (rewrite-rule-pattern rule) parameters))
+         (source-type (code-type inputs sort)) (guard-type (code-type inputs :bool))
+         (pattern-type (code-type parameters sort))
+         (source (var 0 source-type)) (assumptions (var 1 (sequence-type guard-type)))
+         (pattern (lit pattern-type (rewrite-rule-pattern rule)))
+         (binding-types (mapcar (lambda (parameter) (code-type inputs (cdr parameter))) parameters))
+         (bindings (loop for parameter in parameters for type in binding-types collect
+                     (app (op :code-bind (tuple-type pattern-type source-type type))
+                          pattern source (lit :int (car parameter)))))
+         (binding-tuple-type (apply #'tuple-type binding-types))
+         (binding-tuple (apply #'app (op :tuple binding-tuple-type) bindings)))
+    (flet ((fill-template (expression type)
+             (let ((template-type (code-type parameters (code-sort type))))
+               (app (op :code-subst (tuple-type template-type binding-tuple-type type))
+                    (lit template-type expression) binding-tuple))))
+      (let* ((replacement (fill-template (rewrite-rule-replacement rule) source-type))
+             (guard (fill-template (rewrite-rule-guard rule) guard-type))
+             (established (app (op :if :bool)
+                               (app (op := guard-type) guard (lit guard-type (lit :bool t)))
+                               (lit :bool t) (app (op :member guard-type) guard assumptions)))
+             (result (app (op :if source-type) established
+                          (app (op :if source-type) (app (op :code-less source-type) replacement source)
+                               replacement source) source)))
+        (loop for binding in (reverse bindings) for type in (reverse binding-types) do
+          (setf result (app (op :if source-type) (app (op :code-total type) binding) result source)))
+        (values (app (op :if source-type)
+                     (app (op :code-match (tuple-type pattern-type source-type)) pattern source) result source)
+                (list (cons 0 source-type) (cons 1 (sequence-type guard-type))))))))
+
 (defstruct (rewriting (:constructor %make-rewriting))
-  inputs library tasks stack (debt 0) (work 0) (steps 0) (status :unknown) value)
+  inputs library programs evaluation attempt tasks stack (setup-work 0)
+  (debt 0) (work 0) (steps 0) (status :unknown) value)
 
 (defun start-rewriting (expression inputs library)
   (expression-type expression inputs)
   (assert (every (lambda (input) (member (cdr input) (list :bool (rewrite-library-domain library)) :test #'equal)) inputs))
-  (%make-rewriting :inputs inputs :library library :tasks (list (list :walk expression nil))))
-
-(defun rewrite-task-cost (task)
-  ;; Prepay structural inspection, matching and possible substitution. The bound
-  ;; charges a full source traversal per rule-node; it is deliberately conservative.
-  (if (eq (first task) :try)
-      (let ((rule (first (fourth task))))
-        (if rule
-            (+ 1 (* (syntax-work (second task))
-                    (+ (syntax-work (rewrite-rule-pattern rule))
-                       (syntax-work (rewrite-rule-replacement rule))
-                       (syntax-work (rewrite-rule-guard rule))))) 1))
-      1))
+  (let ((programs (loop for rule in (rewrite-library-rules library) collect
+                   (multiple-value-bind (model schema) (compile-rule-transformer rule inputs)
+                     (list rule model schema)))))
+    (%make-rewriting :inputs inputs :library library :programs programs
+                     :setup-work (1+ (reduce #'+ programs :key (lambda (entry) (syntax-work (second entry))) :initial-value 0))
+                     :tasks (list (list :setup nil nil) (list :walk expression nil)))))
 
 (defun rewriting-push-try (state expression assumptions)
   (push (list :try expression assumptions
@@ -229,6 +222,7 @@
 (defun execute-rewrite-task (state task)
   (destructuring-bind (kind expression assumptions &rest extra) task
     (ecase kind
+      (:setup nil)
       (:walk
        (if (eq :app (first expression))
            (if (eq :if (second (second expression)))
@@ -254,32 +248,43 @@
       (:try
        (let ((rules (first extra)))
          (if (null rules) (push expression (rewriting-stack state))
-             (let ((rule (first rules)))
-               (multiple-value-bind (bindings matched)
-                   (match-pattern (rewrite-rule-pattern rule) expression (rewriting-inputs state))
-                 (when (and matched (every (lambda (binding) (provably-total-p (cdr binding))) bindings))
-                   (let ((guard (instantiate (rewrite-rule-guard rule) bindings))
-                         (replacement (instantiate (rewrite-rule-replacement rule) bindings)))
-                     ;; Guards are discharged by syntax/path evidence only. No
-                     ;; extrapolation from observations and no unmetered guard VM.
-                     (when (and (or (equal guard (lit :bool t)) (member guard assumptions :test #'equal))
-                                (expression-less-p replacement expression (rewriting-inputs state)))
-                       (incf (rewriting-steps state))
-                       (push (list :walk replacement assumptions) (rewriting-tasks state))
-                       (return-from execute-rewrite-task)))))
-               (push (list :try expression assumptions (rest rules)) (rewriting-tasks state)))))))))
+             (let ((program (assoc (first rules) (rewriting-programs state))))
+               (setf (rewriting-attempt state) task
+                     (rewriting-evaluation state)
+                     (start-evaluation (second program) (third program) (list expression assumptions))))))))))
+
+(defun finish-rewrite-evaluation (state)
+  (let ((evaluation (rewriting-evaluation state)))
+    (when (eq :error (evaluation-status evaluation))
+      (error "Compiled rewrite failed: ~A" (evaluation-error evaluation)))
+    (when (eq :value (evaluation-status evaluation))
+      (destructuring-bind (kind expression assumptions rules) (rewriting-attempt state)
+        (declare (ignore kind))
+        (let ((replacement (evaluation-value evaluation)))
+          (if (equal replacement expression)
+              (push (list :try expression assumptions (rest rules)) (rewriting-tasks state))
+              (progn (incf (rewriting-steps state))
+                     (push (list :walk replacement assumptions) (rewriting-tasks state))))))
+      (setf (rewriting-evaluation state) nil (rewriting-attempt state) nil))))
 
 (defun advance-rewriting (state budget &optional ledger)
   (assert (and (integerp budget) (>= budget 0)))
   (loop while (and (plusp budget) (eq :unknown (rewriting-status state))) do
-    (when (zerop (rewriting-debt state))
-      (setf (rewriting-debt state) (rewrite-task-cost (first (rewriting-tasks state)))))
-    (let ((spent (min budget (rewriting-debt state))))
-      (decf budget spent) (decf (rewriting-debt state) spent)
-      (incf (rewriting-work state) spent) (charge ledger :rewriting spent))
-    (when (zerop (rewriting-debt state))
-      (execute-rewrite-task state (pop (rewriting-tasks state)))
-      (unless (rewriting-tasks state)
-        (assert (= 1 (length (rewriting-stack state))))
-        (setf (rewriting-status state) :complete (rewriting-value state) (first (rewriting-stack state))))))
+    (if (rewriting-evaluation state)
+        (multiple-value-bind (evaluation spent)
+            (advance-accounted-evaluation (rewriting-evaluation state) budget ledger :rewriting :rewriting)
+          (declare (ignore evaluation))
+          (decf budget spent) (incf (rewriting-work state) spent)
+          (finish-rewrite-evaluation state))
+        (progn
+          (when (zerop (rewriting-debt state))
+            (setf (rewriting-debt state) (if (eq :setup (first (first (rewriting-tasks state))))
+                                           (rewriting-setup-work state) 1)))
+          (let ((spent (min budget (rewriting-debt state))))
+            (decf budget spent) (decf (rewriting-debt state) spent)
+            (incf (rewriting-work state) spent) (charge ledger :rewriting spent))
+          (when (zerop (rewriting-debt state)) (execute-rewrite-task state (pop (rewriting-tasks state))))))
+    (unless (or (rewriting-tasks state) (rewriting-evaluation state))
+      (assert (= 1 (length (rewriting-stack state))))
+      (setf (rewriting-status state) :complete (rewriting-value state) (first (rewriting-stack state)))))
   state)

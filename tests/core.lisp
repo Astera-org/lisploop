@@ -1,27 +1,4 @@
-(load (merge-pathnames "load.lisp" *load-truename*))
-(load (merge-pathnames "fixtures.lisp" *load-truename*))
 (in-package #:lisploop)
-
-(defvar *tests* nil)
-(defvar *checks* 0)
-(defmacro check (form)
-  `(progn (incf *checks*) (unless ,form (error "Check failed: ~S" ',form))))
-(defmacro raises (form)
-  `(check (handler-case (progn ,form nil) (error () t))))
-(defmacro deftest (name &body body)
-  `(progn (defun ,name () ,@body) (push ',name *tests*)))
-(defun result (expression &optional inputs values)
-  (let ((state (evaluate expression inputs values)))
-    (check (eq (evaluation-status state) :value))
-    (evaluation-value state)))
-(defun accepts (allowed value)
-  (let ((state (check-allowed allowed value)))
-    (check (eq (evaluation-status state) :value))
-    (evaluation-value state)))
-(defun simple-frame (type inputs examples &key lookup-p)
-  (make-frame (make-schema :inputs inputs :target type :lookup-p lookup-p)
-              (loop for (known target) in examples for key from 0 collect
-                (make-row :key key :known known :allowed (finite-allowed type (list target))))))
 
 (deftest domains-codec-and-runtime
   (let* ((field (gf 5))
@@ -31,9 +8,9 @@
     (raises (gf 4))
     (raises (lit field 5))
     (raises (lit :int t))
-    (raises (lit :index -1))
+    (raises (lit :index 0)) ; retired type, even for formerly valid values
     (raises (expression-type (app (op :+ field) (lit :int 1) (lit field 1))))
-    (raises (expression-type (var 0 :index) '((0 . :int))))
+    (raises (expression-type (var 0 :bool) '((0 . :int))))
     (raises (decode-model "#.(error 0)"))
     (raises (decode-model "(0 0 1) (0 0 2)"))
     (raises (lit (sequence-type :int) (list #'identity)))
@@ -59,6 +36,62 @@
     (check (= (* big big) (evaluation-value paused)))
     (check (= (evaluation-work whole) (evaluation-work paused)))
     (check (> (evaluation-work whole) (* 160 160)))))
+
+(deftest integer-positions-and-bounds
+  (let* ((sequence (sequence-type :int))
+         (inputs (list (cons 0 sequence) (cons 1 sequence)))
+         (model (app (op :gather :int) (var 0 sequence) (var 1 sequence))))
+    (check (equal sequence (expression-type model inputs)))
+    (dolist (case '(((10 20 30) (0 2 0) (10 30 10))
+                    ((10) (0) (10)) ((10) nil nil) (nil nil nil)))
+      (destructuring-bind (items positions expected) case
+        (check (equal expected (result (decode-model (encode-model model inputs))
+                                      inputs (list items positions))))))
+    ;; Negative positions are valid integer data; failure occurs at access.
+    ;; Include the exact upper bound, a late bad access, and arbitrary bignums.
+    (dolist (values (list '((10 20 30) (-1)) '((10 20 30) (3))
+                          '((10 20 30) (0 3)) '(nil (0))
+                          (list '(10) (list (ash 1 256)))
+                          (list '(10) (list (- (ash 1 256))))))
+      (let ((whole (evaluate model inputs values)))
+        (check (eq :error (evaluation-status whole)))
+        (check (search "out of bounds" (evaluation-error whole)))
+        (check (plusp (evaluation-work whole)))))
+    ;; A field residue is still not an integer position.
+    (raises (expression-type (app (op :gather :int) (lit sequence '(10))
+                                  (lit (sequence-type (gf 5)) '(0))))))
+  ;; Arithmetic can select a stored position sequence through ordinary lookup;
+  ;; gather then consumes that sequence without a conversion or special type.
+  (let* ((sequence (sequence-type :int)) (entry (tuple-type :int sequence))
+         (inputs '((0 . :int)))
+         (positions (app (op :lookup entry)
+                         (app (op :+ :int) (var 0 :int) (lit :int 1))
+                         (lit (sequence-type entry) '((1 (2 0)) (2 (1 1))))))
+         (model (app (op :gather :int) (lit sequence '(10 20 30)) positions)))
+    (check (equal '(30 10) (result (decode-model (encode-model model inputs)) inputs '(0))))
+    (check (equal '(20 20) (result model inputs '(1)))))
+  ;; Bounds work is prepaid and resumable, with identical errors and ledgers
+  ;; whether the gather succeeds or fails after a valid first position.
+  (dolist (positions '((0 2) (0 -1) (0 3)))
+    (let* ((model (quotient-model :int '(10 20 30) positions))
+           (whole (evaluate model nil nil))
+           (unit (start-evaluation model nil nil))
+           (batch (start-evaluation model nil nil))
+           (unit-ledger (make-ledger)) (batch-ledger (make-ledger))
+           (total (evaluation-work whole)))
+      (dotimes (i (1- total)) (advance-evaluation unit 1 unit-ledger))
+      (advance-evaluation batch (1- total) batch-ledger)
+      (check (eq :unknown (evaluation-status batch)))
+      (check (equalp unit batch))
+      (check (equalp unit-ledger batch-ledger))
+      (advance-evaluation unit 1 unit-ledger)
+      (advance-evaluation batch 1 batch-ledger)
+      (check (equalp whole batch))
+      (check (equalp unit batch))
+      (check (equalp unit-ledger batch-ledger))
+      (check (= total (ledger-total batch-ledger)))))
+  (raises (restore-quotient '(10) '(-1)))
+  (raises (restore-quotient nil '(0))))
 
 (deftest isolated-reorientation-and-model-data
   (let* ((field (gf 5)) (types (list field field field))
@@ -151,7 +184,7 @@
     (check (equal rows (reassemble-partition partition ledger)))
     (check (= 5 (length (partition-positions partition))))
     (check (plusp (ledger-total ledger)))
-    (let ((model (partition-model partition (tuple-type :index :int))))
+    (let ((model (partition-model partition (tuple-type :int :int))))
       (check (equal rows (result (decode-model (encode-model model))))))
     (raises (partition-rows rows '(0 1)))
     (setf (partition-positions partition) '((0 0) (0 1) (2 0) (3 1) (4 0)))
@@ -164,7 +197,7 @@
       (let ((model (quotient-model :int representatives residual)))
         (check (equal values (result (decode-model (encode-model model))))))
       (check (not (equal values representatives)))
-      (check (> (description-size (lit (tuple-type (sequence-type :int) (sequence-type :index))
+      (check (> (description-size (lit (tuple-type (sequence-type :int) (sequence-type :int))
                                        (list representatives residual)))
                  (description-size (lit (sequence-type :int) representatives))))
       (raises (restore-quotient representatives '(3))))))
@@ -453,16 +486,3 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (= (1+ (evaluation-work (search-job-evaluation batch))) (ledger-total (search-job-ledger batch))))
     (check (= 1 (cdr (assoc :validation (ledger-counts (search-job-ledger batch))))))))
 
-(load (merge-pathnames "observation-tests.lisp" *load-truename*))
-(load (merge-pathnames "codec-tests.lisp" *load-truename*))
-(load (merge-pathnames "law-tests.lisp" *load-truename*))
-
-(let ((start (get-internal-real-time)))
-  (dolist (test (reverse *tests*))
-    (format t "~&~A ... " test)
-    (finish-output)
-    (funcall test)
-    (format t "ok~%"))
-  (format t "~&~D tests, ~D checks passed in ~,3F s.~%"
-          (length *tests*) *checks*
-          (/ (- (get-internal-real-time) start) internal-time-units-per-second)))

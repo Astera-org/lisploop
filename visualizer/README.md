@@ -46,7 +46,7 @@ are exported as joint values, without splitting correlated components.
 Both experiments allow all domain literals, as in `results.md`. Description length
 is the exact bit length of the standalone binary packet: schema header plus body.
 The inspector displays that breakdown and the actual encoded bits. Work follows
-the separate structural tariff. Encoding version 4 and tariff version 3 are saved
+the separate structural tariff. Encoding version 7 and tariff version 7 are saved
 with every scope; they identify the current specification, not selectable models.
 Text displays the AST and does not determine its price. A replay checks only its
 explicit expression list; its bound is not grammar exhaustion. Exporting and
@@ -84,11 +84,11 @@ edit those and regenerate. `write-report` assembles a custom multi-job bundle.
 ## Checks
 
 ```sh
-sbcl --script visualizer/tests.lisp
+sbcl --script tests/visualizer.lisp
 node visualizer/check-data.cjs
 ```
 
-The Lisp checks cover joint and empty requirements, exact values, safe JSON
+The Lisp checks cover joint and empty requirements, exact and quoted values, safe JSON
 embedding, read-only snapshots during interruption, and error isolation. The
 data check validates all scopes, pair links, retained syntax, bucket vectors,
 counts and work totals from `results.md`, including the 105-expression extended bound.

@@ -136,7 +136,7 @@
       (raises (start-observation-search foreign-scope :expressions (list x)))))
   (let* ((field (gf 5)) (language (make-language field nil))
          (scope (make-observation-scope (probe-frame field nil '(nil)) language))
-         (expressions (list (lit field 0) (lit :int 0) (lit :index 0)))
+         (expressions (list (lit field 0) (lit :int 0) (lit (gf 7) 0)))
          (job (start-observation-search scope :expressions expressions)))
     (resume-observation-search job (reduce #'max expressions :key #'description-size) 10000)
     (check (= 3 (length (observation-job-buckets job))))

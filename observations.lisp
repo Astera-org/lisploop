@@ -35,13 +35,9 @@ they stay outside predictor arguments. Allowed sets are not used by this index."
                          (make-row :key (copy-tree (row-key row))
                                    :known (copy-tree (row-known row)) :allowed (row-allowed row)))
                        (frame-rows frame)))
-         (snapshot (copy-language language)))
+         (snapshot (snapshot-language language)))
     (setf (schema-inputs schema) (copy-tree (schema-inputs schema))
-          (schema-target schema) (copy-tree (schema-target schema))
-          (language-domain snapshot) (copy-tree (language-domain language))
-          (language-inputs snapshot) (copy-tree (language-inputs language))
-          (language-literals snapshot) (copy-tree (language-literals language))
-          (language-operators snapshot) (copy-tree (language-operators language)))
+          (schema-target schema) (copy-tree (schema-target schema)))
     (labels ((index (key)
                (or (position key rows :key #'row-key :test #'equal)
                    (error "Unknown observation key ~S" key))))
@@ -81,8 +77,9 @@ The original frame remains available; this conversion executes no transition."
                         (nreverse rows))
             (nreverse pairs))))
 
+(defstruct observation-outcome status value error (work 0))
 (defstruct observed-expression scope expression type (status :unknown)
-  values (run-work 0) error failed-key)
+  values outcomes (run-work 0) error failed-key)
 (defstruct observation-bucket scope type values members invariant-p informative-p counterexample)
 
 (defun observed-agreement-p (left right)
@@ -98,16 +95,19 @@ Errors and unknown computations never supply empirical equality evidence."
 (defstruct (observation-job (:constructor %make-observation-job))
   scope enumerator (mode :enumeration) queue (ledger (make-ledger))
   (phase :enumerate) current rows evaluation (outputs nil) (debt 0)
+  retain-outcomes-p (outcomes nil)
   (completed-bound 0) (requested-bound 0) records buckets messages
   (record-index (make-hash-table :test #'equal))
   (bucket-index (make-hash-table :test #'equal)))
 
-(defun start-observation-search (scope &key (expressions nil supplied-p))
+(defun start-observation-search (scope &key (expressions nil supplied-p) retain-outcomes)
   "Enumerate syntax, or replay an explicit list of expressions on a NEW scope.
-Replay covers only that list, never claims grammar exhaustion or transfers a law."
+Replay covers only that list, never claims grammar exhaustion or transfers a law.
+RETAIN-OUTCOMES records every row's value/error and continues after row errors.
+Such records still provide no whole-scope equality evidence if any row errors."
   (let* ((language (observation-scope-language scope))
          (queue (when supplied-p (remove-duplicates (copy-tree expressions) :test #'equal)))
-         (job (%make-observation-job :scope scope
+         (job (%make-observation-job :scope scope :retain-outcomes-p (not (null retain-outcomes))
                                      :mode (if supplied-p :replay :enumeration)
                                      :enumerator (unless supplied-p (make-enumerator language))
                                      :completed-bound (if supplied-p 0 (language-header-size language
@@ -178,7 +178,9 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
   (let* ((record (observation-job-current job)) (scope (observation-job-scope job))
          (values (nreverse (observation-job-outputs job))))
     (setf (observed-expression-values record) values
+          (observed-expression-outcomes record) (nreverse (observation-job-outcomes job))
           (observation-job-outputs job) nil
+          (observation-job-outcomes job) nil
           (observation-job-phase job) :index
           (observation-job-debt job)
           (+ 1 (loop for value in values sum (value-work value (observed-expression-type record)))
@@ -238,26 +240,51 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
                                    inputs (row-known (first (observation-job-rows job))))
                  (observation-job-phase job) :evaluate)
            (progn
-             (setf (observed-expression-status (observation-job-current job)) :complete)
+             (unless (eq :error (observed-expression-status (observation-job-current job)))
+               (setf (observed-expression-status (observation-job-current job)) :complete))
              (prepare-observation-index job))))
       (:evaluate
        (let* ((state (observation-job-evaluation job))
-              (before (ledger-total ledger)) (previous-work (evaluation-work state))
+              (previous-work (evaluation-work state))
               (record (observation-job-current job)))
-         (multiple-value-bind (result unpaid-error-p) (advance-evaluation state budget ledger :evaluation)
-           (declare (ignore result))
-           (when (or unpaid-error-p (= before (ledger-total ledger))) (charge ledger :validation)))
+         (advance-accounted-evaluation state budget ledger :evaluation :validation)
          (incf (observed-expression-run-work record) (- (evaluation-work state) previous-work))
-         (case (evaluation-status state)
-           (:value
-            (push (evaluation-value state) (observation-job-outputs job))
-            (pop (observation-job-rows job))
-            (setf (observation-job-phase job) :row))
-           (:error
-            (setf (observed-expression-status record) :error
-                  (observed-expression-error record) (evaluation-error state)
-                  (observed-expression-failed-key record) (row-key (first (observation-job-rows job))))
-            (prepare-observation-index job)))))
+         (when (and (observation-job-retain-outcomes-p job)
+                    (member (evaluation-status state) '(:value :error)))
+           ;; Record allocation/status plus the retained value payload. Diagnostics
+           ;; are retained as evidence; their printer-dependent text is not priced.
+           (setf (observation-job-phase job) :outcome
+                 (observation-job-debt job)
+                 (+ 1 (if (eq :value (evaluation-status state))
+                          (value-work (evaluation-value state) (observed-expression-type record)) 0))))
+         (unless (observation-job-retain-outcomes-p job)
+           (case (evaluation-status state)
+             (:value
+              (push (evaluation-value state) (observation-job-outputs job))
+              (pop (observation-job-rows job))
+              (setf (observation-job-phase job) :row))
+             (:error
+              (setf (observed-expression-status record) :error
+                    (observed-expression-error record) (evaluation-error state)
+                    (observed-expression-failed-key record) (row-key (first (observation-job-rows job))))
+              (prepare-observation-index job))))))
+      (:outcome
+       (let ((spent (min budget (observation-job-debt job))))
+         (charge ledger :outcomes spent) (decf (observation-job-debt job) spent))
+       (when (zerop (observation-job-debt job))
+         (let ((state (observation-job-evaluation job)) (record (observation-job-current job)))
+           (push (make-observation-outcome :status (evaluation-status state)
+                                          :value (evaluation-value state) :error (evaluation-error state)
+                                          :work (evaluation-work state))
+                 (observation-job-outcomes job))
+           (if (eq :value (evaluation-status state))
+               (push (evaluation-value state) (observation-job-outputs job))
+               (unless (eq :error (observed-expression-status record))
+                 (setf (observed-expression-status record) :error
+                       (observed-expression-error record) (evaluation-error state)
+                       (observed-expression-failed-key record) (row-key (first (observation-job-rows job))))))
+           (pop (observation-job-rows job))
+           (setf (observation-job-phase job) :row))))
       (:index
        (let ((spent (min budget (observation-job-debt job))))
          (charge ledger :indexing spent)

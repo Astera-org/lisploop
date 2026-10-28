@@ -1,7 +1,7 @@
 (in-package #:lisploop)
 
-(defconstant +tariff-version+ 3)
-(defconstant +simulator-version+ 2)
+(defconstant +tariff-version+ 7)
+(defconstant +simulator-version+ 5)
 
 (defstruct ledger (total 0) (counts nil))
 
@@ -28,13 +28,13 @@
   "One visit per value/container plus raw payload bits; independent of the codec."
   (1+ (case type
         (:int (1+ (integer-width value))) ; sign and magnitude
-        (:index (integer-width value))
         (:bool 1)
         (otherwise
          (ecase (first type)
            (:gf (integer-width (1- (second type))))
            (:tuple (loop for item in value for part in (rest type) sum (value-work item part)))
-           (:seq (loop for item in value sum (value-work item (second type)))))))))
+           (:seq (loop for item in value sum (value-work item (second type))))
+           (:code (syntax-work value)))))))
 
 (defun type-work (type)
   "Type-node visits and modulus payloads; no printed or compressed lengths."
@@ -43,6 +43,9 @@
             (:gf (integer-width (second type)))
             (:tuple (reduce #'+ (rest type) :key #'type-work :initial-value 0))
             (:seq (type-work (second type)))
+            (:code (+ (loop for input in (code-inputs type)
+                           sum (+ (integer-width (car input)) (type-work (cdr input))))
+                      (type-work (code-sort type))))
             (:fn (+ (reduce #'+ (second type) :key #'type-work :initial-value 0)
                     (type-work (third type))))))))
 
@@ -67,12 +70,27 @@
 
 (defun primitive-cost (operator values)
   (let ((name (second operator)) (type (third operator)))
+    (when (member name *symbolic-primitives*)
+      (return-from primitive-cost (symbolic-primitive-cost name type values)))
     (case name
       ((:+ :* :- :/) (arithmetic-cost name type values))
       (otherwise
-       (1+ (loop for value in values
-                 for input-type in (second (operator-type operator))
-                 sum (value-work value input-type)))))))
+       (+ 1 (loop for value in values
+                  for input-type in (second (operator-type operator))
+                  sum (value-work value input-type))
+          ;; Prepay every bounds check, including on a failing gather. The sign
+          ;; check costs one; the upper-bound comparison costs the larger width.
+          (if (eq name :gather)
+              (loop with width = (integer-width (length (first values)))
+                    for index in (second values)
+                    sum (1+ (max width (integer-width index))))
+              0))))))
+
+(defun checked-position (index length)
+  "An integer becomes a position only at access; no wrapping or negative offsets."
+  (unless (and (integerp index) (<= 0 index) (< index length))
+    (error "Sequence index ~S out of bounds for length ~D" index length))
+  index)
 
 (defun field-reciprocal (value modulus)
   "Extended Euclid inside the supplied division primitive, not learned inversion."
@@ -96,14 +114,16 @@
          (if (eq type :int) result (mod result (second type)))))
       (:= (equal (first values) (second values)))
       (:tuple values)
+      (:concat (loop for part in (first values) append (copy-list part)))
       (:member (not (null (member (first values) (second values) :test #'equal))))
       (:lookup
        (let ((entry (assoc (first values) (second values) :test #'equal)))
          (if entry (second entry) (error "No encoded lookup entry for ~S" (first values)))))
       (:gather
-       (let ((items (coerce (first values) 'vector)))
-         (mapcar (lambda (index) (aref items index)) (second values))))
-      (otherwise (error "Unknown primitive ~S" name)))))
+       (let* ((items (coerce (first values) 'vector)) (length (length items)))
+         (mapcar (lambda (index) (aref items (checked-position index length))) (second values))))
+      (otherwise (if (member name *symbolic-primitives*) (execute-symbolic-primitive name type values)
+                     (error "Unknown primitive ~S" name))))))
 
 (defun instruction-cost (state task)
   (ecase (first task)
@@ -189,3 +209,14 @@ so search can account for that failed validation even after earlier batched work
 
 (defun evaluate (expression inputs values &key (budget 1000000) ledger)
   (advance-evaluation (start-evaluation expression inputs values) budget ledger))
+
+(defun advance-accounted-evaluation (state budget ledger category error-category)
+  "Shared job accounting: charge even errors before an instruction can be priced.
+Return the VM state and total charged work, including the diagnostic unit."
+  (assert (plusp budget))
+  (let ((before (evaluation-work state)))
+    (multiple-value-bind (result unpaid) (advance-evaluation state budget ledger category)
+      (let* ((spent (- (evaluation-work state) before))
+             (diagnostic (if (or unpaid (zerop spent)) 1 0)))
+        (when (plusp diagnostic) (charge ledger error-category diagnostic))
+        (values result (+ spent diagnostic))))))

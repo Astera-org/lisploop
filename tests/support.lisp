@@ -1,0 +1,23 @@
+(in-package #:lisploop)
+
+(defvar *tests* nil)
+(defvar *checks* 0)
+(defmacro check (form)
+  `(progn (incf *checks*) (unless ,form (error "Check failed: ~S" ',form))))
+(defmacro raises (form)
+  `(check (handler-case (progn ,form nil) (error () t))))
+(defmacro deftest (name &body body)
+  `(progn (defun ,name () ,@body) (push ',name *tests*)))
+(defun result (expression &optional inputs values)
+  (let ((state (evaluate expression inputs values)))
+    (check (eq (evaluation-status state) :value))
+    (evaluation-value state)))
+(defun accepts (allowed value)
+  (let ((state (check-allowed allowed value)))
+    (check (eq (evaluation-status state) :value))
+    (evaluation-value state)))
+(defun simple-frame (type inputs examples &key lookup-p)
+  (make-frame (make-schema :inputs inputs :target type :lookup-p lookup-p)
+              (loop for (known target) in examples for key from 0 collect
+                (make-row :key key :known known :allowed (finite-allowed type (list target))))))
+

@@ -19,11 +19,7 @@
 
 (defun make-frame (schema rows)
   (assert (valid-type-p (schema-target schema)))
-  (assert (= (length (schema-inputs schema))
-             (length (remove-duplicates (schema-inputs schema) :key #'car))))
-  (assert (every (lambda (spec)
-                   (and (integerp (car spec)) (>= (car spec) 0)
-                        (valid-type-p (cdr spec)))) (schema-inputs schema)))
+  (assert (valid-inputs-p (schema-inputs schema)))
   (assert (= (length rows) (length (remove-duplicates rows :key #'row-key :test #'equal))))
   (dolist (row rows)
     (assert (= (length (row-known row)) (length (schema-inputs schema))))
@@ -164,15 +160,16 @@ bindings. No inverse values are enumerated."
     (values representatives (nreverse residual))))
 
 (defun restore-quotient (representatives residual &optional ledger)
-  (mapcar (lambda (index)
-            (assert (and (integerp index) (< -1 index (length representatives))))
-            (charge ledger :reassembly)
-            (nth index representatives)) residual))
+  (let ((length (length representatives)))
+    (mapcar (lambda (index)
+              (checked-position index length)
+              (charge ledger :reassembly)
+              (nth index representatives)) residual)))
 
 (defun quotient-model (type representatives residual &optional ledger)
   "A closed reconstructing program, charging representatives AND occurrence indexes."
   (let ((model (app (op :gather type) (lit (sequence-type type) representatives)
-                    (lit (sequence-type :index) residual))))
+                    (lit (sequence-type :int) residual))))
     (charge ledger :construction (syntax-work model))
     model))
 

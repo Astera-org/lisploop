@@ -12,21 +12,48 @@
 (defun tuple-type (&rest types) (cons :tuple types))
 (defun sequence-type (type) (list :seq type))
 
+(defun valid-inputs-p (inputs)
+  (and (listp inputs) (= (length inputs) (length (remove-duplicates inputs :key #'car)))
+       (every (lambda (input) (and (consp input) (integerp (car input)) (<= 0 (car input))
+                                   (valid-type-p (cdr input)))) inputs)))
+
+(defun function-sort-p (sort) (and (consp sort) (eq :fn (first sort))))
+
+(defun valid-sort-p (sort)
+  (if (function-sort-p sort)
+      (and (= 3 (length sort)) (listp (second sort))
+           (every #'valid-type-p (second sort)) (valid-type-p (third sort)))
+      (valid-type-p sort)))
+
+(defun code-type (inputs sort)
+  "Quoted typed syntax in an explicit free-variable scope; never an executable closure."
+  (assert (and (valid-inputs-p inputs) (valid-sort-p sort)))
+  (list :code (copy-tree inputs) (copy-tree sort)))
+
+(defun code-type-p (type) (and (consp type) (eq :code (first type))))
+(defun code-inputs (type) (second type))
+(defun code-sort (type) (third type))
+
+(defparameter *symbolic-primitives*
+  '(:code-kind :code-child :code-operator :code-apply :code-match :code-bind
+    :code-subst :code-total :code-less))
+
 (defun valid-type-p (type)
-  (or (member type '(:int :bool :index))
+  (or (member type '(:int :bool))
       (and (consp type)
            (case (first type)
              (:gf (and (= (length type) 2) (integerp (second type))
                        (>= (second type) 2)
                        (equal type (gf (second type)))))
              (:tuple (every #'valid-type-p (rest type)))
-             (:seq (and (= (length type) 2) (valid-type-p (second type))))))))
+             (:seq (and (= (length type) 2) (valid-type-p (second type))))
+             (:code (and (= 3 (length type)) (valid-inputs-p (code-inputs type))
+                         (valid-sort-p (code-sort type))))))))
 
 (defun value-p (value type)
   "Values carry their domain through the surrounding typed syntax/schema."
   (case type
     (:int (integerp value))
-    (:index (and (integerp value) (not (minusp value))))
     (:bool (or (eq value t) (null value)))
     (otherwise
      (and (consp type)
@@ -35,7 +62,12 @@
             (:tuple (and (listp value) (= (length value) (length (rest type)))
                          (every #'value-p value (rest type))))
             (:seq (and (listp value)
-                       (every (lambda (v) (value-p v (second type))) value))))))))
+                       (every (lambda (v) (value-p v (second type))) value)))
+            (:code (handler-case
+                       (equal (code-sort type)
+                              (if (function-sort-p (code-sort type)) (operator-type value)
+                                  (expression-type value (code-inputs type))))
+                     (error () nil))))))))
 
 (defun lit (type value)
   (assert (and (valid-type-p type) (value-p value type)))
@@ -67,9 +99,11 @@
         (:lookup
          (assert (and (consp type) (eq (first type) :tuple) (= (length type) 3)))
          (signature (list (second type) (sequence-type type)) (third type)))
-        (:gather (signature (list (sequence-type type) (sequence-type :index))
+        (:gather (signature (list (sequence-type type) (sequence-type :int))
                             (sequence-type type)))
-        (otherwise (error "Unknown primitive ~S" name))))))
+        (:concat (signature (list (sequence-type (sequence-type type))) (sequence-type type)))
+        (otherwise (if (member name *symbolic-primitives*) (symbolic-operator-type name type)
+                       (error "Unknown primitive ~S" name)))))))
 
 (defun op (name type)
   "A monomorphic operator symbol. TYPE fixes its entire signature."
@@ -109,11 +143,13 @@
     (otherwise (error "Not an expression: ~S" expression))))
 
 (defun instantiate (tree substitutions &optional (tag :hole))
-  "Simultaneous substitution; inserted trees are not recursively substituted."
+  "Simultaneous AST substitution; literals and type metadata are boundaries."
   (cond
     ((atom tree) tree)
     ((eq (first tree) tag)
      (let ((entry (assoc (second tree) substitutions)))
        (if entry (copy-tree (cdr entry)) tree)))
-    ((eq (first tree) :lit) tree)
-    (t (mapcar (lambda (x) (instantiate x substitutions tag)) tree))))
+    ((eq (first tree) :app)
+     (apply #'app (instantiate (second tree) substitutions tag)
+            (mapcar (lambda (x) (instantiate x substitutions tag)) (third tree))))
+    (t tree)))

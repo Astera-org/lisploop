@@ -31,7 +31,6 @@
 
 (defun type-text (type)
   (cond ((eq type :int) "Integer") ((eq type :bool) "Boolean")
-        ((eq type :index) "Index")
         ((and (consp type) (eq (first type) :gf)) (format nil "GF(~D)" (second type)))
         ((eq (first type) :tuple)
          (format nil "Tuple(~{~A~^, ~})" (mapcar #'type-text (rest type))))
@@ -40,6 +39,7 @@
 
 (defun value-data (value type)
   (cond ((eq type :bool) (boolean-data value))
+        ((code-type-p type) (sexp-text value))
         ((integerp value) (format nil "~D" value))
         ((eq (first type) :tuple)
          (array-data (mapcar #'value-data value (rest type))))

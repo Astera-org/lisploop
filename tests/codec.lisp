@@ -22,7 +22,7 @@
                               (app (op :member :int) a (lit (sequence-type :int) '(-1 0 1)))
                               (app (op :tuple (tuple-type :int :bool)) a (lit :bool nil))
                               (app (op :gather :int) (lit (sequence-type :int) '(4 5 6))
-                                   (lit (sequence-type :index) '(2 0 2)))
+                                   (lit (sequence-type :int) '(2 0 2)))
                               (lit (tuple-type (tuple-type) (sequence-type :bool)) '(nil (t nil)))))
       (check-codec-roundtrip expression inputs)))
   (multiple-value-bind (frame oracle) (gf5-fixture)
@@ -39,6 +39,13 @@
   (let ((bits (encode-model (lit :int 0))))
     (setf (aref bits 0) 1)
     (raises (decode-model bits)))
+  ;; Version 4 used a distinct index type and different type tags.
+  (raises (decode-model #*011001000011))
+  ;; Six type tags occupy codes 0..5; 6..7 are reserved.
+  (dolist (tag '(#*110 #*111))
+    (let* ((bits (encode-model (lit :int 0))) (end (header-size nil :int)))
+      (setf (subseq bits (- end 3) end) tag)
+      (raises (decode-model bits))))
   ;; Three GF(5) payload bits have unused values 5..7.
   (let ((bits (encode-model (lit (gf 5) 0) nil)))
     (setf (subseq bits (- (length bits) 3)) #*111)
@@ -100,6 +107,13 @@
     (check (= 3 (length (observation-job-records job))))))
 
 (deftest structural-tariff-and-print-independence
+  ;; Positional data uses exactly the signed integer payload and value tariff.
+  (check (= 29 (description-size (lit (sequence-type :int) '(0 1 2)))))
+  (check-codec-roundtrip (lit (sequence-type :int) '(-1 0 2)) nil)
+  (check (= 66 (description-size (quotient-model :int '(8 2 9) '(0 1 2 0)))))
+  (check (= 11 (value-work '(0 1 2) (sequence-type :int))))
+  ;; Base: 1 + 11 for each operand; checks: 3 * (1 + max(2,w(i))).
+  (check (= 32 (primitive-cost (op :gather :int) '((0 1 2) (0 1 2)))))
   (let* ((value (ash 1 256))
          (expression (app (op :* :int) (lit :int value) (lit :int value)))
          (size (description-size expression)) (work (syntax-work expression))

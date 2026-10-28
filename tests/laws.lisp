@@ -207,7 +207,7 @@
            (unit (start-search frame language :call-id :checked :laws (list law)))
            (batch (start-search frame language :call-id :checked :laws (list law)))
            (bound (description-size oracle inputs)))
-      (dolist (limit '(0 1 100 500 2000 10000 100000 2000000))
+      (dolist (limit '(0 1 100 500 2000 10000 100000 3000000))
         (resume-search unit bound limit :quantum 1)
         (resume-search batch bound limit)
         (check (equalp unit batch))

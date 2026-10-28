@@ -19,8 +19,8 @@ for (const [i, experiment] of bundle.experiments.entries()) {
     const rows = scope.frame.rows;
     assert.equal(new Set(rows.map(row => row.key)).size, rows.length);
     assert.equal(scope.evidence, "replayed-observations");
-    assert.equal(scope.encodingVersion, 4);
-    assert.equal(scope.tariffVersion, 3);
+    assert.equal(scope.encodingVersion, 7);
+    assert.equal(scope.tariffVersion, 7);
     assert.equal(scope.unit, "bits");
     assert.equal(scope.literals, "All domain literals");
     assert(!("costModel" in scope));

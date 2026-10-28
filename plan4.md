@@ -109,7 +109,7 @@ The short experiment descriptions below are the work list. The shared contract a
 
 Start with a pure, deterministic, typed interpreter for tagged S-expressions. Each primitive has a signature, executable meaning, and metered cost. Errors are explicit; interrupted evaluation is unknown, not a semantic error or a proof of failure. The simulator defines executable meaning; observations define the requested behavior.
 
-The initial arithmetic language contains +, *, equality for checking, variables, and literals. Add pairs, finite sequences, quoted ASTs, and first-order named definitions where their tests need them. Represent application uniformly as (app operator arguments); compatible operator symbols can occupy typed holes without introducing higher-order unification. Keep domain types explicit: a GF(p) value, an integer, an index, and a quoted expression are different objects.
+The initial arithmetic language contains +, *, equality for checking, variables, and literals. Add pairs, finite sequences, quoted ASTs, and first-order named definitions where their tests need them. Represent application uniformly as (app operator arguments); compatible operator symbols can occupy typed holes without introducing higher-order unification. Keep domain types explicit: a GF(p) value, an integer, and a quoted expression are different objects. Indices are ordinary integers, with nonnegative and upper bounds checked when accessing a sequence; arithmetic and positional uses share one representation and price.
 
 The evaluator remains fixed within a comparison. New handwritten primitives, metadata operations, validators, or proposal shortcuts are declared changes to the prior. Initially omit binders, polymorphism, unrestricted generated recursion, e-graphs, and general graph matching. A synthesizer calling itself does not require its generated programs to recurse.
 
@@ -255,6 +255,19 @@ Empirical output buckets may prioritize search and suggest laws. Preserve syntax
 **Experiment.** Enumerate pairs of small expressions with free variables, using milestone 2's output buckets to propose equalities. Exhaustively check candidates over GF(5), then independently over GF(7). Recover simple identities such as a+b=b+a and a+0=a. Apply a checked rule in a second search and compare total work with the same search without that rule.
 
 **Controls and exit.** Rule records state domain, types, guard, equality, and evidence. The equation $x^5=x$ is valid in GF(5) but must fail transfer to GF(7) and to integers; the power is shorthand for repeated multiplication, not a new primitive. A rule supported only on {0,1} must not become universal. Prevent rewrite cycles and retain bounded alternate syntax.
+
+**AU compression gate before milestone 4.** Apply aligned AU to the discovered guarded statements. Encode the shared syntax, substitutions, and complete occurrence order in a standalone reconstruction program. Use the core synthesis pipeline to check that program against a frame requiring the exact original law corpus, and compare complete size and execution cost against literal and whole-statement sharing baselines. Keep AU/proposal construction separate from acceptance. Structural generalization neither proves new substitutions nor establishes independence of the laws; symbolic inference and independence claims remain outside this gate.
+
+**Symbolic VM gate before milestone 4.** Make typed quoted expressions ordinary
+frame values, with explicit free-variable scopes. Supply structural inspection,
+matching, substitution, and construction primitives, without `eval` or host
+callbacks. Lower AU templates and checked rewrite directions to DSL programs on
+those values. Use the existing codec, tariff, resumable evaluator, and core search
+to check them. Exercise a symbolic transformation through an ordinary pullback,
+integer residual search, and full composition/replay. Keep certificates separate
+from syntax construction; preserve errors, guard assumptions, and termination.
+Report any extra application work. This gate prepares the representation and
+scaffold; it does not claim automatic inverse-rule discovery or integer-law proofs.
 
 A law validated on total field values may be substituted into larger programs only when evaluation behavior is preserved. For example, dropping a subexpression that can error or diverge requires more than a value-level identity.
 
