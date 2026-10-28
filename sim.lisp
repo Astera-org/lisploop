@@ -1,5 +1,7 @@
 (in-package #:lisploop)
 
+(defconstant +tariff-version+ 2)
+
 (defstruct ledger (total 0) (counts nil))
 
 (defun charge (ledger category &optional (amount 1))
@@ -19,15 +21,45 @@
   (%make-evaluation :inputs inputs :values values
                     :tasks (list (list :validate expression) (list :eval expression))))
 
-(defun value-bytes (value type)
-  (length (canonical-data-string (code-value value type nil))))
+(defun integer-width (value) (max 1 (integer-length (abs value))))
+
+(defun value-work (value type)
+  "One visit per value/container plus raw payload bits; independent of the codec."
+  (1+ (case type
+        (:int (1+ (integer-width value))) ; sign and magnitude
+        (:index (integer-width value))
+        (:bool 1)
+        (otherwise
+         (ecase (first type)
+           (:gf (integer-width (1- (second type))))
+           (:tuple (loop for item in value for part in (rest type) sum (value-work item part)))
+           (:seq (loop for item in value sum (value-work item (second type)))))))))
+
+(defun type-work (type)
+  "Type-node visits and modulus payloads; no printed or compressed lengths."
+  (if (atom type) 1
+      (1+ (ecase (first type)
+            (:gf (integer-width (second type)))
+            (:tuple (reduce #'+ (rest type) :key #'type-work :initial-value 0))
+            (:seq (type-work (second type)))
+            (:fn (+ (reduce #'+ (second type) :key #'type-work :initial-value 0)
+                    (type-work (third type))))))))
+
+(defun syntax-work (expression)
+  "AST/type visits and raw payload bits for construction, validation and copying."
+  (1+ (ecase (first expression)
+        (:lit (+ (type-work (second expression)) (value-work (third expression) (second expression))))
+        ((:var :hole) (+ (integer-width (second expression)) (type-work (third expression))))
+        (:op (type-work (third expression)))
+        (:app (+ (syntax-work (second expression))
+                 (reduce #'+ (third expression) :key #'syntax-work :initial-value 0))))))
 
 (defun arithmetic-cost (name type values)
   "Unit arithmetic only for fixed primes <= 257; otherwise a bit-sensitive tariff."
   (if (and (consp type) (eq (first type) :gf) (<= (second type) 257))
       1
-      (let ((a (max 1 (integer-length (abs (first values)))))
-            (b (max 1 (integer-length (abs (second values))))))
+      (let ((a (integer-width (first values)))
+            (b (integer-width (second values))))
         (+ (if (eq name :*) (* a b) (max a b))
            (if (consp type) (expt (integer-length (second type)) 2) 0)))))
 
@@ -38,7 +70,7 @@
       (otherwise
        (1+ (loop for value in values
                  for input-type in (second (operator-type operator))
-                 sum (value-bytes value input-type)))))))
+                 sum (value-work value input-type)))))))
 
 (defun execute-primitive (operator values)
   (let ((name (second operator)) (type (third operator)))
@@ -60,13 +92,14 @@
 
 (defun instruction-cost (state task)
   (ecase (first task)
-    (:validate (+ (max 1 (description-size (second task)))
+    (:validate (+ (syntax-work (second task))
                   (loop for spec in (evaluation-inputs state)
                         for value in (evaluation-values state)
-                        sum (value-bytes value (cdr spec)))))
+                        sum (+ (integer-width (car spec)) (type-work (cdr spec))
+                               (value-work value (cdr spec))))))
     (:eval (let ((expression (second task)))
              (if (eq (first expression) :lit)
-                 (1+ (value-bytes (third expression) (second expression))) 1)))
+                 (1+ (value-work (third expression) (second expression))) 1)))
     (:apply (primitive-cost (second task)
                             (reverse (subseq (evaluation-stack state) 0 (third task)))))))
 

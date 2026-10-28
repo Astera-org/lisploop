@@ -4,7 +4,8 @@
 ;;; an equivalence relation licensed for substitution into arbitrary programs.
 (defstruct (observation-scope (:constructor %make-observation-scope))
   id frame language pairs anchors
-  (equality :typed-value) (evidence :replayed-observations) (simulator-version 1))
+  (equality :typed-value) (evidence :replayed-observations) (simulator-version 1)
+  (encoding-version +encoding-version+) (tariff-version +tariff-version+))
 
 (defun make-observation-scope (frame language &key (id (incf *next-call-id*)) pairs anchors)
   "Freeze the observed inputs and language. PAIRS and ANCHORS refer to row keys;
@@ -56,7 +57,10 @@ The original frame remains available; this conversion executes no transition."
         (push (make-row :key after-key :known (copy-tree (first targets))
                         :allowed requirement) rows)
         (push (list before-key after-key) pairs)
-        (charge ledger :orientation (+ 2 (* 2 (length inputs))))))
+        (charge ledger :orientation
+                (+ 2 (loop for spec in inputs for before in (row-known row)
+                           for after in (first targets)
+                           sum (+ (value-work before (cdr spec)) (value-work after (cdr spec))))))))
     (values (make-frame (make-schema :inputs (copy-tree inputs) :target output-type)
                         (nreverse rows))
             (nreverse pairs))))
@@ -89,11 +93,12 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
          (queue (when supplied-p (remove-duplicates (copy-tree expressions) :test #'equal)))
          (job (%make-observation-job :scope scope
                                      :mode (if supplied-p :replay :enumeration)
-                                     :enumerator (unless supplied-p (make-enumerator language)))))
+                                     :enumerator (unless supplied-p (make-enumerator language))
+                                     :completed-bound (if supplied-p 0 (language-header-size language)))))
     (dolist (expression queue)
       (expression-type expression (language-inputs language)))
     (setf (observation-job-queue job)
-          (stable-sort queue #'< :key (lambda (expression) (language-expression-size language expression))))
+          (stable-sort queue #'< :key (lambda (expression) (description-size expression (language-inputs language)))))
     (setf (observation-job-phase job) :setup
           (observation-job-debt job)
             (+ (length queue) (length (observation-scope-pairs scope))
@@ -101,7 +106,7 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
                (loop for row in (frame-rows (observation-scope-frame scope))
                      sum (1+ (loop for value in (row-known row)
                                    for spec in (language-inputs language)
-                                   sum (value-bytes value (cdr spec)))))))
+                                   sum (value-work value (cdr spec)))))))
     job))
 
 (defun find-observation (job expression)
@@ -159,7 +164,7 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
           (observation-job-outputs job) nil
           (observation-job-phase job) :index
           (observation-job-debt job)
-          (+ 1 (loop for value in values sum (value-bytes value (observed-expression-type record)))
+          (+ 1 (loop for value in values sum (value-work value (observed-expression-type record)))
              (* 2 (length (observation-scope-pairs scope)))
              (length (observation-scope-anchors scope))))))
 
@@ -185,11 +190,12 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
            (:candidate
             (setf (observation-job-current job)
                   (make-observed-expression :scope scope :expression expression)
-                  (observation-job-debt job) (description-size expression)
+                  (observation-job-debt job) (syntax-work expression)
                   (observation-job-phase job) :construct))
            (:bound
             (setf (observation-job-completed-bound job)
-                  (1- (enumerator-size (observation-job-enumerator job))))))))
+                  (+ (language-header-size (observation-scope-language scope))
+                     (1- (enumerator-size (observation-job-enumerator job)))))))))
       (:construct
        (let ((spent (min budget (observation-job-debt job))))
          (charge ledger :construction spent)
@@ -241,8 +247,8 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
       (>= (observation-job-completed-bound job) bound)
       (and (eq (observation-job-phase job) :enumerate)
            (or (null (observation-job-queue job))
-               (> (language-expression-size (observation-scope-language (observation-job-scope job))
-                                             (first (observation-job-queue job))) bound)))))
+               (> (description-size (first (observation-job-queue job))
+                                     (language-inputs (observation-scope-language (observation-job-scope job)))) bound)))))
 
 (defun resume-observation-search (job description-limit work-limit &key quantum)
   "Resume empirical observation work under growing description limits and cumulative work
@@ -268,7 +274,7 @@ ceilings. Replay completion explicitly covers only the supplied expression list.
                                     :completed-bound (observation-job-completed-bound job)
                                     :work (ledger-total (observation-job-ledger job))
                                     :phase (observation-job-phase job)
-                                    :cost-model (language-cost-model (observation-scope-language scope))
+                                    :encoding-version +encoding-version+ :tariff-version +tariff-version+
                                     :syntax-coverage (if enumerated :grammar :listed-expressions)))))
       (push message (observation-job-messages job))
       message)))

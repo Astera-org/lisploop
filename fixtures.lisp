@@ -18,16 +18,15 @@
 
 (defun replay-model (expression frame &optional ledger)
   "Decode a fresh model, pass declared values only, and separately check each output."
-  (let* ((inputs (schema-inputs (frame-schema frame)))
-         (model (read-model (canonical-string expression) inputs))
-         (work 0))
-    (dolist (row (frame-rows frame))
+  (multiple-value-bind (model inputs)
+      (decode-model (encode-model expression (schema-inputs (frame-schema frame))))
+    (assert (equal inputs (schema-inputs (frame-schema frame))))
+    (loop for row in (frame-rows frame) sum
       (let ((run (evaluate model inputs (row-known row) :ledger ledger)))
         (assert (eq (evaluation-status run) :value))
-        (incf work (evaluation-work run))
         (let ((check (check-allowed (row-allowed row) (evaluation-value run) :ledger ledger)))
-          (assert (and (eq (evaluation-status check) :value) (evaluation-value check))))))
-    work))
+          (assert (and (eq (evaluation-status check) :value) (evaluation-value check))))
+        (evaluation-work run)))))
 
 (defun additive-transition-fixture (domain starts steps shift-b key-prefix ledger)
   "Record forward transitions T(a,b)=(a+1,b+SHIFT-B). Return the frame and start keys.

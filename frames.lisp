@@ -51,7 +51,7 @@
        (progn
          (assert (= (length values) (length types)))
          (assert (every #'value-p values types))
-         (charge ledger :orientation (+ 1 (length values)))
+         (charge ledger :orientation (+ 1 (loop for value in values for type in types sum (value-work value type))))
          (make-row :key key :known (mapcar (lambda (i) (nth i values)) input-columns)
                    :allowed (finite-allowed
                              target (list (if (rest target-columns)
@@ -70,7 +70,7 @@
       (let* ((values (allowed-values (row-allowed row)))
              (old (assoc (row-known row) groups :test #'equal)))
         (when (eq values :unknown) (error "No explicit witnesses for lookup"))
-        (charge ledger :baseline (+ 1 (length values)))
+        (charge ledger :baseline (+ 1 (loop for value in values sum (value-work value (schema-target schema)))))
         (if old
             (setf (cdr old) (intersection (cdr old) values :test #'equal))
             (push (cons (row-known row) (copy-list values)) groups))))
@@ -81,7 +81,7 @@
                       (lit (sequence-type entry-type)
                            (mapcar (lambda (group) (list (car group) (second group)))
                                    (reverse groups))))))
-      (charge ledger :baseline (description-size model))
+      (charge ledger :baseline (syntax-work model))
       model)))
 
 (defun pullback-frame (parent decoder child-id child-type bindings &optional ledger)
@@ -110,7 +110,7 @@ bindings. No inverse values are enumerated."
                           (unless (eq (evaluation-status run) :value)
                             (error "Context binding did not finish: ~S" run))
                           (evaluation-value run))) bindings)))
-         (charge ledger :pullback (description-size predicate))
+         (charge ledger :pullback (syntax-work predicate))
          (make-row :key (row-key row) :known known
                    :allowed (predicate-allowed child-type predicate)))))))
 
@@ -118,7 +118,7 @@ bindings. No inverse values are enumerated."
   "Inline the context and child; the resulting ordinary AST pays for duplication."
   (let ((model (instantiate decoder
                             (list (cons child-id (instantiate child-model bindings :var))) :var)))
-    (charge ledger :composition (description-size model))
+    (charge ledger :composition (syntax-work model))
     model))
 
 (defstruct partition positions groups)
@@ -173,7 +173,7 @@ bindings. No inverse values are enumerated."
   "A closed reconstructing program, charging representatives AND occurrence indexes."
   (let ((model (app (op :gather type) (lit (sequence-type type) representatives)
                     (lit (sequence-type :index) residual))))
-    (charge ledger :construction (description-size model))
+    (charge ledger :construction (syntax-work model))
     model))
 
 (defun partition-model (partition type &optional ledger)

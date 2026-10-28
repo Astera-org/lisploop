@@ -2,9 +2,8 @@
   (:use #:cl)
   (:export
    #:gf #:tuple-type #:sequence-type #:value-p #:lit #:var #:op #:app #:hole
-   #:expression-type #:instantiate #:canonical-string #:description-size
-   #:read-model #:make-ledger #:ledger-total #:ledger-counts
-   #:encode-bit-model #:decode-bit-model #:bit-description-size #:bit-header-size
+   #:expression-type #:instantiate #:description-size #:body-size #:header-size
+   #:encode-model #:decode-model #:make-ledger #:ledger-total #:ledger-counts
    #:start-evaluation #:advance-evaluation #:evaluate #:evaluation-status
    #:evaluation-value #:evaluation-error #:evaluation-work
    #:make-schema #:schema-inputs #:schema-target #:schema-lookup-p
@@ -15,7 +14,6 @@
    #:partition-rows #:reassemble-partition #:quotient-values #:restore-quotient
    #:partition-model #:quotient-model
    #:make-language #:language-domain #:language-inputs #:language-operators #:language-literals
-   #:language-cost-model #:language-expression-size
    #:start-search #:resume-search #:search-job-results #:search-job-best
    #:search-job-ledger #:search-job-completed-bound #:search-job-messages
    #:candidate-expression #:candidate-size #:candidate-run-work

@@ -1,7 +1,7 @@
 ;;; Bounded scaling measurements; the synthesis kernel is not modified.
 ;;; Fresh process per search case, for independent process peak-RSS measurements:
-;;;   sbcl --dynamic-space-size 2048 --script benchmark.lisp search quadratic 101 30
-;;; Arguments: workload (linear/quadratic/quartic), byte bound, wall seconds.
+;;;   sbcl --dynamic-space-size 2048 --script benchmark.lisp search quadratic 66 30
+;;; Arguments: workload (linear/quadratic/quartic), packet-bit bound, wall seconds.
 ;;; Optional fifth argument "unit" retains one-unit dispatch as a reference;
 ;;; default "batch" uses batched search. "profile" enables a separate CPU profile.
 ;;;   sbcl --script benchmark.lisp meter
@@ -46,10 +46,11 @@
                         (assert (eq :value (evaluation-status run)))
                         (list (+ (* x 5) y) x y (evaluation-value run)))))))
     (values (orient-observations (list field field field) records '(0 1) '(2))
-            (description-size oracle))))
+            (description-size oracle inputs))))
 
 (defun benchmark-search (workload bound seconds &optional quantum)
   (multiple-value-bind (frame oracle-size) (benchmark-frame workload)
+    (setf bound (or bound oracle-size))
     (setf *benchmark-job*
           (start-search frame (make-language (gf 5) (schema-inputs (frame-schema frame)))
                         :call-id :scaling))
@@ -96,7 +97,7 @@
                 (/ allocated 1048576d0) (/ (- (sb-kernel:dynamic-usage) initial-live) 1048576d0)
                 (if peak-rss (/ peak-rss 1024d0) -1d0))
         (when best
-          (format t "  best_bytes=~D first_solution_work=~D model=~S~%"
+          (format t "  best_bits=~D first_solution_work=~D model=~S~%"
                   (candidate-size best)
                   (reduce #'min (search-job-results job) :key #'candidate-discovery-work)
                   (candidate-expression best)))
@@ -143,23 +144,23 @@
 
 (let* ((arguments (rest sb-ext:*posix-argv*))
        (mode (or (first arguments) "search")))
-  (format t "SBCL ~A; seed=none; serial baseline, GF(5) +/* with two inputs.~%"
+  (format t "Encoding 3, tariff 2; SBCL ~A; seed=none; serial baseline, GF(5) +/* with two inputs.~%"
           (lisp-implementation-version))
   (cond
     ((string= mode "search")
      (let ((workload (or (second arguments) "linear"))
-           (bound (parse-integer (or (third arguments) "101")))
+           (bound (when (third arguments) (parse-integer (third arguments))))
            (seconds (parse-integer (or (fourth arguments) "30")))
            (quantum (if (equal (fifth arguments) "unit") 1 nil)))
-       (assert (and (>= bound 0) (> seconds 0)))
+       (assert (and (or (null bound) (>= bound 0)) (> seconds 0)))
        (assert (member (fifth arguments) '(nil "unit" "batch" "profile") :test #'equal))
        (if (member "profile" (nthcdr 4 arguments) :test #'equal)
            (progn
              (require :sb-sprof)
              ;; Read only after the profiler package has been loaded.
              (eval (read-from-string
-                    (format nil "(sb-sprof:with-profiling (:mode :cpu :sample-interval 0.002 :max-samples 2000 :reset t :report :flat) (benchmark-search ~S ~D ~D ~S))"
+                    (format nil "(sb-sprof:with-profiling (:mode :cpu :sample-interval 0.002 :max-samples 2000 :reset t :report :flat) (benchmark-search ~S ~S ~D ~S))"
                             workload bound seconds quantum))))
            (benchmark-search workload bound seconds quantum))))
     ((string= mode "meter") (benchmark-meter))
-    (t (error "Use search [linear|quadratic|quartic] [byte-bound] [wall-seconds] [unit|batch] [profile], or meter"))))
+    (t (error "Use search [linear|quadratic|quartic] [bit-bound] [wall-seconds] [unit|batch] [profile], or meter"))))
