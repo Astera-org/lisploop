@@ -21,7 +21,7 @@ reflect the kernel at generation time; rerun after another agent changes it.
 Choose an experiment and scope at the top. Two experiments cover GF(5)
 and exact integers using the kernel's single binary encoding. The 11 scopes include
 discovery, fresh-data replay, changed-transition counterexamples, accidental
-agreement, expanded-input replay, and the extended GF(5) bound of 52 bits.
+agreement, expanded-input replay, and the extended GF(5) bound of 54 bits.
 
 - Transition diagrams show the recorded state paths and the selected observable.
   Equal outputs share a color; red arrows identify failing pairs.
@@ -46,7 +46,7 @@ are exported as joint values, without splitting correlated components.
 Both experiments allow all domain literals, as in `results.md`. Description length
 is the exact bit length of the standalone binary packet: schema header plus body.
 The inspector displays that breakdown and the actual encoded bits. Work follows
-the separate structural tariff. Encoding version 3 and tariff version 2 are saved
+the separate structural tariff. Encoding version 4 and tariff version 3 are saved
 with every scope; they identify the current specification, not selectable models.
 Text displays the AST and does not determine its price. A replay checks only its
 explicit expression list; its bound is not grammar exhaustion. Exporting and

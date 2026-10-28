@@ -455,6 +455,7 @@ For this finite shape these orderings select the LGG; no general optimality is c
 
 (load (merge-pathnames "observation-tests.lisp" *load-truename*))
 (load (merge-pathnames "codec-tests.lisp" *load-truename*))
+(load (merge-pathnames "law-tests.lisp" *load-truename*))
 
 (let ((start (get-internal-real-time)))
   (dolist (test (reverse *tests*))

@@ -31,5 +31,13 @@
    #:observation-bucket-scope #:observation-bucket-type #:observation-bucket-values
    #:observation-bucket-members #:observation-bucket-invariant-p
    #:observation-bucket-informative-p #:observation-bucket-counterexample
-   #:match-pattern #:anti-unify))
+   #:match-pattern #:anti-unify
+   #:make-law #:law-domain #:law-inputs #:law-equation #:law-guard #:law-origin #:law-statement
+   #:propose-observed-laws #:retype-law #:start-law-validation #:resume-law-validation
+   #:law-validation-law #:law-validation-status #:law-validation-ledger
+   #:law-validation-counterexample #:law-validation-certificate
+   #:law-certificate-evidence #:law-certificate-assignments #:law-certificate-active #:law-certificate-work
+   #:prepare-rewrite-library #:start-rewriting #:advance-rewriting
+   #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
+   #:search-job-reused-rejections))
 (in-package #:lisploop)

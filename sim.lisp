@@ -1,6 +1,7 @@
 (in-package #:lisploop)
 
-(defconstant +tariff-version+ 2)
+(defconstant +tariff-version+ 3)
+(defconstant +simulator-version+ 2)
 
 (defstruct ledger (total 0) (counts nil))
 
@@ -60,24 +61,38 @@
       1
       (let ((a (integer-width (first values)))
             (b (integer-width (second values))))
-        (+ (if (eq name :*) (* a b) (max a b))
-           (if (consp type) (expt (integer-length (second type)) 2) 0)))))
+        (+ (if (member name '(:* :/)) (* a b) (max a b))
+           (if (consp type)
+               (expt (integer-length (second type)) (if (eq name :/) 3 2)) 0)))))
 
 (defun primitive-cost (operator values)
   (let ((name (second operator)) (type (third operator)))
     (case name
-      ((:+ :*) (arithmetic-cost name type values))
+      ((:+ :* :- :/) (arithmetic-cost name type values))
       (otherwise
        (1+ (loop for value in values
                  for input-type in (second (operator-type operator))
                  sum (value-work value input-type)))))))
 
+(defun field-reciprocal (value modulus)
+  "Extended Euclid inside the supplied division primitive, not learned inversion."
+  (when (zerop value) (error "Division by zero"))
+  (loop with r = modulus with next-r = value with s = 0 with next-s = 1
+        while (plusp next-r) do
+          (let ((q (truncate r next-r)))
+            (psetf r next-r next-r (- r (* q next-r))
+                   s next-s next-s (- s (* q next-s))))
+        finally (return (mod s modulus))))
+
 (defun execute-primitive (operator values)
   (let ((name (second operator)) (type (third operator)))
     (case name
-      ((:+ :*)
-       (let ((result (if (eq name :+) (+ (first values) (second values))
-                         (* (first values) (second values)))))
+      ((:+ :* :- :/)
+       (let* ((a (first values)) (b (second values))
+              (result (ecase name
+                        (:+ (+ a b)) (:* (* a b)) (:- (- a b))
+                        (:/ (if (eq type :int) (truncate a b)
+                                (* a (field-reciprocal b (second type))))))))
          (if (eq type :int) result (mod result (second type)))))
       (:= (equal (first values) (second values)))
       (:tuple values)
@@ -100,6 +115,7 @@
     (:eval (let ((expression (second task)))
              (if (eq (first expression) :lit)
                  (1+ (value-work (third expression) (second expression))) 1)))
+    (:branch 1)
     (:apply (primitive-cost (second task)
                             (reverse (subseq (evaluation-stack state) 0 (third task)))))))
 
@@ -121,10 +137,18 @@
             (unless binding (error "Unavailable variable ~S" (second expression)))
             (push (cdr binding) (evaluation-stack state))))
          (:app
-          (push (list :apply (second expression) (length (third expression)))
-                (evaluation-tasks state))
-          (dolist (argument (reverse (third expression)))
-            (push (list :eval argument) (evaluation-tasks state)))))))
+          (if (eq :if (second (second expression)))
+              (destructuring-bind (condition yes no) (third expression)
+                (push (list :branch yes no) (evaluation-tasks state))
+                (push (list :eval condition) (evaluation-tasks state)))
+              (progn
+                (push (list :apply (second expression) (length (third expression)))
+                      (evaluation-tasks state))
+                (dolist (argument (reverse (third expression)))
+                  (push (list :eval argument) (evaluation-tasks state)))))))))
+    (:branch
+     (push (list :eval (if (pop (evaluation-stack state)) (second task) (third task)))
+           (evaluation-tasks state)))
     (:apply
      (let* ((values (loop repeat (third task) collect (pop (evaluation-stack state))))
             (result (execute-primitive (second task) (reverse values))))

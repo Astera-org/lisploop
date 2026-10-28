@@ -1,6 +1,6 @@
 ;;; Bounded scaling measurements; the synthesis kernel is not modified.
 ;;; Fresh process per search case, for independent process peak-RSS measurements:
-;;;   sbcl --dynamic-space-size 2048 --script benchmark.lisp search quadratic 66 30
+;;;   sbcl --dynamic-space-size 2048 --script benchmark.lisp search quadratic 70 30
 ;;; Arguments: workload (linear/quadratic/quartic), packet-bit bound, wall seconds.
 ;;; Optional fifth argument "unit" retains one-unit dispatch as a reference;
 ;;; default "batch" uses batched search. "profile" enables a separate CPU profile.
@@ -144,8 +144,8 @@
 
 (let* ((arguments (rest sb-ext:*posix-argv*))
        (mode (or (first arguments) "search")))
-  (format t "Encoding 3, tariff 2; SBCL ~A; seed=none; serial baseline, GF(5) +/* with two inputs.~%"
-          (lisp-implementation-version))
+  (format t "Encoding ~D, tariff ~D; SBCL ~A; seed=none; serial baseline, GF(5) +/* with two inputs.~%"
+          +encoding-version+ +tariff-version+ (lisp-implementation-version))
   (cond
     ((string= mode "search")
      (let ((workload (or (second arguments) "linear"))

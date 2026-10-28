@@ -10,11 +10,11 @@
 
 (deftest codec-roundtrip-and-boundaries
   (let* ((inputs '((0 . :int) (1 . :int))) (a (var 0 :int)) (b (var 1 :int)))
-    (check (= 22 (header-size inputs :int)))
-    (check (= 33 (description-size (app (op :+ :int) a b) inputs)))
-    (check (equalp #*10000000001 (subseq (encode-model (app (op :+ :int) a b) inputs) 22)))
+    (check (= 23 (header-size inputs :int)))
+    (check (= 35 (description-size (app (op :+ :int) a b) inputs)))
+    (check (equalp #*100000000001 (subseq (encode-model (app (op :+ :int) a b) inputs) 23)))
     (loop for n in '(0 1 -1 2 -2 3 -3 4 -4) for size in '(3 6 6 7 7 7 7 10 10) do
-      (check (= size (- (description-size (lit :int n) inputs) 22))))
+      (check (= size (- (description-size (lit :int n) inputs) 23))))
     (dolist (n (append '(0 -1 1) (loop for width in '(7 8 31 32 256 257) append
                                  (list (1- (ash 1 width)) (ash 1 width) (- (ash 1 width))))))
       (check-codec-roundtrip (lit :int n) inputs))
@@ -37,7 +37,7 @@
     (setf (subseq bits header (+ header 2)) #*11)
     (raises (decode-model bits)))
   (let ((bits (encode-model (lit :int 0))))
-    (setf (aref bits 3) 0)
+    (setf (aref bits 0) 1)
     (raises (decode-model bits)))
   ;; Three GF(5) payload bits have unused values 5..7.
   (let ((bits (encode-model (lit (gf 5) 0) nil)))
@@ -56,10 +56,10 @@
   (dolist (domain (list :int (gf 2) (gf 5)))
     (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
            (language (make-language domain inputs))
-           (bound (+ (header-size inputs domain) (if (eq domain :int) 11 21)))
+           (bound (+ (header-size inputs domain) (if (eq domain :int) 12 23)))
            (leaves (append (list (var 0 domain) (var 1 domain))
-                           (loop for n from (if (eq domain :int) -15 0)
-                                 to (if (eq domain :int) 15 (1- (second domain))) collect (lit domain n))))
+                           (loop for n from (if (eq domain :int) -31 0)
+                                 to (if (eq domain :int) 31 (1- (second domain))) collect (lit domain n))))
            (reference (remove-if (lambda (expression) (> (description-size expression inputs) bound))
                                   (loop for count from 0 to (if (eq domain :int) 1 2) append
                                     (reference-node-trees leaves (language-operators language) count))))
@@ -78,7 +78,7 @@
                              (integer-reference-value expression (mapcar #'cons '(0 1) (row-known row)))
                              (reference-value expression (mapcar #'cons '(0 1) (row-known row))
                                               (second domain)))))))
-      (when (eq domain :int) (check (= 51 (length reference)))))))
+      (when (eq domain :int) (check (= 83 (length reference)))))))
 
 (deftest codec-literal-ranges-and-vocabulary
   (let ((header (header-size nil :int)))
@@ -132,8 +132,8 @@
           (check (= +encoding-version+ (getf (message-evidence message) :encoding-version)))
           (check (= +tariff-version+ (getf (message-evidence message) :tariff-version))))
         (check (null (observation-job-records job)))
-        (resume-observation-search job (+ header 11) 100000)
-        (check (= 51 (length (observation-job-records job))))
+        (resume-observation-search job (+ header 12) 100000)
+        (check (= 83 (length (observation-job-records job))))
         (push (cdr (assoc :enumeration (ledger-counts (observation-job-ledger job)))) counts)))
     (check (= (first counts) (second counts)))))
 

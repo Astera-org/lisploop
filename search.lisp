@@ -1,32 +1,40 @@
 (in-package #:lisploop)
 
 (defstruct (language (:constructor %make-language))
-  domain inputs operators (literals :all) (version 1))
+  domain inputs operators (literals :all) (version 2))
 
 (defun make-language (domain inputs &key (operators (list (op :+ domain) (op :* domain)))
                                         (literals :all))
-  "The baseline grammar: declared variables, domain literals, binary primitives.
+  "Typed grammar with arithmetic, equality and lazy conditional primitives.
 LITERALS defaults to :ALL, or declares a finite vocabulary without bounding values.
-No observational deduplication, algebraic rewrites, lookup proposals, or sketches."
+The default vocabulary stays +/*. Optional checked laws belong to the search job."
   (assert (or (eq domain :int) (and (consp domain) (eq (first domain) :gf))))
-  (assert (every (lambda (input) (equal domain (cdr input))) inputs))
-  (assert (every (lambda (operator) (and (member (second operator) '(:+ :*))
-                                        (equal domain (third operator)))) operators))
+  (assert (every (lambda (input) (member (cdr input) (list domain :bool) :test #'equal)) inputs))
+  (assert (every (lambda (operator)
+                   (and (member (second operator) '(:+ :* :- :/ := :if))
+                        (every (lambda (type) (member type (list domain :bool) :test #'equal))
+                               (cons (third (operator-type operator))
+                                     (second (operator-type operator)))))) operators))
   (assert (or (eq literals :all)
               (and (listp literals) (every (lambda (value) (value-p value domain)) literals))))
-  (dolist (operator operators)
-    (assert (= 2 (length (second (operator-type operator))))))
   (%make-language :domain (copy-tree domain) :inputs (copy-tree inputs)
                   :operators (remove-duplicates (copy-tree operators) :test #'equal)
                   :literals (if (eq literals :all) :all
                                 (remove-duplicates (copy-list literals) :from-end t))))
 
-(defun language-header-size (language)
-  (header-size (language-inputs language) (language-domain language)))
+(defun language-header-size (language &optional (target (language-domain language)))
+  (header-size (language-inputs language) target))
+
+(defun language-booleans-p (language)
+  (or (find :bool (language-inputs language) :key #'cdr)
+      (some (lambda (operator)
+              (member :bool (cons (third (operator-type operator))
+                                 (second (operator-type operator)))))
+            (language-operators language))))
 
 (defstruct (enumerator (:constructor make-enumerator (language)))
   language (size 1) (phase :variables) (cursor 0) (literal-pass 0) (literal-index 0)
-  literal-next literal-end (operator-index 0) (split 1) (left-index 0) (right-index 0)
+  literal-next literal-end (boolean-index 0) (operator-index 0) sizes indices
   (buckets (make-hash-table :test #'equal)))
 
 (defun syntax-bucket (enumerator type size)
@@ -65,9 +73,32 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
         (enumerator-literal-index enumerator) 0
         (enumerator-literal-next enumerator) nil
         (enumerator-operator-index enumerator) 0
-        (enumerator-split enumerator) 1
-        (enumerator-left-index enumerator) 0
-        (enumerator-right-index enumerator) 0))
+        (enumerator-boolean-index enumerator) 0
+        (enumerator-sizes enumerator) nil
+        (enumerator-indices enumerator) nil))
+
+(defun first-composition (total arity)
+  (when (>= total arity)
+    (append (make-list (1- arity) :initial-element 1) (list (- total (1- arity))))))
+
+(defun next-composition (sizes)
+  "Next positive composition of the same total, in lexicographic order."
+  (loop for i downfrom (- (length sizes) 2) to 0
+        for tail = (nthcdr (1+ i) sizes)
+        for total = (reduce #'+ tail)
+        when (> total (length tail)) do
+          (return (append (subseq sizes 0 i) (list (1+ (nth i sizes)))
+                          (make-list (1- (length tail)) :initial-element 1)
+                          (list (- total (length tail)))))))
+
+(defun advance-application-cursor (enumerator buckets)
+  (let ((indices (enumerator-indices enumerator)))
+    (loop for i downfrom (1- (length indices)) to 0 do
+      (incf (nth i indices))
+      (when (< (nth i indices) (length (nth i buckets))) (return-from advance-application-cursor))
+      (setf (nth i indices) 0)))
+  (setf (enumerator-sizes enumerator) (next-composition (enumerator-sizes enumerator)))
+  (unless (enumerator-sizes enumerator) (incf (enumerator-operator-index enumerator))))
 
 (defun enumeration-step (enumerator)
   "One cursor operation; return (candidate, event). No eager Cartesian products."
@@ -91,10 +122,10 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                  (incf (enumerator-literal-index enumerator))
                  (when (= size (body-size expression (language-inputs language)))
                    (return-from enumeration-step (values expression :candidate))))
-               (setf (enumerator-phase enumerator) :applications)))
+               (setf (enumerator-phase enumerator) :booleans)))
          (return-from enumeration-step (values nil :progress)))
        (if (>= (enumerator-literal-pass enumerator) 2)
-           (setf (enumerator-phase enumerator) :applications)
+           (setf (enumerator-phase enumerator) :booleans)
            (progn
              (unless (enumerator-literal-next enumerator)
                (multiple-value-bind (lo hi)
@@ -110,35 +141,35 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
                      (values (lit (language-domain language)
                                   (if (= 1 (enumerator-literal-pass enumerator)) (- value) value))
                              :candidate)))))))
+      (:booleans
+       (if (and (= size 3) (language-booleans-p language)
+                (< (enumerator-boolean-index enumerator) 2))
+           (return-from enumeration-step
+             (values (lit :bool (= 1 (prog1 (enumerator-boolean-index enumerator)
+                                      (incf (enumerator-boolean-index enumerator))))) :candidate))
+           (setf (enumerator-phase enumerator) :applications)))
       (:applications
        (let ((operator (nth (enumerator-operator-index enumerator) (language-operators language))))
          (if (null operator)
              (setf (enumerator-phase enumerator) :finish)
-             (let* ((types (second (operator-type operator)))
-                    (overhead 5) ; two-bit application tag and three-bit opcode
-                    (left-size (enumerator-split enumerator))
-                    (right-size (- size overhead left-size)))
-               (if (< right-size 1)
-                   (setf (enumerator-operator-index enumerator)
-                         (1+ (enumerator-operator-index enumerator))
-                         (enumerator-split enumerator) 1
-                         (enumerator-left-index enumerator) 0
-                         (enumerator-right-index enumerator) 0)
-                   (let ((left (syntax-bucket enumerator (first types) left-size))
-                         (right (syntax-bucket enumerator (second types) right-size)))
-                     (if (or (null left) (null right))
-                         (incf (enumerator-split enumerator))
-                         (let ((expression
-                                 (app operator
-                                      (aref left (enumerator-left-index enumerator))
-                                      (aref right (enumerator-right-index enumerator)))))
-                           (incf (enumerator-right-index enumerator))
-                           (when (= (enumerator-right-index enumerator) (length right))
-                             (setf (enumerator-right-index enumerator) 0)
-                             (incf (enumerator-left-index enumerator))
-                             (when (= (enumerator-left-index enumerator) (length left))
-                               (setf (enumerator-left-index enumerator) 0)
-                               (incf (enumerator-split enumerator))))
+             (let ((types (second (operator-type operator))))
+               (unless (enumerator-sizes enumerator)
+                 (setf (enumerator-sizes enumerator)
+                       (first-composition (- size (application-overhead operator)) (length types))
+                       (enumerator-indices enumerator) (make-list (length types) :initial-element 0)))
+               (if (null (enumerator-sizes enumerator))
+                   (incf (enumerator-operator-index enumerator))
+                   (let ((buckets (mapcar (lambda (type bits) (syntax-bucket enumerator type bits))
+                                          types (enumerator-sizes enumerator))))
+                     (if (some #'null buckets)
+                         (progn
+                           (setf (enumerator-sizes enumerator)
+                                 (next-composition (enumerator-sizes enumerator)))
+                           (unless (enumerator-sizes enumerator)
+                             (incf (enumerator-operator-index enumerator))))
+                         (let ((expression (apply #'app operator
+                                                  (mapcar #'aref buckets (enumerator-indices enumerator)))))
+                           (advance-application-cursor enumerator buckets)
                            (return-from enumeration-step (values expression :candidate))))))))))
       (:finish
        (reset-enumerator-bound enumerator)
@@ -151,20 +182,31 @@ No observational deduplication, algebraic rewrites, lookup proposals, or sketche
   call-id frame language enumerator (ledger (make-ledger))
   (phase :enumerate) expression (construction-debt 0) rows evaluation predicted
   (run-work 0) (completed-bound 0) (results nil) best (run-weight 0)
-  (rejected 0) (messages nil))
+  (rejected 0) (messages nil) library rewriting normal-form
+  (reused-rejections 0) (rejection-cache (make-hash-table :test #'equal)))
 (defvar *next-call-id* 0)
 
-(defun start-search (frame language &key (call-id (incf *next-call-id*)) (run-weight 0))
+(defun start-search (frame language &key (call-id (incf *next-call-id*)) (run-weight 0) laws)
   (assert (equal (schema-inputs (frame-schema frame)) (language-inputs language)))
   (assert (and (realp run-weight) (>= run-weight 0)))
-  (%make-search-job :call-id call-id :frame frame :language language
-                    :enumerator (make-enumerator language) :run-weight run-weight
-                    :completed-bound (language-header-size language)))
+  (let* ((library (when laws (prepare-rewrite-library laws (language-domain language))))
+         (job (%make-search-job :call-id call-id :frame frame :language language
+                                :enumerator (make-enumerator language) :run-weight run-weight :library library
+                                :completed-bound (language-header-size language (schema-target (frame-schema frame))))))
+    (when library
+      (setf (search-job-phase job) :rule-setup
+            (search-job-construction-debt job) (rewrite-library-setup-work library)))
+    job))
 
 (defun candidate-score (candidate run-weight)
   (+ (candidate-size candidate) (* run-weight (candidate-run-work candidate))))
 
-(defun reject-candidate (job)
+(defun reject-candidate (job &optional witnessed-p)
+  ;; Only a successful prediction rejected by its requirement is reusable.
+  ;; Errors are not equality evidence. The cache belongs to this exact frame/job.
+  (when (and witnessed-p (search-job-library job))
+    (setf (gethash (search-job-normal-form job) (search-job-rejection-cache job))
+          (list :row (row-key (first (search-job-rows job))) :value (search-job-predicted job))))
   (incf (search-job-rejected job))
   (setf (search-job-phase job) :enumerate))
 
@@ -200,6 +242,10 @@ remains available for diagnostics. Any unpaid work stays in the continuation."
   (let ((ledger (search-job-ledger job))
         (schema (frame-schema (search-job-frame job))))
     (ecase (search-job-phase job)
+      (:rule-setup
+       (let ((spent (min budget (search-job-construction-debt job))))
+         (charge ledger :rule-setup spent) (decf (search-job-construction-debt job) spent))
+       (when (zerop (search-job-construction-debt job)) (setf (search-job-phase job) :enumerate)))
       (:enumerate
        (charge ledger :enumeration)
        (multiple-value-bind (expression event) (enumeration-step (search-job-enumerator job))
@@ -210,7 +256,7 @@ remains available for diagnostics. Any unpaid work stays in the continuation."
                   (search-job-phase job) :construct))
            (:bound
             (setf (search-job-completed-bound job)
-                  (+ (language-header-size (search-job-language job))
+                  (+ (language-header-size (search-job-language job) (schema-target schema))
                      (1- (enumerator-size (search-job-enumerator job)))))))))
       (:construct
        (let ((spent (min budget (search-job-construction-debt job))))
@@ -221,8 +267,26 @@ remains available for diagnostics. Any unpaid work stays in the continuation."
            (if (equal type (schema-target schema))
                (setf (search-job-rows job) (frame-rows (search-job-frame job))
                      (search-job-run-work job) 0
-                     (search-job-phase job) :row)
+                     (search-job-phase job) (if (search-job-library job) :rewrite-start :row))
                (setf (search-job-phase job) :enumerate)))))
+      (:rewrite-start
+       (charge ledger :scheduling)
+       (setf (search-job-rewriting job)
+             (start-rewriting (search-job-expression job) (schema-inputs schema) (search-job-library job))
+             (search-job-phase job) :rewrite))
+      (:rewrite
+       (let ((state (advance-rewriting (search-job-rewriting job) budget ledger)))
+         (when (eq :complete (rewriting-status state))
+           (setf (search-job-normal-form job) (rewriting-value state)
+                 (search-job-construction-debt job) (syntax-work (rewriting-value state))
+                 (search-job-phase job) :reuse))))
+      (:reuse
+       (let ((spent (min budget (search-job-construction-debt job))))
+         (charge ledger :equality-cache spent) (decf (search-job-construction-debt job) spent))
+       (when (zerop (search-job-construction-debt job))
+         (if (gethash (search-job-normal-form job) (search-job-rejection-cache job))
+             (progn (incf (search-job-reused-rejections job)) (reject-candidate job))
+             (setf (search-job-phase job) :row))))
       (:row
        (charge ledger :scheduling)
        (if (null (search-job-rows job))
@@ -253,7 +317,7 @@ remains available for diagnostics. Any unpaid work stays in the continuation."
            (:value
             (if (eq t (evaluation-value state))
                 (progn (pop (search-job-rows job)) (setf (search-job-phase job) :row))
-                (reject-candidate job)))))))))
+                (reject-candidate job t)))))))))
 
 (defun resume-search (job description-limit work-limit &key quantum)
   "Absolute cumulative work limit and total packet-bit bound. Return a scoped

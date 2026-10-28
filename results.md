@@ -1,8 +1,8 @@
 # lisploop --- results
 
-27 October 2026. Current implementation of milestones 1 and 2 in [plan 4](plan4.md).
-There is one fixed binary description encoding (version 3) and one structural
-work tariff (version 2). Their version numbers identify the specification; they
+27 October 2026. Current implementation of milestones 1--3 in [plan 4](plan4.md).
+There is one fixed binary description encoding (version 4) and one structural
+work tariff (version 3), with simulator semantics version 2. Their version numbers identify the specification; they
 are not selectable alternatives. Earlier measurements and explanations remain in
 [the historical results](results-history.md), tied to Git revision `f6bf54ef`.
 
@@ -10,6 +10,7 @@ are not selectable alternatives. Earlier measurements and explanations remain in
 make test                       # contracts, independent references, codec and work checks
 make m1                         # GF(5) and integer synthesis experiments
 make m2                         # GF(5) and integer observation experiments
+make m3                         # law discovery, validation, guarded rewriting, search comparison
 make results.pdf                # Pandoc / LaTeX report
 make benchmark                  # scaling and dispatch measurements under current accounting
 sbcl --load load.lisp            # interactive inspection
@@ -18,9 +19,10 @@ sbcl --load load.lisp            # interactive inspection
 Tested with SBCL 2.6.4; no external Lisp libraries are required. Scripts load
 relative to their own location. The default Make target builds the planning
 documents, this report, and the historical report with the same Pandoc settings.
-`make m1` and `make m2` write the current traces to
+`make m1`, `make m2`, and `make m3` write the current traces to
 [milestone1.txt](intermediate_results/milestone1.txt) and
-[milestone2.txt](intermediate_results/milestone2.txt).
+[milestone2.txt](intermediate_results/milestone2.txt), and
+[milestone3.txt](intermediate_results/milestone3.txt).
 
 ## One accounting specification
 
@@ -61,6 +63,13 @@ remain distinct.
 Types include integers, Booleans, indices, prime fields, tuples, and finite
 sequences. Integer arithmetic is exact with no fixed bit-width limit. Field values
 are canonical residues and field arithmetic reduces modulo the declared prime.
+Arithmetic includes `+`, `*`, `-`, and `/`. Integer division truncates toward zero:
+`5/2=2`, `-5/2=-2`, and `1/2=0`; it never creates a rational value. Field division
+multiplies by the denominator's modular reciprocal. Both reject a zero denominator.
+The typed `if(condition, then, else)` evaluates only the selected branch, so
+`if(x=0, 0, 1/x)` is defined everywhere. Both branches must still typecheck.
+Other arithmetic is eager: `0*(1/0)` is an error, not zero. The DSL has no exception
+handler; conditionals avoid a failing operation before it executes.
 Expressions are typed literal, variable, or application trees. They contain no
 host callbacks or pointers to the observation store.
 
@@ -72,8 +81,8 @@ $m$ inputs; a single available input needs zero slot bits.
 
 Every expression uses the same two-bit constructor tags: `00` for a variable,
 `01` for a literal, and `10` for an application (`11` is reserved). An application
-then uses a fixed three-bit opcode: `+`, `*`, equality, tuple construction,
-membership, lookup, or gather. Arity and operand types follow from the operator
+then uses a fixed four-bit opcode: `+`, `*`, equality, tuple construction,
+membership, lookup, gather, `-`, `/`, or `if`. Arity and operand types follow from the operator
 and expected type; otherwise the necessary operand type is encoded explicitly.
 There is no special arithmetic profile.
 
@@ -84,7 +93,7 @@ preceded by one fewer zero than its own bit length, then the lower $L-1$ bits of
 $z$. This supplies both payload and boundary information. A field value instead
 uses $\lceil\log_2 p\rceil$ bits; unused bit patterns are rejected.
 
-The header encodes version `3`, input count plus one, each input ID plus one,
+The header encodes version `4`, input count plus one, each input ID plus one,
 the input types, and the result type. Positive counts use the same self-delimiting
 code. Three-bit type tags identify integers, Booleans, indices, fields, tuples,
 and sequences; moduli, tuple arities, and component types follow where needed.
@@ -99,20 +108,19 @@ cost one bit; tuple values concatenate their typed components.
 \small
 ```
 
-**Concrete costs with two integer inputs `a`, `b`.** The header costs 22 bits.
+**Concrete costs with two integer inputs `a`, `b`.** The header costs 23 bits.
 Each variable body costs $2+1=3$ bits. Addition costs a two-bit application tag
-and a three-bit opcode, so
+and a four-bit opcode, so
 
-$$S(a+b)=22+5+3+3=33\text{ bits}.$$
+$$S(a+b)=23+6+3+3=35\text{ bits}.$$
 
 Literal bodies cost 3 bits for `0`, 6 for `±1`, 7 for `±2,±3`, and 10 for
-`±4,...,±7`. Exactly 15 integer literals are strictly cheaper than the 11-bit
-body of `a+b`; another 16 tie with it. The integer vocabulary remains unrestricted.
-The change from the pilot's 8-bit body is the explicit operator code.
+`±4,...,±7`. Exactly 31 integer literals are strictly cheaper than the 12-bit
+body of `a+b`; another 32 tie with it. The integer vocabulary remains unrestricted.
 
-For GF(5), the corresponding header is 37 bits; a field literal body costs
-$2+3=5$ bits. Thus field `a+b` costs $37+11=48$ bits, and `a+(b+b)` costs
-$37+19=56$ bits. Encoding size and execution work are separate quantities.
+For GF(5), the corresponding header is 38 bits; a field literal body costs
+$2+3=5$ bits. Thus field `a+b` costs $38+12=50$ bits, and `a+(b+b)` costs
+$38+21=59$ bits. Encoding size and execution work are separate quantities.
 
 ```{=latex}
 \end{minipage}}
@@ -125,6 +133,11 @@ bit vector; `decode-model` returns the reconstructed expression and input schema
 Malformed, truncated, trailing, and unsupported-version packets are rejected.
 There is no legacy decoding or cost-model switch. Byte-file padding is not part
 of the current in-memory packet format.
+
+Version 4 widens the opcode because ten primitives no longer fit in three bits;
+the version field itself grows by one bit. All M1/M2 measurements below were rerun.
+This changes the relative placement of expressions and unrestricted integer literals,
+even though addition and multiplication retain their previous execution costs.
 
 ### Structural work tariff
 
@@ -140,9 +153,12 @@ raw payload widths for literals, variable IDs, and moduli. Construction, copying
 composition, pullback construction, and validation use this structural measure.
 Validation additionally charges the supplied input IDs, types, and values.
 Evaluation charges one per visited expression node plus literal payload work.
-Integer addition costs the larger operand magnitude width; multiplication costs
-their width product. Fixed fields with primes at most 257 retain a unit arithmetic
-tariff; larger fields include the declared bit-sensitive reduction charge.
+Integer addition and subtraction cost the larger operand magnitude width;
+multiplication and truncating division cost their width product. Fixed fields with
+primes at most 257 retain a unit arithmetic tariff. For larger fields, division adds
+the cube of the modulus width for extended Euclid; other arithmetic adds its square
+for reduction. A conditional branch dispatch costs one unit and does not charge
+execution of the unselected branch; validation still visits its syntax.
 Other primitives charge their operand value visits and payloads.
 
 Observation setup and indexing charge input/output value visits and pair/start
@@ -155,11 +171,16 @@ work, including isolated codec checks, are outside the search ledger.
 
 ## Search, interruption, and reuse
 
-`make-language` declares the domain, inputs, and binary arithmetic primitives.
+`make-language` declares the numeric domain, typed inputs, and primitive vocabulary.
 It admits all domain literals by default; a finite `:literals` vocabulary remains
 available for explicitly constrained tasks, but the milestone runs use all literals.
-The current enumerator covers homogeneous `+`/`*` arithmetic; the codec and evaluator
-also support the richer executable DSL used by requirements and reconstruction.
+The default vocabulary remains `+`/`*` for the M1/M2 baseline. Explicit grammars may
+also include `-`, `/`, equality, and numeric or Boolean `if`. Boolean literals are
+admitted when the grammar uses Booleans. Typed size partitions and lazy Cartesian
+cursors handle both binary and ternary operators. Numeric and Boolean intermediates
+share the syntax index; the frame's target type determines eligible root programs
+and the header used for the bound. Lookup and sequence reconstruction remain
+available in the DSL but outside this enumerated grammar.
 
 Search enumerates increasing **body-bit** sizes and retains every syntax tree in
 buckets indexed by type and body size. It derives exact signed-integer payload
@@ -193,31 +214,31 @@ and occurrence-index residuals are encoded inside their reconstruction programs.
 ## Milestone 1: synthesis
 
 The simulator generates the complete GF(5) table for `y=a+2*b`; only the declared
-input/output frame enters search. The search completes 48 bits without a predictor,
-then extends to 58 bits, the encoded size of the fixture oracle. It finds
-`a+(b+b)` at 56 bits, along with nine other valid formulas. All 25 inputs pass
+input/output frame enters search. The search completes 50 bits without a predictor,
+then extends to 61 bits, the encoded size of the fixture oracle. It finds
+`a+(b+b)` at 59 bits, along with nine other valid formulas. All 25 inputs pass
 independent decoding and replay. The supplied pullback control discovers `b+b`
 from the child requirement `a+z=y`, then reconstructs and checks the parent.
 Contradictory singleton outputs for identical inputs yield no candidate.
 
 | GF(5) representation | Total bits | Execution work on 25 inputs |
 |---|---:|---:|
-| Discovered `a+(b+b)` | 56 | 1,375 |
-| Encoded executable lookup | 312 | 28,750 |
-| Literal ordered target sequence | 102 | Different whole-object task |
+| Discovered `a+(b+b)` | 59 | 1,375 |
+| Encoded executable lookup | 315 | 28,750 |
+| Literal ordered target sequence | 103 | Different whole-object task |
 
 The function and ordered sequence remain different tasks. A full compression
 comparison must specify the input grid and ordering. The formula costs fewer bits
 than either displayed baseline, but this alone is not a complete store-compression
-claim. Discovery examines 649 expressions and costs **182,138 work units**; the
-first formula is accepted at 22,686. Original acquisition, baseline construction,
+claim. Discovery examines 649 expressions and costs **182,181 work units**; the
+first formula is accepted at 22,727. Original acquisition, baseline construction,
 and independent replay add 35,031 units. The supplied-child control has separate
-ledgers: 3,879 for child search and 4,230 for pullback, composition, and parent replay.
+ledgers: 3,892 for child search and 4,230 for pullback, composition, and parent replay.
 
 The integer counterpart uses all 25 inputs in $[-2,2]^2$ and unrestricted signed
-literals. It completes a 41-bit bound, retaining 2,715 expressions and six valid
-formulas. `a+(b+b)` costs 41 bits and is first accepted at 247,862 work units;
-complete discovery costs **301,343**. It passes six fresh signed pairs around
+literals. It completes a 44-bit bound, retaining 9,243 expressions and six valid
+formulas. `a+(b+b)` costs 44 bits and is first accepted at 1,018,877 work units;
+complete discovery costs **1,089,220**. It passes six fresh signed pairs around
 $2^{256}$, including cancellation and adjacent integers. Execution work is 862
 on the training rows and 6,342 on fresh rows. Original generation, orientation,
 and independent replay cost 3,185; the fresh-data stage costs 26,814. Integer
@@ -241,15 +262,15 @@ across starts. Constants satisfy invariance but fail the variation requirement.
 
 | Domain | Total bound | Expressions / buckets | Returned programs | Discovery work |
 |---|---:|---:|---|---:|
-| GF(5) | 48 bits | 15 / 13 | `a+b`, `b+a` | 13,004 |
-| Integers | 33 bits | 51 / 39 | `a+b`, `b+a` | 30,549 |
+| GF(5) | 50 bits | 15 / 13 | `a+b`, `b+a` | 13,016 |
+| Integers | 35 bits | 83 / 71 | `a+b`, `b+a` | 52,481 |
 
 Exactly one informative bucket contains both sums in each experiment. Field sums
 stay at 0 and 1 along the two trajectories; integer sums stay at $-2,0,5$.
 Execution work per sum is 800 over the field probes and 452 over the integer probes.
 Original transition generation and reorientation add 1,150 and 711 units, respectively.
-Extending the field bound to 52 bits includes all 105 single-application expressions
-and costs 117,988 units. This larger bound does not change the informative bucket.
+Extending the field bound to 54 bits includes all 105 single-application expressions
+and costs 117,996 units. This larger bound does not change the informative bucket.
 
 Both returned expressions pass six fresh transition pairs. Integer starts are
 $(N,-N)$, $(N+1,-N)$, $(-N,N)$, $(-N-1,N)$, $(N,N)$, and $(-N,-N)$, with
@@ -271,9 +292,106 @@ list. Its `:replay-complete` message covers only that list; `:bounded-exhaustion
 covers the declared grammar bound. Rechecks currently execute all rows again,
 without caching previous evaluation prefixes.
 
+## Milestone 3: checked equations and guarded rewriting
+
+M2 buckets now propose explicit DSL equations. Each bucket proposes every member's
+equality with its first enumerated representative, avoiding a quadratic all-pairs
+list. Proposals carry their observation scope and remain conjectures until checked.
+The law record contains the numeric domain, ordered input types, equation, and a
+Boolean guard. The equality relation is fixed typed-value equality. The complete
+statement is itself executable and encodable DSL data: `if(guard, lhs=rhs, true)`.
+Frame orchestration, validation, and matching remain in Lisp.
+
+`start-law-validation` independently checks every assignment of the declared finite
+input types. It evaluates the guard first, then the equation only when the guard is
+true. A false equation or evaluation error refutes the proposal and records the
+input assignment. `resume-law-validation` uses an absolute cumulative work ceiling;
+an interruption remains unknown. A completed sample check is only a conjecture,
+and a guard that is never true is marked vacuous. Only a completed exhaustive check
+with at least one active assignment issues a rewrite certificate. Certificates bind
+the exact equation, guard, schema, domain, equality, and implementation versions;
+changed syntax or a different domain cannot reuse them.
+
+The discovery experiment exhausts small `+`/`*` expressions on the complete field
+grid, then evaluates all proposed equations again in the validator:
+
+| Domain | Bound | Expressions / buckets | Checked laws | Discovery | Proposals | Validation |
+|---|---:|---:|---:|---:|---:|---:|
+| GF(5) | 54 bits | 105 / 25 | 80 | 143,894 | 3,038 | 222,298 |
+| GF(7) | 54 bits | 171 / 35 | 136 | 464,216 | 5,182 | 739,762 |
+
+Both runs recover `a+0=a` and `a+b=b+a`, with independent certificates covering
+25 and 49 assignments respectively. Under GF(5), their complete guarded statements
+cost 76 and 83 bits. Counts include ground constant equalities and syntactic
+specializations; they do not mean 80 or 136 independent algebraic principles.
+The supplied stress candidate `x*x*x*x*x=x` passes GF(5), fails GF(7) at `x=2`,
+and fails integer testing at `x=2`. Sample agreement of `x*x` and `x` on `{0,1}`
+never licenses universal substitution.
+
+### Safe application and search comparison
+
+`prepare-rewrite-library` accepts validated records and freezes typed matching
+patterns. `start-rewriting` and `advance-rewriting` expose a resumable normalizer.
+Every instantiated rewrite must strictly decrease packet length, or lexicographic
+packet bits at equal length. This prevents commutativity cycles without requiring
+confluence or an e-graph. The normalizer requires each substituted expression to
+be syntactically provably total. Thus `0*x=0` can simplify `0*(a+b)`, but cannot
+erase the error in `0*(1/0)`. Dropping an erroring conditional test is also blocked.
+This conservative check may decline safe rewrites; it never infers totality from
+the sampled input rows.
+
+Guards are discharged only by literal truth or an exact predicate established by
+the surrounding conditional branch. In a separate experiment, the grammar supplies
+`-`, `/`, and `*`, and the observations use nonzero GF(5) inputs. With a **supplied**
+nonzero guard, the buckets discover `x/x=1`. Exhaustive checking visits all five
+inputs and validates the equation on the four active ones. The unguarded equation
+fails at zero. A Boolean guard uses existing DSL constructs, for example
+`if(x=0, false, true)`; no additional negation primitive is needed. Consequently,
+
+```
+if(x=0, 0, x/x)  -->  if(x=0, 0, 1)
+```
+
+is checked, while an unguarded `x/x` remains unchanged. This experiment proposes
+86 laws from 114 expressions and 22 buckets. Observation, proposal construction,
+and validation cost 88,007 units; the displayed rewrite costs 1,078 units plus
+65 units for rule setup.
+Guard discovery is not claimed.
+
+The second synthesis run uses only the discovered GF(5) rule `a+0=a` on the original
+`y=a+2b` task. A normalized expression can reuse a previously witnessed rejection
+in the same frame. Errors do not enter this cache. Every original syntax tree still
+enters the enumeration buckets, and successful programs execute normally, retaining
+their own description length and execution work. This provides a concrete use of
+checked equality in search without conflating equivalent programs' execution costs.
+
+| Same 61-bit synthesis bound | Plain search | Checked-rule search |
+|---|---:|---:|
+| Retained trees / successful programs | 649 / 10 | 649 / 10 |
+| Reused rejections | 0 | 31 |
+| Evaluation plus requirement checking | 158,150 | 150,418 |
+| Total search work | 182,181 | 674,853 |
+
+**This first implementation does not yield a net search speedup.** It saves 7,732
+evaluation/checking units but spends 480,322 on rewriting and 19,536 on cache keys,
+plus setup and scheduling. Its rewrite tariff deliberately prepays a conservative
+structural bound: source `syntax-work` times the combined pattern, replacement, and
+guard `syntax-work`, plus one, per attempted rule; other rewrite tasks cost one.
+This covers matching, totality inspection, substitution, and ordering without hiding
+them outside the budget. GF(5) discovery, proposal construction, and all-law validation
+add 369,230 units, giving **1,044,083** for acquisition plus checked reuse. The GF(7)
+and guarded-law controls are separate experiments. Faster matching, cached normal
+forms, or a more precise metered traversal would need their own measured comparison;
+the current result establishes sound reuse, not amortized savings.
+
+Subtraction, division, equality, and conditionals are supplied primitives. In
+particular, the modular reciprocal inside division is host-implemented extended
+Euclid. This is not learned inversion, and milestone 4's bootstrap experiments
+have not been run. Their original `+`/`*` grammar remains available unchanged.
+
 ## Validation and implementation boundary
 
-The combined suite passes **30 tests and 8,803 checks**. It retains the earlier
+The combined suite passes **41 tests and 19,425 checks**. It retains the earlier
 frame, runtime, and observation controls while merging duplicate encoding-specific
 tests. Independent references enumerate tiny trees by application count and check
 their values against host arithmetic. Tests also cover codec roundtrips and invalid
@@ -281,11 +399,23 @@ packets, signed payload boundaries, finite vocabulary snapshots, isolated replay
 correlated and empty fibers, lookup costs, occurrence reconstruction, typed matching,
 repeated/operator holes, and aligned anti-unification.
 
+New checks cover truncating division with all sign combinations and large integers,
+field division against an independent reciprocal reference, zero denominators,
+lazy branches, and conditional type errors. A separate tiny-grammar reference
+checks mixed Boolean/numeric binary and nested ternary enumeration; a synthesized predicate
+is used directly as a frame requirement. Law controls check domain transfer,
+vacuous/erroring guards, modified certificates, and error-preserving substitution.
+Exhaustive evaluation of tiny GF(2) trees containing `+`, `*`, `-`, and `/` confirms
+that normalization preserves both defined values and error status.
+The identity `2*(x/2)=x` is checked in GF(5) and refuted at integer `x=3`, making
+the effect of truncation explicit.
+
 Budget tests compare complete continuations and every ledger category, including
 cutoffs immediately before and after measured first-solution and completion points,
 partly paid large multiplications, and errors. Additional controls check that text
 printer settings affect neither sizes nor work and that schema header length does
-not affect enumeration work. M1 and M2 scripts assert their positive and negative
+not affect enumeration work. The same continuation checks cover law validation,
+normalization, and equality-constrained search. M1--M3 scripts assert their positive and negative
 controls. The current linear benchmark smoke check agrees with M1's work and results;
 the historical scaling timings have not been reinterpreted under the new tariff.
 
@@ -296,11 +426,12 @@ the historical scaling timings have not been reinterpreted under the new tariff.
 | `frames.lisp` | Requirements, reorientation, pullbacks, reconstruction |
 | `search.lisp`, `observations.lisp` | Enumeration, checking, empirical buckets |
 | `au.lisp` | Typed matching and aligned syntactic anti-unification |
-| `fixtures.lisp`, `experiments.lisp` | Isolated fixtures and both milestone runs |
-| `tests.lisp`, `observation-tests.lisp`, `codec-tests.lisp` | Unified test suite |
+| `laws.lisp` | Scoped validation certificates and guarded normalizer |
+| `fixtures.lisp`, `experiments.lisp`, `law-experiments.lisp` | Fixtures and milestone runs |
+| `tests.lisp`, `observation-tests.lisp`, `codec-tests.lisp`, `law-tests.lisp` | Unified test suite |
 
-Milestones 3 and 4 remain deferred: no learned-law application, inverse-rule search,
-inverse-value enumeration, or semantic pruning is implemented. Multi-level automatic
+Milestone 4 remains deferred: no inverse-rule search or inverse-value enumeration
+is implemented. E-graphs, general theorem proving, multi-level automatic
 decomposition, library learning, and general recursive orchestration are also later
 work. The fixed encoding and accounting boundary will remain stable unless a concrete
 result calls for revisiting them.

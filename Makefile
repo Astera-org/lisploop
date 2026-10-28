@@ -7,9 +7,9 @@ DOCS = plan.pdf plan2.pdf plan3.pdf plan4.pdf results.pdf results-history.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
-BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp codec.lisp sim.lisp frames.lisp search.lisp observations.lisp au.lisp benchmark.lisp
+BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp codec.lisp sim.lisp frames.lisp search.lisp observations.lisp au.lisp laws.lisp benchmark.lisp
 
-.PHONY: all clean test m1 m2 visualizer benchmark benchmark-profile
+.PHONY: all clean test m1 m2 m3 visualizer benchmark benchmark-profile
 
 all: $(DOCS)
 
@@ -23,6 +23,10 @@ m1: | $(RESULTS_DIR)
 m2: | $(RESULTS_DIR)
 	@$(SBCL) --script experiments.lisp m2 > $(RESULTS_DIR)/milestone2.txt
 	@printf 'Milestone 2 report: %s/milestone2.txt\n' '$(RESULTS_DIR)'
+
+m3: | $(RESULTS_DIR)
+	@$(SBCL) --script experiments.lisp m3 > $(RESULTS_DIR)/milestone3.txt
+	@printf 'Milestone 3 report: %s/milestone3.txt\n' '$(RESULTS_DIR)'
 
 visualizer:
 	$(SBCL) --script visualizer/generate.lisp
@@ -40,7 +44,7 @@ benchmark: | $(RESULTS_DIR)
 		date -u >> "$$report"; \
 		uname -sm >> "$$report"; \
 		sha256sum $(BENCHMARK_SOURCES) >> "$$report"; \
-		for specification in 'linear 58 3' 'quadratic 66 3' 'quartic 72 1'; do \
+		for specification in 'linear 61 3' 'quadratic 70 3' 'quartic 77 1'; do \
 			set -- $$specification; \
 			repetition=1; \
 			while [ "$$repetition" -le "$$3" ]; do \
@@ -59,7 +63,7 @@ benchmark: | $(RESULTS_DIR)
 
 # Profiling is separate so it cannot affect the unprofiled benchmark timings.
 benchmark-profile: | $(RESULTS_DIR)
-	@$(SBCL) --dynamic-space-size 2048 --script benchmark.lisp search quadratic 66 $(BENCHMARK_SECONDS) batch profile > $(RESULTS_DIR)/benchmark-profile.txt
+	@$(SBCL) --dynamic-space-size 2048 --script benchmark.lisp search quadratic 70 $(BENCHMARK_SECONDS) batch profile > $(RESULTS_DIR)/benchmark-profile.txt
 	@printf 'CPU profile: %s/benchmark-profile.txt\n' '$(RESULTS_DIR)'
 
 %.pdf: %.md

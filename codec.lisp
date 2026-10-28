@@ -3,8 +3,23 @@
 ;;; One fixed encoding. A packet contains its version, input schema, result type,
 ;;; and a prefix-coded tree. Text formatting has no role in size or work charges.
 ;;; Positive integers use delta coding: gamma(bit-length), then the low bits.
-(defconstant +encoding-version+ 3)
-(defparameter +operator-names+ '(:+ :* := :tuple :member :lookup :gather))
+(defconstant +encoding-version+ 4)
+(defconstant +opcode-width+ 4)
+(defparameter +operator-names+ '(:+ :* := :tuple :member :lookup :gather :- :/ :if))
+
+(defun emit-operator (operator emit)
+  (destructuring-bind (tag name type) operator
+    (declare (ignore tag))
+    (funcall emit +opcode-width+
+             (or (position name +operator-names+) (error "Unknown operator ~S" name)))
+    (case name
+      ((:= :member) (emit-bit-type type emit))
+      (:lookup (emit-bit-type (second type) emit)))))
+
+(defun application-overhead (operator)
+  (let ((size 2))
+    (emit-operator operator (lambda (width value) (declare (ignore value)) (incf size width)))
+    size))
 
 (defun emit-positive (value emit)
   (let* ((width (integer-length value)) (length-width (integer-length width)))
@@ -52,20 +67,15 @@
     size))
 
 (defun emit-bit-expression (expression inputs type emit)
-  (let* ((tag (first expression))
-         (name (when (eq tag :app) (second (second expression)))))
+  (let ((tag (first expression)))
     (funcall emit 2 (ecase tag (:var 0) (:lit 1) (:app 2)))
     (ecase tag
       (:var (funcall emit (integer-length (max 0 (1- (length inputs))))
                      (or (position (second expression) inputs :key #'car) (error "Undeclared variable"))))
       (:lit (emit-bit-value (third expression) type emit))
       (:app
-       (let* ((operator (second expression)) (operand-type (third operator)))
-         (funcall emit 3 (or (position name +operator-names+) (error "Unknown operator ~S" name)))
-         ;; These result types do not determine all operand types.
-         (case name
-           ((:= :member) (emit-bit-type operand-type emit))
-           (:lookup (emit-bit-type (second operand-type) emit)))
+       (let ((operator (second expression)))
+         (emit-operator operator emit)
          (loop for child in (third expression)
                for child-type in (second (operator-type operator)) do
                  (emit-bit-expression child inputs child-type emit)))))))
@@ -136,7 +146,7 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
                         (assert (and input (equal type (cdr input)))) (var (car input) type)))
                    (1 (lit type (read-value type)))
                    (2
-                    (let* ((name (or (nth (take-bits 3) +operator-names+) (error "Unused operator code")))
+                    (let* ((name (or (nth (take-bits +opcode-width+) +operator-names+) (error "Unused operator code")))
                            (operand-type (case name
                                            ((:= :member) (read-type))
                                            (:lookup (tuple-type (read-type) type))

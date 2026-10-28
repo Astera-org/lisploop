@@ -8,7 +8,7 @@ assert.deepEqual(JSON.parse(html.match(/<script id="report-data" type="applicati
 assert(!html.includes("@@"));
 assert.equal(bundle.version, 2);
 assert.equal(bundle.experiments.length, 2);
-const expected = [[48,15,13,13004], [33,51,39,30549]];
+const expected = [[50,15,13,13016], [35,83,71,52481]];
 let scopes = 0;
 for (const [i, experiment] of bundle.experiments.entries()) {
   const training = experiment.scopes.find(s => s.kind === "training");
@@ -19,8 +19,8 @@ for (const [i, experiment] of bundle.experiments.entries()) {
     const rows = scope.frame.rows;
     assert.equal(new Set(rows.map(row => row.key)).size, rows.length);
     assert.equal(scope.evidence, "replayed-observations");
-    assert.equal(scope.encodingVersion, 3);
-    assert.equal(scope.tariffVersion, 2);
+    assert.equal(scope.encodingVersion, 4);
+    assert.equal(scope.tariffVersion, 3);
     assert.equal(scope.unit, "bits");
     assert.equal(scope.literals, "All domain literals");
     assert(!("costModel" in scope));
@@ -61,8 +61,8 @@ for (const [i, experiment] of bundle.experiments.entries()) {
       assert.deepEqual(informative[0].members.map(id => scope.records[id].expression).sort(), ["(a + b)", "(b + a)"]);
       for (const id of informative[0].members) {
         const record = scope.records[id];
-        assert.equal(record.headerBits, [37,22][i]);
-        assert.equal(record.bodyBits, 11);
+        assert.equal(record.headerBits, [38,23][i]);
+        assert.equal(record.bodyBits, 12);
         if (scope.kind === "training") assert.equal(record.runWork, [800,452][i]);
       }
     }
@@ -97,9 +97,9 @@ for (const [i, experiment] of bundle.experiments.entries()) {
 }
 assert.equal(scopes, 11);
 const extended = bundle.experiments[0].scopes.find(s => s.kind === "extended");
-assert.equal(extended.bound, 52);
+assert.equal(extended.bound, 54);
 assert.equal(extended.records.length, 105);
 assert.equal(extended.buckets.length, 25);
-assert.equal(extended.ledger.total, 117988);
+assert.equal(extended.ledger.total, 117996);
 for (const record of bundle.experiments[0].scopes[0].records) assert(extended.records.some(r => r.packet === record.packet));
 console.log(`Validated ${scopes} scopes: reference counts/work, exact values, pair links, buckets, split controls, and embedded report data.`);

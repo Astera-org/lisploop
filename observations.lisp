@@ -1,10 +1,26 @@
 (in-package #:lisploop)
 
+(defun propose-observed-laws (job &key (guard (lit :bool t)) ledger)
+  "Propose a spanning set of equalities per complete output bucket, not certificates.
+GUARD is supplied prior knowledge; the discovery step does not infer predicates."
+  (let* ((scope (observation-job-scope job)) (language (observation-scope-language scope))
+         (inputs (language-inputs language)) (laws nil))
+    (dolist (bucket (reverse (observation-job-buckets job)))
+      (let* ((members (reverse (observation-bucket-members bucket)))
+             (first (observed-expression-expression (first members))))
+        (dolist (member (rest members))
+          (let ((other (observed-expression-expression member)))
+            (charge ledger :law-proposal (+ (syntax-work first) (syntax-work other) (syntax-work guard)))
+            (push (make-law (language-domain language) inputs other first :guard guard
+                            :origin (list :observed-scope (observation-scope-id scope)
+                                          :evidence :replayed-observations)) laws)))))
+    (nreverse laws)))
+
 ;;; Empirical observations are indexes over frames, not another kind of frame or
 ;;; an equivalence relation licensed for substitution into arbitrary programs.
 (defstruct (observation-scope (:constructor %make-observation-scope))
   id frame language pairs anchors
-  (equality :typed-value) (evidence :replayed-observations) (simulator-version 1)
+  (equality :typed-value) (evidence :replayed-observations) (simulator-version +simulator-version+)
   (encoding-version +encoding-version+) (tariff-version +tariff-version+))
 
 (defun make-observation-scope (frame language &key (id (incf *next-call-id*)) pairs anchors)
@@ -94,7 +110,8 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
          (job (%make-observation-job :scope scope
                                      :mode (if supplied-p :replay :enumeration)
                                      :enumerator (unless supplied-p (make-enumerator language))
-                                     :completed-bound (if supplied-p 0 (language-header-size language)))))
+                                     :completed-bound (if supplied-p 0 (language-header-size language
+                                                        (schema-target (frame-schema (observation-scope-frame scope))))))))
     (dolist (expression queue)
       (expression-type expression (language-inputs language)))
     (setf (observation-job-queue job)
@@ -194,7 +211,8 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
                   (observation-job-phase job) :construct))
            (:bound
             (setf (observation-job-completed-bound job)
-                  (+ (language-header-size (observation-scope-language scope))
+                  (+ (language-header-size (observation-scope-language scope)
+                                           (schema-target (frame-schema (observation-scope-frame scope))))
                      (1- (enumerator-size (observation-job-enumerator job)))))))))
       (:construct
        (let ((spent (min budget (observation-job-debt job))))
@@ -207,7 +225,11 @@ Replay covers only that list, never claims grammar exhaustion or transfers a law
                      (index-expression (observation-job-enumerator job) (observed-expression-expression record))
                      (expression-type (observed-expression-expression record) inputs))
                  (observation-job-rows job) (frame-rows (observation-scope-frame scope))
-                 (observation-job-phase job) :row))))
+                 (observation-job-phase job)
+                 (if (or (eq (observation-job-mode job) :replay)
+                         (equal (observed-expression-type record)
+                                (schema-target (frame-schema (observation-scope-frame scope)))))
+                     :row :enumerate)))))
       (:row
        (charge ledger :scheduling)
        (if (observation-job-rows job)

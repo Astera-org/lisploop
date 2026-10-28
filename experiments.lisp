@@ -40,11 +40,11 @@
              (job (start-search frame language :call-id :m1))
              (header (header-size inputs (gf 5)))
              (bound (description-size oracle inputs)))
-        (assert (eq :cutoff (message-claim (resume-search job (+ header 11) 100))))
-        (assert (eq :bounded-exhaustion (message-claim (resume-search job (+ header 11) 1000000))))
+        (assert (eq :cutoff (message-claim (resume-search job (+ header 12) 100))))
+        (assert (eq :bounded-exhaustion (message-claim (resume-search job (+ header 12) 1000000))))
         (assert (null (search-job-results job)))
-        (format t "No predictor at ~D bits (11-bit body); interrupted and resumed, then extend to ~D bits.~%"
-                (+ header 11) bound)
+        (format t "No predictor at ~D bits (12-bit body); interrupted and resumed, then extend to ~D bits.~%"
+                (+ header 12) bound)
         (assert (eq :bounded-exhaustion (message-claim (resume-search job bound 1000000))))
         (let* ((best (search-job-best job)) (model (candidate-expression best))
                (lookup (lookup-model frame acquisition))
@@ -74,7 +74,7 @@
                                 (list (make-row :key 0 :known '(1 1) :allowed (finite-allowed (gf 5) '(0)))
                                       (make-row :key 1 :known '(1 1) :allowed (finite-allowed (gf 5) '(1))))))
                (negative (start-search bad language)))
-          (assert (eq :bounded-exhaustion (message-claim (resume-search negative (+ header 11) 1000000))))
+          (assert (eq :bounded-exhaustion (message-claim (resume-search negative (+ header 12) 1000000))))
           (assert (null (search-job-results negative)))
           (format t "Contradictory-output control: bounded exhaustion with no predictor.~%"))
         (run-pullback-control frame))))
@@ -82,9 +82,9 @@
   (let* ((inputs '((0 . :int) (1 . :int))) (acquisition (make-ledger))
          (frame (integer-linear-fixture :ledger acquisition))
          (language (make-language :int inputs))
-         (job (start-search frame language)) (bound (+ (header-size inputs :int) 19)))
+         (job (start-search frame language)) (bound (+ (header-size inputs :int) 21)))
     (format t "~%M1 / integer control / y=a+2b on [-2,2]^2, all integer literals admitted.~%")
-    (assert (eq :bounded-exhaustion (message-claim (resume-search job bound 1000000))))
+    (assert (eq :bounded-exhaustion (message-claim (resume-search job bound 5000000))))
     (let* ((best (search-job-best job)) (model (candidate-expression best))
            (extra (make-ledger))
            (fresh (integer-linear-fixture :starts (integer-held-out-starts) :ledger extra)))
@@ -141,9 +141,9 @@
                               (ledger-total extra)))))))
             (when field-p
               (assert (eq :bounded-exhaustion
-                          (message-claim (resume-observation-search job (+ (header-size inputs domain) 15) 1000000))))
+                          (message-claim (resume-observation-search job (+ (header-size inputs domain) 16) 1000000))))
               (assert (= 105 (length (observation-job-records job))))
-              (format t "At 15 body bits, all 105 single-application expressions; work=~D.~%"
+          (format t "At 16 body bits, all 105 single-application expressions; work=~D.~%"
                       (ledger-total (observation-job-ledger job))))))))))
 
 (defun run-split (domain)
@@ -167,14 +167,17 @@
           (format t "Split control ~S: x=x*x on {0,1}, then separate; all ~D syntax retained. Old scope unchanged.~%"
                   domain (length (observation-job-records old))))))))
 
+(load (merge-pathnames "law-experiments.lisp" *load-truename*))
+
 (let ((mode (second sb-ext:*posix-argv*)) (start (get-internal-real-time)))
-  (format t "Encoding 3; structural tariff 2; SBCL ~A; deterministic fixtures; no seed.~%"
-          (lisp-implementation-version))
+  (format t "Encoding ~D; structural tariff ~D; simulator ~D; SBCL ~A; deterministic fixtures; no seed.~%"
+          +encoding-version+ +tariff-version+ +simulator-version+ (lisp-implementation-version))
   (format t "S includes standalone version/schema/type header once; bounds are total bits.~%")
-  (format t "No laws, semantic pruning, inverse rules, or restricted integer literal vocabulary.~%")
+  (format t "All syntax retained; no inverse rules or restricted integer literal vocabulary.~%")
   (cond ((equal mode "m1") (run-m1))
         ((equal mode "m2") (run-m2-domain (gf 5)) (run-m2-domain :int)
                            (run-split (gf 5)) (run-split :int))
-        (t (error "Expected m1 or m2")))
+        ((equal mode "m3") (run-m3))
+        (t (error "Expected m1, m2 or m3")))
   (format t "Wall seconds (includes fixtures/controls, excludes loading): ~,6F.~%"
           (/ (- (get-internal-real-time) start) (float internal-time-units-per-second 1d0))))

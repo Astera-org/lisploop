@@ -64,7 +64,7 @@
                                            :kind (if changed "changed" "fresh") :transitions fresh
                                            :acquisition extra :orientation extra-orientation) scopes))))))
           (when field-p
-            (let ((extended-bound (+ (header-size inputs domain) 15)))
+            (let ((extended-bound (+ (header-size inputs domain) 16)))
               (assert (eq :bounded-exhaustion (message-claim (resume-observation-search job extended-bound 1000000))))
               (push (job-data job :title (format nil "Extended bound · ~D bits" extended-bound)
                                   :kind "extended" :transitions transitions

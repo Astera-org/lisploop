@@ -55,10 +55,11 @@
     (assert (valid-type-p type))
     (flet ((signature (inputs output) (list :fn inputs output)))
       (case name
-        ((:+ :*)
+        ((:+ :* :- :/)
          (assert (or (eq type :int) (and (consp type) (eq (first type) :gf))))
          (signature (list type type) type))
         (:= (signature (list type type) :bool))
+        (:if (signature (list :bool type type) type))
         (:tuple
          (assert (and (consp type) (eq (first type) :tuple)))
          (signature (rest type) type))
