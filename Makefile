@@ -7,9 +7,9 @@ DOCS = plan.pdf plan2.pdf plan3.pdf plan4.pdf results.pdf results-history.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
-BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp codec.lisp sim.lisp frames.lisp grammar.lisp search.lisp observations.lisp guards.lisp au.lisp symbolic.lisp laws.lisp law-compression.lisp benchmark.lisp
+BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp codec.lisp sim.lisp frames.lisp grammar.lisp search.lisp observations.lisp guards.lisp au.lisp symbolic.lisp laws.lisp law-compression.lisp algebra.lisp benchmark.lisp
 
-.PHONY: all clean test m1 m2 m3 visualizer benchmark benchmark-profile
+.PHONY: all clean test m1 m2 m3 m4 visualizer benchmark benchmark-profile
 
 all: $(DOCS)
 
@@ -28,6 +28,10 @@ m2: | $(RESULTS_DIR)
 m3: | $(RESULTS_DIR)
 	@$(SBCL) --script experiments.lisp m3 > $(RESULTS_DIR)/milestone3.txt
 	@printf 'Milestone 3 report: %s/milestone3.txt\n' '$(RESULTS_DIR)'
+
+m4: | $(RESULTS_DIR)
+	@$(SBCL) --script experiments.lisp m4 > $(RESULTS_DIR)/milestone4.txt
+	@printf 'Milestone 4 report: %s/milestone4.txt\n' '$(RESULTS_DIR)'
 
 visualizer:
 	$(SBCL) --script visualizer/generate.lisp

@@ -46,7 +46,7 @@ are exported as joint values, without splitting correlated components.
 Both experiments allow all domain literals, as in `results.md`. Description length
 is the exact bit length of the standalone binary packet: schema header plus body.
 The inspector displays that breakdown and the actual encoded bits. Work follows
-the separate structural tariff. Encoding version 7 and tariff version 7 are saved
+the separate structural tariff. Encoding version 7 and tariff version 8 are saved
 with every scope; they identify the current specification, not selectable models.
 Text displays the AST and does not determine its price. A replay checks only its
 explicit expression list; its bound is not grammar exhaustion. Exporting and

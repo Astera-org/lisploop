@@ -66,7 +66,7 @@
       (assert (plusp (length json)))
       (assert (string= before (sexp-text job)))
       (assert (= 7 (gethash "encodingVersion" data)))
-      (assert (= 7 (gethash "tariffVersion" data)))
+      (assert (= 8 (gethash "tariffVersion" data)))
       (loop for record across (gethash "records" data) do
         (assert (= (length (gethash "packet" record)) (gethash "size" record)))
         (assert (= (gethash "size" record) (+ (gethash "headerBits" record) (gethash "bodyBits" record)))))

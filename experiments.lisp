@@ -168,16 +168,18 @@
                   domain (length (observation-job-records old))))))))
 
 (load (merge-pathnames "law-experiments.lisp" *load-truename*))
+(load (merge-pathnames "algebra-experiments.lisp" *load-truename*))
 
 (let ((mode (second sb-ext:*posix-argv*)) (start (get-internal-real-time)))
   (format t "Encoding ~D; structural tariff ~D; simulator ~D; SBCL ~A; deterministic fixtures; no seed.~%"
           +encoding-version+ +tariff-version+ +simulator-version+ (lisp-implementation-version))
   (format t "S includes standalone version/schema/type header once; bounds are total bits.~%")
-  (format t "All syntax retained; no inverse rules or restricted integer literal vocabulary.~%")
+  (format t "All syntax retained; any experiment-specific vocabulary restriction is stated below.~%")
   (cond ((equal mode "m1") (run-m1))
         ((equal mode "m2") (run-m2-domain (gf 5)) (run-m2-domain :int)
                            (run-split (gf 5)) (run-split :int))
         ((equal mode "m3") (run-m3))
-        (t (error "Expected m1, m2 or m3")))
+        ((equal mode "m4") (run-m4))
+        (t (error "Expected m1, m2, m3 or m4")))
   (format t "Wall seconds (includes fixtures/controls, excludes loading): ~,6F.~%"
           (/ (- (get-internal-real-time) start) (float internal-time-units-per-second 1d0))))

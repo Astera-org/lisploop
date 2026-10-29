@@ -1,9 +1,10 @@
 (load (merge-pathnames "../load.lisp" *load-truename*))
 (load (merge-pathnames "../fixtures.lisp" *load-truename*))
 (load (merge-pathnames "../law-experiments.lisp" *load-truename*))
+(load (merge-pathnames "../algebra-experiments.lisp" *load-truename*))
 (in-package #:lisploop)
 
-(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic"))
+(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic" "amortization" "algebra"))
   (load (merge-pathnames (make-pathname :name module :type "lisp") *load-truename*)))
 
 (let ((start (get-internal-real-time)))

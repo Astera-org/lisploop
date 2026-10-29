@@ -2,7 +2,7 @@
 
 ## Nine research pillars, one small synthesis kernel
 
-26 October 2026. Reorganizes prompt3 and plan3 around the nine numbered research goals. This is an experimental proposal; no implementation or successful results are claimed.
+26 October 2026, revised 28 October. Reorganizes prompt3 and plan3 around the nine numbered research goals. This is the research plan; [results.md](results.md) records the implemented experiments and their measured outcomes.
 
 The prompt that motivated this document (`prompt4.md`), verbatim. The
 `# prompt` heading is dropped, trailing spaces are removed, nested items are
@@ -92,7 +92,7 @@ Milestone numbers match the nine pillars exactly. They identify research questio
 | **1. Search** | Can we search, resume, verify, and price a transparent baseline? | A known solution remains reachable under increasing work and description limits |
 | **2. Learned equivalence** | Can execution expose useful agreements and conserved quantities? | A useful observed agreement is retained with its scope; accidental agreement is rejected on new data |
 | **3. Laws** | Can such findings become reusable rules about the simulator? | A checked finite-domain law helps another search and does not escape its domain |
-| **4. Algebra** | Can solve rules be learned from forward experiments? | Addition inversion over GF(p), then integers, without inverse-value enumeration |
+| **4. Algebra** | Can solve rules be learned from forward experiments? | Guarded solve programs for both operands of +, −, ×, ÷ over GF(p) and integers, then certified propagation |
 | **5. Lifting** | Can explicit context make a shared computation reconstruct its different instances? | One supplied lift and residual reconstruct all occurrences; missing context is exposed |
 | **6. Abstraction** | Can variables and reusable patterns be recovered from known factorizations? | Typed AU, matching, and occurrence search pass separate positive controls |
 | **7. Partitioning and locality** | Can useful contexts and correspondences be selected economically? | A discovered view pays for selection and reassembly; locality helps on a declared workload |
@@ -279,15 +279,69 @@ babble uses an equational theory supplied to library learning; discovering that 
 
 **Question.** Can forward experiments bootstrap shared solve programs without a supplied inverse or per-example search over inverse values?
 
-**Experiment A --- GF(p) first.** Generate triples c=a+b over GF(5), then GF(7). Reuse them as $(a,c)\to b$ examples. Supply only +, *, and field literals to the candidate program grammar. Equivalently check the relational requirement a+g(a,c)=c. One oracle solution form is g(a,c)=c+k*a with the appropriate field coefficient; do not supply that sketch during discovery. Reuse learned programs on fresh equations and validate them exhaustively over the declared field.
+**Scope update, 28 October.** Cover all four arithmetic operators, solving for
+either operand. Structural and quoted-code primitives are outside this arithmetic
+experiment. Use GF(5), GF(7), and integers, with the existing VM's truncating integer
+division. The current implementation and measurements are in `results.md`.
 
-**Experiment B --- integers next.** Repeat with exact integer arithmetic and signed literals, including -1. Include negative, zero, and positive examples; evaluate held-out inputs far outside the training range. The planted solve rule is g(a,c)=c+(-1)*a. Test it as a library call on another batch.
+**Forward acquisition and reorientation.** Execute each operator on a declared
+input grid, retaining both values and errors. Learn its definedness predicate
+through the existing Boolean synthesis path. Reuse the successful triples in
+both orientations; preserve duplicate occurrences. If k is the known operand, c
+the desired output, and z the unknown operand, each new row requires the original
+operation to be defined and produce c. The recorded z is not installed as a
+singleton target. Add a declared query grid, including impossible queries, without
+enumerating their inverse values.
 
-**Controls and exit.** Disable inverse-value enumeration and supplied solve rules in both bootstrap runs. Program enumeration remains enabled. Reveal the oracle rule only in a separate positive-control run. Report discovery cost, reuse cost, and the scope of validation. GF(p)-only success does not pass milestone 4.
+**Solve and guard discovery.** Enumerate numeric candidate programs q(k,c) through
+the core observation pipeline, then replay the forward requirement with q
+substituted for z. Retain each candidate's non-error, successful subset. The
+declared proposal prior favors maximum observed coverage, then description size;
+ordinary core search selects among programs with the chosen subset. Learn a guard
+for that subset using Boolean child frames. A computed forward result can be a
+guard-search feature because it depends only on k, c, and q. Compose it back into
+the guard and check the complete expression against every original row. This
+reuses enumeration, reorientation, residual requirements, and composition rather
+than introducing another candidate-program search loop.
 
-**Propagation test.** After validating the learned inverse q and uniqueness throughout a finite field, reuse it on a parent decoder y=a+z. Replace the child predicate $a_i+z=y_i$ by the equivalent singleton target $z=q(a_i,y_i)$. The child predictor still receives only its declared context, excluding $y_i$. Check equivalence through exhaustive forward validation; do not feed enumerated inverse answers into bootstrap search. A single witness for a multivalued relation is only a candidate, not the whole fiber. Integer samples alone do not license replacing the predicate by a supposedly equivalent singleton.
+**Original addition bootstrap.** Retain the weaker +/* grammar as a separate
+unseeded control in all three domains, solving a+q(a,c)=c. The main eight-orientation
+experiment explicitly admits subtraction and division as candidate primitives.
+The bootstrap uses field literals or integer {-1,0,1}; reveal c+(-1)*a (with the
+field coefficient interpreted modulo p) only afterward in a separate positive
+control. The richer grammar learns how to use division; it does not learn the
+primitive's implementation of modular reciprocals.
 
-**Expressivity decision.** Test the multiplication relation a*b=c as a requirement, including zero and inconsistent cases. At a=c=0, every b is acceptable; different recorded b values must not become inconsistent singleton outputs for one deterministic input. Unsolvable inputs test rejection separately; a solver returning ``no solution'' requires an explicit output specification. For nonzero integer a, solutions require divisibility. Straight-line + and * with integer literals express polynomials, not general exact division: either defer that solver or explicitly admit iteration or a division operation. Do not label a supplied inverse as learned.
+**Validation and propagation.** Check two distinct statements: under the learned
+guard, q satisfies the original relation; and that relation is equivalent to
+z=q for every z. Exhaustive finite-field checks of both statements permit replacing
+a child predicate by a singleton only where the guard holds. Reuse each certified
+solver in a separate parent batch and compare ordinary child synthesis before and
+after propagation, then compose and replay the parent. The child predictor still
+receives only its declared context, excluding the parent's observed output.
+Prepare reusable solver/guard programs once per propagation batch and charge setup
+and each application. Report discovery, validation, and reuse separately.
+
+**Integer and multivalued controls.** Include negative, zero, positive, and large
+held-out integers. Successful sample checks remain conjectures, so integer child
+requirements retain their predicates. Multiplication needs a divisibility guard:
+truncating c/k is not always an exact solution. Division can have several answers
+even where a discovered witness works: both z=2 and z=3 satisfy z/2=1. At k=c=0,
+multiplication allows every z; at k=0,c≠0 it allows none. These requirements must
+remain relations. Unsupported target sets and uncertified cases also keep the
+ordinary pullback. A solver returning ``no solution'' needs a separate output
+specification; failure to find a witness at a bound does not establish emptiness.
+
+**AU and controls.** Anti-unify the eight actual guarded witness statements in
+each domain. Lower the resulting pattern into an ordinary quoted-code constructor
+and use core search to check exact reconstruction, including guards. This is a
+functional reconstruction test with supplied hole inputs, not a whole-corpus
+compression result or new mathematical evidence. Keep inverse-value enumeration
+disabled during discovery. Independent finite references are test oracles only.
+Core observation/search/validation jobs retain their existing continuations;
+the experiment driver requires each stage to finish and reports a cutoff as
+unresolved. Integer universal proofs, richer fiber descriptions, and adaptive
+choice between direct checking and propagators remain later work.
 
 FlashMeta's supplied witness functions transform output requirements into operand requirements [R2]. Here the predicate supplies the requirement; the learner first discovers an acceptable-operand program, then tests a checked requirement simplification. Learning richer or more efficient requirement transformations is a later extension.
 

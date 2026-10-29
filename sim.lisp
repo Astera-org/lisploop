@@ -1,6 +1,6 @@
 (in-package #:lisploop)
 
-(defconstant +tariff-version+ 7)
+(defconstant +tariff-version+ 8)
 (defconstant +simulator-version+ 5)
 
 (defstruct ledger (total 0) (counts nil))
@@ -15,7 +15,24 @@
 
 (defstruct (evaluation (:constructor %make-evaluation))
   (status :unknown) value error (work 0) tasks stack environment inputs
-  values (remaining-cost 0))
+  values prepared-p (remaining-cost 0))
+
+;;; Private preparation evidence, never a DSL value or a flag on raw evaluation.
+;;; Own the syntax/schema; prepared execution must not expose their mutable conses.
+(defstruct (validated-program (:constructor %make-validated-program))
+  (expression nil :read-only t) (inputs nil :read-only t) (versions nil :read-only t))
+
+(defun vm-versions () (list +encoding-version+ +tariff-version+ +simulator-version+))
+
+(defun start-program-validation (expression inputs)
+  "Snapshot and validate static code through the same prepaid, resumable VM."
+  (%make-evaluation :tasks (list (list :validate-program (copy-tree expression) (copy-tree inputs)))))
+
+(defun start-validated-evaluation (program values)
+  "Reuse completed static validation; still validate/copy every new input value."
+  (assert (and (validated-program-p program) (equal (validated-program-versions program) (vm-versions))))
+  (%make-evaluation :inputs (validated-program-inputs program) :values values :prepared-p t
+                    :tasks (list (list :validate-inputs) (list :eval (validated-program-expression program)))))
 
 (defun start-evaluation (expression inputs values)
   "An isolated, resumable machine. Its environment contains supplied arguments only."
@@ -127,11 +144,13 @@
 
 (defun instruction-cost (state task)
   (ecase (first task)
-    (:validate (+ (syntax-work (second task))
-                  (loop for spec in (evaluation-inputs state)
-                        for value in (evaluation-values state)
-                        sum (+ (integer-width (car spec)) (type-work (cdr spec))
-                               (value-work value (cdr spec))))))
+    (:validate-program (syntax-work (second task)))
+    ((:validate :validate-inputs)
+     (+ (if (eq :validate (first task)) (syntax-work (second task)) 0)
+        (loop for spec in (evaluation-inputs state)
+              for value in (evaluation-values state)
+              sum (+ (integer-width (car spec)) (type-work (cdr spec))
+                     (value-work value (cdr spec))))))
     (:eval (let ((expression (second task)))
              (if (eq (first expression) :lit)
                  (1+ (value-work (third expression) (second expression))) 1)))
@@ -141,17 +160,24 @@
 
 (defun execute-instruction (state task)
   (ecase (first task)
-    (:validate
+    (:validate-program
+     (let ((expression (second task)) (inputs (third task)))
+       (assert (valid-inputs-p inputs))
+       (expression-type expression inputs)
+       (push (%make-validated-program :expression expression :inputs inputs :versions (vm-versions))
+             (evaluation-stack state))))
+    ((:validate :validate-inputs)
      (let ((inputs (evaluation-inputs state)) (values (evaluation-values state)))
        (assert (= (length inputs) (length values)))
        (assert (every (lambda (spec value) (value-p value (cdr spec))) inputs values))
-       (expression-type (second task) inputs)
+       (when (eq :validate (first task)) (expression-type (second task) inputs))
        (setf (evaluation-environment state)
              (mapcar (lambda (spec value) (cons (car spec) (copy-tree value))) inputs values))))
     (:eval
      (let ((expression (second task)))
        (ecase (first expression)
-         (:lit (push (third expression) (evaluation-stack state)))
+         (:lit (push (if (evaluation-prepared-p state) (copy-tree (third expression)) (third expression))
+                     (evaluation-stack state)))
          (:var
           (let ((binding (assoc (second expression) (evaluation-environment state))))
             (unless binding (error "Unavailable variable ~S" (second expression)))

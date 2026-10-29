@@ -135,7 +135,19 @@
                 :guard (walk (law-guard law)) :origin (list :retyped-from (law-domain law))))))
 
 (defstruct (rewrite-rule (:constructor %make-rewrite-rule)) inputs pattern replacement guard)
-(defstruct (rewrite-library (:constructor %make-rewrite-library)) domain rules (setup-work 0))
+(defstruct (rewrite-library (:constructor %make-rewrite-library))
+  domain (%rules nil :read-only t) (setup-work 0)
+  (versions (vm-versions) :read-only t)
+  (program-cache (make-hash-table :test #'equal) :read-only t))
+
+(defun rewrite-library-rules (library)
+  "Inspection copies; changing these cannot change the frozen library or its cache."
+  (mapcar (lambda (rule)
+            (%make-rewrite-rule :inputs (copy-tree (rewrite-rule-inputs rule))
+                                :pattern (copy-tree (rewrite-rule-pattern rule))
+                                :replacement (copy-tree (rewrite-rule-replacement rule))
+                                :guard (copy-tree (rewrite-rule-guard rule))))
+          (rewrite-library-%rules library)))
 
 (defun prepare-rewrite-library (validations domain)
   "Freeze checked rules. Integer samples, modified laws and cross-domain reuse fail."
@@ -160,7 +172,7 @@
                                                         (law-inputs law)))
                        :pattern (copy-tree from) :replacement (copy-tree to)
                        :guard (copy-tree (law-guard law))) rules)))))))
-    (%make-rewrite-library :domain (copy-tree domain) :rules (nreverse rules) :setup-work work)))
+    (%make-rewrite-library :domain (copy-tree domain) :%rules (nreverse rules) :setup-work work)))
 
 (defun negate-predicate (expression)
   (app (op :if :bool) expression (lit :bool nil) (lit :bool t)))
@@ -200,29 +212,44 @@ callback, certificate lookup, or hidden substitutions occur in the program."
                 (list (cons 0 source-type) (cons 1 (sequence-type guard-type))))))))
 
 (defstruct (rewriting (:constructor %make-rewriting))
-  inputs library programs evaluation attempt tasks stack (setup-work 0)
+  inputs library programs pending-programs cache-key evaluation attempt tasks stack (setup-work 0)
   (debt 0) (work 0) (steps 0) (status :unknown) value)
 
 (defun start-rewriting (expression inputs library)
+  (assert (equal (rewrite-library-versions library) (vm-versions)) () "Stale rewrite library")
   (expression-type expression inputs)
   (assert (every (lambda (input) (member (cdr input) (list :bool (rewrite-library-domain library)) :test #'equal)) inputs))
-  (let ((programs (loop for rule in (rewrite-library-rules library) collect
-                   (multiple-value-bind (model schema) (compile-rule-transformer rule inputs)
-                     (list rule model schema)))))
-    (%make-rewriting :inputs inputs :library library :programs programs
-                     :setup-work (1+ (reduce #'+ programs :key (lambda (entry) (syntax-work (second entry))) :initial-value 0))
-                     :tasks (list (list :setup nil nil) (list :walk expression nil)))))
+  (let* ((scope (copy-tree inputs)) (key (list (vm-versions) scope))
+         (lookup-work (+ 1 (length (first key))
+                         (loop for input in scope sum (+ (integer-width (car input)) (type-work (cdr input)))))))
+    (multiple-value-bind (programs present-p) (gethash key (rewrite-library-program-cache library))
+      (let ((pending (unless present-p
+                       (loop for rule in (rewrite-library-%rules library) collect
+                         (multiple-value-bind (model schema) (compile-rule-transformer rule scope)
+                           (list rule model schema))))))
+        (%make-rewriting :inputs scope :library library :programs programs :pending-programs pending :cache-key key
+                         :setup-work (+ lookup-work
+                                        (reduce #'+ pending :key (lambda (entry) (syntax-work (second entry))) :initial-value 0))
+                         :tasks (list (list :setup nil nil) (list :walk expression nil)))))))
+
+(defun prepare-next-rewrite-program (state)
+  (let ((entry (first (rewriting-pending-programs state))))
+    (if entry
+        (setf (rewriting-evaluation state) (start-program-validation (second entry) (third entry)))
+        ;; Publication is last: no partially paid/validated entry is reusable.
+        (setf (gethash (rewriting-cache-key state) (rewrite-library-program-cache (rewriting-library state)))
+              (rewriting-programs state)))))
 
 (defun rewriting-push-try (state expression assumptions)
   (push (list :try expression assumptions
               (remove-if-not (lambda (rule) (equal (second expression) (second (rewrite-rule-pattern rule))))
-                             (rewrite-library-rules (rewriting-library state))))
+                             (rewrite-library-%rules (rewriting-library state))))
         (rewriting-tasks state)))
 
 (defun execute-rewrite-task (state task)
   (destructuring-bind (kind expression assumptions &rest extra) task
     (ecase kind
-      (:setup nil)
+      (:setup (prepare-next-rewrite-program state))
       (:walk
        (if (eq :app (first expression))
            (if (eq :if (second (second expression)))
@@ -251,13 +278,21 @@ callback, certificate lookup, or hidden substitutions occur in the program."
              (let ((program (assoc (first rules) (rewriting-programs state))))
                (setf (rewriting-attempt state) task
                      (rewriting-evaluation state)
-                     (start-evaluation (second program) (third program) (list expression assumptions))))))))))
+                     (start-validated-evaluation (cdr program) (list expression assumptions))))))))))
 
 (defun finish-rewrite-evaluation (state)
   (let ((evaluation (rewriting-evaluation state)))
     (when (eq :error (evaluation-status evaluation))
       (error "Compiled rewrite failed: ~A" (evaluation-error evaluation)))
     (when (eq :value (evaluation-status evaluation))
+      (when (rewriting-pending-programs state)
+        (let ((entry (pop (rewriting-pending-programs state))))
+          (push (cons (first entry) (evaluation-value evaluation)) (rewriting-programs state)))
+        (setf (rewriting-evaluation state) nil)
+        (when (null (rewriting-pending-programs state))
+          (setf (rewriting-programs state) (nreverse (rewriting-programs state))))
+        (prepare-next-rewrite-program state)
+        (return-from finish-rewrite-evaluation))
       (destructuring-bind (kind expression assumptions rules) (rewriting-attempt state)
         (declare (ignore kind))
         (let ((replacement (evaluation-value evaluation)))

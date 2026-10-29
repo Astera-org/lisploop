@@ -49,5 +49,10 @@
    #:prepare-rewrite-library #:start-rewriting #:advance-rewriting
    #:compile-rule-transformer #:rewrite-library-rules
    #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
-   #:search-job-reused-rejections))
+   #:search-job-reused-rejections
+   #:observe-arithmetic-relation #:arithmetic-relation-guard
+   #:discover-arithmetic-solver #:validate-arithmetic-solver #:certified-solve-discovery-p
+   #:solve-discovery-frame #:solve-discovery-witness #:solve-discovery-guard
+   #:solve-discovery-validation #:solve-discovery-uniqueness
+   #:propagate-arithmetic-child #:propagation-frame #:propagation-narrowed #:propagation-retained))
 (in-package #:lisploop)

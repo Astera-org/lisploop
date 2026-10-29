@@ -1,8 +1,8 @@
 # lisploop --- results
 
-28 October 2026. Current implementation of milestones 1--3 in [plan 4](plan4.md).
+28 October 2026. Current implementation of milestones 1--4 in [plan 4](plan4.md).
 There is one fixed binary description encoding (version 7) and one structural
-work tariff (version 7), with simulator semantics version 5. Their version numbers identify the specification; they
+work tariff (version 8), with simulator semantics version 5. Their version numbers identify the specification; they
 are not selectable alternatives. Earlier measurements and explanations remain in
 [the historical results](results-history.md), tied to Git revision `f6bf54ef`.
 
@@ -11,6 +11,7 @@ make test                       # contracts, independent references, codec and w
 make m1                         # GF(5) and integer synthesis experiments
 make m2                         # GF(5) and integer observation experiments
 make m3                         # law discovery, validation, guarded rewriting, search comparison
+make m4                         # all four arithmetic operators, both operands, guarded propagation
 make results.pdf                # Pandoc / LaTeX report
 make benchmark                  # scaling and dispatch measurements under current accounting
 sbcl --load load.lisp            # interactive inspection
@@ -19,10 +20,11 @@ sbcl --load load.lisp            # interactive inspection
 Tested with SBCL 2.5.2; no external Lisp libraries are required. Scripts load
 relative to their own location. The default Make target builds the planning
 documents, this report, and the historical report with the same Pandoc settings.
-`make m1`, `make m2`, and `make m3` write the current traces to
-[milestone1.txt](intermediate_results/milestone1.txt) and
-[milestone2.txt](intermediate_results/milestone2.txt), and
-[milestone3.txt](intermediate_results/milestone3.txt).
+`make m1 m2 m3 m4` writes the current traces to
+[milestone1.txt](intermediate_results/milestone1.txt),
+[milestone2.txt](intermediate_results/milestone2.txt),
+[milestone3.txt](intermediate_results/milestone3.txt), and
+[milestone4.txt](intermediate_results/milestone4.txt).
 
 ## One accounting specification
 
@@ -687,7 +689,7 @@ if(x=0, 0, x/x)  -->  if(x=0, 0, 1)
 
 is checked, while an unguarded `x/x` remains unchanged. This experiment proposes
 86 laws from 114 expressions and 22 buckets. Observation, proposal construction,
-and validation cost 88,007 units; the displayed rewrite costs 5,784 units plus
+and validation cost 88,007 units; the displayed rewrite costs 5,792 units plus
 65 units for rule setup.
 This is the supplied-guard control; the next experiment also discovers the guard.
 
@@ -783,7 +785,7 @@ own resumable continuation.
 
 The learned and validated guard also works with the existing normalizer:
 `if(guard, x/x, 0)` rewrites to `if(guard, 1, 0)`, while an unguarded `x/x` remains
-unchanged. In each field run, this application costs 5,790 rewrite units plus 65
+unchanged. In each field run, this application costs 5,798 rewrite units plus 65
 units for rule setup, separately from acquisition. This establishes usable guard
 discovery on the declared finite domains, not a search speedup. For sampled scopes,
 a predicate that fits the membership
@@ -954,6 +956,31 @@ into the guard and replacement, checks whether the guard is established, and
 returns the replacement only when it decreases the ordering. Otherwise it returns
 the source. This program can be encoded, decoded, and executed in isolation.
 
+The normalizer amortizes its preparation. Each frozen rule library owns a cache
+indexed by the exact ordered input schema and encoding, tariff, and simulator
+versions. On the first use of a schema, it constructs the transformers and pays
+for static validation once. Validation uses a resumable VM instruction and returns
+private evidence tied to a snapshot of the program and schema. Only after every
+transformer has passed validation and its preparation work has been paid does the
+bundle become reusable. An interrupted preparation leaves no usable cache entry.
+
+Later applications use that evidence to skip repeated program validation. Every
+new quoted source and assumption sequence is still typechecked and copied into
+an isolated environment. There is no unchecked flag on ordinary evaluation.
+Returned literal data cannot mutate the retained program, and inspecting a rule
+returns a copy of the frozen rule. A new schema needs a new bundle; a new search
+owns a fresh library and pays its own preparation. Stale library/program evidence
+is rejected. Sharing an explicitly retained library across normalization calls
+shares its completed preparation, whose cost belongs to the earlier call.
+
+Tariff 8 records this preparation boundary. Construction and static validation
+each cost the transformer's `syntax-work`, once per completed preparation.
+Every normalization call pays for cache access: one unit, three version-field
+visits, and each schema input's ID width plus `type-work`. Dynamic input validation
+retains its existing input ID, type, and value charges. Matching, substitution,
+and ordering retain their previous prices. The canonical encoding and ordinary
+unprepared evaluation are unchanged.
+
 The normalizer in `laws.lisp` still schedules tree traversal and supplies branch
 assumptions: the condition in a true branch, its negation in a false branch.
 It also selects rules by the outer operator. Rule application itself now runs
@@ -1023,29 +1050,253 @@ checked equality in search without conflating equivalent programs' execution cos
 | Retained trees / successful programs | 649 / 10 | 649 / 10 |
 | Reused rejections | 0 | 31 |
 | Evaluation plus requirement checking | 158,150 | 150,418 |
-| Total search work | 182,181 | 2,126,539 |
+| Total search work | 182,181 | 740,452 |
 
-**This first implementation does not yield a net search speedup.** It saves 7,732
-evaluation/checking units but spends 1,932,008 on rewriting and 19,536 on cache keys,
-plus setup and scheduling. Rewriting now pays for constructing the DSL transformers
-and their actual VM execution under the symbolic tariff above; traversal tasks
-cost one. The current lowering repeats binding extraction and template substitution,
-and recompiles the rule programs for each normalization job. Moving rule application
-into the common VM therefore increases charged work compared with the previous
-host implementation. GF(5) discovery, proposal construction, and all-law validation
-add 369,230 units, giving **2,495,769** for acquisition plus checked reuse. The GF(7)
-and guarded-law controls are separate experiments. Faster matching, cached normal
-forms, or a more precise metered traversal would need their own measured comparison;
-the current result establishes sound reuse, not amortized savings.
+**Amortizing preparation reduces total search work by 65.2%**, from the initial
+VM-based result of 2,126,539 to 740,452. The rule is now compiled and statically
+validated once, instead of being compiled for all 649 candidates and validated
+at all 597 attempted matches. All 597 applications still check their new inputs.
+The retained programs, successful results, and 31 reused rejections are unchanged.
+
+| Rewriting work | Initial VM implementation (tariff 7) | Amortized preparation (tariff 8) |
+|---|---:|---:|
+| Transformer construction and setup/cache access | 728,178 | 10,207 |
+| Static program and dynamic input validation | 703,641 | 35,525 |
+| Matching, substitution, traversal, and remaining execution | 500,189 | 500,189 |
+| Total rewriting | 1,932,008 | 545,921 |
+
+The current setup figure consists of 1,121 construction units and 9,086 cache-access
+units across 649 candidates. Validation consists of 1,121 static units and 34,404
+dynamic input units. Compilation and validation have not been made free: their
+completed results are reused within the declared search boundary. Isolated single
+rewrites still pay preparation, and their cold costs above include the new cache
+access charge.
+
+**Checked rewriting still does not yield a net search speedup on this fixture.**
+It saves 7,732 evaluation/checking units but spends 545,921 on rewriting and 19,536
+on rejection-cache keys, plus setup and scheduling. The current lowering still
+repeats binding extraction and template substitution, including four extractions
+per successful application; most attempted matches fail. Those execution costs
+were not changed by this preparation optimization. GF(5) discovery, proposal
+construction, and all-law validation add 369,230 units, giving **1,109,682** for
+acquisition plus checked reuse. The GF(7) and guarded-law controls are separate
+experiments. Sharing intermediate values, improving matching, or caching normal
+forms would need their own measured comparison.
+
+Adaptive search scheduling is deferred until larger problems expose its costs
+and benefits. In particular, measure when checking a learned rule, using a
+propagator, or continuing direct enumeration pays for its own work. The current
+small controls retain the fixed strategy so that later comparisons have a clear
+baseline; this milestone does not add a heuristic scheduler.
 
 Subtraction, division, equality, and conditionals are supplied primitives. In
 particular, the modular reciprocal inside division is host-implemented extended
-Euclid. This is not learned inversion, and milestone 4's bootstrap experiments
-have not been run. Their original `+`/`*` grammar remains available unchanged.
+Euclid. Learning a solve expression that uses this primitive does not discover
+Euclid's algorithm. Milestone 4 distinguishes that richer grammar from the
+original addition bootstrap, which still permits only `+` and `*`.
+
+## Milestone 4: learned arithmetic solvers and propagators
+
+The experiment now covers **addition, subtraction, multiplication, and division,
+solving for either operand**, in GF(5), GF(7), and integers. All eight orientations
+produce a guarded witness program. Both field runs obtain exhaustive certificates
+that support exact propagation. Integer witnesses pass held-out checks, but remain
+conjectures; integer division also supplies explicit counterexamples to uniqueness.
+The original addition experiment succeeds separately with only `+` and `*`.
+
+The distinction between a witness and an entire fiber is central. For an equation
+`k*z=c`, a witness program supplies one possible z. A propagator that replaces the
+equation by `z=q(k,c)` asserts something stronger: this is exactly the set of
+allowed z values. Replacing `0*z=0` with one chosen answer would discard valid
+solutions. The scaffold therefore retains the original predicate unless it has
+checked the stronger equivalence under the learned guard.
+
+### From forward executions to a guarded solve program
+
+Each operator is executed on the full field input grid, or on integer operands
+from −4 through 4. The observation machinery retains successful outputs and error
+statuses. A Boolean synthesis frame first learns where the forward operator is
+defined: `true` for addition, subtraction, and multiplication; a nonzero second
+operand for division. This definedness expression lets the scaffold describe a
+total Boolean relation: an invalid operation is outside the allowed set.
+
+The successful `(a,b,c)` records are then reoriented twice. In each orientation,
+the known operand k and desired output c become inputs, while the other operand z
+becomes the target. Occurrence keys and duplicate rows remain. Crucially, the
+recorded z does not become a required singleton output. Instead, the row's allowed
+predicate asks whether the original operation, with proposed z inserted, is
+defined and produces c. Call this predicate `R(k,c,z)`. An additional query grid
+uses every pair of declared k and c values, including pairs with no answer.
+Constructing those requirements uses forward expressions, without searching for
+or listing inverse values.
+
+Numeric programs `q(k,c)` are enumerated by the ordinary observation pipeline.
+For each program, the same pipeline replays `R(k,c,q(k,c))` and retains the rows
+where it successfully returns true. This is the non-error, equal subset used in
+milestone 3 guard discovery. A declared proposal prior chooses maximum observed
+coverage, breaking ties by program description size; core synthesis then checks
+and selects among programs with that support mask. Coverage counts occurrences,
+including repeats. It is an experimental prior, not an optimality claim for a
+complete solver-and-guard description or for unseen inputs.
+
+Guard discovery also reuses ordinary Boolean synthesis. It first learns where q
+is defined. It then evaluates the original operator with q inserted and reorients
+those results into a small feature frame: `(k,c,recovered-output)` predicts whether
+the recovered output equals c. That extra feature is available computationally:
+it can be calculated from k, c, and q without knowing the missing operand. The
+scaffold substitutes its expression back into the learned guard and rechecks the
+complete guard against every original success/failure label. Thus the temporary
+feature never becomes a free predictor input.
+
+This decomposition matters for integer multiplication. The program `c/k` can
+execute successfully and still fail to solve `k*z=c`, because integer division
+truncates toward zero. The composed guard learns both that k is nonzero and that
+`k*(c/k)=c`. Divisibility is therefore expressed using the existing arithmetic and
+equality primitives; no new divisibility primitive or handwritten inverse rule
+is installed.
+
+The main numeric grammar contains `+`, `-`, `*`, `/`, the two inputs, and literals;
+its body bound is 16 bits. Field literals range over the whole field, while the
+integer vocabulary is explicitly restricted to `{-1,0,1}`. Boolean searches use
+equality, lazy `if`, Boolean literals, and numeric literal 0, at a 35-bit body
+bound. The temporary computed feature is a declared guard-search proposal.
+All published model sizes also include the schema/version header. These adapters
+add no VM primitive, interpreter, or separate candidate-program enumerator.
+
+Here are the discovered witnesses and the meanings of their guards, with k
+denoting the known operand and c the requested output. Integer `/` means truncation
+toward zero. These are readable equivalents; the trace retains the actual ASTs,
+including their nested lazy conditionals.
+
+| Relation to solve | Witness q(k,c) | Field guard | Integer guard |
+|---|---|---|---|
+| z+k=c or k+z=c | c−k | true | true |
+| z−k=c | k+c | true | true |
+| k−z=c | k−c | true | true |
+| z*k=c or k*z=c | c/k | k≠0 | k≠0 and k*(c/k)=c |
+| z/k=c | k*c | k≠0 | k≠0 |
+| k/z=c | k/c | c≠0 and k/c≠0 | c≠0, k/c≠0, and k/(k/c)=c |
+
+The weak-grammar addition control independently discovers `c+4*k` in GF(5),
+`c+6*k` in GF(7), and `c+(-1)*k` over integers, at a 24-bit body bound. No inverse
+sketch is supplied to that search. A supplied oracle expression is replayed only
+after discovery, as a separately charged positive control. The richer main grammar
+explicitly supplies division; its multiplication solvers learn where to use that
+primitive, rather than learning modular reciprocal computation from `+` and `*`.
+
+### What validation licenses
+
+The existing law validator checks two DSL statements separately:
+
+1. Under guard `G(k,c)`, the witness satisfies `R(k,c,q(k,c))`.
+2. Under the same guard, `R(k,c,z)` is equivalent to `z=q(k,c)` for every z.
+
+For each field, these checks exhaust p² and p³ assignments respectively, using
+ordinary forward VM execution. The original operator's definedness guard has
+also been checked on its complete forward grid. This establishes the whole fiber
+under G without feeding inverse-answer tables into discovery. Certificates retain
+the expression, schema, and implementation versions; changing the witness or
+guard invalidates their use. All sixteen field orientations, and both field
+addition bootstraps, pass both checks.
+
+Integer checks use new forward executions on
+`{-2^64,-17,-1,0,1,17,2^64}`, additional queries, and candidate z values on the
+training grid. The forward definedness guard is rechecked too. Every witness law
+passes these checks as a **conjecture**, including the weak-grammar bootstrap.
+This is not a universal integer proof. The separate uniqueness checks actually
+refute both integer division orientations: `z/2=1` accepts z=2 and z=3, while
+`4/z=1` accepts z=3 and z=4. A correct witness does not preserve these entire sets.
+
+A false guard also does not establish that a query has no solution. For example,
+the denominator witness `k/c` cannot run when c=0, although integer `4/z=0` has
+many solutions. Such cases retain the relation. This milestone does not synthesize
+interval descriptions of integer division fibers or an explicit “no solution”
+return value.
+
+### Reuse inside a parent/child synthesis problem
+
+The reuse fixture hides `h(b)=b+1` inside each arithmetic decoder. The parent
+observes inputs `(a,b)` and output y; a proposed decomposition puts h behind one
+operand of the decoder and supplies the other operand from a. Ordinary pullback
+creates a child requirement such as `a*z=y`. The child predictor receives only b.
+The output y appears in its checker, exactly as other training targets do, and is
+never passed to the child program as an argument.
+
+For a singleton parent output and a current finite certificate, the propagator
+evaluates G(a,y). Where G holds it replaces the child predicate by the equivalent
+singleton `q(a,y)`. Otherwise it retains the ordinary pullback. Zero, empty, and
+multivalued fibers therefore keep their full meaning. Parent requirements that
+are themselves sets or predicates also retain the original pullback. Integer
+conjectures never authorize singleton replacement.
+
+The guard and witness are ordinary DSL expressions. Their static validation is
+prepared once per propagation batch, using the preparation mechanism above;
+every application still checks its dynamic inputs. Both resulting child frames
+go through the same bounded `+`/`*` synthesis search. They retain exactly the same
+successful programs, with the same program sizes and execution work. The selected
+child is composed back into its parent, encoded and decoded, then replayed against
+all parent observations.
+
+| Domain | Decoder / unknown | Child-search work, predicate → propagated | Total reuse work, predicate → propagated |
+|---|---|---:|---:|
+| GF(5) | + or −, either operand | 17,763 → 14,771 | 19,338 → 18,779 |
+| GF(5) | *, either operand | 62,013 → 59,241 | 63,588 → 63,716 |
+| GF(5) | /, numerator | 16,623 → 13,851 | 17,883 → 17,744 |
+| GF(5) | /, denominator | 36,263 → 34,459 | 37,523 → 38,754 |
+| GF(7) | + or −, either operand | 31,987 → 26,575 | 35,074 → 34,279 |
+| GF(7) | *, either operand | 142,013 → 136,909 | 145,100 → 145,542 |
+| GF(7) | /, numerator | 30,391 → 25,287 | 33,037 → 33,074 |
+| GF(7) | /, denominator | 92,699 → 88,959 | 95,345 → 97,578 |
+
+“Total reuse work” includes creating the pullback and, for propagation, checking
+the evidence, preparing the programs, applying them, and constructing replacement
+requirements, plus child search. It excludes acquisition of the solver and the
+common parent-batch acquisition and final composition/replay; those are reported
+separately in the trace. Thus propagation reduces child checking work throughout
+the field fixture, but its setup and application costs sometimes make total reuse
+more expensive. It does not yet repay discovery. The integer comparison changes
+neither the child predicates nor their search work. These measurements provide a
+baseline for the deferred adaptive strategy, not a reason to add one to this small
+experiment.
+
+### Acquisition costs and AU over the resulting laws
+
+Each forward table and its learned definedness guard are acquired once and shared
+by the two orientations. The addition table also serves the weak-grammar control.
+The following acquisition work includes the failed numeric proposals, all guard
+searches, replay, and validation. It counts nine solve discoveries per domain:
+eight main orientations and the addition bootstrap.
+
+| Domain | Shared forward/definedness acquisition | Nine solver discoveries and validations | Extra held-out acquisition |
+|---|---:|---:|---:|
+| GF(5) | 721,345 | 28,784,653 | 0 |
+| GF(7) | 1,302,073 | 79,382,348 | 0 |
+| Integers | 2,006,462 | 54,995,245 | 326,727 |
+
+Separate positive-control oracle replays and the AU experiment below are not
+included in these totals. The trace separates numeric observation, forward
+requirement replay, witness selection, guard stages, data/proposal work, and
+validation. It also reports standalone witness and guard sizes; these are not a
+claim that a complete encoded solver library or the original table has compressed.
+
+Finally, the eight learned guarded witness statements in each domain are given
+to the existing AU engine. Their common conditional/equality structure becomes a
+quoted-code constructor with two explicit hole inputs. Those inputs retain the
+varying guard and relation expressions. Ordinary core search checks that executing
+the constructor recreates each complete statement, including the original guard,
+after a codec roundtrip. Merely returning eight Boolean `true` values would fail
+this syntax reconstruction task.
+
+The constructor has S=256 bits and W_run=5,327 across eight statements in each
+field, and S=206 with W_run=3,622 for integers. Hole bindings are supplied inputs
+in this control. Their storage and selection would have to be included in a
+whole-corpus compression comparison. AU supplies structural reuse here; it neither
+proves the integer conjectures nor promotes these statements to independent
+algebraic axioms.
 
 ## Validation and implementation boundary
 
-The combined suite passes **64 tests and 158,624 checks**. It retains the earlier
+The combined suite passes **77 tests and 185,011 checks**. It retains the earlier
 frame, runtime, and observation controls while merging duplicate encoding-specific
 tests. Independent references enumerate tiny trees by application count and check
 their values against host arithmetic. Tests also cover codec roundtrips and invalid
@@ -1100,29 +1351,50 @@ checked-rule transformer replay. Symbolic copying, errors, and rewriting have
 unit-versus-batched continuation checks. The visualizer exporter also preserves
 quoted values as syntax without executing them.
 
+Preparation controls check exact cutoffs before publication, partial validation of
+multiple rules, cold and warm continuation parity, fresh-search isolation, schema
+separation, stale evidence, and mutation of source data, rule inspection copies,
+and returned literals. Invalid quoted scopes, field residues, input arities, and
+runtime operations still fail after static validation has been reused. A call-count
+control confirms one compiler call and one static validation for each complete
+649-candidate search, with all 597 dynamic applications retained.
+
+Algebra controls independently check every GF(5) and GF(7) input, output, and
+proposed operand for all eight orientations, using a multiplication-based field
+reciprocal reference. They compare every allowed child value before and after
+propagation and the entire successful-program lists. Further checks cover zero,
+empty and multivalued fibers, repeated grid values with distinct occurrence keys,
+set-valued parent requirements, child input isolation, insufficient acquisition
+budgets, incomplete forward coverage, empty validation samples, stale certificates,
+the separate addition oracle, exact AU reconstruction, and final
+parent replay. Integer controls include large signed operands, divisibility,
+division's multiple witnesses, and an overfitted sampled solver refuted on a new
+input. No independent host oracle contributes to discovery or certification.
+
 Budget tests compare complete continuations and every ledger category, including
 cutoffs immediately before and after measured first-solution and completion points,
 partly paid large multiplications, and errors. Additional controls check that text
 printer settings affect neither sizes nor work and that schema header length does
 not affect enumeration work. The same continuation checks cover law validation,
-normalization, and equality-constrained search. M1--M3 scripts assert their positive and negative
+normalization, and equality-constrained search. M1--M4 scripts assert their positive and negative
 controls. The current linear benchmark smoke check agrees with M1's work and results;
 the historical scaling timings have not been reinterpreted under the new tariff.
 
 | File | Responsibility |
 |---|---|
 | `syntax.lisp`, `codec.lisp` | Typed trees, substitution, sole binary codec |
-| `sim.lisp` | Structural tariff and resumable evaluator |
+| `sim.lisp` | Structural tariff, resumable evaluator, reusable static validation |
 | `frames.lisp` | Requirements, reorientation, pullbacks, reconstruction |
 | `grammar.lisp` | Typed grammar, snapshots, canonical enumeration |
 | `search.lisp`, `observations.lisp` | Candidate checking, scheduling, empirical buckets |
 | `au.lisp` | Typed matching and aligned syntactic anti-unification |
 | `symbolic.lisp` | Quoted-code primitives, structural checks, AU constructor lowering |
-| `laws.lisp` | Scoped certificates, DSL rule lowering, normalization traversal |
+| `laws.lisp` | Scoped certificates, DSL rule lowering, preparation cache, normalization traversal |
 | `guards.lisp` | Agreement subsets, Boolean child frames, guarded-law proposals |
 | `law-compression.lisp` | Law corpus packets, AU descriptions, ordinary reconstruction frames |
-| `fixtures.lisp`, `experiments.lisp`, `law-experiments.lisp` | Fixtures and milestone runs |
-| `tests/` | Separate harness, core/observation/codec/law/guard/compression/symbolic suites, visualizer checks |
+| `algebra.lisp` | Forward relations, guarded solve proposals, certificate checks, arithmetic propagation |
+| `fixtures.lisp`, `experiments.lisp`, `law-experiments.lisp`, `algebra-experiments.lisp` | Fixtures and milestone runs |
+| `tests/` | Separate harness and core, observation, codec, law, guard, compression, symbolic, amortization, algebra, and visualizer suites |
 
 The cleanup separates grammar/enumeration from search orchestration and moves
 the test harness and suites out of the source modules. Language snapshots now
@@ -1131,19 +1403,21 @@ share `advance-accounted-evaluation` for VM work and unpaid-error accounting.
 Matching and substitution are shared by frames, AU, and symbolic primitives;
 there is no second implementation of those mechanics inside the rule compiler.
 
-Milestone 4 remains deferred: no inverse-rule search or inverse-value enumeration
-is implemented. E-graphs, general theorem proving, multi-level automatic
-decomposition, library learning, and general recursive orchestration are also later
-work. The fixed encoding and accounting boundary will remain stable unless a concrete
-result calls for revisiting them.
+Milestone 4's arithmetic experiment is implemented; richer fiber representations
+and universal integer proofs remain open. Inverse-value enumeration is not used.
+E-graphs, general theorem proving, multi-level automatic decomposition, library
+learning, and general recursive orchestration remain later work. The fixed encoding
+and accounting boundary will remain stable unless a concrete result calls for
+revisiting them.
 
 ### Deferred option: runtime compilation of DSL expressions
 
 The evaluator is compiled Lisp, while DSL expressions remain interpreted data.
 The rule and AU lowering above produces DSL ASTs, not native executable code.
 Revisit selective lowering of frequently reused predicates, accepted models, or
-library functions when repeated execution warrants it. First consider caching sizes
-and validation results, then measure compilation against that baseline. Frames remain
+library functions when repeated execution warrants it. Rewrite transformers now
+reuse static validation; native compilation should be measured against that baseline.
+Size caching and preparation reuse elsewhere remain possible further steps. Frames remain
 structured data, with their executable expressions eligible for compilation.
 
 Keep the typed AST, binary encoding, and provenance authoritative. Compiled caches

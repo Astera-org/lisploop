@@ -211,6 +211,10 @@ one exact Boolean membership program per distinct proper agreement support."
                   (search-job-reused-rejections checked))
           (report-ledger "  Plain search" (search-job-ledger plain))
           (report-ledger "  Checked search" (search-job-ledger checked))
+          (let ((cache (rewrite-library-program-cache (search-job-library checked))))
+            (format t "  Preparation retained: ~D schema bundle(s), ~D validated DSL transformer(s); each new source/assumption input is checked.~%"
+                    (hash-table-count cache)
+                    (loop for programs being the hash-values of cache sum (length programs))))
           (format t "  GF(5) acquisition/proposal/all-law validation=~D; acquisition plus checked reuse=~D.~%"
                   acquisition (+ acquisition (ledger-total (search-job-ledger checked)))))))
     (let* ((domain (gf 5)) (inputs (list (cons 0 domain))) (x (var 0 domain))
