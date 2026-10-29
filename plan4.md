@@ -2,7 +2,7 @@
 
 ## Nine research pillars, one small synthesis kernel
 
-26 October 2026, revised 28 October. Reorganizes prompt3 and plan3 around the nine numbered research goals. This is the research plan; [results.md](results.md) records the implemented experiments and their measured outcomes.
+26 October 2026, revised 29 October. Reorganizes prompt3 and plan3 around the nine numbered research goals. This is the research plan; [results.md](results.md) records the implemented experiments and their measured outcomes.
 
 The prompt that motivated this document (`prompt4.md`), verbatim. The
 `# prompt` heading is dropped, trailing spaces are removed, nested items are
@@ -92,7 +92,7 @@ Milestone numbers match the nine pillars exactly. They identify research questio
 | **1. Search** | Can we search, resume, verify, and price a transparent baseline? | A known solution remains reachable under increasing work and description limits |
 | **2. Learned equivalence** | Can execution expose useful agreements and conserved quantities? | A useful observed agreement is retained with its scope; accidental agreement is rejected on new data |
 | **3. Laws** | Can such findings become reusable rules about the simulator? | A checked finite-domain law helps another search and does not escape its domain |
-| **4. Algebra** | Can solve rules be learned from forward experiments? | Guarded solve programs for both operands of +, −, ×, ÷ over GF(p) and integers, then certified propagation |
+| **4. Algebra** | Can solve rules be learned from forward experiments? | Guarded solves for both operands of +, -, *, /; certified field propagation and forward-verified integer reuse |
 | **5. Lifting** | Can explicit context make a shared computation reconstruct its different instances? | One supplied lift and residual reconstruct all occurrences; missing context is exposed |
 | **6. Abstraction** | Can variables and reusable patterns be recovered from known factorizations? | Typed AU, matching, and occurrence search pass separate positive controls |
 | **7. Partitioning and locality** | Can useful contexts and correspondences be selected economically? | A discovered view pays for selection and reassembly; locality helps on a declared workload |
@@ -280,8 +280,9 @@ babble uses an equational theory supplied to library learning; discovering that 
 **Question.** Can forward experiments bootstrap shared solve programs without a supplied inverse or per-example search over inverse values?
 
 **Scope update, 28 October.** Cover all four arithmetic operators, solving for
-either operand. Structural and quoted-code primitives are outside this arithmetic
-experiment. Use GF(5), GF(7), and integers, with the existing VM's truncating integer
+either operand. Structural and quoted-code primitives are outside numeric solve
+and guard discovery; the 29 October reuse extension uses them for matching.
+Use GF(5), GF(7), and integers, with the existing VM's truncating integer
 division. The current implementation and measurements are in `results.md`.
 
 **Forward acquisition and reorientation.** Execute each operator on a declared
@@ -324,13 +325,32 @@ and each application. Report discovery, validation, and reuse separately.
 
 **Integer and multivalued controls.** Include negative, zero, positive, and large
 held-out integers. Successful sample checks remain conjectures, so integer child
-requirements retain their predicates. Multiplication needs a divisibility guard:
+requirements retain their predicates as the authoritative fallback. Use learned
+integer witnesses operationally: calculate proposed child values, check them by
+the original forward computation, and use successful proposals as singleton
+targets in a separate preferred child frame. Retain ordinary child search with
+a fixed work reserve, even after a preferred branch succeeds. Recheck returned
+programs against the original requirements and replay the assembled parent.
+Measure work to the first verified solution separately from full bounded
+exhaustion; a failed preferred branch does not establish impossibility.
+Multiplication needs a divisibility guard:
 truncating c/k is not always an exact solution. Division can have several answers
 even where a discovered witness works: both z=2 and z=3 satisfy z/2=1. At k=c=0,
-multiplication allows every z; at k=0,c≠0 it allows none. These requirements must
-remain relations. Unsupported target sets and uncertified cases also keep the
-ordinary pullback. A solver returning ``no solution'' needs a separate output
+multiplication allows every z; at k=0,c!=0 it allows none. These requirements remain
+relations in the authoritative frame; a proposed witness never discards their
+other answers from the fallback search. Unsupported target sets and failed
+proposals keep the ordinary pullback in both branches. A solver returning ``no solution'' needs a separate output
 specification; failure to find a witness at a bound does not establish emptiness.
+
+**Triggering and matching, 29 October.** Select from the learned solver library
+by typed structural matching against the proposed decoder. Match the operator
+and unknown operand position, bind the known operand expression, and require its
+inputs to be available from the parent. Lower structural matchers into the
+existing quoted-code DSL; keep numerical guards and certificates separate from
+syntax matching. Charge library preparation, dispatch, matching, binding checks,
+and application, including unsuccessful attempts. Compare cold and reused
+matching preparation. This is a supplied matching mechanism over learned rules;
+learning retrieval descriptions or a selection policy remains outside milestone 4.
 
 **AU and controls.** Anti-unify the eight actual guarded witness statements in
 each domain. Lower the resulting pattern into an ordinary quoted-code constructor

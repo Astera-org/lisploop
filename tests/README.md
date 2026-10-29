@@ -21,6 +21,7 @@ and ledgers without expanding the public API just for testing.
 | `symbolic.lisp` | Quoted expressions, DSL transformers, AU lowering and symbolic synthesis |
 | `amortization.lisp` | Reusable validation, preparation accounting, cache isolation and cold/warm continuations |
 | `algebra.lisp` | Both operands of all four arithmetic operators, learned guards, finite certificates, integer counterexamples, exact propagation and AU |
+| `propagation.lisp` | DSL rule matching, library isolation, forward-verified integer targets, retained alternatives, fair branch scheduling, resumption, and expensive-context reuse |
 | `visualizer.lisp` | Read-only export, quoted/exact values and JSON boundaries |
 
 `make m1 m2 m3 m4` runs the reproducible experiments with additional assertions.

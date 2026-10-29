@@ -7,7 +7,7 @@ DOCS = plan.pdf plan2.pdf plan3.pdf plan4.pdf results.pdf results-history.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
-BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp codec.lisp sim.lisp frames.lisp grammar.lisp search.lisp observations.lisp guards.lisp au.lisp symbolic.lisp laws.lisp law-compression.lisp algebra.lisp benchmark.lisp
+BENCHMARK_SOURCES = load.lisp package.lisp syntax.lisp codec.lisp sim.lisp frames.lisp grammar.lisp search.lisp observations.lisp guards.lisp au.lisp symbolic.lisp laws.lisp law-compression.lisp algebra.lisp propagation.lisp propagation-search.lisp benchmark.lisp
 
 .PHONY: all clean test m1 m2 m3 m4 visualizer benchmark benchmark-profile
 

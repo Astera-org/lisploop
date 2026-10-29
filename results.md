@@ -1,6 +1,6 @@
 # lisploop --- results
 
-28 October 2026. Current implementation of milestones 1--4 in [plan 4](plan4.md).
+29 October 2026. Current implementation of milestones 1--4 in [plan 4](plan4.md).
 There is one fixed binary description encoding (version 7) and one structural
 work tariff (version 8), with simulator semantics version 5. Their version numbers identify the specification; they
 are not selectable alternatives. Earlier measurements and explanations remain in
@@ -143,8 +143,8 @@ and a four-bit opcode, so
 
 $$S(a+b)=23+6+3+3=35\text{ bits}.$$
 
-Literal bodies cost 3 bits for `0`, 6 for `±1`, 7 for `±2,±3`, and 10 for
-`±4,...,±7`. Exactly 31 integer literals are strictly cheaper than the 12-bit
+Literal bodies cost 3 bits for `0`, 6 for `+/-1`, 7 for `+/-2,+/-3`, and 10 for
+`+/-4,...,+/-7`. Exactly 31 integer literals are strictly cheaper than the 12-bit
 body of `a+b`; another 32 tie with it. The integer vocabulary remains unrestricted.
 
 For GF(5), the corresponding header is 38 bits; a field literal body costs
@@ -1102,19 +1102,51 @@ solving for either operand**, in GF(5), GF(7), and integers. All eight orientati
 produce a guarded witness program. Both field runs obtain exhaustive certificates
 that support exact propagation. Integer witnesses pass held-out checks, but remain
 conjectures; integer division also supplies explicit counterexamples to uniqueness.
+Integer conjectures now supply forward-verified targets to a preferred search
+branch, with the original search retained. Propagators are selected by typed
+structural matching, whose executable core also runs in the DSL.
 The original addition experiment succeeds separately with only `+` and `*`.
 
-The distinction between a witness and an entire fiber is central. For an equation
-`k*z=c`, a witness program supplies one possible z. A propagator that replaces the
-equation by `z=q(k,c)` asserts something stronger: this is exactly the set of
-allowed z values. Replacing `0*z=0` with one chosen answer would discard valid
-solutions. The scaffold therefore retains the original predicate unless it has
-checked the stronger equivalence under the learned guard.
+A **witness** is one answer that works; a **fiber** is the set of all answers that
+work. In `k*z=c`, k is the known operand, c is the desired output, and z is the
+missing operand. A witness program `q(k,c)` computes an acceptable z wherever
+its guard holds. For example, over GF(5), `0*z=0` accepts every field value:
+its fiber is `{0,1,2,3,4}`. Choosing z=0 would supply a witness for this equation,
+but the other four values would remain equally valid answers.
+
+A **propagator** uses a learned solve rule to simplify the requirement that child
+search must check. For example, over GF(5), `2*z=1` accepts only z=3, because
+`2*3=1` modulo 5. Replacing that equation with `z=3` preserves exactly the same
+allowed answers. The replacement is called a singleton requirement because it
+allows one value. Replacing `0*z=0` with `z=0`, however, would change the task:
+the original equation permits five values and the replacement permits only one.
+
+Preserving those alternatives matters when one child program must satisfy several
+rows. In the parent/child use below, the parent predicts `y=a*g(b)`, and the child
+program g receives only b. Consider two observations with the same b: one has
+`a=0, y=0`, and the other has `a=1, y=3`. Their child requirements are `0*z=0`
+and `1*z=3`. Returning 3 for that b satisfies both. If the first requirement were
+replaced by the arbitrarily chosen witness `z=0`, the child would be required to
+return both 0 and 3 for the same input. A solvable problem would become
+contradictory.
+
+The implementation therefore checks two claims separately: the witness works,
+and every allowed answer equals that witness. Only a certificate for this
+stronger equivalence permits replacement in the authoritative child frame, and
+only where the learned guard holds. For field multiplication, that guard is
+`k!=0`; the `k=0` cases keep
+their original equation checks. More generally, whenever the certificate or guard
+does not authorize replacement, the scaffold retains the original predicate,
+which tests each proposed z by running the forward operation. Sampled integer
+checks do not supply such a certificate. Integer requirements therefore retain
+their predicates in a fallback frame while verified witnesses can supply
+singleton targets to a separate, preferred branch. This uses the conjecture
+without asserting that its chosen answer is the only valid one.
 
 ### From forward executions to a guarded solve program
 
 Each operator is executed on the full field input grid, or on integer operands
-from −4 through 4. The observation machinery retains successful outputs and error
+from -4 through 4. The observation machinery retains successful outputs and error
 statuses. A Boolean synthesis frame first learns where the forward operator is
 defined: `true` for addition, subtraction, and multiplication; a nonzero second
 operand for division. This definedness expression lets the scaffold describe a
@@ -1170,12 +1202,12 @@ including their nested lazy conditionals.
 
 | Relation to solve | Witness q(k,c) | Field guard | Integer guard |
 |---|---|---|---|
-| z+k=c or k+z=c | c−k | true | true |
-| z−k=c | k+c | true | true |
-| k−z=c | k−c | true | true |
-| z*k=c or k*z=c | c/k | k≠0 | k≠0 and k*(c/k)=c |
-| z/k=c | k*c | k≠0 | k≠0 |
-| k/z=c | k/c | c≠0 and k/c≠0 | c≠0, k/c≠0, and k/(k/c)=c |
+| z+k=c or k+z=c | c-k | true | true |
+| z-k=c | k+c | true | true |
+| k-z=c | k-c | true | true |
+| z*k=c or k*z=c | c/k | k!=0 | k!=0 and k*(c/k)=c |
+| z/k=c | k*c | k!=0 | k!=0 |
+| k/z=c | k/c | c!=0 and k/c!=0 | c!=0, k/c!=0, and k/(k/c)=c |
 
 The weak-grammar addition control independently discovers `c+4*k` in GF(5),
 `c+6*k` in GF(7), and `c+(-1)*k` over integers, at a 24-bit body bound. No inverse
@@ -1191,7 +1223,7 @@ The existing law validator checks two DSL statements separately:
 1. Under guard `G(k,c)`, the witness satisfies `R(k,c,q(k,c))`.
 2. Under the same guard, `R(k,c,z)` is equivalent to `z=q(k,c)` for every z.
 
-For each field, these checks exhaust p² and p³ assignments respectively, using
+For each field, these checks exhaust p^2^ and p^3^ assignments respectively, using
 ordinary forward VM execution. The original operator's definedness guard has
 also been checked on its complete forward grid. This establishes the whole fiber
 under G without feeding inverse-answer tables into discovery. Certificates retain
@@ -1210,8 +1242,65 @@ refute both integer division orientations: `z/2=1` accepts z=2 and z=3, while
 A false guard also does not establish that a query has no solution. For example,
 the denominator witness `k/c` cannot run when c=0, although integer `4/z=0` has
 many solutions. Such cases retain the relation. This milestone does not synthesize
-interval descriptions of integer division fibers or an explicit “no solution”
+interval descriptions of integer division fibers or an explicit "no solution"
 return value.
+
+### How a propagator is triggered
+
+The learned numeric witness q and Boolean guard G are ordinary DSL expressions.
+The surrounding propagation procedure also needs to find where they apply,
+bind their inputs, check their evidence, and construct child requirements. These
+jobs were previously initiated by the experiment supplying a particular solver
+for a particular decoder. The reuse experiment now supplies the library of all
+eight learned rules in a domain and selects a rule by matching the decoder.
+
+For example, a rule for solving `k+z=c` has the structural pattern `?known+?unknown`.
+Given the decoder `a*a+z`, matching binds `?known` to the expression `a*a` and
+`?unknown` to the designated child variable z. The corresponding rule for
+`z+k=c` fails this orientation check. The known expression must typecheck using
+only the parent's inputs: `z+z` is therefore rejected because its supposedly
+known operand still needs the missing child. Computed contexts such as `a*a`
+are accepted and evaluated once per applicable row. This matcher handles one
+arithmetic operation at the decoder root; it does not discover a decomposition
+or recursively solve an arbitrary expression tree.
+
+`compile-propagator-matcher` lowers that structural check into a DSL program on
+quoted syntax. It uses `code-match`, `code-bind`, typed syntax equality, tuples,
+and lazy conditionals, returning a match flag and the quoted known expression.
+The existing codec can encode and decode the program. Pattern variables and
+the decoder's runtime variables have separate quoted scopes. The matcher checks
+the actual designated child variable, not merely the presence of any variable.
+
+The Lisp scaffold supplies a linear scan of the library, filters by typed outer
+operator, runs the shortlisted DSL matchers, and checks the known expression's
+parent input scope. It chooses the first applicable rule in library order. A
+numerical guard is evaluated later, on each row's known operand and desired
+output; a structural match alone says nothing about that row's solvability.
+The matcher pattern and selection procedure are supplied mechanisms derived
+from each rule's recorded orientation. They are not learned retrieval programs
+or milestone 9 vocabulary.
+
+Library preparation freezes copies of the rules and their eligibility: an exact
+field certificate or a current integer witness conjecture. It costs 1,671 units
+per eight-rule field library and 1,207 for integers. A library caches compiled,
+statically validated matchers for each rule, ordered parent schema, and child
+variable ID. Implementation-version changes invalidate it; changing the source
+discovery cannot alter its frozen rules. All dispatch, compilation, preparation,
+matching, and binding work is charged. Each new quoted decoder is still validated.
+
+A separate control matches `a+z` against a fresh eight-rule library, then repeats
+the query with preparation cached. The first orientation fails and the second
+succeeds. A final query `z+z` fails both binding checks:
+
+| Domain | Right-operand matcher bits | Cold matching work | Warm matching work | Repeated-child rejection work |
+|---|---:|---:|---:|---:|
+| GF(5), GF(7) | 735 | 5,237 | 2,705 | 3,606 |
+| Integers | 526 | 2,377 | 1,029 | 1,437 |
+
+These work figures exclude the separately reported library preparation. Matcher
+bits describe one standalone function, not a complete encoded solver library.
+Preparation reuse saves work, but structural matching itself remains a measurable
+cost. Binding extraction currently repeats some tree matching through `code-bind`.
 
 ### Reuse inside a parent/child synthesis problem
 
@@ -1222,42 +1311,150 @@ creates a child requirement such as `a*z=y`. The child predictor receives only b
 The output y appears in its checker, exactly as other training targets do, and is
 never passed to the child program as an argument.
 
+The comparison measures how much work a learned formula saves in checking child
+candidates. For addition, the ordinary predicate checks `a+g(b)=y` for each
+candidate g on each visited row. The propagated version first calculates the
+required child value `q(a,y)=y-a` once per row, then checks each candidate's output
+against that stored value. Thus the learned formula performs the inverse
+calculation directly. Search still has to find a shared program g that predicts
+those values using only b; the per-row calculation uses a and y, which are
+unavailable to g.
+
+Constructing the ordinary pullback itself involves substitution, not a search
+over inverse values. The baseline leaves the equation in the checker and tests
+candidate programs through forward execution. Consequently the table below
+compares repeated forward checks with precomputed inverse targets. It does not
+compare a separate exhaustive inverse-value search with a closed-form solver.
+
 For a singleton parent output and a current finite certificate, the propagator
 evaluates G(a,y). Where G holds it replaces the child predicate by the equivalent
 singleton `q(a,y)`. Otherwise it retains the ordinary pullback. Zero, empty, and
 multivalued fibers therefore keep their full meaning. Parent requirements that
-are themselves sets or predicates also retain the original pullback. Integer
-conjectures never authorize singleton replacement.
+are themselves sets or predicates also retain the original pullback.
 
 The guard and witness are ordinary DSL expressions. Their static validation is
 prepared once per propagation batch, using the preparation mechanism above;
-every application still checks its dynamic inputs. Both resulting child frames
-go through the same bounded `+`/`*` synthesis search. They retain exactly the same
-successful programs, with the same program sizes and execution work. The selected
+every application still checks its dynamic inputs. In the certified field comparison, both child frames
+go through the same bounded `+`/`*` synthesis search, enumerating the same candidate
+expressions. They retain exactly the same successful programs, with the same
+program sizes and execution work. The savings come from cheaper requirement
+checks, rather than fewer enumerated candidates. The selected
 child is composed back into its parent, encoded and decoded, then replayed against
 all parent observations.
 
-| Domain | Decoder / unknown | Child-search work, predicate → propagated | Total reuse work, predicate → propagated |
-|---|---|---:|---:|
-| GF(5) | + or −, either operand | 17,763 → 14,771 | 19,338 → 18,779 |
-| GF(5) | *, either operand | 62,013 → 59,241 | 63,588 → 63,716 |
-| GF(5) | /, numerator | 16,623 → 13,851 | 17,883 → 17,744 |
-| GF(5) | /, denominator | 36,263 → 34,459 | 37,523 → 38,754 |
-| GF(7) | + or −, either operand | 31,987 → 26,575 | 35,074 → 34,279 |
-| GF(7) | *, either operand | 142,013 → 136,909 | 145,100 → 145,542 |
-| GF(7) | /, numerator | 30,391 → 25,287 | 33,037 → 33,074 |
-| GF(7) | /, denominator | 92,699 → 88,959 | 95,345 → 97,578 |
+The following figures include the new library selection and DSL matching work.
+Within each cell, the arrow compares the ordinary predicate with propagated
+requirements. Operand positions refer to the original forward operation.
 
-“Total reuse work” includes creating the pullback and, for propagation, checking
+| Decoder / unknown | GF(5) child search | GF(5) total reuse | GF(7) child search | GF(7) total reuse |
+|---|---:|---:|---:|---:|
+| +, left | 17,763 -> 14,771 | 19,338 -> 21,514 | 31,987 -> 26,575 | 35,074 -> 37,014 |
+| +, right | 17,763 -> 14,771 | 19,338 -> 22,614 | 31,987 -> 26,575 | 35,074 -> 38,114 |
+| -, left | 17,763 -> 14,771 | 19,338 -> 21,526 | 31,987 -> 26,575 | 35,074 -> 37,026 |
+| -, right | 17,763 -> 14,771 | 19,338 -> 22,626 | 31,987 -> 26,575 | 35,074 -> 38,126 |
+| *, left | 62,013 -> 59,241 | 63,588 -> 66,397 | 142,013 -> 136,909 | 145,100 -> 148,223 |
+| *, right | 62,013 -> 59,241 | 63,588 -> 67,497 | 142,013 -> 136,909 | 145,100 -> 149,323 |
+| /, numerator | 16,623 -> 13,851 | 17,883 -> 20,359 | 30,391 -> 25,287 | 33,037 -> 35,689 |
+| /, denominator | 36,263 -> 34,459 | 37,523 -> 42,354 | 92,699 -> 88,959 | 95,345 -> 101,178 |
+
+"Total reuse work" includes creating the pullback and, for propagation, checking
 the evidence, preparing the programs, applying them, and constructing replacement
-requirements, plus child search. It excludes acquisition of the solver and the
+requirements, plus child search. It excludes acquisition of the solver, the
+shared eight-rule library preparation reported above, and the
 common parent-batch acquisition and final composition/replay; those are reported
-separately in the trace. Thus propagation reduces child checking work throughout
-the field fixture, but its setup and application costs sometimes make total reuse
-more expensive. It does not yet repay discovery. The integer comparison changes
-neither the child predicates nor their search work. These measurements provide a
-baseline for the deferred adaptive strategy, not a reason to add one to this small
-experiment.
+separately in the trace. Propagation still reduces child checking work throughout
+the field fixture. With rule selection now explicitly performed and charged,
+total reuse costs more in every one of these small batches. These are structural
+work units, not wall-clock times. The earlier direct-solver comparison omitted
+this matching procedure and its work.
+
+### Forward-verified integer reuse
+
+An integer witness conjecture now has an operational use. After matching a rule,
+the propagator evaluates its guard and witness on each supported row. It checks
+the proposed z by executing that row's **original pullback predicate**, independently
+of the learned guard or definedness expression. A false guard, error, or failed
+forward check leaves the row unchanged. A successful check supplies a singleton
+target in a separate preferred frame. The original frame is retained in full;
+the new singleton is a search choice, not a claim of uniqueness.
+
+`start-propagation-search` creates ordinary core search jobs for the preferred
+and original frames. `resume-propagation-search` gives every fourth 256-unit
+work quantum to the original search while both branches have work. The other
+quanta advance preferred search and forward replay of its returned programs.
+Successful preferred programs are rechecked through the ordinary core proposal
+path against all original child requirements before entering the combined result
+set. Original-branch programs already pass those requirements. Results are
+deduplicated and selected by description size. The chosen child is composed into
+the parent, encoded, decoded, and replayed against the parent observations.
+
+This is a fixed two-branch control, not a learned scheduler. It retains the core
+jobs' continuations and an absolute cumulative work budget. It can return the
+first verified candidate, resume afterward, and extend the description bound.
+A successful preferred branch does not remove the original branch: alternative
+witnesses can yield different or shorter programs. Exhausting both branches
+recovers exactly the baseline's bounded program set. No preferred-branch failure
+is used as a refutation of the original problem.
+
+Library construction and frame propagation remain synchronous, metered scaffold
+adapters; their DSL calculations use the existing VM. The resumable combined
+search begins after those frames have been constructed. Preparation or evaluation
+that hits an adapter's work ceiling is reported as unresolved.
+
+The distinction is exercised by two integer rows with the same child input:
+`z/2=1` and `z/3=1`. The learned numerator witness `k*c` proposes 2 and 3. Each
+proposal passes its individual forward check, but no deterministic child can
+return both for the same input. The preferred branch fails; the original branch
+finds the shared answer 3. A single `z/2=1` row also retains both 2 and 3 across
+the combined search, even after the preferred answer 2 succeeds.
+
+On the original small reuse fixture, integer addition/subtraction propose 25
+targets per orientation, multiplication proposes 20 and retains five predicates,
+numerator division proposes 20, and denominator division proposes ten and retains
+ten. All bounded result sets match ordinary search. Additional verification and
+the retained branch cost more than they save here:
+
+| Integer decoder / unknown | First verified child, including preparation | Full bounded search, including preparation |
+|---|---:|---:|
+| +, left | 4,340 -> 11,262 | 7,847 -> 21,612 |
+| +, right | 4,340 -> 11,685 | 7,847 -> 22,035 |
+| -, left | 4,292 -> 11,268 | 7,756 -> 21,527 |
+| -, right | 4,292 -> 11,691 | 7,756 -> 21,950 |
+| *, left | 4,358 -> 11,904 | 7,879 -> 22,358 |
+| *, right | 4,358 -> 12,327 | 7,879 -> 22,781 |
+| /, numerator | 5,173 -> 13,121 | 9,995 -> 17,987 |
+| /, denominator | 3,657 -> 10,193 | 6,690 -> 19,236 |
+
+As in the field table, shared library preparation, solver discovery, common
+parent acquisition, and final parent replay are separate. Search work includes
+both branches, scheduling, result collection, and forward replay of preferred
+programs. Numerical witness checks are included in propagation preparation.
+
+A second, supplied-context control tests the intended benefit when forward
+calculation is expensive. Seven rows use `a=2^128+i`, `b=i-3`, for i from 0 to 6.
+The supplied decoder is `a*a+z`; the withheld child is `g(b)=b*b+1`. The same learned
+addition solver binds k to the computed context `a*a`, calculates `y-k`, and
+forward-checks those seven proposed targets. Both searches use only `+`, `*`,
+integer literals `{-1,0,1}`, and the same 22-bit body bound for g.
+
+| Expensive-context integer control | Ordinary predicate | Guided propagation |
+|---|---:|---:|
+| Preparation, including cold library/matching on the guided path | 4,785 | 265,004 |
+| Search to first verified child | 2,189,128 | 189,720 |
+| Preparation plus first verified child | **2,193,913** | **454,724** |
+| Preparation plus full bounded search | 2,973,192 | 3,522,367 |
+
+Work to the first verified child falls by **79.3%**, including matching, inverse
+calculation, per-row forward verification, and replay of the returned child.
+The ordinary checker repeatedly calculates `a*a` while trying programs; the
+preferred frame avoids those repeated calculations. The first guided result also
+passes an independent codec roundtrip and full parent replay, costing 128,799
+additional units including composition. Common parent acquisition costs 126,970;
+prior solver discovery is not included. No universal integer proof is claimed.
+Exhausting both branches remains more expensive, because it deliberately finishes
+the original search as well. This establishes a useful integer shortcut for early
+solutions on the declared workload, not a general speedup or amortization of
+solver acquisition.
 
 ### Acquisition costs and AU over the resulting laws
 
@@ -1296,7 +1493,7 @@ algebraic axioms.
 
 ## Validation and implementation boundary
 
-The combined suite passes **77 tests and 185,011 checks**. It retains the earlier
+The combined suite passes **82 tests and 187,382 checks**. It retains the earlier
 frame, runtime, and observation controls while merging duplicate encoding-specific
 tests. Independent references enumerate tiny trees by application count and check
 their values against host arithmetic. Tests also cover codec roundtrips and invalid
@@ -1371,6 +1568,17 @@ parent replay. Integer controls include large signed operands, divisibility,
 division's multiple witnesses, and an overfitted sampled solver refuted on a new
 input. No independent host oracle contributes to discovery or certification.
 
+Propagation controls now check all eight orientations through encoded-and-decoded
+DSL matchers, computed known expressions, wrong domains, wrong child positions,
+repeated children, warm preparation, frozen source copies, and stale libraries.
+Integer tests reject erroneous and erroring witness proposals using the original
+forward predicate. They preserve alternative answers after both successful and
+contradictory preferred branches, and independently reject a deliberately corrupted
+tentative frame's returned program. Unit-budget and batched scheduling agree on
+ledgers, results, first acceptance, and continuation progress; raising a completed
+description bound recovers newly reachable programs. The expensive-context control
+checks early work savings, exact bounded result-set agreement, and parent replay.
+
 Budget tests compare complete continuations and every ledger category, including
 cutoffs immediately before and after measured first-solution and completion points,
 partly paid large multiplications, and errors. Additional controls check that text
@@ -1392,9 +1600,11 @@ the historical scaling timings have not been reinterpreted under the new tariff.
 | `laws.lisp` | Scoped certificates, DSL rule lowering, preparation cache, normalization traversal |
 | `guards.lisp` | Agreement subsets, Boolean child frames, guarded-law proposals |
 | `law-compression.lisp` | Law corpus packets, AU descriptions, ordinary reconstruction frames |
-| `algebra.lisp` | Forward relations, guarded solve proposals, certificate checks, arithmetic propagation |
+| `algebra.lisp` | Forward relations, guarded solve proposals, certificate checks |
+| `propagation.lisp` | Frozen solver library, DSL structural matching, exact and forward-verified tentative targets |
+| `propagation-search.lisp` | Fixed preferred/original branch scheduling, forward replay, resumable combined results |
 | `fixtures.lisp`, `experiments.lisp`, `law-experiments.lisp`, `algebra-experiments.lisp` | Fixtures and milestone runs |
-| `tests/` | Separate harness and core, observation, codec, law, guard, compression, symbolic, amortization, algebra, and visualizer suites |
+| `tests/` | Separate harness and core, observation, codec, law, guard, compression, symbolic, amortization, algebra, propagation, and visualizer suites |
 
 The cleanup separates grammar/enumeration from search orchestration and moves
 the test harness and suites out of the source modules. Language snapshots now
@@ -1403,8 +1613,10 @@ share `advance-accounted-evaluation` for VM work and unpaid-error accounting.
 Matching and substitution are shared by frames, AU, and symbolic primitives;
 there is no second implementation of those mechanics inside the rule compiler.
 
-Milestone 4's arithmetic experiment is implemented; richer fiber representations
-and universal integer proofs remain open. Inverse-value enumeration is not used.
+Milestone 4 now includes arithmetic discovery, certified field reuse,
+forward-verified integer reuse with retained alternatives, and measured DSL
+matching. Richer fiber representations, universal integer proofs, and adaptive
+selection of reuse strategies remain open. Inverse-value enumeration is not used.
 E-graphs, general theorem proving, multi-level automatic decomposition, library
 learning, and general recursive orchestration remain later work. The fixed encoding
 and accounting boundary will remain stable unless a concrete result calls for

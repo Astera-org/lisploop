@@ -4,7 +4,7 @@
 (load (merge-pathnames "../algebra-experiments.lisp" *load-truename*))
 (in-package #:lisploop)
 
-(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic" "amortization" "algebra"))
+(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic" "amortization" "algebra" "propagation"))
   (load (merge-pathnames (make-pathname :name module :type "lisp") *load-truename*)))
 
 (let ((start (get-internal-real-time)))

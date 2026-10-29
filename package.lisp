@@ -54,5 +54,9 @@
    #:discover-arithmetic-solver #:validate-arithmetic-solver #:certified-solve-discovery-p
    #:solve-discovery-frame #:solve-discovery-witness #:solve-discovery-guard
    #:solve-discovery-validation #:solve-discovery-uniqueness
-   #:propagate-arithmetic-child #:propagation-frame #:propagation-narrowed #:propagation-retained))
+   #:prepare-propagator-library #:compile-propagator-matcher
+   #:propagate-arithmetic-child #:propagation-frame #:propagation-original #:propagation-fallback
+   #:propagation-narrowed #:propagation-suggested #:propagation-retained #:propagation-rejected
+   #:start-propagation-search #:resume-propagation-search #:propagation-search-results
+   #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work))
 (in-package #:lisploop)
