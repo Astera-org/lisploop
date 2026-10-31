@@ -221,7 +221,7 @@ bound and rows on both paths; all inverse and verification work is charged."
           (multiple-value-bind (propagation plain propagated original-work propagation-work acquisition composition)
               (compare-arithmetic-propagation discovery (if (eq domain :int) '(-2 -1 0 1 2) values) :library library)
             (format t "  ~S operand ~D: ~D exact / ~D tentative / ~D retained / ~D rejected proposals; child search ~D -> ~D; pullback ~D -> propagation setup ~D; batch acquisition ~D; composition/replay ~D.~%"
-                    (second (arithmetic-relation-operator (solve-discovery-relation discovery))) (solve-discovery-position discovery)
+                    (operator-name (arithmetic-relation-operator (solve-discovery-relation discovery))) (solve-discovery-position discovery)
                     (propagation-narrowed propagation) (propagation-suggested propagation) (propagation-retained propagation) (propagation-rejected propagation)
                     (algebra-job-work plain) (algebra-job-work propagated)
                     (ledger-total original-work) (ledger-total propagation-work) acquisition (ledger-total composition))

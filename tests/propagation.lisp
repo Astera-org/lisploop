@@ -109,3 +109,90 @@
     (check (propagation-search-fallback guided))
     (check (null (set-exclusive-or (search-job-results plain) (propagation-search-results guided)
                                   :key #'candidate-expression :test #'equal)))))
+
+(deftest constant-folding-and-conflict-detection
+  ;; 1. Closed subtrees evaluate via the VM; tuple equalities and conflicting branches fold to 'nil.
+  (let* ((pair (tuple-type :int :int))
+         (z (var 0 :int))
+         (diag-conflict (app (op := pair) (app (op :tuple pair) z z) (lit pair '(2 3))))
+         (ledger (make-ledger))
+         (folded (fold-constants diag-conflict nil :ledger ledger)))
+    (check (equal (lit :bool nil) folded))
+    (check (plusp (ledger-total ledger)))
+    ;; 2. Conjoining incompatible singleton or finite-set requirements folds to 'nil.
+    (check (equal (lit :bool nil)
+                  (conjoin-requirements (singleton-requirement :int 2)
+                                        (singleton-requirement :int 3) :int)))
+    (check (equal (singleton-requirement :int 2)
+                  (conjoin-requirements (set-requirement :int '(1 2))
+                                        (set-requirement :int '(2 3)) :int)))
+    (check (equal (lit :bool nil)
+                  (conjoin-requirements (set-requirement :int '(1 2))
+                                        (set-requirement :int '(3 4)) :int)))
+    ;; 3. Frame conflict detection catches both unsatisfiable rows and incompatible rows on same inputs.
+    (let ((bad-row-frame (make-frame (make-schema :inputs '((0 . :int)) :target :int)
+                                     (list (make-row :key :diag :known '(5)
+                                                     :allowed (predicate-allowed :int diag-conflict)))))
+          (incompatible-frame (make-frame (make-schema :inputs '((0 . :int)) :target :int)
+                                          (list (make-row :key :r1 :known '(7)
+                                                          :allowed (finite-allowed :int '(1 2)))
+                                                (make-row :key :r2 :known '(7)
+                                                          :allowed (finite-allowed :int '(3 4)))))))
+      (check (frame-conflict-p bad-row-frame))
+      (check (eq :unsatisfiable-row (frame-conflict-kind (frame-conflict-p bad-row-frame))))
+      (check (frame-conflict-p incompatible-frame))
+      (check (eq :incompatible-rows (frame-conflict-kind (frame-conflict-p incompatible-frame)))))))
+
+(deftest hard-em-infer-fibers-and-cannot-links
+  ;; 1. Confidence ordering: singletons nucleate classes first, cannot-links separate incompatible
+  ;;    singletons, and ambiguous finite-set rows merge into compatible classes for free.
+  (let* ((schema (make-schema :inputs '((0 . :int)) :target :int))
+         (frame (make-frame schema
+                            (list (make-row :key :ambig-a :known '(10) :allowed (finite-allowed :int '(1 2)))
+                                  (make-row :key :sing-2  :known '(20) :allowed (singleton-requirement :int 2))
+                                  (make-row :key :sing-3  :known '(30) :allowed (singleton-requirement :int 3))
+                                  (make-row :key :ambig-b :known '(40) :allowed (finite-allowed :int '(2 3))))))
+         (ledger (make-ledger)))
+    (multiple-value-bind (classes labels refined partition) (infer-fibers frame ledger)
+      (check (= 2 (length classes)))
+      (check (equal '(0 0 1 0) labels))
+      (check (plusp (ledger-total ledger)))
+      (check (equal '((2) (2) (3) (2))
+                    (mapcar (lambda (row) (allowed-values (row-allowed row)))
+                            (frame-rows refined))))
+      (check (equal (frame-rows frame) (reassemble-partition partition)))))
+  ;; 2. Purely ambiguous intersecting sets collapse to a single shared singleton fiber via M-step votes.
+  (let* ((schema (make-schema :inputs '((0 . :int)) :target :int))
+         (frame (make-frame schema
+                            (list (make-row :key :s1 :known '(1) :allowed (finite-allowed :int '(1 2)))
+                                  (make-row :key :s2 :known '(2) :allowed (finite-allowed :int '(2 3)))
+                                  (make-row :key :s3 :known '(3) :allowed (finite-allowed :int '(2 4)))))))
+    (multiple-value-bind (classes labels refined) (infer-fibers frame)
+      (check (= 1 (length classes)))
+      (check (equal '(0 0 0) labels))
+      (check (every (lambda (row) (equal '(2) (allowed-values (row-allowed row))))
+                    (frame-rows refined))))))
+
+(deftest condense-heuristic-with-priced-residual
+  ;; Synthesize an intensional heuristic selector from ambiguous fibers with one outlier row.
+  ;; The MDL objective prices the outlier in the residual during training and drops it at deployment.
+  (let* ((field (gf 5))
+         (inputs (list (cons 0 field)))
+         (schema (make-schema :domain field :inputs inputs :target field))
+         ;; Rows 0..3 follow y = x, while row 4 (x=4) has an outlier target y=0.
+         ;; However, a constant or simple identity heuristic `x0` has 1 exception vs a full lookup table.
+         (frame (make-frame schema
+                            (list (make-row :key 0 :known '(0) :allowed (finite-allowed field '(0 4)))
+                                  (make-row :key 1 :known '(1) :allowed (finite-allowed field '(1)))
+                                  (make-row :key 2 :known '(2) :allowed (finite-allowed field '(2)))
+                                  (make-row :key 3 :known '(3) :allowed (finite-allowed field '(3)))
+                                  (make-row :key 4 :known '(4) :allowed (finite-allowed field '(0))))))
+         (language (make-language field inputs :operators (list (op :+ field)) :literals '(0 1)))
+         (ledger (make-ledger))
+         (heuristic (condense-heuristic frame language :ledger ledger)))
+    (check (heuristic-model-p heuristic))
+    (check (plusp (ledger-total ledger)))
+    ;; `x0` matches rows 0, 1, 2, 3 and has a 1-row residual on key 4.
+    (check (equal (var 0 field) (heuristic-program heuristic)))
+    (check (= 1 (length (heuristic-residual heuristic))))
+    (check (equal (cons 4 0) (first (heuristic-residual heuristic))))))

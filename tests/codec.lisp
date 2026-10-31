@@ -129,7 +129,7 @@
          (few (lit type (list nil))) (many (lit type (make-list 100))))
     (check (< (- (description-size many) (description-size few))
                (- (syntax-work many) (syntax-work few))))
-    (check (= 101 (value-work (third many) type))))
+    (check (= 101 (value-work (ast-value many) type))))
   (let ((expression (lit :int 0)))
     (check (= 9 (evaluation-work (evaluate expression nil nil))))))
 

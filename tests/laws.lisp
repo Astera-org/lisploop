@@ -109,7 +109,7 @@
     (values (propose-observed-laws job) job)))
 
 (defun find-equation (laws left right)
-  (find-if (lambda (law) (let ((sides (third (law-equation law))))
+  (find-if (lambda (law) (let ((sides (rest (law-equation law))))
                            (or (equal sides (list left right)) (equal sides (list right left))))) laws))
 
 (deftest laws-discovered-and-independently-validated

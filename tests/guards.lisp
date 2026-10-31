@@ -35,12 +35,12 @@
         ;; Compare every pair's mask against host field arithmetic, independent
         ;; of the VM, including every zero denominator and unequal defined value.
         (labels ((reference (expression value)
-                   (case (first expression)
-                     (:var value) (:lit (third expression))
-                     (:app (let* ((args (third expression)) (a (reference (first args) value))
+                   (case (ast-kind expression)
+                     (:var value) (:lit (ast-value expression))
+                     (:app (let* ((args (rest expression)) (a (reference (first args) value))
                                   (b (reference (second args) value)))
                              (if (or (eq a :error) (eq b :error)) :error
-                                 (case (second (second expression))
+                                 (case (operator-name (first expression))
                                    (:- (mod (- a b) p)) (:* (mod (* a b) p))
                                    (:/ (if (zerop b) :error
                                            (mod (* a (loop for n from 1 below p

@@ -34,7 +34,7 @@
 
 (defun validation-for-equation (validations left right)
   (or (find-if (lambda (state)
-                 (let ((sides (third (law-equation (law-validation-law state)))))
+                 (let ((sides (rest (law-equation (law-validation-law state)))))
                    (or (equal sides (list left right)) (equal sides (list right left))))) validations)
       (error "Required identity was not discovered")))
 

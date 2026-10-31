@@ -11,7 +11,7 @@
          (snapshot (copy-tree model)) (work (syntax-work model))
          (unit (start-program-validation model inputs)) (batch (start-program-validation model inputs)))
     ;; Callers cannot change what is being validated, even while it is unpaid.
-    (setf (car (first inputs)) 99 (third (second (third model))) 7)
+    (setf (car (first inputs)) 99 (second (second (rest model))) 7)
     (dolist (limit (list 0 1 (1- work) work))
       (loop while (< (evaluation-work unit) limit) do (advance-evaluation unit 1))
       (advance-evaluation batch (- limit (evaluation-work batch)))

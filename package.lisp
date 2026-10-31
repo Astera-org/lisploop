@@ -1,62 +1,89 @@
 (defpackage #:lisploop
   (:use #:cl)
   (:export
-   #:gf #:tuple-type #:sequence-type #:value-p #:lit #:var #:op #:app #:hole
-   #:code-type #:code-inputs #:code-sort #:code-type-p
-   #:expression-type #:instantiate #:description-size #:body-size #:header-size
-   #:encode-model #:decode-model #:make-ledger #:ledger-total #:ledger-counts
-   #:start-evaluation #:advance-evaluation #:evaluate #:evaluation-status
-   #:evaluation-value #:evaluation-error #:evaluation-work
-   #:make-schema #:schema-inputs #:schema-target #:schema-lookup-p
-   #:make-row #:row-key #:row-known #:row-allowed #:make-frame
-   #:frame-schema #:frame-rows #:finite-allowed #:predicate-allowed
-   #:allowed-type #:allowed-values #:allowed-expression #:check-allowed
-   #:orient-observations #:lookup-model #:pullback-frame #:compose-model
-   #:partition-rows #:reassemble-partition #:quotient-values #:restore-quotient
-   #:partition-model #:quotient-model
-   #:make-language #:language-domain #:language-inputs #:language-operators #:language-literals #:language-constants
-   #:start-search #:resume-search #:search-job-results #:search-job-best
-   #:search-job-ledger #:search-job-completed-bound #:search-job-messages
-   #:search-job-proposals
-   #:candidate-expression #:candidate-size #:candidate-run-work
-   #:candidate-discovery-work #:message-call-id #:message-claim #:message-evidence
-   #:make-observation-scope #:observation-scope-id #:observation-scope-frame
-   #:observation-scope-language #:observation-scope-equality #:observation-scope-evidence
-   #:observation-scope-simulator-version
-   #:transition-probes #:start-observation-search #:resume-observation-search
-   #:observation-job-records #:observation-job-buckets #:observation-job-ledger
-   #:observation-job-completed-bound #:observation-job-messages
-   #:find-observation #:observed-agreement-p #:observation-invariants
-   #:observed-expression-scope #:observed-expression-expression #:observed-expression-type
-   #:observed-expression-status #:observed-expression-values #:observed-expression-run-work
+   ;; 1. ast.lisp — Homoiconic S-expressions, schemas, bidirectional typing, O(1) metadata
+   #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-schema #:code-inputs #:code-sort
+   #:valid-type-p #:function-sort-p #:value-p
+   #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
+   #:ensure-schema #:var-symbol #:hole-symbol #:hole-symbol-p #:variable-symbol-p #:operator-symbol-p
+   #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:quote-lit #:quoted-lit-p #:quoted-lit-value
+   #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
+   #:var-p #:lit-p #:app-p #:hole-p #:operator-p #:operator-name #:operator-type #:operator-operand-type #:application-overhead
+   #:expression-type #:free-vars #:expression-variables #:provably-total-p
+   #:subst-expr #:instantiate #:expr-less-p #:expression-less-p
+   ;; 2. codec.lisp — Prefix-coded binary serialization & O(1) sizes
+   #:+encoding-version+ #:header-size #:body-size #:description-size
+   #:encode-model #:decode-model
+   ;; 3. vm.lisp — Structural tariff, uniform job stepper, evaluator, constant folding
+   #:+tariff-version+ #:+simulator-version+ #:vm-versions
+   #:ledger #:make-ledger #:ledger-total #:ledger-counts #:charge
+   #:integer-width #:value-work #:type-work #:syntax-work
+   #:job #:make-job #:job-id #:job-status #:job-ledger #:job-debt #:job-debt-category
+   #:job-step-fn #:job-state #:job-results #:job-best #:job-messages
+   #:incur-debt #:advance-job
+   #:evaluation #:start-evaluation #:advance-evaluation #:evaluate
+   #:evaluation-status #:evaluation-value #:evaluation-error #:evaluation-work
+   #:validated-program #:validated-program-p #:validated-program-expression #:validated-program-inputs #:validated-program-versions
+   #:start-program-validation #:start-validated-evaluation
+   #:advance-accounted-evaluation #:fold-constants
+   ;; 4. frame.lisp — Frames, pullbacks, conflicts, support frames, quotients, partitions
+   #:row #:make-row #:row-key #:row-known #:row-requirement #:row-allowed
+   #:frame #:make-frame #:frame-schema #:frame-rows #:frame-pairs #:frame-anchors
+   #:singleton-requirement #:set-requirement #:finite-allowed #:predicate-allowed
+   #:allowed-type #:allowed-values #:allowed-expression #:extract-allowed-values #:check-allowed
+   #:conjoin-requirements #:frame-conflict #:frame-conflict-p
+   #:orient-observations #:transition-probes #:lookup-model
+   #:pullback-frame #:compose-model #:support-frame
+   #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
+   #:quotient-values #:restore-quotient #:quotient-model
+   ;; 5. enumerate.lisp — Grammar enumerator, unified matrix evaluator, multi-lane agenda
+   #:language #:make-language #:snapshot-language #:language-domain #:language-inputs
+   #:language-operators #:language-literals #:language-constants #:language-version
+   #:enumerator #:make-enumerator #:enumerator-size #:enumerator-buckets #:enumeration-step
+   #:candidate #:make-candidate #:candidate-expression #:candidate-size #:candidate-run-work #:candidate-discovery-work
+   #:message #:make-message #:message-call-id #:message-claim #:message-evidence
+   #:observation-outcome #:make-observation-outcome #:observation-outcome-status
+   #:observation-outcome-value #:observation-outcome-error #:observation-outcome-work
+   #:observed-expression #:make-observed-expression #:observed-expression-scope
+   #:observed-expression-expression #:observed-expression-type #:observed-expression-status
+   #:observed-expression-values #:observed-expression-outcomes #:observed-expression-run-work
    #:observed-expression-error #:observed-expression-failed-key
-   #:observed-expression-outcomes #:observation-outcome-status #:observation-outcome-value
-   #:observation-outcome-error #:observation-outcome-work
-   #:observed-support #:support-frame #:propose-guard-problems
-   #:guard-problem-scope #:guard-problem-support #:guard-problem-frame #:guard-problem-equations
-   #:start-guard-search #:propose-guarded-laws
-   #:make-law-corpus #:law-corpus-laws #:law-corpus-packet #:law-corpus-frame
+   #:observation-bucket #:make-observation-bucket #:observation-bucket-scope
+   #:observation-bucket-type #:observation-bucket-values #:observation-bucket-members
+   #:observation-bucket-invariant-p #:observation-bucket-informative-p #:observation-bucket-counterexample
+   #:start-search #:resume-search #:search-job-results #:search-job-best #:search-job-ledger
+   #:search-job-completed-bound #:search-job-messages #:search-job-proposals #:search-job-reused-rejections
+   #:make-observation-scope #:observation-scope-id #:observation-scope-frame #:observation-scope-language
+   #:start-observation-search #:resume-observation-search #:observation-job-records
+   #:observation-job-buckets #:observation-job-ledger #:observation-job-completed-bound #:observation-job-messages
+   #:find-observation #:observed-agreement-p #:observation-invariants
+   #:agenda-lane #:make-agenda-lane #:start-agenda #:resume-agenda
+   ;; 6. factor.lisp — Matching, AU, Hard-EM infer-fibers, corpus compression, heuristic condensation
+   #:match-expr #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p #:term-sort
+   #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement #:fiber-class-rows #:fiber-class-keys #:infer-fibers
+   #:law-corpus #:make-law-corpus #:law-corpus-laws #:law-corpus-packet #:law-corpus-frame
+   #:law-template-group #:law-template-group-positions #:law-template-group-pattern #:law-template-group-substitutions
    #:propose-law-compressions #:decode-law-corpus
-   #:observation-bucket-scope #:observation-bucket-type #:observation-bucket-values
-   #:observation-bucket-members #:observation-bucket-invariant-p
-   #:observation-bucket-informative-p #:observation-bucket-counterexample
-   #:match-pattern #:anti-unify #:compile-au-constructor
-   #:make-law #:law-domain #:law-inputs #:law-equation #:law-guard #:law-origin #:law-statement
-   #:propose-observed-laws #:retype-law #:start-law-validation #:resume-law-validation
-   #:law-validation-law #:law-validation-status #:law-validation-ledger
-   #:law-validation-counterexample #:law-validation-certificate
-   #:law-certificate-evidence #:law-certificate-assignments #:law-certificate-active #:law-certificate-work
-   #:prepare-rewrite-library #:start-rewriting #:advance-rewriting
-   #:compile-rule-transformer #:rewrite-library-rules
-   #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
-   #:search-job-reused-rejections
-   #:observe-arithmetic-relation #:arithmetic-relation-guard
-   #:discover-arithmetic-solver #:validate-arithmetic-solver #:certified-solve-discovery-p
+   #:condense-heuristic #:heuristic-model #:heuristic-model-p #:heuristic-model-program
+   #:heuristic-model-residual #:heuristic-model-exact-p #:heuristic-model-score
+   #:heuristic-program #:heuristic-residual #:heuristic-score
+   ;; 7. laws.lisp — Laws, validation, S-expression normalizer, solver discovery, checker propagation
+   #:law #:make-law #:law-domain #:law-inputs #:law-lhs #:law-rhs #:law-equation #:law-guard #:law-origin #:law-statement
+   #:law-certificate #:law-certificate-evidence #:law-certificate-assignments #:law-certificate-active #:law-certificate-work
+   #:law-validation #:start-law-validation #:resume-law-validation #:law-validation-law
+   #:law-validation-status #:law-validation-ledger #:law-validation-counterexample #:law-validation-certificate
+   #:propose-observed-laws #:retype-law
+   #:observed-support #:guard-problem #:guard-problem-scope #:guard-problem-support
+   #:guard-problem-frame #:guard-problem-equations #:propose-guard-problems #:start-guard-search #:propose-guarded-laws
+   #:rewrite-rule #:rewrite-library #:rewrite-library-rules #:prepare-rewrite-library
+   #:rewrite-expr #:start-rewriting #:advance-rewriting #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
+   #:arithmetic-relation #:observe-arithmetic-relation #:arithmetic-relation-guard #:arithmetic-relation-records
+   #:solve-discovery #:discover-arithmetic-solver #:validate-arithmetic-solver #:certified-solve-discovery-p
    #:solve-discovery-frame #:solve-discovery-witness #:solve-discovery-guard
    #:solve-discovery-validation #:solve-discovery-uniqueness
-   #:prepare-propagator-library #:compile-propagator-matcher
-   #:propagate-arithmetic-child #:propagation-frame #:propagation-original #:propagation-fallback
+   #:propagation #:propagation-frame #:propagation-original #:propagation-fallback
    #:propagation-narrowed #:propagation-suggested #:propagation-retained #:propagation-rejected
+   #:prepare-propagator-library #:match-arithmetic-propagator #:propagate-arithmetic-child
    #:start-propagation-search #:resume-propagation-search #:propagation-search-results
    #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work))
 (in-package #:lisploop)

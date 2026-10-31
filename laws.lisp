@@ -1,7 +1,13 @@
 (in-package #:lisploop)
 
-;;; An equation is ordinary DSL data. Its evidence is separate, scoped metadata.
+;;; Module 7: laws.lisp
+;;; Algebraic laws, exhaustive/sampled validation, guarded law discovery,
+;;; S-expression rewriting, arithmetic solver discovery, and checker propagation.
+
 (defstruct (law (:constructor %make-law)) domain inputs equation guard origin)
+
+(defun law-lhs (law) (first (rest (law-equation law))))
+(defun law-rhs (law) (second (rest (law-equation law))))
 
 (defun make-law (domain inputs left right &key (guard (lit :bool t)) origin)
   (assert (or (eq domain :int) (and (consp domain) (eq (first domain) :gf))))
@@ -39,8 +45,9 @@
 (defun start-law-validation (law &key (samples nil supplied-p))
   "Exhaust finite types, or test explicit assignments. Samples NEVER certify a law."
   (let* ((snapshot (law-snapshot law))
+         (eq-args (rest (law-equation law)))
          (copy (make-law (law-domain law) (law-inputs law)
-                         (first (third (law-equation law))) (second (third (law-equation law)))
+                         (first eq-args) (second eq-args)
                          :guard (law-guard law) :origin (law-origin law)))
          (count (if supplied-p (length samples)
                     (reduce #'* (law-inputs law) :key (lambda (input) (finite-type-cardinality (cdr input)))
@@ -124,15 +131,142 @@
         do (law-validation-step state (if quantum (min quantum remaining) remaining)))
   state)
 
+(defun retype-type (type old-domain new-domain)
+  (cond
+    ((equal type old-domain) (copy-tree new-domain))
+    ((consp type) (cons (retype-type (car type) old-domain new-domain)
+                        (retype-type (cdr type) old-domain new-domain)))
+    (t type)))
+
+(defun retype-expr (expr old-domain new-domain)
+  (ecase (ast-kind expr)
+    (:var (var (ast-id expr) (retype-type (ast-type expr) old-domain new-domain)))
+    (:lit (let ((new-type (retype-type (ast-type expr) old-domain new-domain))
+                (val (ast-value expr)))
+            (lit new-type (if (and (consp new-type) (eq :gf (first new-type)) (integerp val))
+                              (mod val (second new-type))
+                              val))))
+    (:op (op (operator-name expr) (retype-type (operator-operand-type expr) old-domain new-domain)))
+    (:hole (hole (ast-id expr) (retype-type (ast-type expr) old-domain new-domain)))
+    (:app (apply #'app (retype-expr (first expr) old-domain new-domain)
+                 (mapcar (lambda (arg) (retype-expr arg old-domain new-domain)) (rest expr))))))
+
 (defun retype-law (law domain)
   "A new conjecture in another domain; no certificate transfers with the syntax."
-  (labels ((walk (tree)
-             (cond ((equal tree (law-domain law)) (copy-tree domain))
-                   ((consp tree) (cons (walk (car tree)) (walk (cdr tree)))) (t tree))))
-    (let ((equation (walk (law-equation law))))
-      (make-law domain (mapcar (lambda (input) (cons (car input) (walk (cdr input)))) (law-inputs law))
-                (first (third equation)) (second (third equation))
-                :guard (walk (law-guard law)) :origin (list :retyped-from (law-domain law))))))
+  (let* ((old-domain (law-domain law))
+         (eq-args (rest (law-equation law)))
+         (new-inputs (mapcar (lambda (input)
+                               (cons (car input) (retype-type (cdr input) old-domain domain)))
+                             (law-inputs law))))
+    (make-law domain new-inputs
+              (retype-expr (first eq-args) old-domain domain)
+              (retype-expr (second eq-args) old-domain domain)
+              :guard (retype-expr (law-guard law) old-domain domain)
+              :origin (list :retyped-from old-domain))))
+
+(defun propose-observed-laws (job &key (guard (lit :bool t)) ledger)
+  "Propose a spanning set of equalities per complete output bucket, not certificates."
+  (let* ((scope (observation-job-scope job)) (language (observation-scope-language scope))
+         (inputs (language-inputs language)) (laws nil))
+    (dolist (bucket (reverse (observation-job-buckets job)))
+      (let* ((members (reverse (observation-bucket-members bucket)))
+             (first (observed-expression-expression (first members))))
+        (dolist (member (rest members))
+          (let ((other (observed-expression-expression member)))
+            (charge ledger :law-proposal (+ (syntax-work first) (syntax-work other) (syntax-work guard)))
+            (push (make-law (language-domain language) inputs other first :guard guard
+                            :origin (list :observed-scope (observation-scope-id scope)
+                                          :evidence :replayed-observations)) laws)))))
+    (nreverse laws)))
+
+;;; Guard Discovery & Support Frames
+
+(defstruct (guard-problem (:constructor %make-guard-problem)) scope support frame equations)
+
+(defun complete-outcomes-p (record)
+  (and (member (observed-expression-status record) '(:complete :error))
+       (= (length (observed-expression-outcomes record))
+          (length (frame-rows (observation-scope-frame (observed-expression-scope record)))))
+       (every (lambda (outcome) (member (observation-outcome-status outcome) '(:value :error)))
+              (observed-expression-outcomes record))))
+
+(defun observed-support (left right &optional ledger)
+  "Exact row membership where both expressions return equal, same-typed values."
+  (assert (eq (observed-expression-scope left) (observed-expression-scope right)))
+  (assert (equal (observed-expression-type left) (observed-expression-type right)))
+  (assert (and (complete-outcomes-p left) (complete-outcomes-p right)) ()
+          "Support requires completed per-row outcomes; resume observation first")
+  (loop with type = (observed-expression-type left)
+        for a in (observed-expression-outcomes left)
+        for b in (observed-expression-outcomes right) collect
+          (progn
+            (charge ledger :support-comparison
+                    (+ 2 (if (eq :value (observation-outcome-status a))
+                             (value-work (observation-outcome-value a) type) 0)
+                         (if (eq :value (observation-outcome-status b))
+                             (value-work (observation-outcome-value b) type) 0)))
+            (and (eq :value (observation-outcome-status a))
+                 (eq :value (observation-outcome-status b))
+                 (equal (observation-outcome-value a) (observation-outcome-value b))))))
+
+(defun propose-guard-problems (job &optional ledger)
+  "Compare all pairs of finished expressions and group proper nonempty supports."
+  (assert (observation-job-retain-outcomes-p job))
+  (assert (and (eq :enumerate (observation-job-phase job))
+               (observation-bound-complete-p job (observation-job-requested-bound job))) ()
+          "Finish the requested observation bound before constructing guard problems")
+  (let* ((scope (observation-job-scope job))
+         (domain (language-domain (observation-scope-language scope)))
+         (records (reverse (observation-job-records job)))
+         (groups (make-hash-table :test #'equal)) (problems nil))
+    (assert (every #'complete-outcomes-p records))
+    (loop for tail on records for left = (first tail) do
+      (dolist (right (rest tail))
+        (charge ledger :support-pairs)
+        (when (and (equal (observed-expression-type left) (observed-expression-type right))
+                   (member (observed-expression-type left) (list domain :bool) :test #'equal))
+          (let ((support (observed-support left right ledger)))
+            (charge ledger :support-index (1+ (length support)))
+            (when (and (some #'identity support) (not (every #'identity support)))
+              (let ((problem (gethash support groups))
+                    (a (observed-expression-expression left))
+                    (b (observed-expression-expression right)))
+                (unless problem
+                  (setf problem (%make-guard-problem :scope scope :support support
+                                                     :frame (support-frame scope support ledger))
+                        (gethash support groups) problem)
+                  (push problem problems))
+                (charge ledger :guard-equations (+ (syntax-work a) (syntax-work b)))
+                (push (list (copy-tree a) (copy-tree b)) (guard-problem-equations problem))))))))
+    (dolist (problem problems)
+      (setf (guard-problem-equations problem) (nreverse (guard-problem-equations problem))))
+    (nreverse problems)))
+
+(defun start-guard-search (problem language &key (call-id (incf *next-call-id*)) (run-weight 0))
+  "Synthesize the complete observed support, including its false rows."
+  (let ((source (observation-scope-language (guard-problem-scope problem))))
+    (assert (equal (language-domain source) (language-domain language)))
+    (assert (equal (language-inputs source) (language-inputs language)))
+    (start-search (guard-problem-frame problem)
+                  (snapshot-language language)
+                  :call-id call-id :run-weight run-weight)))
+
+(defun propose-guarded-laws (problem search &optional ledger)
+  "Attach the best successful guard so far to each equation, as conjectures only."
+  (assert (eq (search-job-frame search) (guard-problem-frame problem)))
+  (let* ((scope (guard-problem-scope problem)) (language (observation-scope-language scope))
+         (best (search-job-best search)) (guard (and best (candidate-expression best))))
+    (when best
+      (loop for (left right) in (guard-problem-equations problem) collect
+        (progn
+          (charge ledger :law-proposal (+ (syntax-work left) (syntax-work right) (syntax-work guard)
+                                          (length (guard-problem-support problem))))
+          (make-law (language-domain language) (language-inputs language) left right :guard guard
+                    :origin (list :observed-scope (observation-scope-id scope)
+                                  :support (copy-list (guard-problem-support problem))
+                                  :evidence :replayed-observations)))))))
+
+;;; Rewrite Library & S-Expression Normalizer
 
 (defstruct (rewrite-rule (:constructor %make-rewrite-rule)) inputs pattern replacement guard)
 (defstruct (rewrite-library (:constructor %make-rewrite-library))
@@ -160,16 +294,15 @@
                      (equalp (law-certificate-snapshot certificate) (law-snapshot law)))
                 () "Rewrite requires unchanged, current, exhaustive evidence in this domain")
         (incf work (+ (syntax-work (law-equation law)) (syntax-work (law-guard law))))
-        (destructuring-bind (left right) (third (law-equation law))
-          ;; Offer both directions; each concrete application must strictly decrease.
+        (destructuring-bind (left right) (rest (law-equation law))
           (dolist (pair (list (list left right) (list right left)))
             (destructuring-bind (from to) pair
-              (when (and (eq :app (first from))
+              (when (and (app-p from)
                          (subsetp (append (expression-variables to) (expression-variables (law-guard law)))
                                   (expression-variables from)))
                 (push (%make-rewrite-rule
                        :inputs (copy-tree (remove-if-not (lambda (input) (member (car input) (expression-variables from)))
-                                                        (law-inputs law)))
+                                                         (law-inputs law)))
                        :pattern (copy-tree from) :replacement (copy-tree to)
                        :guard (copy-tree (law-guard law))) rules)))))))
     (%make-rewrite-library :domain (copy-tree domain) :%rules (nreverse rules) :setup-work work)))
@@ -178,9 +311,7 @@
   (app (op :if :bool) expression (lit :bool nil) (lit :bool t)))
 
 (defun compile-rule-transformer (rule inputs)
-  "Lower a frozen checked direction to an ordinary DSL program on quoted syntax.
-Inputs are source code and established Boolean-code assumptions. No EVAL, host
-callback, certificate lookup, or hidden substitutions occur in the program."
+  "Lower a frozen checked direction to an ordinary DSL program on quoted syntax."
   (let* ((parameters (rewrite-rule-inputs rule))
          (sort (expression-type (rewrite-rule-pattern rule) parameters))
          (source-type (code-type inputs sort)) (guard-type (code-type inputs :bool))
@@ -236,13 +367,12 @@ callback, certificate lookup, or hidden substitutions occur in the program."
   (let ((entry (first (rewriting-pending-programs state))))
     (if entry
         (setf (rewriting-evaluation state) (start-program-validation (second entry) (third entry)))
-        ;; Publication is last: no partially paid/validated entry is reusable.
         (setf (gethash (rewriting-cache-key state) (rewrite-library-program-cache (rewriting-library state)))
               (rewriting-programs state)))))
 
 (defun rewriting-push-try (state expression assumptions)
   (push (list :try expression assumptions
-              (remove-if-not (lambda (rule) (equal (second expression) (second (rewrite-rule-pattern rule))))
+              (remove-if-not (lambda (rule) (equal (first expression) (first (rewrite-rule-pattern rule))))
                              (rewrite-library-%rules (rewriting-library state))))
         (rewriting-tasks state)))
 
@@ -251,26 +381,26 @@ callback, certificate lookup, or hidden substitutions occur in the program."
     (ecase kind
       (:setup (prepare-next-rewrite-program state))
       (:walk
-       (if (eq :app (first expression))
-           (if (eq :if (second (second expression)))
+       (if (app-p expression)
+           (if (eq :if (operator-name (first expression)))
                (progn (push (list :choose expression assumptions) (rewriting-tasks state))
-                      (push (list :walk (first (third expression)) assumptions) (rewriting-tasks state)))
+                      (push (list :walk (first (rest expression)) assumptions) (rewriting-tasks state)))
                (progn (push (list :rebuild expression assumptions) (rewriting-tasks state))
-                      (dolist (child (reverse (third expression)))
+                      (dolist (child (reverse (rest expression)))
                         (push (list :walk child assumptions) (rewriting-tasks state)))))
            (push expression (rewriting-stack state))))
       (:choose
-       (let* ((condition (pop (rewriting-stack state))) (args (third expression)))
+       (let* ((condition (pop (rewriting-stack state))) (args (rest expression)))
          (push (list :finish-if expression assumptions condition) (rewriting-tasks state))
          (push (list :walk (third args) (cons (negate-predicate condition) assumptions)) (rewriting-tasks state))
          (push (list :walk (second args) (cons condition assumptions)) (rewriting-tasks state))))
       (:finish-if
        (let ((no (pop (rewriting-stack state))) (yes (pop (rewriting-stack state))))
-         (rewriting-push-try state (app (second expression) (first extra) yes no) assumptions)))
+         (rewriting-push-try state (app (first expression) (first extra) yes no) assumptions)))
       (:rebuild
        (rewriting-push-try state
-                           (apply #'app (second expression)
-                                  (nreverse (loop repeat (length (third expression)) collect (pop (rewriting-stack state)))))
+                           (apply #'app (first expression)
+                                  (nreverse (loop repeat (length (rest expression)) collect (pop (rewriting-stack state)))))
                            assumptions))
       (:try
        (let ((rules (first extra)))
@@ -314,7 +444,7 @@ callback, certificate lookup, or hidden substitutions occur in the program."
         (progn
           (when (zerop (rewriting-debt state))
             (setf (rewriting-debt state) (if (eq :setup (first (first (rewriting-tasks state))))
-                                           (rewriting-setup-work state) 1)))
+                                             (rewriting-setup-work state) 1)))
           (let ((spent (min budget (rewriting-debt state))))
             (decf budget spent) (decf (rewriting-debt state) spent)
             (incf (rewriting-work state) spent) (charge ledger :rewriting spent))
@@ -323,3 +453,350 @@ callback, certificate lookup, or hidden substitutions occur in the program."
       (assert (= 1 (length (rewriting-stack state))))
       (setf (rewriting-status state) :complete (rewriting-value state) (first (rewriting-stack state)))))
   state)
+
+(defun rewrite-expr (expression inputs library &key (budget 1000000) ledger)
+  (let ((state (advance-rewriting (start-rewriting expression inputs library) budget ledger)))
+    (values (rewriting-value state) (rewriting-steps state) state)))
+
+;;; M4 Solver Discovery & Arithmetic Relations
+
+(defstruct arithmetic-relation domain operator observations records guard guard-search ledger exhaustive-p)
+(defstruct solve-discovery relation position frame observations recovery proposals search
+  witness guard guard-searches ledger validation uniqueness)
+
+(defun arithmetic-inputs (domain &optional (count 2))
+  (loop for id below count collect (cons id domain)))
+
+(defun arithmetic-application (operator position known unknown)
+  (assert (member position '(0 1)))
+  (if (zerop position) (app operator unknown known) (app operator known unknown)))
+
+(defun literal-conditional (condition yes no)
+  "Only fold literal Boolean conditions; no algebraic identity is supplied."
+  (if (lit-p condition)
+      (if (ast-value condition) yes no)
+      (app (op :if :bool) condition yes no)))
+
+(defun finish-observations (job bound work-limit)
+  (let ((message (resume-observation-search job bound work-limit)))
+    (assert (member (message-claim message) '(:bounded-exhaustion :replay-complete)) ()
+            "Observation cutoff; resume the ordinary observation job before using its outcomes")
+    job))
+
+(defun search-membership-frame (frame domain &key (body-bound 35) (work-limit 10000000) expressions)
+  (let* ((inputs (schema-inputs (frame-schema frame)))
+         (language (make-language domain inputs :operators (list (op := domain) (op :if :bool)) :literals '(0)))
+         (job (if expressions (start-search frame language :expressions expressions) (start-search frame language)))
+         (bound (if expressions (reduce #'max expressions :key (lambda (e) (description-size e inputs)))
+                    (+ (header-size inputs :bool) body-bound))))
+    (resume-search job bound work-limit)
+    (assert (search-job-best job) () "Membership search unresolved at the supplied bounds")
+    job))
+
+(defun observe-arithmetic-values (domain operator values work-limit &optional expression)
+  (let* ((inputs (arithmetic-inputs domain))
+         (forward (or expression (app operator (var 0 domain) (var 1 domain))))
+         (frame (make-frame (make-schema :inputs inputs :target domain)
+                            (loop for a in values for block from 0 append
+                              (loop for b in values for key from (* block (length values)) collect
+                                (make-row :key key :known (list a b) :allowed (predicate-allowed domain (lit :bool t)))))))
+         (job (start-observation-search (make-observation-scope frame (make-language domain inputs :operators nil :literals nil))
+                                        :expressions (list forward) :retain-outcomes t)))
+    (finish-observations job (description-size forward inputs) work-limit)
+    job))
+
+(defun arithmetic-forward-records (observations ledger)
+  (loop for row in (frame-rows (observation-scope-frame (observation-job-scope observations)))
+        for outcome in (observed-expression-outcomes (first (observation-job-records observations)))
+        do (charge ledger :forward-records)
+        when (eq :value (observation-outcome-status outcome)) collect
+          (cons (row-key row) (append (row-known row) (list (observation-outcome-value outcome))))))
+
+(defun observe-arithmetic-relation (domain name values &key (work-limit 10000000))
+  "Acquire forward executions, including errors, and learn their definedness guard."
+  (let* ((operator (op name domain)) (ledger (make-ledger))
+         (job (observe-arithmetic-values domain operator values work-limit))
+         (forward (app operator (var 0 domain) (var 1 domain))))
+    (let* ((record (find-observation job forward))
+           (support (mapcar (lambda (outcome) (eq :value (observation-outcome-status outcome)))
+                            (observed-expression-outcomes record)))
+           (guard-job (search-membership-frame (support-frame (observation-job-scope job) support ledger) domain :work-limit work-limit))
+           (records (arithmetic-forward-records job ledger)))
+      (make-arithmetic-relation
+       :domain domain :operator operator :observations job :records records :ledger ledger
+       :guard (copy-tree (candidate-expression (search-job-best guard-job))) :guard-search guard-job
+       :exhaustive-p (and (consp domain) (eq :gf (first domain))
+                          (= (second domain) (length (remove-duplicates values)))
+                          (every (lambda (value) (value-p value domain)) values))))))
+
+(defun arithmetic-definedness (relation position known unknown)
+  (let ((args (if (zerop position) (list unknown known) (list known unknown))))
+    (instantiate (arithmetic-relation-guard relation) (list (cons 0 (first args)) (cons 1 (second args))) :var)))
+
+(defun arithmetic-requirement (relation position)
+  "R(k,c,z): a Boolean predicate describing the complete defined forward fiber."
+  (let* ((domain (arithmetic-relation-domain relation))
+         (k (var 0 domain)) (c (var 1 domain)) (z (var 2 domain)))
+    (literal-conditional
+     (arithmetic-definedness relation position k z)
+     (app (op := domain) (arithmetic-application (arithmetic-relation-operator relation) position k z) c)
+     (lit :bool nil))))
+
+(defun orient-arithmetic-requirements (relation position query-values ledger)
+  "Retain witnessed occurrences and add declared queries, without solving fibers."
+  (let* ((domain (arithmetic-relation-domain relation)) (inputs (arithmetic-inputs domain))
+         (oriented (orient-observations (list domain domain domain) (arithmetic-relation-records relation)
+                                        (list (- 1 position) 2) (list position) :ledger ledger))
+         (predicate (arithmetic-requirement relation position))
+         (queries (append (loop for row in (frame-rows oriented) collect
+                            (cons (list :forward (row-key row)) (row-known row)))
+                          (loop for k in query-values for block from 0 append
+                            (loop for c in query-values for i from (* block (length query-values))
+                                  collect (list (list :query i) k c))))))
+    (make-frame (make-schema :inputs inputs :target domain)
+                (loop for (key k c) in queries collect
+                  (let ((requirement (instantiate predicate (list (cons 0 (lit domain k)) (cons 1 (lit domain c))
+                                                                  (cons 2 (var 0 domain))) :var)))
+                    (charge ledger :relational-frame (syntax-work requirement))
+                    (make-row :key key :known (list k c) :allowed (predicate-allowed domain requirement)))))))
+
+(defun covered-frame (frame support)
+  (make-frame (frame-schema frame)
+              (loop for row in (frame-rows frame) for keep in support when keep collect row)))
+
+(defun discover-arithmetic-solver (relation position query-values &key
+                                   (operators '(:+ :- :* :/)) (literals :all)
+                                   (body-bound 16) (work-limit 100000000))
+  "Observe a bounded program vocabulary, select maximum observed coverage, and
+learn guards through Boolean frames."
+  (let* ((domain (arithmetic-relation-domain relation)) (inputs (arithmetic-inputs domain))
+         (ledger (make-ledger)) (frame (orient-arithmetic-requirements relation position query-values ledger))
+         (language (make-language domain inputs :operators (mapcar (lambda (name) (op name domain)) operators) :literals literals))
+         (observations (start-observation-search (make-observation-scope frame language) :retain-outcomes t))
+         (requirement (arithmetic-requirement relation position)))
+    (finish-observations observations (+ (header-size inputs domain) body-bound) work-limit)
+    (let* ((records (remove-if-not (lambda (record) (equal domain (observed-expression-type record)))
+                                   (reverse (observation-job-records observations))))
+           (checks (mapcar (lambda (record)
+                             (let ((model (instantiate requirement (list (cons 2 (observed-expression-expression record))) :var)))
+                               (charge ledger :solve-proposal (syntax-work model)) model)) records))
+           (recovery (start-observation-search (make-observation-scope frame language)
+                                               :expressions (cons (lit :bool t) checks) :retain-outcomes t)))
+      (finish-observations recovery (reduce #'max (cons (lit :bool t) checks) :key (lambda (e) (description-size e inputs))) work-limit)
+      (let* ((truth (find-observation recovery (lit :bool t)))
+             (proposals (loop for record in records for check in checks collect
+                          (let ((mask (observed-support (find-observation recovery check) truth ledger))
+                                (model (observed-expression-expression record)))
+                            (charge ledger :solve-ranking (+ (length (frame-rows frame)) (syntax-work model)))
+                            (list record mask (count t mask) (description-size model inputs)))))
+             (ranked (stable-sort (copy-list proposals)
+                                  (lambda (a b)
+                                    (charge ledger :solve-ranking)
+                                    (let ((ca (third a)) (cb (third b)))
+                                      (if (/= ca cb) (> ca cb)
+                                          (< (fourth a) (fourth b)))))))
+             (support (second (first ranked))))
+        (assert (some #'identity support) () "No acceptable witness at the declared bounds")
+        (let* ((models (loop for (record mask) in proposals do (charge ledger :solve-selection (length mask))
+                             when (equal mask support) collect (observed-expression-expression record)))
+               (search (start-search (covered-frame frame support) language :expressions models)))
+          (assert (eq :replay-complete (message-claim (resume-search search
+                       (reduce #'max models :key (lambda (e) (description-size e inputs))) work-limit))))
+          (let* ((witness (candidate-expression (search-job-best search)))
+                 (record (find-observation observations witness))
+                 (discovery (make-solve-discovery :relation relation :position position :frame frame :observations observations
+                                                  :recovery recovery :proposals proposals :search search :witness witness :ledger ledger)))
+            (learn-solver-guard discovery record support work-limit)
+            discovery))))))
+
+(defun learn-solver-guard (discovery record support work-limit)
+  (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation))
+         (inputs (arithmetic-inputs domain)) (ledger (solve-discovery-ledger discovery))
+         (scope (observation-job-scope (solve-discovery-observations discovery)))
+         (frame (solve-discovery-frame discovery))
+         (defined (mapcar (lambda (outcome) (eq :value (observation-outcome-status outcome))) (observed-expression-outcomes record)))
+         (domain-search (search-membership-frame (support-frame scope defined ledger) domain :work-limit work-limit))
+         (witness (solve-discovery-witness discovery))
+         (forward (arithmetic-application (arithmetic-relation-operator relation) (solve-discovery-position discovery) (var 0 domain) witness))
+         (forward-job (start-observation-search (make-observation-scope frame (make-language domain inputs :operators nil :literals nil))
+                                                :expressions (list forward) :retain-outcomes t)))
+    (finish-observations forward-job (description-size forward inputs) work-limit)
+    (let* ((outcomes (observed-expression-outcomes (find-observation forward-job forward)))
+           (records (loop for row in (frame-rows frame) for outcome in outcomes
+                          when (eq :value (observation-outcome-status outcome)) collect
+                            (append (list (row-key row)) (row-known row)
+                                    (list (observation-outcome-value outcome)
+                                          (equal (second (row-known row)) (observation-outcome-value outcome))))))
+           (features (orient-observations (list domain domain domain :bool) records '(0 1 2) '(3) :ledger ledger))
+           (equality-search (search-membership-frame features domain :work-limit work-limit))
+           (equality (compose-model (var 9 :bool) 9 (candidate-expression (search-job-best equality-search))
+                                    (list (cons 0 (var 0 domain)) (cons 1 (var 1 domain)) (cons 2 forward)) ledger))
+           (guard (literal-conditional (candidate-expression (search-job-best domain-search))
+                                       (literal-conditional (arithmetic-definedness relation (solve-discovery-position discovery) (var 0 domain) witness)
+                                                            equality (lit :bool nil)) (lit :bool nil)))
+           (recheck (search-membership-frame (support-frame scope support ledger) domain :work-limit work-limit :expressions (list guard))))
+      (setf (solve-discovery-guard discovery) guard
+            (solve-discovery-guard-searches discovery) (list domain-search equality-search recheck forward-job)))))
+
+(defun solve-witness-law (discovery)
+  (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation)))
+    (make-law domain (arithmetic-inputs domain)
+              (instantiate (arithmetic-requirement relation (solve-discovery-position discovery))
+                           (list (cons 2 (solve-discovery-witness discovery))) :var)
+              (lit :bool t) :guard (solve-discovery-guard discovery))))
+
+(defun solve-uniqueness-law (discovery)
+  "Under G(k,c), R(k,c,z) iff z=q(k,c): validates the WHOLE fiber, not just a witness."
+  (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation)))
+    (make-law domain (arithmetic-inputs domain 3)
+              (arithmetic-requirement relation (solve-discovery-position discovery))
+              (app (op := domain) (var 2 domain) (solve-discovery-witness discovery))
+              :guard (solve-discovery-guard discovery))))
+
+(defun validate-arithmetic-solver (discovery &key (samples nil samples-p)
+                                               (uniqueness-samples nil uniqueness-samples-p)
+                                               (work-limit 100000000))
+  (let ((witness (solve-witness-law discovery)) (unique (solve-uniqueness-law discovery)))
+    (setf (solve-discovery-validation discovery)
+          (resume-law-validation (if samples-p (start-law-validation witness :samples samples) (start-law-validation witness)) work-limit)
+          (solve-discovery-uniqueness discovery)
+          (resume-law-validation (if uniqueness-samples-p (start-law-validation unique :samples uniqueness-samples) (start-law-validation unique)) work-limit))
+    discovery))
+
+(defun certified-solve-discovery-p (discovery)
+  (and (arithmetic-relation-exhaustive-p (solve-discovery-relation discovery))
+       (loop for state in (list (solve-discovery-validation discovery) (solve-discovery-uniqueness discovery))
+             for expected in (list (solve-witness-law discovery) (solve-uniqueness-law discovery))
+             always (and state (eq :validated (law-validation-status state))
+                         (law-validation-certificate state)
+                         (equalp (law-certificate-snapshot (law-validation-certificate state)) (law-snapshot expected))))))
+
+(defun run-algebra-program (model inputs values ledger category)
+  (let ((state (start-evaluation model inputs values)))
+    (advance-accounted-evaluation state 100000000 ledger category category)
+    (assert (not (eq :unknown (evaluation-status state))) () "Algebra evaluation cutoff")
+    state))
+
+;;; Checker-AST Propagation (Dual-Grade Propagators)
+
+(defstruct propagation frame original fallback (narrowed 0) (suggested 0) (retained 0) (rejected 0))
+(defstruct arithmetic-propagator domain operator position witness guard certified-p)
+(defstruct propagator-library rules (versions (vm-versions)) (matchers (make-hash-table :test #'equal)))
+
+(defun current-witness-conjecture-p (discovery)
+  (let ((validation (solve-discovery-validation discovery)))
+    (and validation (eq :conjecture (law-validation-status validation))
+         (equalp (law-validation-snapshot validation) (law-snapshot (solve-witness-law discovery))))))
+
+(defun prepare-propagator-library (discoveries ledger)
+  "Freeze certified field rules and current integer witness conjectures."
+  (let ((rules nil))
+    (dolist (discovery discoveries)
+      (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation))
+             (certified (certified-solve-discovery-p discovery)))
+        (charge ledger :propagator-library (+ (syntax-work (law-statement (solve-witness-law discovery)))
+                                              (syntax-work (law-statement (solve-uniqueness-law discovery)))))
+        (when (or certified (and (eq domain :int) (current-witness-conjecture-p discovery)))
+          (push (make-arithmetic-propagator
+                 :domain (copy-tree domain) :operator (copy-tree (arithmetic-relation-operator relation))
+                 :position (solve-discovery-position discovery)
+                 :witness (copy-tree (solve-discovery-witness discovery)) :guard (copy-tree (solve-discovery-guard discovery))
+                 :certified-p certified) rules))))
+    (make-propagator-library :rules (nreverse rules))))
+
+(defun compile-propagator-matcher (rule inputs child-id)
+  "Quoted decoder -> (matched, quoted known operand)."
+  (let* ((domain (arithmetic-propagator-domain rule))
+         (scope (acons child-id domain inputs)) (source-type (code-type scope domain))
+         (parameters (arithmetic-inputs domain)) (pattern-type (code-type parameters domain))
+         (pattern (lit pattern-type (arithmetic-application (arithmetic-propagator-operator rule)
+                                   (arithmetic-propagator-position rule) (var 0 domain) (var 1 domain))))
+         (source (var 0 source-type)) (result-type (tuple-type :bool source-type))
+         (no (app (op :tuple result-type) (lit :bool nil) (lit source-type (lit domain 0)))))
+    (flet ((binding (id)
+             (app (op :code-bind (tuple-type pattern-type source-type source-type)) pattern source (lit :int id))))
+      (values
+       (app (op :if result-type)
+            (app (op :code-match (tuple-type pattern-type source-type)) pattern source)
+            (app (op :if result-type)
+                 (app (op := source-type) (binding 1) (lit source-type (var child-id domain)))
+                 (app (op :tuple result-type) (lit :bool t) (binding 0)) no)
+            no)
+       (list (cons 0 source-type))))))
+
+(defun prepare-propagation-program (model inputs ledger category)
+  (let ((state (start-program-validation model inputs)))
+    (advance-accounted-evaluation state 100000000 ledger category category)
+    (assert (eq :value (evaluation-status state)) () "Propagation preparation unresolved")
+    (evaluation-value state)))
+
+(defun evaluate-propagation-program (program values ledger category)
+  (let ((state (start-validated-evaluation program values)))
+    (advance-accounted-evaluation state 100000000 ledger category category)
+    (assert (not (eq :unknown (evaluation-status state))) () "Propagation evaluation unresolved")
+    state))
+
+(defun match-arithmetic-propagator (library decoder inputs child-id domain ledger)
+  "Meter a typed operator scan, then run DSL matchers on the shortlisted rules."
+  (assert (equal (propagator-library-versions library) (vm-versions)) () "Stale propagator library")
+  (charge ledger :propagator-dispatch (syntax-work decoder))
+  (dolist (rule (propagator-library-rules library))
+    (charge ledger :propagator-dispatch (+ 1 (syntax-work (arithmetic-propagator-operator rule))))
+    (when (and (app-p decoder) (equal domain (arithmetic-propagator-domain rule))
+               (equal (first decoder) (arithmetic-propagator-operator rule)))
+      (let* ((key (list rule (copy-tree inputs) child-id))
+             (cache (propagator-library-matchers library)))
+        (charge ledger :propagator-cache (+ 1 (integer-width child-id)
+                                            (loop for (id . type) in inputs sum (+ (integer-width id) (type-work type)))))
+        (let ((program (or (gethash key cache)
+                           (multiple-value-bind (model schema) (compile-propagator-matcher rule inputs child-id)
+                             (charge ledger :propagator-compilation (syntax-work model))
+                             (setf (gethash key cache) (prepare-propagation-program model schema ledger :propagator-preparation))))))
+          (let ((run (evaluate-propagation-program program (list decoder) ledger :propagator-matching)))
+            (when (and (eq :value (evaluation-status run)) (first (evaluation-value run)))
+              (let ((known (second (evaluation-value run))))
+                (charge ledger :propagator-binding (syntax-work known))
+                (when (handler-case (equal domain (expression-type known inputs)) (error () nil))
+                  (return-from match-arithmetic-propagator (values rule known))))))))))
+  (values nil nil))
+
+(defun propagate-arithmetic-child (parent decoder child-id bindings source ledger)
+  "Certified rules replace requirements exactly. Integer witnesses are forward
+checked against the ORIGINAL pullback and supply a separate tentative frame."
+  (let* ((inputs (schema-inputs (frame-schema parent))) (domain (schema-target (frame-schema parent)))
+         (original (pullback-frame parent decoder child-id domain bindings ledger))
+         (library (etypecase source
+                    (solve-discovery (prepare-propagator-library (list source) ledger))
+                    (propagator-library source)))
+         (result (make-propagation :frame original :original original :retained (length (frame-rows original)))))
+    (multiple-value-bind (rule known) (match-arithmetic-propagator library decoder inputs child-id domain ledger)
+      (unless rule (return-from propagate-arithmetic-child result))
+      (let* ((schema (arithmetic-inputs domain))
+             (guard-program (prepare-propagation-program (arithmetic-propagator-guard rule) schema ledger :propagation-preparation))
+             (witness-program (prepare-propagation-program (arithmetic-propagator-witness rule) schema ledger :propagation-preparation))
+             (certified (arithmetic-propagator-certified-p rule))
+             (rows
+               (loop for parent-row in (frame-rows parent) for row in (frame-rows original) collect
+                 (block propose
+                   (let ((targets (allowed-values (row-allowed parent-row))))
+                     (unless (and (listp targets) (= 1 (length targets))) (return-from propose row))
+                     (let ((context (run-algebra-program known inputs (row-known parent-row) ledger :propagation-context)))
+                       (unless (eq :value (evaluation-status context)) (return-from propose row))
+                       (let* ((values (list (evaluation-value context) (first targets)))
+                              (guard (evaluate-propagation-program guard-program values ledger :propagation-guard)))
+                         (unless (and (eq :value (evaluation-status guard)) (evaluation-value guard)) (return-from propose row))
+                         (let ((witness (evaluate-propagation-program witness-program values ledger :propagation-witness)))
+                           (unless (eq :value (evaluation-status witness)) (return-from propose row))
+                           (unless certified
+                             (let ((check (run-algebra-program (allowed-expression (row-allowed row))
+                                          (list (cons 0 domain)) (list (evaluation-value witness)) ledger :propagation-verification)))
+                               (unless (and (eq :value (evaluation-status check)) (evaluation-value check))
+                                 (incf (propagation-rejected result)) (return-from propose row))))
+                           (if certified (incf (propagation-narrowed result)) (incf (propagation-suggested result)))
+                           (let ((allowed (finite-allowed domain (list (evaluation-value witness)))))
+                             (charge ledger :propagation-frame (syntax-work (allowed-expression allowed)))
+                             (make-row :key (row-key row) :known (row-known row) :allowed allowed))))))))))
+        (setf (propagation-frame result) (make-frame (frame-schema original) rows)
+              (propagation-retained result) (- (length rows) (propagation-narrowed result) (propagation-suggested result)))
+        (when (plusp (propagation-suggested result)) (setf (propagation-fallback result) original))))
+    result))

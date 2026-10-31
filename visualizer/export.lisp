@@ -54,12 +54,12 @@
           (t (format nil "v~D" id)))))
 
 (defun expression-text (expression inputs)
-  (case (first expression)
-    (:var (input-name (second expression) inputs))
-    (:lit (if (integerp (third expression)) (format nil "~D" (third expression))
-              (sexp-text (third expression))))
+  (case (ast-kind expression)
+    (:var (input-name (ast-id expression) inputs))
+    (:lit (if (integerp (ast-value expression)) (format nil "~D" (ast-value expression))
+              (sexp-text (ast-value expression))))
     (:app
-     (let ((name (second (second expression))) (args (third expression)))
+     (let ((name (operator-name (first expression))) (args (rest expression)))
        (if (member name '(:+ :* :=))
            (format nil "(~A ~A ~A)" (expression-text (first args) inputs)
                    (symbol-name name) (expression-text (second args) inputs))
@@ -146,7 +146,7 @@ Only completed records belong to buckets. A pending record is kept separately."
        "unit" "bits"
        "literals" (if (eq (language-literals language) :all) "All domain literals"
                        (format nil "{~{~D~^, ~}}" (language-literals language)))
-       "operators" (array-data (mapcar (lambda (operator) (symbol-name (second operator))) (language-operators language)))
+       "operators" (array-data (mapcar (lambda (operator) (symbol-name (operator-name operator))) (language-operators language)))
        "languageVersion" (lisploop::language-version language)
        "frame" (frame-data (observation-scope-frame scope))
        "transitions" (if transitions (frame-data transitions) :null)

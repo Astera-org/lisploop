@@ -139,7 +139,7 @@
                (enumerator-buckets (search-job-enumerator job)))
       (check (null (set-exclusive-or actual reference :test #'equal))))
     (let ((scope (make-observation-scope frame language)))
-      (setf (third (first (language-constants language))) (lit :int 99))
+      (setf (second (first (language-constants language))) (lit :int 99))
       (check (equal (list (lit code zero)) (language-constants (observation-scope-language scope))))))
   ;; Zero-argument constructors are finite grammar productions too.
   (let* ((type (tuple-type)) (model (app (op :tuple type)))

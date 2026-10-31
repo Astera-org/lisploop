@@ -14,7 +14,7 @@
                           collect discovery)))))
 
 (defun arithmetic-control (domain name position)
-  (find-if (lambda (d) (and (eq name (second (arithmetic-relation-operator (solve-discovery-relation d))))
+  (find-if (lambda (d) (and (eq name (operator-name (arithmetic-relation-operator (solve-discovery-relation d))))
                             (= position (solve-discovery-position d)))) (arithmetic-controls domain)))
 
 (defun independent-arithmetic (name a b domain)
@@ -36,7 +36,7 @@
     (let ((domain (gf p)))
       (dolist (discovery (arithmetic-controls domain))
         (let* ((relation (solve-discovery-relation discovery)) (position (solve-discovery-position discovery))
-               (name (second (arithmetic-relation-operator relation)))
+               (name (operator-name (arithmetic-relation-operator relation)))
                (q (solve-discovery-witness discovery)) (guard (solve-discovery-guard discovery))
                (requirement (arithmetic-requirement relation position)) (inputs (arithmetic-inputs domain)))
           (check (certified-solve-discovery-p discovery))
@@ -70,7 +70,7 @@
            (discovery (discover-arithmetic-solver relation 1 values :operators '(:+ :*)
                                                    :literals (if (eq domain :int) '(-1 0 1) :all) :body-bound 24))
            (language (observation-scope-language (observation-job-scope (solve-discovery-observations discovery)))))
-      (check (equal '(:+ :*) (mapcar #'second (language-operators language))))
+      (check (equal '(:+ :*) (mapcar #'operator-name (language-operators language))))
       (check (eq :enumeration (observation-job-mode (solve-discovery-observations discovery))))
       (check (search-job-best (addition-oracle-control discovery)))
       (if (eq domain :int)
@@ -133,7 +133,7 @@
 
 (deftest integer-witnesses-divisibility-and-division-counterexamples
   (dolist (discovery (arithmetic-controls :int))
-    (let ((name (second (arithmetic-relation-operator (solve-discovery-relation discovery)))))
+    (let ((name (operator-name (arithmetic-relation-operator (solve-discovery-relation discovery)))))
       (check (eq :conjecture (law-validation-status (solve-discovery-validation discovery))))
       (check (eq (if (eq name :/) :refuted :conjecture) (law-validation-status (solve-discovery-uniqueness discovery))))
       (check (not (certified-solve-discovery-p discovery)))

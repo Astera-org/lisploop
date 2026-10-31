@@ -239,12 +239,12 @@
 
 (defun integer-reference-value (expression inputs)
   "Independent arithmetic oracle for the tiny integer grammar; no simulator calls."
-  (ecase (first expression)
-    (:lit (third expression))
-    (:var (cdr (assoc (second expression) inputs)))
+  (ecase (ast-kind expression)
+    (:lit (ast-value expression))
+    (:var (cdr (assoc (ast-id expression) inputs)))
     (:app
-     (let ((values (mapcar (lambda (e) (integer-reference-value e inputs)) (third expression))))
-       (ecase (second (second expression))
+     (let ((values (mapcar (lambda (e) (integer-reference-value e inputs)) (rest expression))))
+       (ecase (operator-name (first expression))
          (:+ (+ (first values) (second values)))
          (:* (* (first values) (second values))))))))
 
