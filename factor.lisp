@@ -247,7 +247,7 @@ Returns (VALUES classes labels refined-frame partition)."
            (target-type (schema-target schema))
            (inputs (schema-inputs schema))
            (bound (or description-limit (+ (header-size inputs target-type) 18)))
-           (scope (make-observation-scope refined-frame language))
+           (scope (make-observation-scope refined-frame language :pairs nil :anchors nil))
            (obs-job (start-observation-search scope :retain-outcomes t)))
       (resume-observation-search obs-job bound work-limit)
       (charge ledger :heuristic-search (ledger-total (observation-job-ledger obs-job)))

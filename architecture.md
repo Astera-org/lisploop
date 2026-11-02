@@ -19,14 +19,14 @@ Lisploop is a clean-room experiment in **inductive program synthesis, algebraic 
 1. **No Informational Loops**: If an external agent or test harness supplies a hint, target decomposition, or unverified rule, the experiment measures the hint rather than discovery. Every benchmark fixture is strictly separated from the synthesizer across an explicit data-only boundary (`row` / `frame`).
 2. **Epistemic Honesty**: Every claim returned by the kernel carries an explicit epistemic grade (`:replayed-observations`, `:conjecture`, `:vacuous`, `:refuted`, `:validated`) together with the exact bit bound, work bound, domain scope, and (when validated) an auditable `law-certificate`. Empirical agreement on finite samples never silently upgrades into an algebraic certificate.
 3. **Closed Accounting (Description Bits + Paid Runtime Work)**: Every model, law, rewrite rule, solver, and residual pays its exact prefix-free description length $S(\cdot)$ in bits (Encoding Version 7) and its exact runtime execution work $W(\cdot)$ in structural tariff units (Tariff Version 8, Simulator Version 5). Meta-level machinery (rewriters, anti-unification constructors, propagator matchers) runs inside the same metered virtual machine and must amortize its own validation and execution cost.
-4. **Observational Conservation**: Semantics is grounded in the empirical outcome matrix $M(e, \omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$ of evaluating expression $e$ on environment row $\omega$. Observational equivalence ($e_1 \equiv_\Omega e_2$), guarded equivalence ($g(\omega) = \mathrm{t} \implies e_1(\omega) = e_2(\omega)$), trajectory invariants, and algebraic laws are all projections of $M$.
-5. **Reorientation & Pullback**: "Input" and "output" are not intrinsic properties of a relation; they are **orientations** chosen relative to what is currently observed. Selecting a subset of columns as known and a target column to explain creates a `frame`. Choosing a partial decomposition $d(x, z)$ pulls a parent frame back into a child frame over $z$ without consulting any hidden oracle.
+4. **Observational Conservation**: Semantics is grounded in the empirical outcome matrix $M(e, \omega) = \mathrm{Eval}(e, \mathbf{x}_\omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$ of evaluating symbolic expression $e(X)$ on row $\omega$'s bound input values $\mathbf{x}_\omega$. Observational equivalence ($e_1 \equiv_\Omega e_2$), guarded equivalence ($G(\mathbf{x}_\omega) = \mathrm{t} \implies e_1(\mathbf{x}_\omega) = e_2(\mathbf{x}_\omega)$), symmetries/invariants conserved under an action ($M(e, \omega) = M(e, T\omega)$), and algebraic laws are all projections of $M$.
+5. **Reorientation & Pullback**: "Input" and "output" are not intrinsic properties of a relation; they are **orientations** chosen relative to what is currently observed. Selecting a subset of columns as known inputs $\mathbf{x}_\omega$ and a target column $Y$ to explain creates a `frame`. Choosing a partial decomposition $Y = d(X, Z)$ pulls a parent requirement $A_\omega(Y)$ back into a symbolic child requirement $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$ without consulting any hidden oracle.
 6. **Factorization of Redundancy**: Shared structure across expressions, laws, or requirement fibers is factored by typed least general generalization (anti-unification), value quotienting, or latent fiber clustering---turning repeated sub-problems into reusable constructors or intermediate concepts.
 7. **Dual-Grade Downward Propagation**: Discovered algebraic solvers propagate parent requirements downward to child frames in two distinct epistemic modes:
-   - **Certified ($\iff$)**: Exhaustively validated bidirectional equivalences replace the child requirement in-place, shrinking the verification frame.
+   - **Certified ($\iff$)**: Exhaustively validated bidirectional equivalences replace the child requirement $B_\omega(Z)$ in-place with `(= Z 'v_w)`, shrinking the verification frame.
    - **Tentative ($\Leftarrow$)**: Uncertified or right-to-left integer witness rules propose a fast narrowed `propagation-frame` while retaining the original pullback frame as `propagation-fallback`. Every candidate synthesized on the narrowed frame must pass forward replay on the original frame before acceptance.
 8. **Preemptive Resumability**: Evaluation, search, observation, law validation, and rewriting are implemented as resumable state machines driven by explicit work budgets. Running a job in tiny increments (`quantum = 1`) must yield the exact same state, ledger totals, and outcomes as running it in a single large batch.
-9. **Lossy Heuristic Condensation**: While object-level verification is lossless (wrong programs are rejected), **search control** is lossy: when exact deductive propagation yields an intractable predicate or heterogeneous fibers, the synthesizer can condense a requirement frame into a compact, cheap heuristic program by pricing mismatched rows as an explicit description-length residual during training and dropping the residual at deployment.
+9. **Lossy Heuristic Condensation**: While object-level verification is lossless (wrong programs are rejected), **search control** is lossy: when exact deductive propagation yields an intractable predicate or heterogeneous fibers, the synthesizer can condense a requirement frame into a compact, cheap heuristic expression $\hat{\pi}(X)$ by pricing mismatched rows $\varepsilon_\omega$ as an explicit description-length residual during training and dropping the residual at deployment.
 
 ### 1.2 Evolution Across `plan4` $\to$ `plan5` $\to$ `plan6`
 
@@ -45,53 +45,82 @@ The codebase evolved through three documented planning stages:
 
 ## 2. The Four Fundamental Operations
 
-At the heart of the kernel, every synthesis, law-discovery, decomposition, and propagation step is an instance of four interacting operations over the empirical outcome matrix:
+### Nomenclature & Kernel Mapping
+
+Throughout this document and [plan6.md](plan6.md), **uppercase letters** ($X_i, Y, Z$) denote **symbolic variable AST nodes** (`#:X0`, `#:X1`, $\dots$) inside expressions and requirement predicates, whereas **lowercase letters** ($\mathbf{x}_\omega, y_\omega, z_\omega, v_\omega$) denote **concrete runtime values** in $\mathcal{V}_\tau$ bound when evaluating on a specific observation row $\omega \in \Omega$:
+
+| Symbol | Mathematical Meaning | Live Kernel Representation |
+| :--- | :--- | :--- |
+| $\Gamma = (D,\, X_0{:}\tau_0,\dots,X_{m-1}{:}\tau_{m-1} \to \tau)$ | **Typing schema**: ambient numeric domain $D$, symbolic input variables $X_i : \tau_i$, and target output type $\tau$. | `schema` struct (`make-schema` in `ast.lisp`) with slots `domain`, `inputs`, `target`, `lookup-p`. |
+| $\tau,\; \mathcal{V}_\tau$ | **Semantic type** $\tau$ and its **value domain** $\mathcal{V}_\tau$ (including base types $\mathbb{Z}, \mathbb{F}_p, \mathbb{B}$, tuples, sequences, and quoted syntax `(:code inputs sort)`). | `:int`, `(:gf p)`, `:bool`, `(:tuple ...)`, `(:seq ...)`, `(:code inputs sort)` (`valid-type-p`, `value-p` in `ast.lisp`). |
+| $X = (X_0, \dots, X_{m-1})$ and $Y, Z$ | **Symbolic variables**: $X_i$ are formal input variables in $e(X)$; $Y : \tau_P$ and $Z : \tau_C$ are the target variable (`(var 0 type)`) in parent/child requirements $A_\omega(Y), B_\omega(Z)$. | Pooled uninterned symbols `#:X0`, `#:X1`, $\dots$ constructed via `(var id type)`. |
+| $\Omega = (\omega_1, \dots, \omega_n)$ and $\omega \in \Omega$ | **Frame** $\Omega$ and **observation row** $\omega$ pairing bound input vector $\mathbf{x}_\omega = (x_{\omega,0}, \dots, x_{\omega,m-1})$ with requirement $A_\omega(Y)$. | `frame` (`make-frame`) and `row` (`make-row` with `row-key`, `row-known`, `row-requirement` in `frame.lisp`). |
+| $T\omega$ | **Action-linked row**: a row linked to $\omega$ by an empirical action, symmetry transformation, or co-locality relation $(\omega, T\omega)$ (with M2 trajectory steps as the dynamical special case). | Row-index pair $(\omega, T\omega)$ in `observation-scope-pairs` (inherited automatically from optional `frame-pairs`, or produced from transition records by `transition-probes`). |
+| $M(e, \omega) = \mathrm{Eval}(e, \mathbf{x}_\omega)$ | **Outcome Matrix cell**: result of evaluating $e(X) \in \mathcal{E}$ on $\mathbf{x}_\omega$, in $\mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$. | Computed by `evaluation` (`vm.lisp`) inside `search-job` or `observation-job`. |
+| $A_\omega(Y),\; B_\omega(Z),\; \mathrm{Fiber}(\omega)$ | **Symbolic row requirements** and **target-value fiber** $\mathrm{Fiber}(\omega) = \{z \in \mathcal{V}_{\tau_C} \mid B_\omega(z) = \mathrm{t}\}$. | `row-requirement` (`singleton-requirement`, `set-requirement`, or general Boolean AST), `extract-allowed-values`, `conjoin-requirements` (`frame.lisp`). |
+| $t_\omega,\; p,\; \theta_\omega$ | **Factorization & residual value (Operation 2)**: $t_\omega \in \mathcal{V}_\tau$ is a witnessed object on row $\omega$; $p$ is a shared template/table; $\theta_\omega \in \mathrm{Fiber}(\omega)$ is the per-row residual value satisfying $\mathrm{Apply}(p, \theta_\omega) = t_\omega$. | `anti-unify` & `compile-au-constructor` (where $t_\omega$ is a `:code` AST and $\theta_\omega$ is the hole-binding tuple), `quotient-values` (where $\theta_\omega = j_\omega$). |
+| $\Omega_k \subseteq \Omega$ and $j_\omega \in \{0,\dots,K-1\}$ | **Row-space value fiber (level set in $\Omega$) & cluster index**: $\Omega_k = \{\omega \in \Omega \mid j_\omega = k\}$ groups rows sharing representative $R_k$ or compatible intersected fiber $\bigcap_{\omega \in \Omega_k} \mathrm{Fiber}(\omega) \neq \emptyset$. | `quotient-values` & `partition-rows` (`frame.lisp`), `infer-fibers` returning `fiber-class` structs with `fiber-class-rows` ($\Omega_k$) and `fiber-class-requirement` ($B_{c_k}(Z) = \bigwedge_{\omega \in \Omega_k} B_\omega(Z)$). |
+| $d(X, Z),\; q(K, C),\; G(K, C),\; v_\omega$ | **Decoder AST** $Y = d(X, Z)$, **learned solver witness/guard** $q, G$, and **folded witness value** $v_\omega \in \mathrm{Fiber}(\omega)$. | `pullback-frame`, `fold-constants`, `discover-arithmetic-solver`, `propagate-arithmetic-child`. |
+| $\hat{\pi}(X)$ and $\varepsilon_\omega$ | **Condensed heuristic expression** $\hat{\pi}(X)$ and **training residual** $\varepsilon_\omega$ (priced in bits during learning, dropped at deployment). | `condense-heuristic` (`heuristic-model` in `factor.lisp`). |
+
+> **Key Conceptual Distinctions**
+>
+> 1. **Unary Per-Row Requirements (`search-job`) vs. Cross-Row Action Conservation (`observation-scope`)**:
+>    - In `search-job`, each row $\omega$ carries a *unary* predicate $A_\omega(Y)$ (`row-requirement`) that judges a single output value $y_\omega = M(e, \omega)$ in isolation (e.g., learning an action $T$ sets $A_\omega(Y) := (Y = \mathbf{x}_{T\omega})$).
+>    - In `observation-scope` (`observation-job`), testing whether a candidate observable $e(X)$ is **conserved under an action $T$** ($M(e, \omega) = M(e, T\omega)$) is a *relational* query across linked rows $(\omega, T\omega) \in \texttt{pairs}$ where the target value $y_\omega$ is not known in advance (and must vary across orbit `anchors`).
+> 2. **Right-Inverse of `Apply` (Operation 2: Factorization) vs. Pullback (Operation 3: Predicate Precomposition)**:
+>    - **Factorization** operates on *concrete witnessed values* $\{t_\omega\}_{\omega \in \Omega}$, computing a right-inverse of forward execution `Apply` by splitting $\{t_\omega\}$ into a shared pattern/table $p$ and per-row residuals $\{\theta_\omega\}$ such that $\mathrm{Apply}(p, \theta_\omega) = t_\omega$.
+>    - **Pullback** operates contravariantly on *symbolic requirement predicates* $A_\omega(Y)$ via function precomposition $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$ even when $z \mapsto d(\mathbf{x}_\omega, z)$ is many-to-one or non-surjective. Once pulled back, cross-row compatibility is internalized into the per-row predicates $B_\omega(Z)$.
+> 3. **Two Dual Uses of "Fiber" ($\mathrm{Fiber}(\omega) \subseteq \mathcal{V}_{\tau_C}$ vs. $\Omega_k \subseteq \Omega$), and Extensional ($j_\omega$) vs. Intensional ($\hat{\pi}(X)$) Lifting**:
+>    - In **value space**, $\mathrm{Fiber}(\omega) = \{z \in \mathcal{V}_{\tau_C} \mid B_\omega(z) = \mathrm{t}\}$ is the admissible target-value set of row $\omega$, while $\theta_\omega \in \mathrm{Fiber}(\omega)$ is a single concrete residual value chosen from it.
+>    - In **row space**, $\Omega_k = \{\omega \in \Omega \mid j_\omega = k\}$ is a level set of rows sharing a representative value $R_k$ (`quotient-values`) or a non-empty intersected fiber $\bigcap_{\omega \in \Omega_k} \mathrm{Fiber}(\omega) \neq \emptyset$ (`infer-fibers`). The cluster index vector $(j_{\omega_1}, \dots, j_{\omega_n})$ is *extensional* (indexed by $\omega \in \Omega$), whereas Operation 4 (`condense-heuristic`) synthesizes an *intensional* symbolic selector $\hat{\pi}(X)$ predicting $\hat{\pi}(\mathbf{x}_\omega) \approx j_\omega$ on new inputs and dropping Stage-1 assignment noise $\varepsilon_\omega$ at deployment.
+
+At the heart of the kernel, every synthesis, law-discovery, decomposition, and propagation step is an instance of four interacting operations over $M(e, \omega)$:
 
 ```{=latex}
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
     >=Latex,
-    box/.style={draw, rounded corners=3pt, align=left, font=\scriptsize, inner sep=5pt, fill=white},
+    box/.style={draw, rounded corners=3pt, align=left, font=\scriptsize, inner sep=5pt, fill=white, minimum height=2.7cm},
     hdr/.style={draw, rounded corners=3pt, align=center, font=\small, inner sep=6pt, fill=gray!10},
     lbl/.style={font=\scriptsize\itshape, align=center}
 ]
     % Top: Homoiconic Kernel
     \node[hdr, text width=16.2cm] (kernel) at (0, 0) {
         \textbf{Homoiconic S-Expression, Frame \& Metered Evaluator Kernel}\\
-        Schema $\Gamma = (D,\, x_1{:}\tau_1,\dots,x_m{:}\tau_m \to \tau)$, \quad Frame Rows $\omega \in \Omega$, \quad Candidate Stream $e \in \mathcal{E} \subseteq \mathcal{L}(\Gamma)$\\
-        Outcome Matrix $M(e, \omega) = \mathrm{Eval}(e, x_\omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$, \quad $O(1)$ Cached Metadata $(\mathrm{bits}, W_{\mathrm{syn}}, \mathrm{total?}, \mathrm{vars})$
+        Schema $\Gamma = (D,\, X_0{:}\tau_0,\dots,X_{m-1}{:}\tau_{m-1} \to \tau)$, \quad Frame Rows $\omega \in \Omega$ with values $\mathbf{x}_\omega$, \quad Candidates $e(X) \in \mathcal{E} \subseteq \mathcal{L}(\Gamma)$\\
+        Outcome Matrix $M(e, \omega) = \mathrm{Eval}(e, \mathbf{x}_\omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$, \quad $O(1)$ Cached Metadata $(\mathrm{bits}, W_{\mathrm{syn}}, \mathrm{total?}, \mathrm{vars})$
     };
 
     % Four Operations below
     \node[box, text width=3.75cm, anchor=north] (op1) at (-6.15, -1.7) {
         \textbf{1. Observational Conservation}\\
         \texttt{enumerate.lisp}, \texttt{laws.lisp}\\[2pt]
+        $\bullet$ \textbf{Synthesis}: $A_\omega(M(e, \omega)) = \mathrm{t}$\\
         $\bullet$ \textbf{Buckets}: level sets of $M(e, \omega)$\\
-        \phantom{$\bullet$ }(\texttt{observation-job})\\
-        $\bullet$ \textbf{Invariants}: $M(e, \omega) = M(e, T\omega)$\\
+        $\bullet$ \textbf{Symmetries}: $M(e, \omega) = M(e, T\omega)$\\
         \phantom{$\bullet$ }(\texttt{observation-invariants})\\
-        $\bullet$ \textbf{Guards}: support masks $S(e_1, e_2)$\\
-        \phantom{$\bullet$ }(\texttt{propose-guarded-laws})
+        $\bullet$ \textbf{Guards}: support masks $\Omega_{\mathrm{ok}}$
     };
 
     \node[box, text width=3.75cm, anchor=north] (op2) at (-2.05, -1.7) {
         \textbf{2. Factorization \& Fibers}\\
-        \texttt{factor.lisp}, \texttt{frame.lisp}\\[2pt]
-        $\bullet$ \textbf{Term AU}: $t_\omega = \mathrm{Subst}(p, \theta_\omega)$\\
+        Right-inverse of $\mathrm{Apply}$:\\
+        $t_\omega = \mathrm{Apply}(p, \theta_\omega)$, keep $\theta_\omega$\\[2pt]
+        $\bullet$ \textbf{Term AU}: $\mathrm{Subst}(p, \theta_\omega)$\\
         \phantom{$\bullet$ }(\texttt{anti-unify})\\
         $\bullet$ \textbf{Quotients}: $\mathrm{gather}(R, j_\omega)$\\
-        \phantom{$\bullet$ }(\texttt{quotient-values}, \texttt{partition-rows})\\
-        $\bullet$ \textbf{Hard-EM Fibers}: cluster $B_\omega(z)$\\
+        $\bullet$ \textbf{Hard-EM Fibers}: cluster $B_\omega(Z)$\\
         \phantom{$\bullet$ }(\texttt{infer-fibers})
     };
 
     \node[box, text width=3.75cm, anchor=north] (op3) at (2.05, -1.7) {
         \textbf{3. Reorient, Pullback \& Propagate}\\
         \texttt{frame.lisp}, \texttt{vm.lisp}, \texttt{laws.lisp}\\[2pt]
-        $\bullet$ \textbf{Reorient}: project $(k, c) \mapsto z$\\
+        $\bullet$ \textbf{Reorient}: project $(K, C) \mapsto Z$\\
         \phantom{$\bullet$ }(\texttt{orient-observations})\\
-        $\bullet$ \textbf{Pullback \& Fold}: $A_\omega(d(x_\omega, z))$\\
+        $\bullet$ \textbf{Pullback \& Fold}: $A_\omega(d(\mathbf{x}_\omega, Z))$\\
         \phantom{$\bullet$ }(\texttt{pullback-frame}, \texttt{fold-constants})\\
         $\bullet$ \textbf{Propagate}: $\iff$ certified in-place\\
         \phantom{$\bullet$ }vs.\ $\Leftarrow$ tentative (\texttt{frame-conflict-p})
@@ -115,60 +144,62 @@ At the heart of the kernel, every synthesis, law-discovery, decomposition, and p
 
     % Cross-links at bottom
     \draw[->, thick] (op2.south) -- ++(0,-0.45) -| node[pos=0.25, below, lbl] {Residuals $\theta_\omega, j_\omega$ form child frames} (op1.south);
-    \draw[->, thick] (op3.south) -- ++(0,-0.9) -| node[pos=0.25, below, lbl] {Folded fibers $B_\omega(z)$ \& narrowed witnesses feed MDL condensation \& multi-lane search} (op4.south);
+    \draw[->, thick] (op3.south) -- ++(0,-0.9) -| node[pos=0.25, below, lbl] {Folded fibers $B_\omega(Z)$ \& narrowed witnesses feed MDL condensation \& multi-lane search} (op4.south);
 \end{tikzpicture}
 \caption{The four fundamental operations of the Lisploop kernel interacting over the empirical outcome matrix $M(e, \omega)$.}
 \end{figure}
 ```
 
-### Operation 1: Observational Conservation
+### Operation 1: Observational Conservation Across Frame Rows
 
-Given an expression family $\mathcal{E}$ and a finite observation set $\Omega$, evaluating $e \in \mathcal{E}$ on $\omega \in \Omega$ under quantum $q$ produces a cell $M(e, \omega)$ with three possible outcomes:
+Given a candidate stream $\mathcal{E} \subseteq \mathcal{L}(\Gamma)$ and a finite frame $\Omega = (\omega_1, \dots, \omega_n)$, evaluating $e(X) \in \mathcal{E}$ on row $\omega$'s input value vector $\mathbf{x}_\omega$ under quantum $q$ produces an Outcome Matrix cell $M(e, \omega)$ with three possible outcomes:
 
 - `:value` --- total evaluation returning a domain-valid payload $v \in \mathcal{V}_\tau$,
 - `:error` --- domain or operational error (e.g., division by zero, out-of-bounds `:gather`, missing `:lookup` key, or failed `:code-*` assertion),
 - `:unknown` / `:cutoff` --- resource exhaustion when the evaluation debt exceeds the work budget.
 
-From $M(e, \omega)$, the kernel extracts:
+Every discovery task in Milestones 1--4 is a conservation query over $M(e, \omega)$, distinguishing **unary per-row satisfaction** from **cross-row relational conservation**:
 
-- **Empirical Equivalence Buckets** (`observation-bucket`): expressions with identical total output vectors across $\Omega$, ranked by canonical description length (`expression-less-p`).
-- **Trajectory Invariants** (`observation-invariants`): buckets whose values remain constant across transition pairs $(\omega_{\mathrm{before}}, \omega_{\mathrm{after}})$ while varying across distinct anchor trajectories.
-- **Partial-Domain Support & Guarded Laws** (`observed-support`, `propose-guard-problems`, `propose-guarded-laws`): when `:retain-outcomes t` is enabled on an `observation-job`, expressions that error on some rows or agree only on a subset of $\Omega$ induce Boolean support masks $S(e_1, e_2) \subseteq \Omega$. Grouping pairs by identical support masks synthesizes a single guard $g$ whose positive support matches $S(e_1, e_2)$, yielding guarded equations $g(\vec{x}) \implies e_1(\vec{x}) = e_2(\vec{x})$.
+- **Function Synthesis via Unary Row Requirements (`search-job`, M1)**: Each row $\omega \in \Omega$ carries a *unary* Boolean predicate $A_\omega(Y)$ (`row-requirement`) that judges a single candidate output value $y_\omega = M(e, \omega)$ in isolation. `search-job` finds $e(X) \in \mathcal{E}$ such that $\forall \omega \in \Omega,\ A_\omega(M(e, \omega)) = \mathrm{t}$, early-exiting the row loop on the first `:error` or `nil`. For example, learning a state-transition action $T$ itself in Milestone 2 sets $A_\omega(Y) := (Y = \mathbf{x}_{T\omega})$.
+- **Empirical Equivalence & Symmetries via Cross-Row Conservation (`observation-job`, `observation-invariants`, M2)**: By contrast, testing whether a candidate observable $e(X)$ is **conserved under an action $T$** ($M(e, \omega) = M(e, T\omega)$) is a *relational* property across linked rows $(\omega, T\omega) \in \texttt{pairs}$---the target value $y_\omega$ is not fixed in advance; we only require that $e$ take the *same* value before and after the action while taking at least two distinct values across orbit `anchors`. `observation-job` partitions $\mathcal{E}$ into `observation-bucket`s by complete non-error output vectors $[M(e, \omega_1), \dots, M(e, \omega_n)]$ (ranked by `expression-less-p`) and checks invariance across `observation-scope-pairs` (which automatically inherit optional `frame-pairs` and `frame-anchors` when present on a `frame`, or are constructed from transition records by `transition-probes`).
+- **Exhaustive Finite-Domain Laws (`start-law-validation`, M3)**: On the exhaustive finite input grid $\Omega = D^\Gamma$, verifies $\forall \omega \in \Omega,\ \bigl(G(\mathbf{x}_\omega) \implies e_1(\mathbf{x}_\omega) = e_2(\mathbf{x}_\omega)\bigr) = \mathrm{t}$ with positive active support ($\exists \omega,\ G(\mathbf{x}_\omega) = \mathrm{t}$).
+- **Partial-Domain Support Masks & Exact Guards (`observed-support`, `propose-guard-problems`, `propose-guarded-laws`, M3/M4)**: When `:retain-outcomes t` is enabled on an `observation-job`, any partially valid expression or equation pair $(e_1, e_2)$ partitions $\Omega$ into its **positive support rows** $\Omega_{\mathrm{ok}} = \{\omega \in \Omega \mid e_1(\mathbf{x}_\omega) = e_2(\mathbf{x}_\omega) \in \mathcal{V}_\tau\}$ and **failure/error rows** $\Omega_{\mathrm{fail}} = \Omega \setminus \Omega_{\mathrm{ok}}$. Synthesizing an exact guard $G(X)$ on `support-frame` is simply synthesizing a Boolean predictor via `search-job` conserved on the indicator $\mathbf{1}_{\Omega_{\mathrm{ok}}}(\omega)$ with zero residual error ($\varepsilon_\omega \equiv 0$).
 
-### Operation 2: Factorization & Latent Fiber Inference
+### Operation 2: Factorization & Latent Fiber Inference ($S$ Compression)
 
-Redundancy is factored across both syntax trees and requirement rows:
+Whereas forward evaluation applies a shared operator or template $p$ to a row-specific argument $\theta_\omega$ to produce a concrete value $t_\omega = \mathrm{Apply}(p, \theta_\omega) \in \mathcal{V}_\tau$, lossless factorization computes a **right-inverse of `Apply`**: given a collection of concrete values $\{t_\omega\}_{\omega \in \Omega}$ (either base values or quoted `:code` ASTs), it factors them into a shared template $p$ and per-row residuals $\{\theta_\omega\}_{\omega \in \Omega}$ minimizing $S(p) + S(\{\theta_\omega\}) + \lambda_{\mathrm{run}} W_{\mathrm{run}}$:
 
-1. **Typed Anti-Unification (`anti-unify`)**: Computes the least general generalization (LGG) of a list of typed expressions under a shared input context. Disagreements become typed holes (`?0`, `?1`, $\dots$); repeated identical disagreement tuples map to the same hole ID (enforcing diagonal equality constraints), and compatible operator disagreements generalize to function-sorted `:hole`s.
-2. **Value Quotienting & View Partitioning (`quotient-values`, `partition-rows`)**: Factors a sequence of values into unique first-occurrence `representatives` and an integer index `residual` reconstructed by `(:gather representatives residual)`, or partitions occurrence rows by discrete class labels with exact permutation reassembly (`partition-model`).
-3. **Confidence-Ordered Hard-EM Fiber Inference (`infer-fibers`)**: When a frame contains rows with ambiguous finite-set or relational predicate requirements $B_\omega(z)$ over the target variable $z$, `infer-fibers` clusters rows into compatible latent fiber classes without an external witness oracle:
-   - **Pre-simplification & Tightness Ranking**: Each row requirement $B_\omega(z)$ is simplified via `fold-constants` and ranked by `fiber-tightness-rank`: rank 0 (singleton `(= X0 'c)` or 1-element `:member`), rank 1 (finite set `(member X0 '(c1 ...))` ordered by ascending cardinality), and rank 2 (general Boolean predicate), breaking ties by `syntax-work`.
-   - **Cannot-Link Soundness Filter**: Two requirements $B_1(z), B_2(z)$ cannot share a fiber class if `(conjoin-requirements B1 B2 target-type)` constant-folds to `'nil` (`unsatisfiable-requirement-p`).
-   - **E-Step (Free Coverage)**: If conjoining a row's requirement with an existing `fiber-class-requirement` leaves the class requirement unchanged (`equal`), the row is already satisfied by the class fiber and joins at zero marginal bit cost ($\Delta S = 0$).
-   - **M-Step (Coverage-Vote Amortized Merging / Nucleation)**: Otherwise, each compatible class is scored by its marginal description-bit increase $\Delta S = \max(0, S(B_{\mathrm{joint}}) - S(B_{\mathrm{class}}))$ divided by its compatibility coverage votes ($1 + \text{number of remaining unassigned rows whose requirements are compatible with } B_{\mathrm{joint}}$). If no existing class is compatible, a new `fiber-class` is nucleated.
+1. **Term Algebra (`anti-unify`, M3B Law Corpus & M6 Anti-Unification)**: Each $t_\omega \in \mathcal{V}_{\texttt{(:code ...)}}$ is a quoted S-expression; $\mathrm{Apply}$ is syntactic hole substitution $\mathrm{Subst}(p, \theta_\omega)$ (`instantiate` / `:code-subst`). `anti-unify` computes the least general generalization (LGG) pattern $p$ (with typed holes `?0`, `?1`, $\dots$) and the per-row residual subtree tuples $\theta_\omega$. Repeated identical disagreement tuples map to the same hole ID (enforcing diagonal equality constraints), and compatible operator disagreements generalize to function-sorted `:hole`s.
+2. **Sequence Algebra (`quotient-values` & `partition-rows`, M1/M5/M7 Quotients & Partitions)**: Each $t_\omega = y_\omega \in \mathcal{V}_\tau$ is a concrete value; $\mathrm{Apply}$ is indexed sequence lookup `(gather R j_w)`. `quotient-values` factors $\{y_\omega\}_{\omega \in \Omega}$ into a deduplicated sequence of unique representatives $R$ and integer index residuals $\theta_\omega = j_\omega \in \{0, \dots, |R|-1\}$, while `partition-rows` splits occurrence rows into level-set subframes $\Omega_k = \{\omega \in \Omega \mid j_\omega = k\}$ with exact permutation reassembly (`partition-model`).
+3. **Latent Fiber & Partition Inference via Hard EM (`infer-fibers`, M5/M7)**:
+   When every row's target requirement is already a concrete singleton `(= Z 'v_w)`, `quotient-values` groups identical values $v_\omega$ directly. However, when row requirements $B_\omega(Z)$ are **multi-valued or relational** (e.g., `(member Z '(2 3))`, `(= (/ Z '2) '1)`, or unconstrained `'t`), we do not have a single value $t_\omega$ on every row---instead, each row $\omega$ specifies an admissible **target-value fiber** $\mathrm{Fiber}(\omega) = \{z \in \mathcal{V}_{\tau_C} \mid B_\omega(z) = \mathrm{t}\}$. Crucially, once a parent requirement $A_\omega(Y)$ has been pulled back through a decoder $Y = d(X, Z)$ to per-row child predicates $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$, cross-row compatibility is *already internalized* into the unary predicates $B_\omega(Z)$: two rows $\omega_i, \omega_j$ can share a latent coordinate $z$ iff $\mathrm{Fiber}(\omega_i) \cap \mathrm{Fiber}(\omega_j) \neq \emptyset$. To cluster $\Omega$ into $K$ latent classes $j_\omega \in \{0, \dots, K-1\}$ (with row level-sets $\Omega_k$ and narrowed class requirements $B_{c_k}(Z) = \bigwedge_{\omega \in \Omega_k} B_\omega(Z)$) without an external witness oracle or explicit `frame-pairs`, `infer-fibers` performs **confidence-ordered Hard EM over row requirements**:
+   - **Pre-simplification & Tightness Ranking**: Each row requirement $B_\omega(Z)$ is simplified via `fold-constants` and ranked by `fiber-tightness-rank`: rank 0 (singleton `(= X0 'c)` or 1-element `:member`), rank 1 (finite set `(member X0 '(c1 ...))` ordered by ascending cardinality), and rank 2 (general Boolean predicate), breaking ties by `syntax-work`.
+   - **Cannot-Link Soundness Filter**: Two symbolic requirements $B_A(Z), B_B(Z)$ cannot share a `fiber-class` if `(conjoin-requirements B_A B_B target-type)` constant-folds to `'nil` ($\mathrm{Fiber}(A) \cap \mathrm{Fiber}(B) = \emptyset$).
+   - **E-Step (Free Coverage)**: If conjoining row $\omega$'s requirement $B_\omega(Z)$ with an existing `fiber-class-requirement` $B_c(Z)$ leaves $B_c(Z)$ unchanged (`equal`), then $\mathrm{Fiber}(c) \subseteq \mathrm{Fiber}(\omega)$ is already satisfied for free ($\Delta S = 0$), and $\omega$ joins class $c$ immediately (committed tight fibers disambiguate wider-fiber rows).
+   - **M-Step (Coverage-Vote Amortized Merging / Nucleation)**: Otherwise, each compatible class $c$ is scored by its marginal description-bit increase $\Delta S = \max\bigl(0,\, S(B_c \land B_\omega) - S(B_c)\bigr)$ divided by its compatibility **coverage votes** ($1 + \text{number of remaining unassigned rows compatible with } B_c \land B_\omega$). Row $\omega$ merges into the lowest-cost compatible class, or nucleates a new `fiber-class` if all existing classes are incompatible. Once `infer-fibers` assigns each row $\omega \in \Omega_k$ its narrowed requirement $B_{c_k}(Z)$ (or class index $j_\omega = k$), synthesizing a child coordinator $c(X)$ via `search-job` automatically enforces invariance across all rows within each fiber $\Omega_k$.
 
 ### Operation 3: Causal Reorientation, Pullback, Closed-Subtree Constant Folding & Dual-Grade Propagation
 
-1. **Reorientation (`orient-observations`, `orient-arithmetic-requirements`)**: Projects raw witnessed records `(key . values)` into a `frame` with chosen input columns (`schema-inputs`) and target column(s) (`schema-target`) without executing any simulation.
+1. **Reorientation (`orient-observations`, `orient-arithmetic-requirements`)**: Projects raw witnessed records `(key . values)` into a `frame` with chosen input columns $\mathbf{x}_\omega$ (`schema-inputs`) and target column(s) $Y$ (`schema-target`) without executing any simulation.
 2. **Pullback (`pullback-frame`) & Closed-Subtree Constant Folding (`fold-constants`)**:
-   - Given a parent `frame` with row requirements $A_\omega(y)$ and a decoder expression $d(x, z)$ over parent inputs $x$ and latent child variable $z$, `pullback-frame` substitutes the row's known constants $x_\omega$ and `(var 0 child-type)` into $d$, and substitutes the resulting closed decoder into $A_\omega(y)$ to form the child requirement $B_\omega(z) = A_\omega(d(x_\omega, z))$.
-   - `fold-constants` simplifies open requirement S-expressions bottom-up: any **closed subtree** `(null (free-vars subtree))` is evaluated in the metered VM (`evaluate`), replacing the subtree with `(lit type value)` on `:value` or propagating `:error` cleanly (`(= err x)` $\to$ `'nil`). It also folds `:if` on literal conditions, propagates singleton equalities `(= x 'c)` into `:if` branches, intersects `:member` sets and predicates, and decomposes tuple equalities `(= (tuple a1 a2) '(v1 v2))` into conjunctions of element equalities.
+   - Given a parent `frame` with symbolic row requirements $A_\omega(Y)$ and a decoder expression $Y = d(X, Z)$ over symbolic parent inputs $X$ and latent child variable $Z$, `pullback-frame` substitutes the row's known input values $X \gets \mathbf{x}_\omega$ and `(var 0 child-type)` into $d$, and precomposes $A_\omega(Y)$ with the resulting decoder to form the symbolic child requirement $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$.
+   - `fold-constants` simplifies open requirement S-expressions bottom-up: any **closed subtree** `(null (free-vars subtree))` is evaluated in the metered VM (`evaluate`), replacing the subtree with `(lit type value)` on `:value` or propagating `:error` cleanly (`(= err Z)` $\to$ `'nil`). It also folds `:if` on literal conditions, propagates singleton equalities `(= Z 'c)` into `:if` branches, intersects `:member` sets and predicates, and decomposes tuple equalities `(= (tuple e1 e2) '(v1 v2))` into conjunctions of element equalities.
 3. **Conflict Detection (`frame-conflict-p`)**: Checks a frame for unsatisfiability in $O(|\Omega|)$:
-   - **Row-level contradiction (`:unsatisfiable-row`)**: A single row's requirement folds to `'nil` (e.g., `(= (tuple z z) '(2 3))` decomposes into `(if (= z 2) (= z 3) nil)` and folds to `'nil`).
-   - **Cross-row contradiction (`:incompatible-rows`)**: Two or more rows sharing identical `row-known` inputs have requirements whose conjunction via `conjoin-requirements` folds to `'nil`.
-4. **Dual-Grade Downward Propagation (`propagate-arithmetic-child`)**: Matches a parent frame and decoder against a `propagator-library` of discovered arithmetic solvers:
-   - **Certified ($\iff$, `certified-p = t`)**: Replaces the child row's requirement in-place with `(set-requirement domain (list witness-value))`, shrinking the child verification frame.
-   - **Tentative ($\Leftarrow$, `certified-p = nil`)**: Evaluates the guard and witness on each row and **forward-verifies** `witness-value` against the original pulled-back requirement `row-requirement`. Rows that pass populate a narrowed `propagation-frame` while `propagation-fallback` retains the original pullback frame.
+   - **Row-level contradiction (`:unsatisfiable-row`)**: A single row's requirement $B_\omega(Z)$ folds to `'nil` (e.g., `(= (tuple Z Z) '(2 3))` decomposes into `(if (= Z '2) (= Z '3) 'nil)` and folds to `'nil`).
+   - **Cross-row contradiction (`:incompatible-rows`)**: Two or more rows sharing identical `row-known` input values $\mathbf{x}_\omega$ have requirements whose conjunction via `conjoin-requirements` folds to `'nil`.
+4. **Dual-Grade Downward Propagation (`propagate-arithmetic-child`)**: Matches a parent frame and decoder against a `propagator-library` of discovered arithmetic solvers $q(K, C)$ with guard $G(K, C)$:
+   - **Certified ($\iff$, `certified-p = t`)**: Replaces the child row's requirement $B_\omega(Z)$ in-place with `(set-requirement domain (list witness-value))`, shrinking the child verification frame.
+   - **Tentative ($\Leftarrow$, `certified-p = nil`)**: Evaluates the guard and witness $v_\omega = q(k_\omega, c_\omega)$ on each row and **forward-verifies** $B_\omega(v_\omega) = \mathrm{t}$ against the original pulled-back requirement `row-requirement`. Rows that pass populate a narrowed `propagation-frame` while `propagation-fallback` retains the original pullback frame.
 
 ### Operation 4: Lossy Heuristic Condensation & Multi-Lane Search Control
 
 1. **Residual-Priced Heuristic Condensation (`condense-heuristic`)**: Compresses a frame $F$ into a compact `heuristic-model` in two stages:
    - First, runs `infer-fibers` on $F$ to resolve ambiguous fibers into a `refined-frame`.
-   - Second, runs `observation-job` with `:retain-outcomes t` over `language`, scoring each candidate program $p$ by the two-part MDL objective:
-     $$J_{\mathrm{heuristic}}(p) = S(p) + S(\mathrm{residual}(p, F)) + \lambda_{\mathrm{run}} W_{\mathrm{run}}(p)$$
-     where every row $i$ that $p$ fails to satisfy pays its exact row-index and witness-value bit cost:
+   - Second, runs `observation-job` with `:retain-outcomes t` over `language`, scoring each candidate symbolic expression $\hat{\pi}(X)$ by the two-part MDL objective:
+     $$J_{\mathrm{heuristic}}(\hat{\pi}) = S(\hat{\pi}) + S\bigl(\varepsilon(\hat{\pi}, F)\bigr) + \lambda_{\mathrm{run}} W_{\mathrm{run}}(\hat{\pi})$$
+     where every row $\omega_i$ where $\hat{\pi}(\mathbf{x}_{\omega_i})$ fails to satisfy $B_{\omega_i}(Z)$ pays its exact row-index and witness-value bit cost:
      $$\Delta S_{\mathrm{miss}}(i) = \mathrm{positive\text{-}bit\text{-}size}(i + 1) + \mathrm{value\text{-}bit\text{-}size}(w_i, \tau)$$
-   - Returns the minimum-score `heuristic-model` whose deployed `(heuristic-program model)` is the bare S-expression $p^*$ with the training residual discarded.
+   - Returns the minimum-score `heuristic-model` whose deployed `(heuristic-program model)` is the bare symbolic S-expression $\hat{\pi}^*(X)$ with the training residual $\varepsilon$ discarded.
 2. **Multi-Lane Scheduler with 1-in-4 Canonical Reserve (`propagation-search`)**: Coordinates a tentative `:primary` search lane (over `propagation-frame`) and a canonical `:fallback` search lane (over `propagation-fallback`):
    - Every 4th quantum (`(= 3 (mod turn 4))`) is reserved for `:fallback`; the other 3 quanta advance `:primary` (or `:verification`).
    - Any candidate discovered by `:primary` is replayed against `:original` (`:verification` lane) before it can enter `propagation-search-results`, guaranteeing soundness and completeness even when tentative integer witnesses fail or miss multi-valued fibers.
@@ -180,7 +211,7 @@ Redundancy is factored across both syntax trees and requirement rows:
 ### 3.1 Strict Information Isolation
 
 - **No Hidden Oracle Calls**: All benchmark generators in `fixtures.lisp` emit only plain `frame`s or `(key . values)` records. No oracle AST or closure ever crosses into the synthesizer.
-- **Self-Hosted Meta-Programs**: When a meta-level artifact (an anti-unification constructor, a rewrite rule transformer, or a propagator matcher) is applied during search, it is lowered into an explicit symbolic DSL program (`:code-*` operators), statically validated once per `(versions, scope)` (`validated-program`), and executed inside the metered VM.
+- **Self-Hosted Meta-Programs**: Because the type system includes quoted syntax types $\tau = \texttt{(:code } \Gamma'\ \sigma\texttt{)}$, quoted object-language ASTs are first-class runtime values $v \in \mathcal{V}_\tau$. When a meta-level artifact (an anti-unification constructor, a rewrite rule transformer, or a propagator matcher) is applied during search, it is lowered into an explicit symbolic DSL program (`:code-*` operators), statically validated once per `(versions, scope)` (`validated-program`), and executed inside the metered VM.
 
 ### 3.2 Cost Objective & Frozen Accounting Versions
 
@@ -344,12 +375,12 @@ The `evaluation` struct (`start-evaluation`, `advance-evaluation`, `evaluate`, `
 
 `fold-constants` simplifies open S-expressions bottom-up:
 
-1. **Closed-Subtree Evaluation (`eval-closed-expr`)**: Whenever an application has `(null (free-vars expr))`, it is evaluated in the VM up to `budget`. If it returns `:value`, it is replaced by `(lit result-type value)`; if it returns `:error`, `fold-node` propagates the failure cleanly (e.g., an equality `(= err x)` folds to `'nil`).
+1. **Closed-Subtree Evaluation (`eval-closed-expr`)**: Whenever an application has `(null (free-vars expr))`, it is evaluated in the VM up to `budget`. If it returns `:value`, it is replaced by `(lit result-type value)`; if it returns `:error`, `fold-node` propagates the failure cleanly (e.g., an equality `(= err Z)` folds to `'nil`).
 2. **Conditional & Equality Simplification**:
    - `(:if 't yes no)` $\to$ `yes`; `(:if 'nil yes no)` $\to$ `no`.
-   - When `cond` is a singleton equality `(= x 'v)` on a variable `x`, substitutes $\texttt{x} \mapsto \texttt{'v}$ into `yes` via `instantiate` and re-folds `yes`.
-   - Conjunctions `(if a b 'nil)` intersect finite sets and singletons: if `a` is `(= x 'v)` or `(member x '(v1 ...))`, filters the values against `b` and reduces to `'nil` (when empty), `(= x 'v)` (when $1$ value remains), or `(member x filtered)` (when multiple values remain).
-3. **Tuple Injectivity Decomposition**: Decomposes $\texttt{(= (tuple } a_1 \dots a_k\texttt{) '(} v_1 \dots v_k\texttt{))}$ into the conjunction $\texttt{(and (= } a_1\ \texttt{'} v_1\texttt{) } \dots \texttt{ (= } a_k\ \texttt{'} v_k\texttt{))}$ and re-folds, immediately reducing diagonal conflicts like `(= (tuple z z) '(2 3))` to `'nil`.
+   - When `cond` is a singleton equality `(= Z 'v)` on a symbolic variable $Z$, substitutes $\texttt{Z} \mapsto \texttt{'v}$ into `yes` via `instantiate` and re-folds `yes`.
+   - Conjunctions `(if a b 'nil)` intersect finite sets and singletons: if `a` is `(= Z 'v)` or `(member Z '(v1 ...))`, filters the values against `b` and reduces to `'nil` (when empty), `(= Z 'v)` (when $1$ value remains), or `(member Z filtered)` (when multiple values remain).
+3. **Tuple Injectivity Decomposition**: Decomposes $\texttt{(= (tuple } e_1 \dots e_k\texttt{) '(} v_1 \dots v_k\texttt{))}$ into the conjunction $\texttt{(and (= } e_1\ \texttt{'} v_1\texttt{) } \dots \texttt{ (= } e_k\ \texttt{'} v_k\texttt{))}$ and re-folds, immediately reducing diagonal conflicts like `(= (tuple Z Z) '(2 3))` to `'nil`.
 
 ---
 
@@ -357,7 +388,7 @@ The `evaluation` struct (`start-evaluation`, `advance-evaluation`, `evaluate`, `
 
 #### Pure S-Expression Row Requirements (`row`, `frame`)
 
-A `frame` consists of `(schema rows pairs anchors)`. Each `row` holds `(key known requirement)` where `row-requirement` is a Boolean S-expression over `(var 0 target-type)`:
+A `frame` consists of `(schema rows pairs anchors)` where `pairs` and `anchors` are optional action-linkage / orbit-separation metadata (defaulting to `nil`). Each `row` holds `(key known requirement)` where `row-known` is the input value vector $\mathbf{x}_\omega$ and `row-requirement` is a Boolean S-expression $A_\omega(Y)$ or $B_\omega(Z)$ over `(var 0 target-type)`:
 
 - `singleton-requirement`: `(app (op := type) (var 0 type) (lit type value))` --- `(= X0 'v)`.
 - `set-requirement`: `(app (op :member type) (var 0 type) (lit (sequence-type type) values))` --- `(member X0 '(v1 ...))`.
@@ -368,9 +399,9 @@ A `frame` consists of `(schema rows pairs anchors)`. Each `row` holds `(key know
 #### Conjunction, Conflict Detection, Pullback, Views & Quotients
 
 - `conjoin-requirements`: Conjoins two requirements over `(var 0 target-type)` via `(fold-constants (bool-and req1 req2) schema)`.
-- `frame-conflict-p`: Returns a `frame-conflict` struct (`:kind :unsatisfiable-row` or `:incompatible-rows`) if any row requirement folds to `'nil` or if rows sharing identical `row-known` inputs conjoin to `'nil`.
-- `orient-observations`, `transition-probes`, `lookup-model`.
-- `pullback-frame` & `compose-model`: Pulls a parent frame back through $d(x, z)$, folds closed subtrees via `fold-constants`, and composes synthesized child programs into parent solutions.
+- `frame-conflict-p`: Returns a `frame-conflict` struct (`:kind :unsatisfiable-row` or `:incompatible-rows`) if any row requirement folds to `'nil` or if rows sharing identical `row-known` input values $\mathbf{x}_\omega$ conjoin to `'nil`.
+- `orient-observations`, `transition-probes`, `lookup-model`: `transition-probes` converts a frame of recorded action transitions $\mathbf{x}_\omega \mapsto \mathbf{x}_{T\omega}$ into unconstrained `:before` / `:after` probe rows with `frame-pairs` wired for `observation-scope`.
+- `pullback-frame` & `compose-model`: Pulls a parent frame back through $Y = d(X, Z)$ into $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$, folds closed subtrees via `fold-constants`, and composes synthesized child programs into parent solutions.
 - `support-frame`, `partition-rows`, `reassemble-partition`, `partition-model`.
 - `quotient-values`, `restore-quotient`, `quotient-model`.
 
@@ -378,9 +409,9 @@ A `frame` consists of `(schema rows pairs anchors)`. Each `row` holds `(key know
 
 ### Module 5: `enumerate.lisp` --- Size-Partitioned Enumerator, Search, Observations & Multi-Lane Propagation Search
 
-- **Exact-Bit Bottom-Up Enumerator (`language`, `enumerator`, `enumeration-step`)**: Enumerates well-typed ASTs in strictly non-decreasing order of `body-size` bits, using `integer-literals-of-bit-size` to invert the Elias/zigzag bit-length formula analytically and sorting each bucket by `expression-less-p`.
+- **Exact-Bit Bottom-Up Enumerator (`language`, `enumerator`, `enumeration-step`)**: Enumerates well-typed ASTs $e(X) \in \mathcal{L}(\Gamma)$ in strictly non-decreasing order of `body-size` bits, using `integer-literals-of-bit-size` to invert the Elias/zigzag bit-length formula analytically and sorting each bucket by `expression-less-p`.
 - **Resumable Synthesis (`search-job`: `start-search`, `resume-search`)**: Evaluates enumerated or replayed candidates against a `frame` with optional normal-form rejection caching (`:library`) when a validated `rewrite-library` is supplied.
-- **Resumable Observation Discovery (`observation-job`: `start-observation-search`, `resume-observation-search`)**: Evaluates $\mathcal{E} \times \Omega$, groups total evaluations into typed-value `observation-bucket`s, checks trajectory invariance (`pairs`) and variation (`anchors`), and optionally retains per-row outcomes (`:retain-outcomes t`) for guard and solver discovery.
+- **Resumable Observation Discovery (`observation-scope`, `observation-job`: `make-observation-scope`, `start-observation-search`, `resume-observation-search`)**: Evaluates $\mathcal{E} \times \Omega$, groups total evaluations into typed-value `observation-bucket`s, checks conservation across `pairs` ($M(e, \omega) = M(e, T\omega)$, defaulting to `frame-pairs`) and variation across `anchors` (defaulting to `frame-anchors`), and optionally retains per-row outcomes (`:retain-outcomes t`) for guard and solver discovery.
 - **Multi-Lane Propagation Search (`propagation-search`: `start-propagation-search`, `resume-propagation-search`)**: Schedules `:primary`, `:fallback` (1-in-4 reserve), and `:verification` (forward replay on `:original`).
 
 ---
@@ -389,7 +420,7 @@ A `frame` consists of `(schema rows pairs anchors)`. Each `row` holds `(key know
 
 - `match-pattern`: First-order pattern matcher supporting value holes and operator holes with consistent repeated-hole bindings.
 - `anti-unify` & `compile-au-constructor`: Typed LGG with memoized disagreement tuples and lowering to `:code-apply` / `:code-subst` DSL constructors.
-- `infer-fibers`: Confidence-ordered Hard-EM latent fiber inference returning `(values classes labels refined-frame partition)`.
+- `infer-fibers`: Confidence-ordered Hard-EM latent fiber inference over row requirements $B_\omega(Z)$, returning `(values classes labels refined-frame partition)`.
 - `condense-heuristic`: Two-stage MDL lossy heuristic condensation returning a `heuristic-model` (`heuristic-program`, `heuristic-residual`, `heuristic-exact-p`, `heuristic-score`).
 - `make-law-corpus`, `propose-law-compressions`, `decode-law-corpus`: Milestone 3B law corpus compressor.
 
@@ -423,7 +454,7 @@ A `frame` consists of `(schema rows pairs anchors)`. Each `row` holds `(key know
 | Milestone | Kernel Primitives & Verification | Status |
 | :--- | :--- | :--- |
 | **M1: Core Typed Synthesis, Pullback, Views, Quotients & Aligned AU** | Implemented across `ast.lisp`, `codec.lisp`, `vm.lisp`, `frame.lisp`, `enumerate.lisp`, `factor.lisp`. Driven by `experiments.lisp` (`m1`); tested in `tests/core.lisp` and `tests/codec.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
-| **M2: Observational Equivalence, Trajectory Invariants & Replay** | Implemented via `observation-job` (`enumerate.lisp`) and `transition-probes` (`frame.lisp`). Driven by `experiments.lisp` (`m2`); tested in `tests/observations.lisp` and `tests/visualizer.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
+| **M2: Observational Equivalence, Symmetries/Invariants & Replay** | Implemented via `observation-job` (`enumerate.lisp`) and `transition-probes` (`frame.lisp`). Driven by `experiments.lisp` (`m2`); tested in `tests/observations.lisp` and `tests/visualizer.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
 | **M3: Guarded Laws (3A), AU Law Compression (3B) & Symbolic Rewriting (3C)** | Implemented in `laws.lisp` and `factor.lisp`. Driven by `law-experiments.lisp` (`m3`); tested in `tests/laws.lisp`, `tests/guards.lisp`, `tests/compression.lisp`, `tests/symbolic.lisp`, and `tests/amortization.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
 | **M4: Arithmetic Reorientation, Solvers & Dual-Grade Propagation** | Implemented in `laws.lisp` and `propagation-search` (`enumerate.lisp`). Driven by `algebra-experiments.lisp` (`m4`); tested in `tests/algebra.lisp` and `tests/propagation.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
 | **M5: Intermediate Concept Lifting via Hard-EM Latent Fibers** | `infer-fibers` (`factor.lisp`) and `pullback-frame` (`frame.lisp`) implemented and unit-tested in `tests/propagation.lisp`; **end-to-end M5 lifting experiment driver not yet written**. | **Kernel Complete / Experiment Pending** |

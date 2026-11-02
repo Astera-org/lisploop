@@ -419,7 +419,9 @@ Listed proposals use the SAME construction, VM, checker and objective."
   (equality :typed-value) (evidence :replayed-observations) (simulator-version +simulator-version+)
   (encoding-version +encoding-version+) (tariff-version +tariff-version+))
 
-(defun make-observation-scope (frame language &key (id (incf *next-call-id*)) pairs anchors)
+(defun make-observation-scope (frame language &key (id (incf *next-call-id*))
+                                                   (pairs (frame-pairs frame))
+                                                   (anchors (frame-anchors frame)))
   "Freeze the observed inputs and language. PAIRS and ANCHORS refer to row keys."
   (assert (frame-rows frame) () "An empirical scope needs observations")
   (assert (equal (schema-inputs (frame-schema frame)) (language-inputs language)))
@@ -443,7 +445,7 @@ Listed proposals use the SAME construction, VM, checker and objective."
       (dolist (key anchors)
         (assert (member key pairs :key #'first :test #'equal)))
       (%make-observation-scope
-       :id id :frame (make-frame schema rows) :language snapshot
+       :id id :frame (make-frame schema rows :pairs pairs :anchors anchors) :language snapshot
        :pairs (mapcar (lambda (pair) (mapcar #'index pair)) pairs)
        :anchors (mapcar #'index anchors)))))
 
