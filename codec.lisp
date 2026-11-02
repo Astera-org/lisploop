@@ -214,6 +214,3 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
                             for rb = (aref right-bits i)
                             when (/= lb rb) return (< lb rb)
                             finally (return nil)))))))))
-
-(defun expr-less-p (left right inputs)
-  (expression-less-p left right inputs))

@@ -67,9 +67,6 @@
 (defun code-type-p (type) (and (consp type) (eq :code (first type))))
 (defun code-inputs (type) (second type))
 (defun code-sort (type) (third type))
-(defun code-schema (type)
-  (make-schema :inputs (code-inputs type)
-               :target (if (function-sort-p (code-sort type)) (third (code-sort type)) (code-sort type))))
 
 (defparameter *symbolic-primitives*
   '(:code-kind :code-child :code-operator :code-apply :code-match :code-bind
@@ -103,11 +100,6 @@
                              (infer-domain-from-types (cons target (mapcar #'cdr inputs))))))
     (%make-schema :domain inferred-domain :inputs (copy-tree inputs)
                   :target (copy-tree target) :lookup-p lookup-p)))
-
-(defun ensure-schema (schema-or-inputs &optional (target :int) domain)
-  (if (schema-p schema-or-inputs)
-      schema-or-inputs
-      (make-schema :domain domain :inputs schema-or-inputs :target target)))
 
 ;;; Structural work & bit-size helpers needed at AST construction time
 
@@ -352,10 +344,6 @@
   (let ((meta (and (symbolp term) (gethash term *node-meta*))))
     (and meta (eq :hole (ast-meta-kind meta)))))
 
-(defun hole-symbol-p (term) (hole-p term))
-(defun var-symbol (id type) (var id type))
-(defun hole-symbol (id type) (hole id type))
-
 (defun value-p (value type)
   "Check whether VALUE belongs to domain/type TYPE."
   (case type
@@ -471,12 +459,6 @@
 (defun var-p (term) (eq :var (ast-kind term)))
 (defun lit-p (term) (eq :lit (ast-kind term)))
 (defun app-p (term) (eq :app (ast-kind term)))
-(defun variable-symbol-p (term) (var-p term))
-(defun operator-symbol-p (term) (operator-p term))
-
-(defun quoted-lit-p (expr) (lit-p expr))
-(defun quoted-lit-value (expr) (ast-value expr))
-(defun quote-lit (type value) (lit type value))
 
 (defun bool-not (expression)
   (app (op :if :bool) expression (lit :bool nil) (lit :bool t)))
@@ -495,9 +477,6 @@
 (defun free-vars (expression)
   "O(1) cached list of free variable IDs."
   (copy-list (ast-meta-free-vars (ensure-ast-meta expression))))
-
-(defun expression-variables (expression)
-  (free-vars expression))
 
 (defun body-size (expression inputs)
   "O(1) expression bit length conditional on a declared schema; used by the enumerator."
@@ -554,6 +533,3 @@
              tree
              (apply #'app new-op new-args))))
       (t tree))))
-
-(defun subst-expr (tree substitutions &optional (tag :var))
-  (instantiate tree substitutions tag))

@@ -12,12 +12,12 @@
   (let ((state (evaluate expression inputs values)))
     (check (eq (evaluation-status state) :value))
     (evaluation-value state)))
-(defun accepts (allowed value)
-  (let ((state (check-allowed allowed value)))
+(defun accepts (requirement value)
+  (let ((state (check-requirement requirement value)))
     (check (eq (evaluation-status state) :value))
     (evaluation-value state)))
 (defun simple-frame (type inputs examples &key lookup-p)
   (make-frame (make-schema :inputs inputs :target type :lookup-p lookup-p)
               (loop for (known target) in examples for key from 0 collect
-                (make-row :key key :known known :allowed (finite-allowed type (list target))))))
+                (make-row :key key :known known :requirement (set-requirement type (list target))))))
 

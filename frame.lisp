@@ -1,21 +1,13 @@
 (in-package #:lisploop)
 
 ;;; Module 4: frame.lisp
-;;; Frames, pullbacks, requirement conjunction, conflict detection, support frames,
-;;; partitions, and quotients.
-
-(defstruct (allowed (:constructor %make-allowed))
-  type
-  expression
-  (values :unknown))
+;;; Frames, S-expression requirements, pullbacks, requirement conjunction,
+;;; conflict detection, support frames, partitions, and quotients.
 
 (defstruct (row (:constructor %make-row))
   key
   known
-  requirement
-  (%allowed nil))
-
-(defun row-allowed (row) (row-%allowed row))
+  requirement)
 
 (defstruct (frame (:constructor %make-frame))
   schema
@@ -26,71 +18,38 @@
 (defun extract-allowed-values (expression)
   "Extract explicit finite values from `(= x0 'v)`, `(member x0 '(v1 ...))`, or `'nil`;
 otherwise return :UNKNOWN."
-  (let ((expr (if (allowed-p expression) (allowed-expression expression) expression)))
-    (cond
-      ((and (lit-p expr) (eq :bool (ast-type expr)) (null (ast-value expr)))
-       nil)
-      ((and (app-p expr) (eq := (operator-name (first expr))))
-       (let ((lhs (first (rest expr)))
-             (rhs (second (rest expr))))
-         (cond
-           ((and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
-            (list (ast-value rhs)))
-           ((and (lit-p lhs) (var-p rhs) (zerop (ast-id rhs)))
-            (list (ast-value lhs)))
-           (t :unknown))))
-      ((and (app-p expr) (eq :member (operator-name (first expr))))
-       (let ((lhs (first (rest expr)))
-             (rhs (second (rest expr))))
-         (if (and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
-             (copy-tree (ast-value rhs))
-             :unknown)))
-      (t :unknown))))
+  (cond
+    ((and (lit-p expression) (eq :bool (ast-type expression)) (null (ast-value expression)))
+     nil)
+    ((and (app-p expression) (eq := (operator-name (first expression))))
+     (let ((lhs (first (rest expression)))
+           (rhs (second (rest expression))))
+       (cond
+         ((and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
+          (list (ast-value rhs)))
+         ((and (lit-p lhs) (var-p rhs) (zerop (ast-id rhs)))
+          (list (ast-value lhs)))
+         (t :unknown))))
+    ((and (app-p expression) (eq :member (operator-name (first expression))))
+     (let ((lhs (first (rest expression)))
+           (rhs (second (rest expression))))
+       (if (and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
+           (copy-tree (ast-value rhs))
+           :unknown)))
+    (t :unknown)))
 
 (defun singleton-requirement (type value)
   (assert (value-p value type))
   (app (op := type) (var 0 type) (lit type value)))
 
 (defun set-requirement (type values)
+  "An explicit finite set of whole values: tuples are never split into marginal sets."
   (assert (every (lambda (v) (value-p v type)) values))
-  (app (op :member type) (var 0 type) (lit (sequence-type type) values)))
+  (app (op :member type) (var 0 type) (lit (sequence-type type) (copy-tree values))))
 
-(defun finite-allowed (type values)
-  "An explicit set of whole values: tuples are never split into marginal sets."
-  (assert (every (lambda (v) (value-p v type)) values))
-  (%make-allowed :type type :values (copy-tree values)
-                 :expression (set-requirement type values)))
-
-(defun predicate-allowed (type expression)
-  "A typed checker AST with only variable 0 (the proposed value) free."
-  (assert (eq :bool (expression-type expression (list (cons 0 type)))))
-  (%make-allowed :type type :expression (copy-tree expression)))
-
-(defun coerce-to-allowed (spec &optional default-type)
-  (cond
-    ((allowed-p spec) spec)
-    (t
-     (let ((inferred-type
-             (or default-type
-                 (when (and (app-p spec) (member (operator-name (first spec)) '(:= :member)))
-                   (operator-operand-type (first spec))))))
-       (assert inferred-type () "Cannot infer target type for requirement ~S" spec)
-       (%make-allowed :type inferred-type :expression spec
-                      :values (extract-allowed-values spec))))))
-
-(defun make-row (&key key known requirement allowed)
-  (let* ((al (cond
-               (allowed (coerce-to-allowed allowed))
-               (requirement (coerce-to-allowed requirement))
-               (t (error "make-row requires :requirement or :allowed"))))
-         (req (allowed-expression al)))
-    (%make-row :key key :known known :requirement req :%allowed al)))
-
-(defun (setf row-allowed) (new-allowed row)
-  (let ((al (coerce-to-allowed new-allowed)))
-    (setf (row-%allowed row) al
-          (row-requirement row) (allowed-expression al))
-    al))
+(defun make-row (&key key known requirement)
+  (assert requirement () "make-row requires :requirement")
+  (%make-row :key key :known known :requirement requirement))
 
 (defun make-frame (schema rows &key pairs anchors)
   (assert (valid-type-p (schema-target schema)))
@@ -100,30 +59,33 @@ otherwise return :UNKNOWN."
     (assert (= (length (row-known row)) (length (schema-inputs schema))))
     (assert (every (lambda (value spec) (value-p value (cdr spec)))
                    (row-known row) (schema-inputs schema)))
-    (unless (row-allowed row)
-      (setf (row-%allowed row)
-            (coerce-to-allowed (row-requirement row) (schema-target schema))))
-    (unless (row-requirement row)
-      (setf (row-requirement row) (allowed-expression (row-allowed row))))
-    (assert (equal (schema-target schema) (allowed-type (row-allowed row)))))
+    (assert (eq :bool (expression-type (row-requirement row)
+                                       (list (cons 0 (schema-target schema)))))))
   (%make-frame :schema schema :rows (copy-list rows)
                :pairs (copy-tree pairs) :anchors (copy-tree anchors)))
 
-(defun check-allowed (allowed-or-req value &key (budget 1000000) ledger type)
-  (if (allowed-p allowed-or-req)
-      (evaluate (allowed-expression allowed-or-req)
-                (list (cons 0 (allowed-type allowed-or-req)))
-                (list value) :budget budget :ledger ledger)
-      (let ((target-type (or type (ast-type (first (rest allowed-or-req))))))
-        (evaluate allowed-or-req (list (cons 0 target-type))
-                  (list value) :budget budget :ledger ledger))))
+(defun find-var-type (expression &optional (id 0))
+  (cond
+    ((and (var-p expression) (= id (ast-id expression)))
+     (ast-type expression))
+    ((app-p expression)
+     (some (lambda (child) (find-var-type child id)) (rest expression)))
+    (t nil)))
+
+(defun check-requirement (requirement value &key (budget 1000000) ledger type)
+  (let ((target-type (or type
+                         (find-var-type requirement 0)
+                         (when (and (app-p requirement)
+                                    (member (operator-name (first requirement)) '(:= :member)))
+                           (operator-operand-type (first requirement)))
+                         :int)))
+    (evaluate requirement (list (cons 0 target-type))
+              (list value) :budget budget :ledger ledger)))
 
 (defun conjoin-requirements (req1 req2 target-type &key ledger (budget 10000))
   "Conjoin two row requirements over variable 0 of TARGET-TYPE and fold closed subtrees."
-  (let ((e1 (if (allowed-p req1) (allowed-expression req1) req1))
-        (e2 (if (allowed-p req2) (allowed-expression req2) req2))
-        (schema (make-schema :inputs (list (cons 0 target-type)) :target :bool)))
-    (fold-constants (bool-and e1 e2) schema :ledger ledger :budget budget)))
+  (let ((schema (make-schema :inputs (list (cons 0 target-type)) :target :bool)))
+    (fold-constants (bool-and req1 req2) schema :ledger ledger :budget budget)))
 
 (defstruct (frame-conflict (:predicate frame-conflict-struct-p))
   kind
@@ -185,28 +147,28 @@ sharing identical known inputs have mutually incompatible requirements."
          (assert (every #'value-p values types))
          (charge ledger :orientation (+ 1 (loop for value in values for type in types sum (value-work value type))))
          (make-row :key key :known (mapcar (lambda (i) (nth i values)) input-columns)
-                   :allowed (finite-allowed
-                             target (list (if (rest target-columns)
-                                              (mapcar (lambda (i) (nth i values)) target-columns)
-                                              (nth (first target-columns) values))))))))))
+                   :requirement (set-requirement
+                                 target (list (if (rest target-columns)
+                                                  (mapcar (lambda (i) (nth i values)) target-columns)
+                                                  (nth (first target-columns) values))))))))))
 
 (defun transition-probes (frame output-type &optional ledger)
   "Reorient recorded singleton state transitions into before/after input probes.
 The original frame remains available; this conversion executes no transition."
   (let* ((schema (frame-schema frame)) (inputs (schema-inputs schema))
-         (requirement (predicate-allowed output-type (lit :bool t)))
+         (requirement (lit :bool t))
          (rows nil) (pairs nil))
     (assert (equal (schema-target schema) (apply #'tuple-type (mapcar #'cdr inputs))))
     (dolist (row (frame-rows frame))
-      (let ((targets (allowed-values (row-allowed row)))
+      (let ((targets (extract-allowed-values (row-requirement row)))
             (before-key (list (row-key row) :before))
             (after-key (list (row-key row) :after)))
         (assert (and (listp targets) (= (length targets) 1)) ()
                 "Transition probes require a recorded singleton successor")
         (push (make-row :key before-key :known (copy-tree (row-known row))
-                        :allowed requirement) rows)
+                        :requirement requirement) rows)
         (push (make-row :key after-key :known (copy-tree (first targets))
-                        :allowed requirement) rows)
+                        :requirement requirement) rows)
         (push (list before-key after-key) pairs)
         (charge ledger :orientation
                 (+ 2 (loop for spec in inputs for before in (row-known row)
@@ -225,8 +187,8 @@ The original frame remains available; this conversion executes no transition."
          (groups nil))
     (assert (schema-lookup-p schema))
     (dolist (row (frame-rows frame))
-      (let* ((values (allowed-values (row-allowed row)))
-              (old (assoc (row-known row) groups :test #'equal)))
+      (let* ((values (extract-allowed-values (row-requirement row)))
+             (old (assoc (row-known row) groups :test #'equal)))
         (when (eq values :unknown) (error "No explicit witnesses for lookup"))
         (charge ledger :baseline (+ 1 (loop for value in values sum (value-work value (schema-target schema)))))
         (if old
@@ -260,7 +222,7 @@ bindings. No inverse values are enumerated."
                                collect (cons (car spec) (lit (cdr spec) value))))
               (closed-decoder (instantiate decoder
                                            (acons child-id (var 0 child-type) constants) :var))
-              (predicate (instantiate (allowed-expression (row-allowed row))
+              (predicate (instantiate (row-requirement row)
                                       (list (cons 0 closed-decoder)) :var))
               (known (mapcar
                       (lambda (binding)
@@ -270,7 +232,7 @@ bindings. No inverse values are enumerated."
                           (evaluation-value run))) bindings)))
          (charge ledger :pullback (syntax-work predicate))
          (make-row :key (row-key row) :known known
-                   :allowed (predicate-allowed child-type predicate)))))))
+                   :requirement predicate))))))
 
 (defun compose-model (decoder child-id child-model bindings &optional ledger)
   "Inline the context and child; the resulting ordinary AST pays for duplication."
@@ -290,13 +252,13 @@ Every occurrence stays present. The predictor receives only the original inputs.
     (make-frame
      (make-schema :inputs (copy-tree (schema-inputs (frame-schema frame))) :target :bool)
      (loop for row in (frame-rows frame) for member-p in support collect
-       (let ((allowed (finite-allowed :bool (list member-p))))
+       (let ((req (set-requirement :bool (list member-p))))
          (charge ledger :guard-frame
-                 (+ 1 (syntax-work (allowed-expression allowed))
+                 (+ 1 (syntax-work req)
                     (loop for value in (row-known row)
                           for input in (schema-inputs (frame-schema frame))
                           sum (value-work value (cdr input)))))
-         (make-row :key (copy-tree (row-key row)) :known (copy-tree (row-known row)) :allowed allowed))))))
+         (make-row :key (copy-tree (row-key row)) :known (copy-tree (row-known row)) :requirement req))))))
 
 (defstruct partition positions groups)
 

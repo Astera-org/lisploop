@@ -112,7 +112,7 @@
                (frame (make-frame (make-schema :inputs inputs :target code)
                                   (loop for source in sources for bindings in substitutions for i from 0 collect
                                     (make-row :key i :known (mapcar (lambda (input) (cdr (assoc (car input) bindings))) inputs)
-                                              :allowed (finite-allowed code (list source))))))
+                                              :requirement (set-requirement code (list source))))))
                (job (start-search frame (make-language :int inputs :operators nil :literals nil) :expressions (list model))))
           (check (eq :replay-complete (message-claim (resume-search job (description-size model inputs) 1000000))))
           (check (= 1 (length (search-job-results job)))))))))

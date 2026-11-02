@@ -27,7 +27,7 @@
   (make-frame (make-schema :inputs (list (cons 0 domain)) :target domain)
               (loop for value in values for key from 0 collect
                 (make-row :key key :known (list value)
-                          :allowed (predicate-allowed domain (lit :bool t))))))
+                          :requirement (lit :bool t)))))
 
 (defun experiment-data (domain)
   (let* ((field-p (not (eq domain :int)))

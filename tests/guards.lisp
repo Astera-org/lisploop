@@ -136,7 +136,7 @@
     (check (equal inputs (schema-inputs (frame-schema frame))))
     (check (equal '(0 1 2) (mapcar #'row-key (frame-rows frame))))
     (check (equal '((2) (2) (0)) (mapcar #'row-known (frame-rows frame))))
-    (check (equal '((t) (t) (nil)) (mapcar (lambda (r) (allowed-values (row-allowed r))) (frame-rows frame))))
+    (check (equal '((t) (t) (nil)) (mapcar (lambda (r) (extract-allowed-values (row-requirement r))) (frame-rows frame))))
     (check (plusp (ledger-total ledger)))
     (raises (expression-type (var 99 :int) (schema-inputs (frame-schema frame))))
     (raises (support-frame scope '(t :unknown nil)))

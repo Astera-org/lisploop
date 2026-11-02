@@ -4,7 +4,7 @@
   (make-frame (make-schema :inputs inputs :target type)
               (loop for known in known-values for key from 0 collect
                 (make-row :key key :known (copy-tree known)
-                          :allowed (predicate-allowed type (lit :bool t))))))
+                          :requirement (lit :bool t)))))
 
 (defun bucket-for (job expression)
   (let ((record (find-observation job expression)))
@@ -208,10 +208,10 @@
           (loop for row in (frame-rows transitions) for pair in pairs do
             (destructuring-bind (a b) (row-known row)
               (check (equal (list (mod (1+ a) 5) (mod (+ b 4) 5))
-                             (first (allowed-values (row-allowed row))))))
+                             (first (extract-allowed-values (row-requirement row))))))
             (check (equal (row-known row)
                            (row-known (find (first pair) (frame-rows frame) :key #'row-key :test #'equal))))
-            (check (equal (first (allowed-values (row-allowed row)))
+            (check (equal (first (extract-allowed-values (row-requirement row)))
                            (row-known (find (second pair) (frame-rows frame) :key #'row-key :test #'equal))))))))))
 
 (deftest observation-error-and-large-instruction-batching

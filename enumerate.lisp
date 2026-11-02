@@ -362,7 +362,7 @@ Listed proposals use the SAME construction, VM, checker and objective."
       (:requirement
        (charge ledger :scheduling)
        (setf (search-job-evaluation job)
-             (start-evaluation (allowed-expression (row-allowed (first (search-job-rows job))))
+             (start-evaluation (row-requirement (first (search-job-rows job)))
                                (list (cons 0 (schema-target schema)))
                                (list (search-job-predicted job)))
              (search-job-phase job) :check))
@@ -428,7 +428,8 @@ Listed proposals use the SAME construction, VM, checker and objective."
   (let* ((schema (copy-schema (frame-schema frame)))
          (rows (mapcar (lambda (row)
                          (make-row :key (copy-tree (row-key row))
-                                   :known (copy-tree (row-known row)) :allowed (row-allowed row)))
+                                   :known (copy-tree (row-known row))
+                                   :requirement (copy-tree (row-requirement row))))
                        (frame-rows frame)))
          (snapshot (snapshot-language language)))
     (setf (schema-inputs schema) (copy-tree (schema-inputs schema))
@@ -686,13 +687,7 @@ Listed proposals use the SAME construction, VM, checker and objective."
       (push message (observation-job-messages job))
       message)))
 
-;;; Multi-Lane Agenda / Propagation Search
-
-(defstruct agenda-lane
-  name
-  job
-  weight
-  verify-against)
+;;; Multi-Lane Propagation Search
 
 (defstruct (propagation-search (:constructor %make-propagation-search))
   primary fallback original language (ledger (make-ledger)) (results nil) best first-work
@@ -792,9 +787,3 @@ search; successful tentative branches never remove it."
                                (t :cutoff))
                   :evidence (list :description-limit description-limit :work (ledger-total ledger)
                                   :first-verified-work (propagation-search-first-work state)))))
-
-(defun start-agenda (propagation language &key (quantum 256))
-  (start-propagation-search propagation language :quantum quantum))
-
-(defun resume-agenda (state description-limit work-limit &key stop-on-first)
-  (resume-propagation-search state description-limit work-limit :stop-on-first stop-on-first))

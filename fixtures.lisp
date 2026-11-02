@@ -20,7 +20,7 @@ and partial terms. No transform program or selector is supplied to the child sea
                        (app (op :if code) (app (op :code-total code) child) child source) source)))
     (values (make-frame (make-schema :inputs (list (cons 0 code)) :target code)
                         (loop for (source target) in rows for i from 0 collect
-                          (make-row :key i :known (list source) :allowed (finite-allowed code (list target)))))
+                          (make-row :key i :known (list source) :requirement (set-requirement code (list target)))))
             decoder scope)))
 
 (defun gf5-fixture (&optional ledger)
@@ -44,12 +44,14 @@ and partial terms. No transform program or selector is supplied to the child sea
   (multiple-value-bind (model inputs)
       (decode-model (encode-model expression (schema-inputs (frame-schema frame))))
     (assert (equal inputs (schema-inputs (frame-schema frame))))
-    (loop for row in (frame-rows frame) sum
-      (let ((run (evaluate model inputs (row-known row) :ledger ledger)))
-        (assert (eq (evaluation-status run) :value))
-        (let ((check (check-allowed (row-allowed row) (evaluation-value run) :ledger ledger)))
-          (assert (and (eq (evaluation-status check) :value) (evaluation-value check))))
-        (evaluation-work run)))))
+    (let ((target-type (schema-target (frame-schema frame))))
+      (loop for row in (frame-rows frame) sum
+        (let ((run (evaluate model inputs (row-known row) :ledger ledger)))
+          (assert (eq (evaluation-status run) :value))
+          (let ((check (check-requirement (row-requirement row) (evaluation-value run)
+                                          :ledger ledger :type target-type)))
+            (assert (and (eq (evaluation-status check) :value) (evaluation-value check))))
+          (evaluation-work run))))))
 
 (defun additive-transition-fixture (domain starts steps shift-b key-prefix ledger)
   "Record forward transitions T(a,b)=(a+1,b+SHIFT-B). Return the frame and start keys.
@@ -69,7 +71,7 @@ The transition is supplied fixture machinery; no invariant sketch enters search.
             (assert (eq (evaluation-status run) :value))
             (when (zerop step) (push (list key :before) anchors))
             (push (make-row :key key :known state
-                            :allowed (finite-allowed state-type (list (evaluation-value run)))) rows)
+                            :requirement (set-requirement state-type (list (evaluation-value run)))) rows)
             (setf state (evaluation-value run))))))
     (values (make-frame (make-schema :inputs inputs :target state-type) (nreverse rows))
             (nreverse anchors))))

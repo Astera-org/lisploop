@@ -1,7 +1,7 @@
 (in-package #:lisploop)
 
 ;;; Module 3: vm.lisp
-;;; Structural tariff, uniform resumable job stepper, homoiconic evaluator,
+;;; Structural tariff, resumable homoiconic evaluator,
 ;;; symbolic primitive execution, and closed-subtree constant folding.
 
 (defconstant +tariff-version+ 8)
@@ -16,36 +16,6 @@
       (if entry (incf (cdr entry) amount)
           (push (cons category amount) (ledger-counts ledger)))))
   amount)
-
-;;; Unified Resumable Job Stepper (Section 2.2 of plan6.md)
-(defstruct job
-  (id 0 :type fixnum)
-  (status :running)
-  (ledger (make-ledger))
-  (debt 0 :type fixnum)
-  (debt-category :work)
-  step-fn
-  state
-  results
-  best
-  messages)
-
-(defun incur-debt (job category amount)
-  (assert (zerop (job-debt job)))
-  (setf (job-debt job) amount
-        (job-debt-category job) category))
-
-(defun advance-job (job budget)
-  "Uniform prepaid debt-draining stepper for resumable operations."
-  (assert (and (integerp budget) (>= budget 0)))
-  (loop while (and (plusp budget) (eq (job-status job) :running)) do
-    (if (plusp (job-debt job))
-        (let ((paid (min budget (job-debt job))))
-          (decf budget paid)
-          (decf (job-debt job) paid)
-          (charge (job-ledger job) (job-debt-category job) paid))
-        (setf budget (funcall (job-step-fn job) job budget))))
-  job)
 
 ;;; Resumable VM Evaluation
 (defstruct (evaluation (:constructor %make-evaluation))
@@ -351,7 +321,7 @@ decomposing tuple equalities `(= (tuple a1 a2) '(v1 v2))`."
                   (multiple-value-bind (eq-var eq-type eq-lit) (extract-var-equality cond-folded)
                     (declare (ignore eq-type))
                     (let* ((yes-source (if eq-var
-                                           (subst-expr (second args) (list (cons eq-var eq-lit)) :var)
+                                           (instantiate (second args) (list (cons eq-var eq-lit)) :var)
                                            (second args)))
                            (yes-folded (fold-constants yes-source schema :ledger ledger :budget budget))
                            (no-folded (fold-constants (third args) schema :ledger ledger :budget budget)))
@@ -370,7 +340,7 @@ decomposing tuple equalities `(= (tuple a1 a2) '(v1 v2))`."
                          (multiple-value-bind (y-var y-type y-lit) (extract-var-equality yes-folded)
                            (declare (ignore y-type))
                            (let ((cond-subst (fold-constants
-                                              (subst-expr cond-folded (list (cons y-var y-lit)) :var)
+                                              (instantiate cond-folded (list (cons y-var y-lit)) :var)
                                               schema :ledger ledger :budget budget)))
                              (if (lit-p cond-subst)
                                  (if (ast-value cond-subst) yes-folded (lit :bool nil))
@@ -383,7 +353,7 @@ decomposing tuple equalities `(= (tuple a1 a2) '(v1 v2))`."
                                (let ((kept nil) (all-decided t))
                                  (dolist (v m-vals)
                                    (let ((ev (fold-constants
-                                              (subst-expr yes-folded (list (cons m-var (lit m-type v))) :var)
+                                              (instantiate yes-folded (list (cons m-var (lit m-type v))) :var)
                                               schema :ledger ledger :budget budget)))
                                      (if (lit-p ev)
                                          (when (ast-value ev) (push v kept))

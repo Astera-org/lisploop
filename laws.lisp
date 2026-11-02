@@ -298,10 +298,10 @@
           (dolist (pair (list (list left right) (list right left)))
             (destructuring-bind (from to) pair
               (when (and (app-p from)
-                         (subsetp (append (expression-variables to) (expression-variables (law-guard law)))
-                                  (expression-variables from)))
+                         (subsetp (append (free-vars to) (free-vars (law-guard law)))
+                                  (free-vars from)))
                 (push (%make-rewrite-rule
-                       :inputs (copy-tree (remove-if-not (lambda (input) (member (car input) (expression-variables from)))
+                       :inputs (copy-tree (remove-if-not (lambda (input) (member (car input) (free-vars from)))
                                                          (law-inputs law)))
                        :pattern (copy-tree from) :replacement (copy-tree to)
                        :guard (copy-tree (law-guard law))) rules)))))))
@@ -454,10 +454,6 @@
       (setf (rewriting-status state) :complete (rewriting-value state) (first (rewriting-stack state)))))
   state)
 
-(defun rewrite-expr (expression inputs library &key (budget 1000000) ledger)
-  (let ((state (advance-rewriting (start-rewriting expression inputs library) budget ledger)))
-    (values (rewriting-value state) (rewriting-steps state) state)))
-
 ;;; M4 Solver Discovery & Arithmetic Relations
 
 (defstruct arithmetic-relation domain operator observations records guard guard-search ledger exhaustive-p)
@@ -499,7 +495,7 @@
          (frame (make-frame (make-schema :inputs inputs :target domain)
                             (loop for a in values for block from 0 append
                               (loop for b in values for key from (* block (length values)) collect
-                                (make-row :key key :known (list a b) :allowed (predicate-allowed domain (lit :bool t)))))))
+                                (make-row :key key :known (list a b) :requirement (lit :bool t))))))
          (job (start-observation-search (make-observation-scope frame (make-language domain inputs :operators nil :literals nil))
                                         :expressions (list forward) :retain-outcomes t)))
     (finish-observations job (description-size forward inputs) work-limit)
@@ -558,7 +554,7 @@
                   (let ((requirement (instantiate predicate (list (cons 0 (lit domain k)) (cons 1 (lit domain c))
                                                                   (cons 2 (var 0 domain))) :var)))
                     (charge ledger :relational-frame (syntax-work requirement))
-                    (make-row :key key :known (list k c) :allowed (predicate-allowed domain requirement)))))))
+                    (make-row :key key :known (list k c) :requirement requirement))))))
 
 (defun covered-frame (frame support)
   (make-frame (frame-schema frame)
@@ -778,7 +774,7 @@ checked against the ORIGINAL pullback and supply a separate tentative frame."
              (rows
                (loop for parent-row in (frame-rows parent) for row in (frame-rows original) collect
                  (block propose
-                   (let ((targets (allowed-values (row-allowed parent-row))))
+                   (let ((targets (extract-allowed-values (row-requirement parent-row))))
                      (unless (and (listp targets) (= 1 (length targets))) (return-from propose row))
                      (let ((context (run-algebra-program known inputs (row-known parent-row) ledger :propagation-context)))
                        (unless (eq :value (evaluation-status context)) (return-from propose row))
@@ -788,14 +784,14 @@ checked against the ORIGINAL pullback and supply a separate tentative frame."
                          (let ((witness (evaluate-propagation-program witness-program values ledger :propagation-witness)))
                            (unless (eq :value (evaluation-status witness)) (return-from propose row))
                            (unless certified
-                             (let ((check (run-algebra-program (allowed-expression (row-allowed row))
+                             (let ((check (run-algebra-program (row-requirement row)
                                           (list (cons 0 domain)) (list (evaluation-value witness)) ledger :propagation-verification)))
                                (unless (and (eq :value (evaluation-status check)) (evaluation-value check))
                                  (incf (propagation-rejected result)) (return-from propose row))))
                            (if certified (incf (propagation-narrowed result)) (incf (propagation-suggested result)))
-                           (let ((allowed (finite-allowed domain (list (evaluation-value witness)))))
-                             (charge ledger :propagation-frame (syntax-work (allowed-expression allowed)))
-                             (make-row :key (row-key row) :known (row-known row) :allowed allowed))))))))))
+                           (let ((req (set-requirement domain (list (evaluation-value witness)))))
+                             (charge ledger :propagation-frame (syntax-work req))
+                             (make-row :key (row-key row) :known (row-known row) :requirement req))))))))))
         (setf (propagation-frame result) (make-frame (frame-schema original) rows)
               (propagation-retained result) (- (length rows) (propagation-narrowed result) (propagation-suggested result)))
         (when (plusp (propagation-suggested result)) (setf (propagation-fallback result) original))))

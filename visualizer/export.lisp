@@ -70,30 +70,32 @@
 (defun frame-data (frame)
   "Export the exact schema, ordered rows, and joint allowed values or predicate.
 Keys are inspection labels, never predictor arguments. No checker is executed."
-  (let* ((schema (frame-schema frame)) (inputs (schema-inputs schema)))
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target-type (schema-target schema)))
     (object
      "schema" (object "inputs" (array-data
                                  (mapcar (lambda (input)
                                            (object "id" (car input) "name" (input-name (car input) inputs)
                                                    "type" (type-text (cdr input)))) inputs))
-                      "target" (type-text (schema-target schema))
+                      "target" (type-text target-type)
                       "lookup" (boolean-data (schema-lookup-p schema)))
      "rows" (array-data
              (mapcar
               (lambda (row)
-                (let* ((allowed (row-allowed row)) (values (allowed-values allowed))
+                (let* ((req (row-requirement row))
+                       (values (extract-allowed-values req))
                        (finite-p (not (eq values :unknown))))
                   (object "key" (sexp-text (row-key row))
                           "known" (array-data (mapcar #'value-data (row-known row) (mapcar #'cdr inputs)))
                           "allowed" (object
-                                     "type" (type-text (allowed-type allowed))
+                                     "type" (type-text target-type)
                                      "kind" (if finite-p "finite" "predicate")
                                      "values" (if finite-p
-                                                  (array-data (mapcar (lambda (v) (value-data v (allowed-type allowed))) values))
+                                                  (array-data (mapcar (lambda (v) (value-data v target-type)) values))
                                                   :null)
-                                     "predicate" (sexp-text (allowed-expression allowed))
-                                     "packet" (packet-text (allowed-expression allowed)
-                                                           (list (cons 0 (allowed-type allowed))))))))
+                                     "predicate" (sexp-text req)
+                                     "packet" (packet-text req (list (cons 0 target-type)))))))
               (frame-rows frame))))))
 
 (defun ledger-data (ledger)
@@ -137,9 +139,9 @@ Only completed records belong to buckets. A pending record is kept separately."
              (record-id (record) (position record records :test #'eq)))
       (object
        "id" (sexp-text (observation-scope-id scope)) "title" (or title (sexp-text (observation-scope-id scope)))
-       "kind" kind "evidence" (string-downcase (symbol-name (observation-scope-evidence scope)))
-       "equality" (string-downcase (symbol-name (observation-scope-equality scope)))
-       "simulatorVersion" (observation-scope-simulator-version scope)
+       "kind" kind "evidence" (string-downcase (symbol-name (lisploop::observation-scope-evidence scope)))
+       "equality" (string-downcase (symbol-name (lisploop::observation-scope-equality scope)))
+       "simulatorVersion" (lisploop::observation-scope-simulator-version scope)
        "encodingVersion" (lisploop::observation-scope-encoding-version scope)
        "tariffVersion" (lisploop::observation-scope-tariff-version scope)
        "domain" (type-text (language-domain language))

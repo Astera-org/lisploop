@@ -120,14 +120,14 @@
   (let* ((frame (simple-frame :int '((0 . :int)) '(((1) 2) ((1) 3)) :lookup-p t)))
     (raises (lookup-model frame)))
   (raises (lookup-model (simple-frame :int '((0 . :int)) '(((1) 2)))))
-  (let* ((allowed (predicate-allowed :int (app (op := :int) (var 0 :int) (lit :int 2))))
+  (let* ((req (app (op := :int) (app (op :+ :int) (var 0 :int) (lit :int 0)) (lit :int 2)))
          (frame (make-frame (make-schema :inputs nil :target :int :lookup-p t)
-                             (list (make-row :key 0 :known nil :allowed allowed)))))
+                             (list (make-row :key 0 :known nil :requirement req)))))
     (raises (lookup-model frame)))
   (let ((frame (make-frame
                 (make-schema :inputs '((0 . :int)) :target :int :lookup-p t)
-                (list (make-row :key 1 :known '(7) :allowed (finite-allowed :int '(1 2)))
-                      (make-row :key 2 :known '(7) :allowed (finite-allowed :int '(2 3)))))))
+                (list (make-row :key 1 :known '(7) :requirement (set-requirement :int '(1 2)))
+                      (make-row :key 2 :known '(7) :requirement (set-requirement :int '(2 3)))))))
     (check (= 2 (result (lookup-model frame) '((0 . :int)) '(7)))))
   (raises (simple-frame :int '((0 . :int)) '(((1 2) 3)))))
 
@@ -136,21 +136,22 @@
          (parent (simple-frame pair nil '((nil (0 0)))))
          (diagonal (app (op :tuple pair) (var 7 field) (var 7 field))))
     ;; Keep both alternatives joint, including when the child itself is a tuple.
-    (setf (row-allowed (first (frame-rows parent))) (finite-allowed pair '((0 0) (1 1))))
+    (setf (row-requirement (first (frame-rows parent))) (set-requirement pair '((0 0) (1 1))))
     (let* ((child (pullback-frame parent (var 7 pair) 7 pair nil))
-           (allowed (row-allowed (first (frame-rows child)))))
-      (check (eq :unknown (allowed-values allowed)))
+           (req (row-requirement (first (frame-rows child)))))
+      (check (equal '((0 0) (1 1)) (extract-allowed-values req)))
       (loop for a below 2 do (loop for b below 2 do
-        (check (eq (= a b) (accepts allowed (list a b)))))))
+        (check (eq (= a b) (accepts req (list a b)))))))
     (let* ((child (pullback-frame parent diagonal 7 field nil))
-           (allowed (row-allowed (first (frame-rows child)))))
-      (check (accepts allowed 0))
-      (check (accepts allowed 1)))
-    (setf (row-allowed (first (frame-rows parent))) (finite-allowed pair '((0 1) (1 0))))
+           (req (row-requirement (first (frame-rows child)))))
+      (check (eq :unknown (extract-allowed-values req)))
+      (check (accepts req 0))
+      (check (accepts req 1)))
+    (setf (row-requirement (first (frame-rows parent))) (set-requirement pair '((0 1) (1 0))))
     (let* ((child (pullback-frame parent diagonal 7 field nil))
-           (allowed (row-allowed (first (frame-rows child)))))
-      (check (not (accepts allowed 0)))
-      (check (not (accepts allowed 1)))))
+           (req (row-requirement (first (frame-rows child)))))
+      (check (not (accepts req 0)))
+      (check (not (accepts req 1)))))
   (multiple-value-bind (parent oracle) (gf5-fixture)
     (declare (ignore oracle))
     (let* ((field (gf 5))
@@ -165,8 +166,8 @@
         (loop for z below 5 do
           ;; Independent explicit fiber oracle: only in this finite contract check.
           (check (eq (= (mod (+ (first (row-known prow)) z) 5)
-                         (first (allowed-values (row-allowed prow))))
-                      (accepts (row-allowed crow) z)))))
+                         (first (extract-allowed-values (row-requirement prow))))
+                      (accepts (row-requirement crow) z)))))
       (raises (pullback-frame parent decoder 9 field (list (cons 3 (var 2 field)))))
       (raises (pullback-frame parent decoder 0 field bindings))))
   (let* ((field (gf 5))
@@ -174,8 +175,8 @@
          (child (pullback-frame parent (app (op :* field) (var 0 field) (var 7 field))
                                 7 field nil)))
     (loop for z below 5 do
-      (check (accepts (row-allowed (first (frame-rows child))) z))
-      (check (not (accepts (row-allowed (second (frame-rows child))) z))))))
+      (check (accepts (row-requirement (first (frame-rows child))) z))
+      (check (not (accepts (row-requirement (second (frame-rows child))) z))))))
 
 (deftest views-preserve-occurrences
   (let* ((rows '((0 8) (1 2) (2 8) (3 2) (4 9)))
@@ -453,7 +454,7 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (loop for predicate in (list heavy missing-lookup) for expected-count in '(1 0) do
       (let* ((frame (make-frame (make-schema :inputs nil :target :int)
                                 (list (make-row :key 0 :known nil
-                                                :allowed (predicate-allowed :int predicate)))))
+                                                :requirement predicate))))
              (language (make-language :int nil :operators nil))
              (unit (start-search frame language :call-id :checker-parity))
              (batch (start-search frame language :call-id :checker-parity))

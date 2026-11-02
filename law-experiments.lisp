@@ -7,7 +7,7 @@
                      (loop for a below p append (loop for b below p collect (list a b)))))
          (frame (make-frame (make-schema :inputs inputs :target domain)
                              (loop for row in values for key from 0 collect
-                               (make-row :key key :known row :allowed (predicate-allowed domain (lit :bool t))))))
+                               (make-row :key key :known row :requirement (lit :bool t)))))
          (language (make-language domain inputs
                                    :operators (mapcar (lambda (name) (op name domain))
                                                       (if nonzero '(:- :/ :*) '(:+ :*)))))
@@ -45,7 +45,7 @@ one exact Boolean membership program per distinct proper agreement support."
          (frame (make-frame (make-schema :inputs inputs :target domain)
                             (loop for x below p collect
                               (make-row :key x :known (list x)
-                                        :allowed (predicate-allowed domain (lit :bool t))))))
+                                        :requirement (lit :bool t)))))
          (language (make-language domain inputs :operators (mapcar (lambda (name) (op name domain)) '(:- :/ :*))))
          (observations (start-observation-search (make-observation-scope frame language) :retain-outcomes t))
          (bound (+ (header-size inputs domain) 6 (* 2 (body-size (lit domain 0) inputs))))
@@ -140,11 +140,11 @@ one exact Boolean membership program per distinct proper agreement support."
              (rows (loop for law in (law-corpus-laws corpus) for bindings in substitutions for key from 0
                          for values = (mapcar (lambda (input) (cdr (assoc (car input) bindings))) inputs)
                          for statement = (law-statement law)
-                         for allowed = (finite-allowed type (list statement))
+                         for req = (set-requirement type (list statement))
                          do (charge ledger :quoted-frame
-                                    (+ (syntax-work (allowed-expression allowed))
+                                    (+ (syntax-work req)
                                        (loop for value in values for input in inputs sum (value-work value (cdr input)))))
-                         collect (make-row :key key :known values :allowed allowed)))
+                         collect (make-row :key key :known values :requirement req)))
              (frame (make-frame (make-schema :inputs inputs :target type) rows))
              (decoded (decode-model (encode-model model inputs)))
              (job (start-search frame (make-language :int inputs :operators nil :literals nil)

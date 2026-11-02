@@ -32,11 +32,14 @@
             (list (cons 3 (var 1 domain))) job)))
 
 (defun replay-arithmetic-parent (model frame ledger)
-  (let ((inputs (schema-inputs (frame-schema frame))))
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target-type (schema-target schema)))
     (dolist (row (frame-rows frame))
       (let ((run (run-algebra-program model inputs (row-known row) ledger :parent-replay)))
         (assert (eq :value (evaluation-status run)))
-        (let ((check (check-allowed (row-allowed row) (evaluation-value run) :ledger ledger)))
+        (let ((check (check-requirement (row-requirement row) (evaluation-value run)
+                                        :ledger ledger :type target-type)))
           (assert (and (eq :value (evaluation-status check)) (evaluation-value check))))))))
 
 (defun algebra-search-results (job)
@@ -144,7 +147,7 @@ bound and rows on both paths; all inverse and verification work is charged."
          (probe (make-frame (make-schema :inputs inputs :target :int)
                             (loop for b from -3 to 3 for key from 0 collect
                               (make-row :key key :known (list (+ (ash 1 128) key) b)
-                                        :allowed (predicate-allowed :int (lit :bool t))))))
+                                        :requirement (lit :bool t)))))
          (observations (start-observation-search
                         (make-observation-scope probe (make-language :int inputs :operators nil :literals nil))
                         :expressions (list oracle) :retain-outcomes t)))

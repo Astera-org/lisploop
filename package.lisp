@@ -2,41 +2,35 @@
   (:use #:cl)
   (:export
    ;; 1. ast.lisp — Homoiconic S-expressions, schemas, bidirectional typing, O(1) metadata
-   #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-schema #:code-inputs #:code-sort
+   #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-inputs #:code-sort
    #:valid-type-p #:function-sort-p #:value-p
    #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
-   #:ensure-schema #:var-symbol #:hole-symbol #:hole-symbol-p #:variable-symbol-p #:operator-symbol-p
-   #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:quote-lit #:quoted-lit-p #:quoted-lit-value
+   #:lit #:var #:op #:app #:hole #:bool-not #:bool-and
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p #:operator-name #:operator-type #:operator-operand-type #:application-overhead
-   #:expression-type #:free-vars #:expression-variables #:provably-total-p
-   #:subst-expr #:instantiate #:expr-less-p #:expression-less-p
+   #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p
    ;; 2. codec.lisp — Prefix-coded binary serialization & O(1) sizes
    #:+encoding-version+ #:header-size #:body-size #:description-size
    #:encode-model #:decode-model
-   ;; 3. vm.lisp — Structural tariff, uniform job stepper, evaluator, constant folding
+   ;; 3. vm.lisp — Structural tariff, resumable evaluator, constant folding
    #:+tariff-version+ #:+simulator-version+ #:vm-versions
    #:ledger #:make-ledger #:ledger-total #:ledger-counts #:charge
    #:integer-width #:value-work #:type-work #:syntax-work
-   #:job #:make-job #:job-id #:job-status #:job-ledger #:job-debt #:job-debt-category
-   #:job-step-fn #:job-state #:job-results #:job-best #:job-messages
-   #:incur-debt #:advance-job
    #:evaluation #:start-evaluation #:advance-evaluation #:evaluate
    #:evaluation-status #:evaluation-value #:evaluation-error #:evaluation-work
    #:validated-program #:validated-program-p #:validated-program-expression #:validated-program-inputs #:validated-program-versions
    #:start-program-validation #:start-validated-evaluation
    #:advance-accounted-evaluation #:fold-constants
-   ;; 4. frame.lisp — Frames, pullbacks, conflicts, support frames, quotients, partitions
-   #:row #:make-row #:row-key #:row-known #:row-requirement #:row-allowed
+   ;; 4. frame.lisp — Frames, S-expression requirements, pullbacks, conflicts, support frames, quotients, partitions
+   #:row #:make-row #:row-key #:row-known #:row-requirement
    #:frame #:make-frame #:frame-schema #:frame-rows #:frame-pairs #:frame-anchors
-   #:singleton-requirement #:set-requirement #:finite-allowed #:predicate-allowed
-   #:allowed-type #:allowed-values #:allowed-expression #:extract-allowed-values #:check-allowed
+   #:singleton-requirement #:set-requirement #:extract-allowed-values #:check-requirement
    #:conjoin-requirements #:frame-conflict #:frame-conflict-p
    #:orient-observations #:transition-probes #:lookup-model
    #:pullback-frame #:compose-model #:support-frame
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
    #:quotient-values #:restore-quotient #:quotient-model
-   ;; 5. enumerate.lisp — Grammar enumerator, unified matrix evaluator, multi-lane agenda
+   ;; 5. enumerate.lisp — Grammar enumerator, synthesis & observation search, multi-lane propagation search
    #:language #:make-language #:snapshot-language #:language-domain #:language-inputs
    #:language-operators #:language-literals #:language-constants #:language-version
    #:enumerator #:make-enumerator #:enumerator-size #:enumerator-buckets #:enumeration-step
@@ -57,17 +51,16 @@
    #:start-observation-search #:resume-observation-search #:observation-job-records
    #:observation-job-buckets #:observation-job-ledger #:observation-job-completed-bound #:observation-job-messages
    #:find-observation #:observed-agreement-p #:observation-invariants
-   #:agenda-lane #:make-agenda-lane #:start-agenda #:resume-agenda
    ;; 6. factor.lisp — Matching, AU, Hard-EM infer-fibers, corpus compression, heuristic condensation
-   #:match-expr #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p #:term-sort
+   #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p #:term-sort
    #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement #:fiber-class-rows #:fiber-class-keys #:infer-fibers
    #:law-corpus #:make-law-corpus #:law-corpus-laws #:law-corpus-packet #:law-corpus-frame
    #:law-template-group #:law-template-group-positions #:law-template-group-pattern #:law-template-group-substitutions
    #:propose-law-compressions #:decode-law-corpus
-   #:condense-heuristic #:heuristic-model #:heuristic-model-p #:heuristic-model-program
-   #:heuristic-model-residual #:heuristic-model-exact-p #:heuristic-model-score
-   #:heuristic-program #:heuristic-residual #:heuristic-score
-   ;; 7. laws.lisp — Laws, validation, S-expression normalizer, solver discovery, checker propagation
+   #:condense-heuristic #:heuristic-model #:heuristic-model-p
+   #:heuristic-program #:heuristic-residual #:heuristic-exact-p #:heuristic-program-bits
+   #:heuristic-residual-bits #:heuristic-run-work #:heuristic-score
+   ;; 7. laws.lisp — Laws, validation, rewriting, solver discovery, dual-grade propagation
    #:law #:make-law #:law-domain #:law-inputs #:law-lhs #:law-rhs #:law-equation #:law-guard #:law-origin #:law-statement
    #:law-certificate #:law-certificate-evidence #:law-certificate-assignments #:law-certificate-active #:law-certificate-work
    #:law-validation #:start-law-validation #:resume-law-validation #:law-validation-law
@@ -76,7 +69,7 @@
    #:observed-support #:guard-problem #:guard-problem-scope #:guard-problem-support
    #:guard-problem-frame #:guard-problem-equations #:propose-guard-problems #:start-guard-search #:propose-guarded-laws
    #:rewrite-rule #:rewrite-library #:rewrite-library-rules #:prepare-rewrite-library
-   #:rewrite-expr #:start-rewriting #:advance-rewriting #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
+   #:start-rewriting #:advance-rewriting #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
    #:arithmetic-relation #:observe-arithmetic-relation #:arithmetic-relation-guard #:arithmetic-relation-records
    #:solve-discovery #:discover-arithmetic-solver #:validate-arithmetic-solver #:certified-solve-discovery-p
    #:solve-discovery-frame #:solve-discovery-witness #:solve-discovery-guard

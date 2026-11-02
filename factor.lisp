@@ -39,9 +39,6 @@ Return substitutions and a success flag; NIL substitutions can be a valid match.
       (let ((success (walk pattern source)))
         (values (and success (nreverse substitutions)) success)))))
 
-(defun match-expr (pattern source &optional inputs ledger)
-  (match-pattern pattern source inputs ledger))
-
 (defun anti-unify (sources &optional inputs ledger)
   "Aligned typed syntactic LGG. Equal disagreement tuples reuse the same hole.
 An incompatible operator signature falls back to a whole-expression hole if the
@@ -120,13 +117,6 @@ Operator holes are quoted operator values, not callable host functions."
   (loop for a in rank1 for b in rank2
         when (/= a b) return (< a b)
         finally (return nil)))
-
-(defun normalize-refined-allowed (target-type requirement)
-  "Convert a refined requirement AST back to an explicit finite-allowed when possible."
-  (let ((vals (extract-allowed-values requirement)))
-    (if (listp vals)
-        (finite-allowed target-type vals)
-        (predicate-allowed target-type requirement))))
 
 (defun infer-fibers (frame &optional ledger (budget 10000))
   "Hard-EM fiber/partition inference over ambiguous or relational row requirements.
@@ -226,8 +216,7 @@ Returns (VALUES classes labels refined-frame partition)."
                    for class = (nth cid classes)
                    collect (make-row :key (copy-tree (row-key row))
                                      :known (copy-tree (row-known row))
-                                     :allowed (normalize-refined-allowed
-                                               target-type (fiber-class-requirement class)))))
+                                     :requirement (copy-tree (fiber-class-requirement class)))))
            (refined-frame (make-frame (copy-schema schema) refined-rows
                                       :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
            (part (partition-rows (frame-rows frame) labels ledger)))
@@ -235,7 +224,7 @@ Returns (VALUES classes labels refined-frame partition)."
 
 ;;; Operation 4: Heuristic Condensation (condense-heuristic)
 
-(defstruct heuristic-model
+(defstruct (heuristic-model (:conc-name heuristic-))
   program
   residual
   (exact-p nil :type boolean)
@@ -243,10 +232,6 @@ Returns (VALUES classes labels refined-frame partition)."
   (residual-bits 0 :type fixnum)
   (run-work 0 :type fixnum)
   (score 0))
-
-(defun heuristic-program (model) (heuristic-model-program model))
-(defun heuristic-residual (model) (heuristic-model-residual model))
-(defun heuristic-score (model) (heuristic-model-score model))
 
 (defun condense-heuristic (frame language &key description-limit (work-limit 100000) (run-weight 0) ledger)
   "Two-stage MDL heuristic synthesis:
@@ -281,13 +266,13 @@ Returns (VALUES classes labels refined-frame partition)."
                     for row-idx from 0
                     do (let ((satisfied-p
                                (and (eq :value (observation-outcome-status outcome))
-                                    (let ((chk (check-allowed (row-allowed row)
-                                                              (observation-outcome-value outcome)
-                                                              :ledger ledger)))
+                                    (let ((chk (check-requirement (row-requirement row)
+                                                                  (observation-outcome-value outcome)
+                                                                  :ledger ledger :type target-type)))
                                       (and (eq :value (evaluation-status chk))
                                            (eq t (evaluation-value chk)))))))
                          (unless satisfied-p
-                           (let ((vals (allowed-values (row-allowed row))))
+                           (let ((vals (extract-allowed-values (row-requirement row))))
                              (if (and (listp vals) vals)
                                  (let ((witness (first vals)))
                                    (push (cons (row-key row) witness) residual)
@@ -305,9 +290,9 @@ Returns (VALUES classes labels refined-frame partition)."
                                                :run-work run-work
                                                :score score)))
                   (when (or (null best-model)
-                            (< score (heuristic-model-score best-model))
-                            (and (= score (heuristic-model-score best-model))
-                                 (< prog-bits (heuristic-model-program-bits best-model))))
+                            (< score (heuristic-score best-model))
+                            (and (= score (heuristic-score best-model))
+                                 (< prog-bits (heuristic-program-bits best-model))))
                     (setf best-model candidate-model)))))))
         best-model))))
 
@@ -499,7 +484,7 @@ compatible operator names, preserving application shape and all types."
                 pattern substitutions groups)))))
 
 (defun law-corpus-frame (corpus &optional ledger)
-  (let ((allowed (finite-allowed (sequence-type :bool) (list (law-corpus-packet corpus)))))
-    (charge ledger :corpus-frame (syntax-work (allowed-expression allowed)))
+  (let ((req (set-requirement (sequence-type :bool) (list (law-corpus-packet corpus)))))
+    (charge ledger :corpus-frame (syntax-work req))
     (make-frame (make-schema :inputs nil :target (sequence-type :bool))
-                (list (make-row :key :law-corpus :known nil :allowed allowed)))))
+                (list (make-row :key :law-corpus :known nil :requirement req)))))

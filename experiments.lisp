@@ -71,8 +71,8 @@
           (report-ledger "M1 acquisition/baselines/independent replay" acquisition)
           (format t "Evidence: exhaustive finite-domain validation on GF(5); whole-object and function tasks differ.~%"))
         (let* ((bad (make-frame (frame-schema frame)
-                                (list (make-row :key 0 :known '(1 1) :allowed (finite-allowed (gf 5) '(0)))
-                                      (make-row :key 1 :known '(1 1) :allowed (finite-allowed (gf 5) '(1))))))
+                                (list (make-row :key 0 :known '(1 1) :requirement (set-requirement (gf 5) '(0)))
+                                      (make-row :key 1 :known '(1 1) :requirement (set-requirement (gf 5) '(1))))))
                (negative (start-search bad language)))
           (assert (eq :bounded-exhaustion (message-claim (resume-search negative (+ header 12) 1000000))))
           (assert (null (search-job-results negative)))
@@ -154,7 +154,7 @@
              (make-observation-scope
               (make-frame (make-schema :inputs inputs :target domain)
                           (loop for value in values for key from 0 collect
-                            (make-row :key key :known (list value) :allowed (predicate-allowed domain (lit :bool t)))))
+                            (make-row :key key :known (list value) :requirement (lit :bool t))))
               language)))
       (let ((old (start-observation-search (scope '(0 1)))))
         (resume-observation-search old bound 1000000)
