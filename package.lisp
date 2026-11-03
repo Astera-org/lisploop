@@ -29,6 +29,7 @@
    #:orient-observations #:transition-probes #:lookup-model
    #:pullback-frame #:compose-model #:support-frame
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
+   #:partition-pairs-and-anchors #:with-frame-linkage
    #:quotient-values #:restore-quotient #:quotient-model
    ;; 5. enumerate.lisp — Grammar enumerator, synthesis & observation search, multi-lane propagation search
    #:language #:make-language #:snapshot-language #:language-domain #:language-inputs
@@ -74,7 +75,8 @@
    #:partition-view-proposal-model #:partition-view-proposal-conflict
    #:partition-view-proposal-bits #:partition-view-proposal-run-work
    #:evaluate-guard-partition #:synthesize-supplied-partition-view #:discover-partition-views #:run-m7
-   #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement #:fiber-class-rows #:fiber-class-keys #:infer-fibers
+   #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement #:fiber-class-rows #:fiber-class-keys
+   #:infer-fibers #:fiber-pairs-and-anchors
    #:context-label-frame #:gf7-iota-conversion #:gf7-lifting-fixture #:integer-lifting-fixture #:best-composed-lifting-model #:run-m5
    #:law-corpus #:make-law-corpus #:law-corpus-laws #:law-corpus-packet #:law-corpus-frame
    #:law-template-group #:law-template-group-positions #:law-template-group-pattern #:law-template-group-substitutions
