@@ -174,19 +174,18 @@ Every capability across Milestones 1–9 is an instance or composition of **four
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
   >=Latex,
-  node distance=1.1cm and 1.6cm,
   every node/.style={font=\small\sffamily},
   data/.style={
     draw=black!75, thick, rounded corners=4pt, fill=gray!8,
-    minimum width=3.9cm, minimum height=1.15cm, align=center, inner sep=5pt
+    text width=4.6cm, minimum height=1.15cm, align=center, inner sep=5pt
   },
   op/.style={
     draw=blue!75!black, thick, rounded corners=3pt, fill=blue!6,
-    minimum width=4.4cm, minimum height=1.25cm, align=center, inner sep=5pt
+    text width=4.6cm, minimum height=1.25cm, align=center, inner sep=5pt
   },
   store/.style={
     draw=teal!75!black, thick, cylinder, shape border rotate=90, aspect=0.22,
-    fill=teal!8, minimum width=3.7cm, minimum height=1.15cm, align=center, inner sep=4pt
+    fill=teal!8, text width=4.3cm, minimum height=1.15cm, align=center, inner sep=4pt
   },
   flow/.style={->, thick, draw=black!80},
   feedback/.style={->, thick, dashed, draw=blue!75!black},
@@ -196,49 +195,49 @@ Every capability across Milestones 1–9 is an instance or composition of **four
   % Top center: Frame and Grammar
   \node[data] (frame) at (0, 0) {
     \textbf{Observation Frame $\Omega$ \& Schema $\Gamma$}\\
-    {\scriptsize Rows $\omega = (\mathrm{key}, \mathbf{x}_\omega, A_\omega(Y))$, Grammar $\mathcal{L}(\Gamma)$}
+    {\scriptsize Rows $\omega = (\mathrm{key}, \mathbf{x}_\omega, A_\omega(Y))$,\\ Grammar $\mathcal{L}(\Gamma)$}
   };
 
   % Center: Resumable VM & Outcome Matrix
-  \node[data, fill=yellow!12] (matrix) at (0, -2.3) {
+  \node[data, fill=yellow!12] (matrix) at (0, -3.2) {
     \textbf{Resumable VM \& Outcome Matrix $M(e, \omega)$}\\
-    {\scriptsize $\mathrm{Eval}(e, \mathbf{x}_\omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cutoff}}\}$ (\texttt{vm.lisp})}
+    {\scriptsize $\mathrm{Eval}(e, \mathbf{x}_\omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cutoff}}\}$\\ (\texttt{vm.lisp})}
   };
 
   % Operation 1: Left
-  \node[op] (op1) at (-5.3, -2.3) {
+  \node[op] (op1) at (-7, -3.2) {
     \textbf{Op 1: Observational Conservation}\\
     {\scriptsize Unary synthesis, cross-row buckets,}\\
     {\scriptsize action invariants, guards $G(X)$ \& laws}
   };
 
   % Operation 3: Right
-  \node[op] (op3) at (5.3, -2.3) {
+  \node[op] (op3) at (7, -3.2) {
     \textbf{Op 3: Pullback \& Propagation}\\
     {\scriptsize $B_\omega(Z) = \mathrm{Fold}(A_\omega(d(\mathbf{x}_\omega, Z)))$}\\
     {\scriptsize Conflict check; $\iff$ in-place / $\Leftarrow$ 3:1}
   };
 
   % Stores below Op 1 and Op 3
-  \node[store] (laws) at (-5.3, -4.8) {
+  \node[store] (laws) at (-7, -7.3) {
     \textbf{Certified Laws \& Solvers}\\
-    {\scriptsize \texttt{:validated} ($\Omega = D^\Gamma$) vs.\ \texttt{:conjecture}}
+    {\scriptsize \texttt{:validated} ($\Omega = D^\Gamma$)\\ vs.\ \texttt{:conjecture}}
   };
 
-  \node[data] (fibers) at (5.3, -4.8) {
+  \node[data] (fibers) at (7, -7.0) {
     \textbf{Child Frame $\Omega_C$ \& Fibers}\\
     {\scriptsize $\mathrm{Fiber}(\omega) = \{z \mid B_\omega(z) = \mathrm{t}\}$}
   };
 
   % Operation 2: Bottom Center-Left
-  \node[op] (op2) at (-2.7, -7.1) {
+  \node[op] (op2) at (-3.6, -11.0) {
     \textbf{Op 2: Factorization ($S$ Compression)}\\
     {\scriptsize Right-inverse of $\mathrm{Apply}(p, \theta_\omega) = t_\omega$:}\\
     {\scriptsize AU, Subgraphs, Views, Hard-EM \texttt{infer-fibers}}
   };
 
   % Operation 4: Bottom Center-Right
-  \node[op] (op4) at (2.7, -7.1) {
+  \node[op] (op4) at (3.6, -11.0) {
     \textbf{Op 4: Heuristic Condensation ($W$ Control)}\\
     {\scriptsize $\min_{\hat{\pi}} S(\hat{\pi}) + S(\varepsilon) + \lambda_{\mathrm{run}} W_{\mathrm{run}}(\hat{\pi})$}\\
     {\scriptsize Drops $\varepsilon$ at deployment; 1-in-4 canonical reserve}
@@ -246,24 +245,24 @@ Every capability across Milestones 1–9 is an instance or composition of **four
 
   % Primary Data Flows
   \draw[flow] (frame) -- node[lbl, right=2pt] {enumerate \& step} (matrix);
-  \draw[flow] (matrix) -- node[lbl, above] {outcome vectors} (op1);
-  \draw[flow] (frame.east) -| node[lbl, pos=0.25, above] {decoder $Y = d(X, Z)$} (op3.north);
-  \draw[flow] (op1) -- node[lbl, left] {certify / solve} (laws);
-  \draw[flow] (op3) -- node[lbl, right] {narrowed $B_\omega(Z)$} (fibers);
+  \draw[flow] (matrix) -- node[lbl, above=2pt] {outcome\\vectors} (op1);
+  \draw[flow] (frame.east) -| node[lbl, pos=0.3, above] {decoder $Y = d(X, Z)$} (op3.north);
+  \draw[flow] (op1) -- node[lbl, right=2pt] {certify / solve} (laws);
+  \draw[flow] (op3) -- node[lbl, right=2pt] {narrowed $B_\omega(Z)$} (fibers);
 
   % Cross-coupling between Op 1 / Laws and Op 3
-  \draw[flow] (laws.north east) -- node[lbl, sloped, above] {solver library \& guards} (op3.south west);
+  \draw[flow] (laws.north east) -- node[lbl, sloped, pos=0.3, above] {solver library \& guards} (op3.south west);
 
   % Flows into Op 2 (S Compression)
-  \draw[flow] (laws.south) |- node[lbl, pos=0.25, left] {quoted \texttt{:code} laws \& ASTs} (op2.west);
-  \draw[flow] (fibers.south) -- node[lbl, sloped, above] {pulled-back $B_\omega(Z)$} (op2.north east);
+  \draw[flow] (laws.south) |- node[lbl, pos=0.3, left] {quoted \texttt{:code}\\laws \& ASTs} (op2.west);
+  \draw[flow] (fibers.south) -- node[lbl, sloped, pos=0.4, above] {pulled-back $B_\omega(Z)$} (op2.north east);
 
   % Flow from Op 2 to Op 4
-  \draw[flow] (op2) -- node[lbl, above] {latent labels $j_\omega$} node[lbl, below] {\& search traces} (op4);
+  \draw[flow] (op2) -- node[lbl, below=4pt] {latent\\labels $j_\omega$\\\& search\\traces} (op4);
 
   % Feedback loops back to Frame / Search / Pullback
-  \draw[feedback] (op2.north) -- node[lbl, pos=0.55, left] {lifted templates $p$,} node[lbl, pos=0.55, right] {views \& child frames} (matrix.south);
-  \draw[feedback] (op4.east) -| ([xshift=1.1cm]op3.east) |- node[lbl, pos=0.25, right, rotate=90, anchor=south] {selectors $\hat{\pi}(X)$, search priors \& descriptors (3:1)} (frame.east);
+  \draw[feedback] (op2.north) -- ++(0, 1.6) -| node[lbl, pos=0.25, above] {lifted templates $p$, views \& child frames} (matrix.south);
+  \draw[feedback] (op4.east) -| (10.2, 1.6) -| node[lbl, pos=0.25, above] {selectors $\hat{\pi}(X)$, search priors \& descriptors (3:1)} (frame.north);
 
 \end{tikzpicture}%
 }
