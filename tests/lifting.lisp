@@ -6,9 +6,8 @@
   ;;   Row 1 (bridge): {2, 3}
   ;;   Row 2 (leaf):   {1, 4}
   ;;   Row 3 (leaf):   {3, 5}
-  ;; Naive greedy merging of the two bridge rows into Z=2 strands both leaf rows (3 classes).
-  ;; Degree-aware ordering + orphan avoidance must resolve all permutations into 2 singleton
-  ;; classes (Z=1 and Z=3).
+  ;; Naive greedy merging of the two bridge rows into Z=2 strands both leaf rows (K=3 classes).
+  ;; Minimal-MDL partition search resolves all permutations into K=2 singleton classes (Z=1 and Z=3).
   (let ((schema (make-schema :inputs '((0 . :int)) :target :int))
         (specs (list (list :b1 '(0) '(1 2))
                      (list :b2 '(1) '(2 3))
@@ -75,10 +74,10 @@
       (check (equal '(0 0 0 1 1 1) labels)))))
 
 (deftest hard-em-unconstrained-rows-and-context-affinity-refinement
-  ;; 1. Unconstrained `'t` rows rank in Tier 3 (after singletons, finite sets, and predicates)
-  ;;    and join the class whose rows share input-coordinate affinity.
-  ;; 2. Ambiguous `{1, 3}` rows that can join either singleton class `{1}` or `{3}` for free
-  ;;    are refined in the E-step to match the class sharing their sequence coordinate `r`.
+  ;; 1. Unconstrained `'t` rows and ambiguous `{1, 3}` rows in a multi-input `(r, t)` frame:
+  ;;    conflict-free input projection search identifies `X0` (`r`) as the consistent context
+  ;;    projection (while `X1` (`t`) conflicts on `t=2,3`) and tightens each `r` bucket via
+  ;;    functional determinism.
   (let* ((schema (make-schema :inputs '((0 . :int) (1 . :int)) :target :int))
          (frame (make-frame schema
                             (list (make-row :key :unconstrained-r1 :known '(1 0) :requirement (lit :bool t))
@@ -139,8 +138,8 @@
   ;;    Row 1: {3, 4, 5} (bridge via 3)
   ;;    Row 2: {1, 2, 6} (leaf for {1, 2})
   ;;    Row 3: {4, 5, 7} (leaf for {4, 5})
-  ;;    Merging Row 0 and Row 1 into {3} would orphan Rows 2 and 3 (4->3 classes).
-  ;;    Orphan-aware M-step forms the 2 classes {1, 2} and {4, 5}.
+  ;;    Merging Row 0 and Row 1 into {3} would require K=3 classes.
+  ;;    Minimal-MDL partition search finds the K=2 partition {1, 2} and {4, 5}.
   (let* ((schema (make-schema :inputs '((0 . :int)) :target :int))
          (frame (make-frame schema
                             (list (make-row :key :w0 :known '(0) :requirement (set-requirement :int '(1 2 3)))
@@ -153,7 +152,7 @@
       (check (equal '((1 2) (4 5) (1 2) (4 5))
                     (mapcar (lambda (r) (extract-allowed-values (row-requirement r)))
                             (frame-rows refined))))))
-  ;; 2. Three-regime (K=3) disambiguation with 2-way and 3-way ambiguous rows refined by context affinity:
+  ;; 2. Three-regime (K=3) disambiguation with 2-way and 3-way ambiguous rows resolved by conflict-free projection onto r:
   (let* ((schema (make-schema :inputs '((0 . :int) (1 . :int)) :target :int))
          (frame (make-frame schema
                             (list (make-row :key :r0-leaf1 :known '(0 0) :requirement (set-requirement :int '(1 10)))

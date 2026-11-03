@@ -174,13 +174,12 @@
                     (frame-rows refined))))))
 
 (deftest condense-heuristic-with-priced-residual
-  ;; Synthesize an intensional heuristic selector from ambiguous fibers with one outlier row.
+  ;; Synthesize an intensional heuristic selector directly over underconstrained fibers with one outlier row.
   ;; The MDL objective prices the outlier in the residual during training and drops it at deployment.
   (let* ((field (gf 5))
          (inputs (list (cons 0 field)))
          (schema (make-schema :domain field :inputs inputs :target field))
          ;; Rows 0..3 follow y = x, while row 4 (x=4) has an outlier target y=0.
-         ;; However, a constant or simple identity heuristic `x0` has 1 exception vs a full lookup table.
          (frame (make-frame schema
                             (list (make-row :key 0 :known '(0) :requirement (set-requirement field '(0 4)))
                                   (make-row :key 1 :known '(1) :requirement (set-requirement field '(1)))
@@ -195,4 +194,23 @@
     ;; `x0` matches rows 0, 1, 2, 3 and has a 1-row residual on key 4.
     (check (equal (var 0 field) (heuristic-program heuristic)))
     (check (= 1 (length (heuristic-residual heuristic))))
-    (check (equal (cons 4 0) (first (heuristic-residual heuristic))))))
+    (check (equal (cons 4 0) (first (heuristic-residual heuristic)))))
+  ;; Direct requirement synthesis vs pre-clustering trap:
+  ;; When row 0 has fiber {0, 4} at x=0 and row 3 (x=3) has outlier singleton {4},
+  ;; pre-clustering fibers before synthesis would merge row 0 into {4} and break `x0` on row 0.
+  ;; Evaluating `check-requirement` directly on `{0, 4}` lets `x0` satisfy row 0 (outputting 0)
+  ;; with only the single outlier residual on row 3.
+  (let* ((field (gf 5))
+         (inputs (list (cons 0 field)))
+         (schema (make-schema :domain field :inputs inputs :target field))
+         (frame (make-frame schema
+                            (list (make-row :key 0 :known '(0) :requirement (set-requirement field '(0 4)))
+                                  (make-row :key 1 :known '(1) :requirement (set-requirement field '(1)))
+                                  (make-row :key 2 :known '(2) :requirement (set-requirement field '(2)))
+                                  (make-row :key 3 :known '(3) :requirement (set-requirement field '(4)))
+                                  (make-row :key 4 :known '(4) :requirement (set-requirement field '(4))))))
+         (language (make-language field inputs :operators (list (op :+ field)) :literals '(0 1)))
+         (heuristic (condense-heuristic frame language)))
+    (check (equal (var 0 field) (heuristic-program heuristic)))
+    (check (= 1 (length (heuristic-residual heuristic))))
+    (check (equal (cons 3 4) (first (heuristic-residual heuristic))))))
