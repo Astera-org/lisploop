@@ -73,7 +73,25 @@
     :code-subst :code-total :code-less))
 
 (defparameter +operator-names+
-  (append '(:+ :* := :tuple :member :lookup :gather :- :/ :if :concat) *symbolic-primitives*))
+  (append '(:+ :* := :tuple :member :lookup :gather :- :/ :if :concat) *symbolic-primitives* '(:at)))
+
+(defun homogeneous-tuple-type-p (type)
+  "True when TYPE is a non-empty (:tuple tau ... tau) with identical component types."
+  (and (consp type) (eq :tuple (first type)) (rest type)
+       (every #'valid-type-p (rest type))
+       (every (lambda (part) (equal part (second type))) (cddr type))))
+
+(defun normalize-at-container-type (type)
+  "Normalize `:at` operand type: accepts `(:seq tau)`, homogeneous `(:tuple tau ... tau)`,
+or element type `tau` (normalized to `(:seq tau)`)."
+  (assert (valid-type-p type))
+  (if (and (consp type) (or (eq :seq (first type)) (homogeneous-tuple-type-p type)))
+      type
+      (sequence-type type)))
+
+(defun at-container-element-type (type)
+  (let ((norm (normalize-at-container-type type)))
+    (second norm)))
 
 (defun valid-type-p (type)
   (or (member type '(:int :bool))
@@ -171,7 +189,7 @@
 (defun operator-bit-size (name type)
   (+ (operator-name-bit-size name)
      (case name
-       ((:= :member) (type-bit-size type))
+       ((:= :member :at) (type-bit-size type))
        (:lookup (type-bit-size (second type)))
        (otherwise (if (member name *symbolic-primitives*) (type-bit-size type) 0)))))
 
@@ -257,6 +275,7 @@
        (assert (and (consp type) (eq (first type) :tuple) (= (length type) 3)))
        (sig (list (second type) (sequence-type type)) (third type)))
       (:gather (sig (list (sequence-type type) (sequence-type :int)) (sequence-type type)))
+      (:at (sig (list type :int) (at-container-element-type type)))
       (:concat (sig (list (sequence-type (sequence-type type))) (sequence-type type)))
       (otherwise
        (if (member name *symbolic-primitives*)
@@ -275,15 +294,16 @@
 (defun op (name type)
   "Construct a monomorphic operator symbol that prints cleanly (e.g. +, *, =)."
   (let* ((kname (canonical-op-name name))
-         (sig (compute-operator-signature kname type))
-         (key (list :op kname type)))
+         (norm-type (if (eq kname :at) (normalize-at-container-type type) type))
+         (sig (compute-operator-signature kname norm-type))
+         (key (list :op kname norm-type)))
     (or (gethash key *typed-symbol-pool*)
         (let ((sym (make-symbol (symbol-name kname))))
           (setf (gethash sym *node-meta*)
-                (make-ast-meta :kind :op :id kname :type (copy-tree type) :value sig
-                               :non-var-bits (+ 2 (operator-bit-size kname type))
+                (make-ast-meta :kind :op :id kname :type (copy-tree norm-type) :value sig
+                               :non-var-bits (+ 2 (operator-bit-size kname norm-type))
                                :var-count 0
-                               :syntax-work (1+ (type-work type))
+                               :syntax-work (1+ (type-work norm-type))
                                :total-p t :free-vars nil)
                 (gethash key *typed-symbol-pool*) sym)
           sym))))
@@ -402,6 +422,22 @@
                   (:/ (and (every #'ast-meta-total-p child-metas)
                            (eq :lit (ast-meta-kind (second child-metas)))
                            (not (zerop (ast-meta-value (second child-metas))))))
+                  (:at (and (every #'ast-meta-total-p child-metas)
+                            (eq :lit (ast-meta-kind (second child-metas)))
+                            (let ((idx (ast-meta-value (second child-metas)))
+                                  (container-type (ast-meta-type (first child-metas)))
+                                  (container-arg (first arguments)))
+                              (and (integerp idx) (<= 0 idx)
+                                   (cond
+                                     ((and (consp container-type) (eq :tuple (first container-type)))
+                                      (< idx (length (rest container-type))))
+                                     ((eq :lit (ast-meta-kind (first child-metas)))
+                                      (< idx (length (ast-meta-value (first child-metas)))))
+                                     ((and (consp container-arg) (symbolp (first container-arg))
+                                           (let ((m (gethash (first container-arg) *node-meta*)))
+                                             (and m (eq :op (ast-meta-kind m)) (eq :tuple (ast-meta-id m)))))
+                                      (< idx (length (rest container-arg))))
+                                     (t nil))))))
                   ((:lookup :gather :code-child :code-operator :code-bind) nil)
                   (:if (and (ast-meta-total-p (first child-metas))
                             (if (eq :lit (ast-meta-kind (first child-metas)))

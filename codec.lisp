@@ -19,7 +19,7 @@
     (assert (eq :op (ast-meta-kind meta)))
     (emit-operator-name name emit)
     (case name
-      ((:= :member) (emit-bit-type type emit))
+      ((:= :member :at) (emit-bit-type type emit))
       (:lookup (emit-bit-type (second type) emit))
       (otherwise (when (member name *symbolic-primitives*) (emit-bit-type type emit))))))
 
@@ -182,7 +182,7 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
                  (2
                   (let* ((name (read-operator-name))
                          (operand-type (case name
-                                         ((:= :member) (read-type))
+                                         ((:= :member :at) (read-type))
                                          (:lookup (tuple-type (read-type) type))
                                          ((:gather :concat) (assert (eq (first type) :seq)) (second type))
                                          (otherwise (if (member name *symbolic-primitives*) (read-type) type))))

@@ -233,7 +233,46 @@
                                           (subexpression-abstraction-pattern ind-struct)
                                           inputs ledger))
             (check (plusp (subexpression-abstraction-gain ind-comp)))
-            (check (plusp (verify-corpus-abstraction-replay ind-comp int-trees inputs ledger)))))))))
+            (check (plusp (verify-corpus-abstraction-replay ind-comp int-trees inputs ledger)))))))
+    ;; 4. Generated 2D tuple space and `:at` coordinate projection / quotienting:
+    ;;    On a 3x2 grid over i=0..5 where planted occurrences sit in column 0 (i=0, 2, 4):
+    ;;    - Isotropic 2D key `(tuple (/ i '2) (mod i '2))` projected onto column via `:at`
+    ;;      `(at (tuple (/ i '2) (mod i '2)) '1)` quotients trees into column fibers (0,2,4) and (1,3,5).
+    ;;    - Anisotropic 2D tuple key `(tuple (/ i '2) (* '2 (mod i '2)))` gives L1 distance 1 along
+    ;;      columns (between i=0 and i=2) and L1 distance 2 across columns (between i=0 and i=1).
+    ;;    Both recover all 3 planted occurrences at `pair-budget = 1` where raw 1D index order fails.
+    (multiple-value-bind (grid-trees inputs grid-oracle)
+        (locality-abstraction-fixture :domain :int :mode :interleaved :ledger ledger)
+      (let* ((pair-type (tuple-type :int :int))
+             (row-expr (app (op :/ :int) (var 0 :int) (lit :int 2)))
+             (col-expr (parity-key-expression 0))
+             (iso-2d-key (app (op :tuple pair-type) row-expr col-expr))
+             (aniso-2d-key (app (op :tuple pair-type)
+                                row-expr
+                                (app (op :* :int) (lit :int 2) col-expr)))
+             (projected-col-key (app (op :at pair-type) iso-2d-key (lit :int 1))))
+        ;; Verify `compute-tree-locality-positions` returns the generated 2D coordinates and quotient
+        (multiple-value-bind (pos-vec labels-vec reps residual)
+            (compute-tree-locality-positions (length grid-trees) iso-2d-key ledger)
+          (declare (ignore pos-vec))
+          (check (= 6 (length reps)))
+          (check (equal '((0 0) (0 1) (1 0) (1 1) (2 0) (2 1)) (coerce labels-vec 'list)))
+          (check (equal '(0 1 2 3 4 5) residual)))
+        (multiple-value-bind (pos-vec labels-vec reps residual)
+            (compute-tree-locality-positions (length grid-trees) projected-col-key ledger)
+          (declare (ignore pos-vec labels-vec))
+          (check (equal '(0 1) reps))
+          (check (equal '(0 1 0 1 0 1) residual)))
+        (dolist (key-expr (list aniso-2d-key projected-col-key))
+          (multiple-value-bind (comp struct)
+              (discover-subexpression-abstractions grid-trees inputs
+                                                   :schedule :locality-only :pair-budget 1
+                                                   :locality-key key-expr :ledger ledger)
+            (check (patterns-isomorphic-p (getf grid-oracle :pattern)
+                                          (subexpression-abstraction-pattern struct)
+                                          inputs ledger))
+            (check (plusp (subexpression-abstraction-gain comp)))
+            (check (plusp (verify-corpus-abstraction-replay comp grid-trees inputs ledger)))))))))
 
 (deftest view-experiment-runner
   (run-m7)

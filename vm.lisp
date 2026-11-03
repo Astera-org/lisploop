@@ -96,11 +96,16 @@
        (+ 1 (loop for value in values
                   for input-type in (second (operator-type operator))
                   sum (value-work value input-type))
-          (if (eq name :gather)
-              (loop with width = (integer-width (length (first values)))
-                    for index in (second values)
-                    sum (1+ (max width (integer-width index))))
-              0))))))
+          (case name
+            (:gather
+             (loop with width = (integer-width (length (first values)))
+                   for index in (second values)
+                   sum (1+ (max width (integer-width index)))))
+            (:at
+             (let ((width (integer-width (length (first values))))
+                   (index (second values)))
+               (1+ (max width (integer-width index)))))
+            (otherwise 0)))))))
 
 (defun checked-position (index length)
   "An integer becomes a position only at access; no wrapping or negative offsets."
@@ -167,6 +172,9 @@
       (:gather
        (let* ((items (coerce (first values) 'vector)) (length (length items)))
          (mapcar (lambda (index) (aref items (checked-position index length))) (second values))))
+      (:at
+       (let* ((items (first values)) (length (length items)))
+         (nth (checked-position (second values) length) items)))
       (otherwise (if (member name *symbolic-primitives*)
                      (execute-symbolic-primitive name type values)
                      (error "Unknown primitive ~S" name))))))
@@ -357,6 +365,96 @@ return (VALUES term term-type values-list)."
         (when eq-term
           (setf result (replace-subexpression result eq-term eq-lit)))))))
 
+(defun extract-at-coordinate-equality (expr)
+  "If EXPR is `(= (at base 'idx) 'val)` on a tuple-typed BASE, return (VALUES base tuple-type idx val)."
+  (multiple-value-bind (term term-type lit-node) (extract-term-equality expr)
+    (declare (ignore term-type))
+    (when (and term (app-p term) (eq :at (operator-name (first term))))
+      (let* ((base (second term))
+             (idx-node (third term))
+             (base-meta (ignore-errors (ensure-ast-meta base)))
+             (base-type (and base-meta (ast-meta-type base-meta))))
+        (when (and base-type (consp base-type) (eq :tuple (first base-type))
+                   (provably-total-p base)
+                   (lit-p idx-node) (integerp (ast-value idx-node))
+                   (<= 0 (ast-value idx-node)) (< (ast-value idx-node) (length (rest base-type))))
+          (values base base-type (ast-value idx-node) (ast-value lit-node)))))))
+
+(defun try-reassemble-tuple-coordinates (conjuncts)
+  "When CONJUNCTS pin every slot 0..k-1 of a tuple term V via `(= (at V 'i) 'v_i)`,
+reassemble those conjuncts into `(= V '(v_0 ... v_{k-1}))`. Returns (VALUES expr changed-p)."
+  (let ((by-base nil))
+    (dolist (c conjuncts)
+      (multiple-value-bind (base tuple-type idx val) (extract-at-coordinate-equality c)
+        (when base
+          (let ((entry (assoc base by-base :test #'equal)))
+            (unless entry
+              (setf entry (list base tuple-type (make-array (length (rest tuple-type)) :initial-element :unbound) nil)
+                    by-base (cons entry by-base)))
+            (let ((slots (third entry)))
+              (cond
+                ((eq :unbound (aref slots idx))
+                 (setf (aref slots idx) val)
+                 (push c (fourth entry)))
+                ((not (equal (aref slots idx) val))
+                 (return-from try-reassemble-tuple-coordinates (values (lit :bool nil) t)))
+                (t
+                 (push c (fourth entry)))))))))
+    (dolist (entry (nreverse by-base))
+      (destructuring-bind (base tuple-type slots used-conjuncts) entry
+        (when (loop for s across slots never (eq s :unbound))
+          (let* ((tuple-val (coerce slots 'list))
+                 (tuple-eq (app (op := tuple-type) base (lit tuple-type tuple-val)))
+                 (remaining (remove-if (lambda (c) (member c used-conjuncts :test #'equal)) conjuncts))
+                 (all-conjuncts (cons tuple-eq remaining)))
+            (return-from try-reassemble-tuple-coordinates
+              (values (reduce #'bool-and all-conjuncts :from-end t) t))))))
+    (values nil nil)))
+
+(defun try-invert-literal-at (at-expr target-vals ledger)
+  "When AT-EXPR is `(at 'R idx-term)` on a literal sequence/tuple `'R` and provably-total
+`idx-term : :int`, or 2D `(at (at 'G (at T '0)) (at T '1))` on a literal 2D grid `'G` and
+provably-total 2-tuple `T : (:tuple :int :int)`, invert into the exact matching index fiber.
+Returns (VALUES term term-type allowed-values matched-p)."
+  (when (and (app-p at-expr) (eq :at (operator-name (first at-expr))))
+    (let ((container (second at-expr))
+          (index-arg (third at-expr)))
+      (cond
+        ;; 1D literal container: `(at 'R idx-term)`
+        ((and (lit-p container) (provably-total-p index-arg))
+         (let* ((items (ast-value container))
+                (indices (loop for item in items
+                               for idx from 0
+                               do (charge ledger :orientation)
+                               when (member item target-vals :test #'equal)
+                               collect idx)))
+           (values index-arg :int indices t)))
+        ;; 2D literal grid indexed by 2-tuple projections: `(at (at 'G (at T '0)) (at T '1))`
+        ((and (app-p container) (eq :at (operator-name (first container)))
+              (lit-p (second container))
+              (app-p (third container)) (eq :at (operator-name (first (third container))))
+              (app-p index-arg) (eq :at (operator-name (first index-arg)))
+              (let ((t0 (second (third container)))
+                    (i0 (third (third container)))
+                    (t1 (second index-arg))
+                    (i1 (third index-arg)))
+                (and (equal t0 t1) (provably-total-p t0)
+                     (equal '(:tuple :int :int) (ast-meta-type (ensure-ast-meta t0)))
+                     (lit-p i0) (eql 0 (ast-value i0))
+                     (lit-p i1) (eql 1 (ast-value i1)))))
+         (let* ((grid (ast-value (second container)))
+                (tup-term (second index-arg))
+                (tup-type '(:tuple :int :int))
+                (coords (loop for row in grid
+                              for r from 0
+                              append (loop for cell in row
+                                           for c from 0
+                                           do (charge ledger :orientation)
+                                           when (member cell target-vals :test #'equal)
+                                           collect (list r c)))))
+           (values tup-term tup-type coords t)))
+        (t (values nil nil nil nil))))))
+
 (defun try-filter-membership (m-term m-type m-vals pred-expr schema ledger budget)
   "Filter M-VALS by substituting M-TERM -> (lit M-TYPE v) into PRED-EXPR and folding.
 Returns (VALUES filtered-ast success-p)."
@@ -432,6 +530,13 @@ filtering `:member` sets across conjunctions, and decomposing tuple equalities."
                                (multiple-value-bind (res ok)
                                    (try-filter-membership m-term m-type m-vals cond-folded schema ledger budget)
                                  (when ok (return-from fold-constants res))))))
+                         (multiple-value-bind (reassembled reassembled-p)
+                             (try-reassemble-tuple-coordinates (append cond-conjuncts yes-conjuncts))
+                           (when reassembled-p
+                             (return-from fold-constants
+                               (if (and (app-p reassembled) (eq :if (operator-name (first reassembled))))
+                                   (fold-constants reassembled schema :ledger ledger :budget budget)
+                                   reassembled))))
                          (app operator cond-folded yes-folded no-folded)))
                       (t (app operator cond-folded yes-folded no-folded)))))))
            ;; Strict application: fold arguments first
@@ -442,23 +547,68 @@ filtering `:member` sets across conjunctions, and decomposing tuple equalities."
                    (rebuilt (if (every #'eq folded-args args)
                                 expr
                                 (apply #'app operator folded-args))))
-              ;; Normalize 0-element and 1-element `:member` on provably-total terms
-              (when (and (eq :member (operator-name operator))
+              ;; Beta-reduction of `:at` on `:tuple` with in-bounds literal index:
+              ;; `(at (tuple e_0 ... e_{k-1}) 'i) -> e_i` when all components are provably total
+              (when (and (eq :at (operator-name operator))
+                         (app-p (first folded-args))
+                         (eq :tuple (operator-name (first (first folded-args))))
                          (lit-p (second folded-args))
-                         (provably-total-p (first folded-args)))
+                         (every #'provably-total-p (rest (first folded-args))))
+                (let ((idx (ast-value (second folded-args)))
+                      (parts (rest (first folded-args))))
+                  (when (and (integerp idx) (<= 0 idx) (< idx (length parts)))
+                    (return-from fold-constants (nth idx parts)))))
+              ;; Normalize 0-element and 1-element `:member` on provably-total terms,
+              ;; and invert `:member` over literal `:at` tables/grids into index fibers
+              (when (and (eq :member (operator-name operator))
+                         (lit-p (second folded-args)))
                 (let* ((elem-type (operator-operand-type operator))
                        (vals (remove-duplicates (ast-value (second folded-args)) :test #'equal :from-end t)))
-                  (cond
-                    ((null vals)
-                     (return-from fold-constants (lit :bool nil)))
-                    ((null (rest vals))
-                     (return-from fold-constants
-                       (fold-constants (app (op := elem-type) (first folded-args) (lit elem-type (first vals)))
-                                       schema :ledger ledger :budget budget))))))
-              ;; Tuple equality decomposition: `(= (tuple a1 a2) '(v1 v2))`
+                  (multiple-value-bind (idx-term idx-type idx-vals inverted-p)
+                      (try-invert-literal-at (first folded-args) vals ledger)
+                    (when inverted-p
+                      (return-from fold-constants
+                        (cond
+                          ((null idx-vals) (lit :bool nil))
+                          ((null (rest idx-vals))
+                           (fold-constants (app (op := idx-type) idx-term (lit idx-type (first idx-vals)))
+                                           schema :ledger ledger :budget budget))
+                          (t (app (op :member idx-type) idx-term
+                                  (lit (sequence-type idx-type) idx-vals)))))))
+                  (when (provably-total-p (first folded-args))
+                    (cond
+                      ((null vals)
+                       (return-from fold-constants (lit :bool nil)))
+                      ((null (rest vals))
+                       (return-from fold-constants
+                         (fold-constants (app (op := elem-type) (first folded-args) (lit elem-type (first vals)))
+                                         schema :ledger ledger :budget budget)))))))
+              ;; Tuple equality decomposition `(= (tuple a1 a2) '(v1 v2))`
+              ;; and literal `:at` table/grid inversion `(= (at 'R idx) 'v)`
               (when (eq := (operator-name operator))
                 (let ((lhs (first folded-args))
                       (rhs (second folded-args)))
+                  (multiple-value-bind (at-side lit-side)
+                      (cond
+                        ((and (app-p lhs) (eq :at (operator-name (first lhs))) (lit-p rhs))
+                         (values lhs rhs))
+                        ((and (lit-p lhs) (app-p rhs) (eq :at (operator-name (first rhs))))
+                         (values rhs lhs))
+                        (t (values nil nil)))
+                    (when at-side
+                      (multiple-value-bind (idx-term idx-type idx-vals inverted-p)
+                          (try-invert-literal-at at-side (list (ast-value lit-side)) ledger)
+                        (when inverted-p
+                          (return-from fold-constants
+                            (cond
+                              ((null idx-vals) (lit :bool nil))
+                              ((null (rest idx-vals))
+                               (if (and (equal idx-term at-side) (equal (first idx-vals) (ast-value lit-side)))
+                                   rebuilt
+                                   (fold-constants (app (op := idx-type) idx-term (lit idx-type (first idx-vals)))
+                                                   schema :ledger ledger :budget budget)))
+                              (t (app (op :member idx-type) idx-term
+                                      (lit (sequence-type idx-type) idx-vals)))))))))
                   (multiple-value-bind (tuple-expr lit-expr)
                       (cond
                         ((and (app-p lhs) (eq :tuple (operator-name (first lhs))) (lit-p rhs))
@@ -468,11 +618,11 @@ filtering `:member` sets across conjunctions, and decomposing tuple equalities."
                         (t (values nil nil)))
                     (when (and tuple-expr (every #'provably-total-p (rest tuple-expr)))
                       (let* ((tuple-types (rest (operator-operand-type (first tuple-expr))))
-                             (lit-vals (ast-value lit-expr))
-                             (conjuncts (loop for part-expr in (rest tuple-expr)
-                                              for part-type in tuple-types
-                                              for part-val in lit-vals
-                                              collect (app (op := part-type) part-expr (lit part-type part-val)))))
+                              (lit-vals (ast-value lit-expr))
+                              (conjuncts (loop for part-expr in (rest tuple-expr)
+                                               for part-type in tuple-types
+                                               for part-val in lit-vals
+                                               collect (app (op := part-type) part-expr (lit part-type part-val)))))
                         (return-from fold-constants
                           (fold-constants (reduce #'bool-and conjuncts :from-end t)
                                           schema :ledger ledger :budget budget)))))))

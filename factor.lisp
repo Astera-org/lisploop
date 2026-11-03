@@ -1046,15 +1046,40 @@ within each occurrence."
                   tree)))
           trees))
 
+(defun integer-coordinate-vector-p (value)
+  "True when VALUE is a non-empty list of integers (a tuple or sequence in Z^d)."
+  (and (consp value) (every #'integerp value)))
+
+(defun generated-space-distance (la lb rank-dist)
+  "Compute distance between two points LA and LB in a generated locality space:
+- Same quotient equivalence class (`equal`): distance 1 when distinct trees (0 when identical),
+  with rank-dist preserved for intra-class tie-breaking.
+- Multi-coordinate integer tuple/sequence `Z^d`: L1 Manhattan distance sum_k |u_k - v_k|.
+- Distinct quotient classes in a coarse partition: (> 1) so cross-class pairs do not pass
+  `:locality-only` window <= 1."
+  (cond
+    ((equal la lb) (min 1 rank-dist))
+    ((and (integer-coordinate-vector-p la)
+          (integer-coordinate-vector-p lb)
+          (= (length la) (length lb)))
+     (loop for ua in la
+           for ub in lb
+           sum (abs (- ua ub))))
+    (t (+ 2 rank-dist))))
+
 (defun compute-tree-locality-positions (n locality-key &optional ledger)
-  "Compute the induced position vector (0..N-1) for tree indices under LOCALITY-KEY.
-When LOCALITY-KEY is nil, position(i) = i. When LOCALITY-KEY is a function or DSL expression
-over `((0 . :int))`, evaluates the key for each tree index i, partitions the indices via
-`partition-rows`, and verifies inverse-permutation reassembly via `reassemble-partition`."
+  "Compute the induced position vector (0..N-1) and quotient structure for tree indices
+under LOCALITY-KEY. When LOCALITY-KEY is nil, position(i) = i. When LOCALITY-KEY is a
+function or DSL expression over `((0 . :int))`, evaluates the key for each tree index i
+into a generated space (scalars or tuples), partitions via `partition-rows` (verifying
+`reassemble-partition`), and quotients via `quotient-values` (verifying `restore-quotient`).
+Returns (VALUES pos-vec labels-vec representatives residual partition)."
   (let ((pos-vec (make-array n)))
     (if (null locality-key)
-        (dotimes (i n pos-vec)
-          (setf (aref pos-vec i) i))
+        (progn
+          (dotimes (i n)
+            (setf (aref pos-vec i) i))
+          (values pos-vec nil nil nil nil))
         (let* ((indices (loop for i below n collect i))
                (labels
                  (loop for i below n
@@ -1069,12 +1094,14 @@ over `((0 . :int))`, evaluates the key for each tree index i, partitions the ind
                (part (partition-rows indices labels ledger))
                (ordered-indices (apply #'append (partition-groups part))))
           (assert (equal indices (reassemble-partition part ledger)))
-          (loop for tree-idx in ordered-indices
-                for rank from 0
-                do (setf (aref pos-vec tree-idx) rank))
-          pos-vec))))
+          (multiple-value-bind (reps residual) (quotient-values labels ledger)
+            (assert (equal labels (restore-quotient reps residual ledger)))
+            (loop for tree-idx in ordered-indices
+                  for rank from 0
+                  do (setf (aref pos-vec tree-idx) rank))
+            (values pos-vec (coerce labels 'vector) reps residual part))))))
 
-(defun schedule-occurrence-pairs (canonical-pairs tree-pos schedule pair-budget &optional ledger)
+(defun schedule-occurrence-pairs (canonical-pairs tree-pos schedule pair-budget &optional ledger labels-vec)
   "Order candidate occurrence pairs `(oa . ob)` under SCHEDULE (:CANONICAL, :LOCALITY with 1-in-4
 canonical reserve, or :LOCALITY-ONLY restricted to adjacent tree distance <= 1) up to PAIR-BUDGET."
   (assert (member schedule '(:canonical :locality :locality-only)))
@@ -1083,9 +1110,16 @@ canonical reserve, or :LOCALITY-ONLY restricted to adjacent tree distance <= 1) 
       (flet ((pair-cross-tree-p (p)
                (/= (tree-occurrence-tree-index (car p))
                    (tree-occurrence-tree-index (cdr p))))
-             (pair-tree-dist (p)
+             (pair-rank-dist (p)
                (abs (- (aref tree-pos (tree-occurrence-tree-index (car p)))
                        (aref tree-pos (tree-occurrence-tree-index (cdr p))))))
+             (pair-tree-dist (p)
+               (let* ((ia (tree-occurrence-tree-index (car p)))
+                      (ib (tree-occurrence-tree-index (cdr p)))
+                      (rdist (abs (- (aref tree-pos ia) (aref tree-pos ib)))))
+                 (if labels-vec
+                     (generated-space-distance (aref labels-vec ia) (aref labels-vec ib) rdist)
+                     rdist)))
              (pair-path-dist (p)
                (abs (- (length (tree-occurrence-path (car p)))
                        (length (tree-occurrence-path (cdr p))))))
@@ -1105,11 +1139,19 @@ canonical reserve, or :LOCALITY-ONLY restricted to adjacent tree distance <= 1) 
                                    canonical-pairs))
                   (sorted (stable-sort (copy-list local-pairs)
                                        (lambda (a b)
-                                         (let ((pa (pair-path-dist a))
-                                               (pb (pair-path-dist b)))
-                                           (if (/= pa pb)
-                                               (< pa pb)
-                                               (< (pair-depth-sum a) (pair-depth-sum b))))))))
+                                         (let ((da (pair-tree-dist a))
+                                               (db (pair-tree-dist b)))
+                                           (if (/= da db)
+                                               (< da db)
+                                               (let ((ra (pair-rank-dist a))
+                                                     (rb (pair-rank-dist b)))
+                                                 (if (/= ra rb)
+                                                     (< ra rb)
+                                                     (let ((pa (pair-path-dist a))
+                                                           (pb (pair-path-dist b)))
+                                                       (if (/= pa pb)
+                                                           (< pa pb)
+                                                           (< (pair-depth-sum a) (pair-depth-sum b))))))))))))
              (charge ledger :locality-scheduling (length sorted))
              (if pair-budget
                  (subseq sorted 0 (min pair-budget (length sorted)))
@@ -1126,11 +1168,15 @@ canonical reserve, or :LOCALITY-ONLY restricted to adjacent tree distance <= 1) 
                                                (db (pair-tree-dist b)))
                                            (if (/= da db)
                                                (< da db)
-                                               (let ((pa (pair-path-dist a))
-                                                     (pb (pair-path-dist b)))
-                                                 (if (/= pa pb)
-                                                     (< pa pb)
-                                                     (< (pair-depth-sum a) (pair-depth-sum b)))))))))))
+                                               (let ((ra (pair-rank-dist a))
+                                                     (rb (pair-rank-dist b)))
+                                                 (if (/= ra rb)
+                                                     (< ra rb)
+                                                     (let ((pa (pair-path-dist a))
+                                                           (pb (pair-path-dist b)))
+                                                       (if (/= pa pb)
+                                                           (< pa pb)
+                                                           (< (pair-depth-sum a) (pair-depth-sum b)))))))))))))
                   (can-queue (copy-list canonical-pairs))
                   (seen (make-hash-table :test #'equal))
                   (selected nil)
@@ -1178,9 +1224,10 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                            (normalize-trees-with-library trees norm-inputs rewrite-library :ledger ledger)
                            trees))
          (corpus (make-tree-corpus active-trees norm-inputs :domain domain :ledger ledger))
-         (n (length active-trees))
-         (tree-pos (compute-tree-locality-positions n locality-key ledger))
-         (literal-model (lit (sequence-type :bool) (tree-corpus-packet corpus)))
+         (n (length active-trees)))
+    (multiple-value-bind (tree-pos labels-vec)
+        (compute-tree-locality-positions n locality-key ledger)
+      (let* ((literal-model (lit (sequence-type :bool) (tree-corpus-packet corpus)))
          (literal-bits (description-size literal-model nil))
          (dict-chunks (cons (tree-corpus-prefix corpus ledger)
                             (loop for tree in active-trees
@@ -1263,7 +1310,7 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                         (push (cons oa ob) all-canonical-pairs)))))
          buckets)
         (setf all-canonical-pairs (nreverse all-canonical-pairs))
-        (dolist (pair (schedule-occurrence-pairs all-canonical-pairs tree-pos schedule pair-budget ledger))
+        (dolist (pair (schedule-occurrence-pairs all-canonical-pairs tree-pos schedule pair-budget ledger labels-vec))
           (let* ((oa (car pair))
                  (ob (cdr pair))
                  (terms (list (tree-occurrence-term oa)
@@ -1432,7 +1479,7 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                                                 (< (subexpression-abstraction-bits a)
                                                    (subexpression-abstraction-bits b)))))))
                  best-compression)))
-      (values best-compression best-structural proposals corpus active-trees))))
+      (values best-compression best-structural proposals corpus active-trees))))))
 
 ;;; Partitioning, Autonomous View Discovery, and Locality (M7 & M8C)
 

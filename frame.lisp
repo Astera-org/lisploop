@@ -15,9 +15,46 @@
   pairs
   anchors)
 
+(defun extract-slot-constraint (conjunct)
+  "If CONJUNCT is `(= (at x0 'idx) 'v)` or `(member (at x0 'idx) '(v1 ... vm))` on tuple var 0,
+return (VALUES tuple-type idx allowed-values)."
+  (labels ((at-var0-slot (term)
+             (when (and (app-p term) (eq :at (operator-name (first term))))
+               (let ((base (second term))
+                     (idx-node (third term)))
+                 (when (and (var-p base) (zerop (ast-id base))
+                            (consp (ast-type base)) (eq :tuple (first (ast-type base)))
+                            (lit-p idx-node) (integerp (ast-value idx-node))
+                            (<= 0 (ast-value idx-node)) (< (ast-value idx-node) (length (rest (ast-type base)))))
+                   (values (ast-type base) (ast-value idx-node)))))))
+    (cond
+      ((and (app-p conjunct) (eq := (operator-name (first conjunct))))
+       (let ((lhs (second conjunct))
+             (rhs (third conjunct)))
+         (multiple-value-bind (ttype idx) (at-var0-slot lhs)
+           (if (and ttype (lit-p rhs))
+               (values ttype idx (list (ast-value rhs)))
+               (multiple-value-bind (ttype2 idx2) (at-var0-slot rhs)
+                 (when (and ttype2 (lit-p lhs))
+                   (values ttype2 idx2 (list (ast-value lhs)))))))))
+      ((and (app-p conjunct) (eq :member (operator-name (first conjunct))))
+       (let ((lhs (second conjunct))
+             (rhs (third conjunct)))
+         (multiple-value-bind (ttype idx) (at-var0-slot lhs)
+           (when (and ttype (lit-p rhs))
+             (values ttype idx (copy-tree (ast-value rhs)))))))
+      (t nil))))
+
+(defun cartesian-product-lists (lists)
+  (if (null lists)
+      (list nil)
+      (let ((rest-prod (cartesian-product-lists (rest lists))))
+        (loop for item in (first lists)
+              append (mapcar (lambda (tail) (cons item tail)) rest-prod)))))
+
 (defun extract-allowed-values (expression)
-  "Extract explicit finite values from `(= x0 'v)`, `(member x0 '(v1 ...))`, or `'nil`;
-otherwise return :UNKNOWN."
+  "Extract explicit finite values from `(= x0 'v)`, `(member x0 '(v1 ...))`, `'nil`,
+or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise return :UNKNOWN."
   (cond
     ((and (lit-p expression) (eq :bool (ast-type expression)) (null (ast-value expression)))
      nil)
@@ -35,6 +72,26 @@ otherwise return :UNKNOWN."
            (rhs (second (rest expression))))
        (if (and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
            (copy-tree (ast-value rhs))
+           :unknown)))
+    ((and (app-p expression) (eq :if (operator-name (first expression))))
+     (let ((conjuncts (extract-conjuncts expression))
+           (tuple-type nil)
+           (slots nil))
+       (dolist (c conjuncts)
+         (multiple-value-bind (ttype idx vals) (extract-slot-constraint c)
+           (unless ttype
+             (return-from extract-allowed-values :unknown))
+           (unless tuple-type
+             (setf tuple-type ttype
+                   slots (make-array (length (rest ttype)) :initial-element :unbound)))
+           (unless (equal tuple-type ttype)
+             (return-from extract-allowed-values :unknown))
+           (setf (aref slots idx)
+                 (if (eq :unbound (aref slots idx))
+                     vals
+                     (intersection (aref slots idx) vals :test #'equal)))))
+       (if (and slots (loop for s across slots never (eq s :unbound)))
+           (cartesian-product-lists (coerce slots 'list))
            :unknown)))
     (t :unknown)))
 
@@ -310,9 +367,16 @@ Every occurrence stays present. The predictor receives only the original inputs.
               (nth index representatives)) residual)))
 
 (defun quotient-model (type representatives residual &optional ledger)
-  "A closed reconstructing program, charging representatives AND occurrence indexes."
-  (let ((model (app (op :gather type) (lit (sequence-type type) representatives)
-                    (lit (sequence-type :int) residual))))
+  "Construct a reconstructing program charging representatives AND occurrence indexes:
+when RESIDUAL is a sequence of integer indices, emits batch `(gather 'R 'residual)`;
+when RESIDUAL is an `:int` AST expression, emits per-row `(at 'R residual)`."
+  (let ((model (if (ast-kind residual)
+                   (app (op :at (sequence-type type))
+                        (lit (sequence-type type) representatives)
+                        residual)
+                   (app (op :gather type)
+                        (lit (sequence-type type) representatives)
+                        (lit (sequence-type :int) residual)))))
     (charge ledger :construction (syntax-work model))
     model))
 

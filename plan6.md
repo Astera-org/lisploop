@@ -42,7 +42,7 @@ Every capability across all nine milestones is governed by two structural invari
 | **5. Lifting** | Can latent intermediate concepts be lifted via supplied contexts and discovered unsupervised via Hard-EM fiber clustering? | Op 2 (`infer-fibers`) + Op 3 (pullback/propagation) + Op 4 (`condense-heuristic`) | `frame.lisp`, `factor.lisp`, `laws.lisp` | `lifting-experiments.lisp` (`run-m5`), `tests/lifting.lisp` |
 | **6. Abstraction** | Can repeated subtrees at unaligned positions and law-normalized syntax be factored into reusable abstractions? | Op 2 (aligned AU & subgraph search) + Op 1 (validated rewrites) | `ast.lisp`, `factor.lisp`, `laws.lisp` | `abstraction-experiments.lisp` (`run-m6`), `tests/abstraction.lisp` |
 | **7. Views & Locality** | Can Boolean regime splits be discovered autonomously and locality priors accelerate subexpression search? | Op 1 (guard buckets) + Op 2 (views) + Op 3 (`frame-conflict-p`) + Op 4 (locality) | `frame.lisp`, `factor.lisp` | `view-experiments.lisp` (`run-m7`), `tests/views.lisp` |
-| **8. Recursion** | Can multi-step decomposition chain pullbacks, prune conflicts early, and condense search returns into heuristics? | Op 2 + Op 3 (`fold-constants`, `frame-conflict-p`) + Op 4 (`condense-heuristic`) | `frame.lisp`, `enumerate.lisp`, `factor.lisp`, `laws.lisp` | `tests/propagation.lisp`, `frame.lisp`, `factor.lisp` |
+| **8. Recursion** | Can multi-step decomposition chain pullbacks, prune conflicts early, and **condense search returns into heuristics**? | Op 2 + Op 3 (`fold-constants`, `frame-conflict-p`) + Op 4 (`condense-heuristic`) | `frame.lisp`, `enumerate.lisp`, `factor.lisp`, `laws.lisp` | `tests/propagation.lisp`, `frame.lisp`, `factor.lisp` |
 | **9. Vocabulary** | Can learned functions be indexed by opaque symbols and retrieved via condensed symbolic descriptors? | Op 2 (library packaging) + Op 4 (descriptor condensation & retrieval) | `ast.lisp`, `enumerate.lisp`, `factor.lisp` | Library descriptor synthesis & 3:1 prioritized retrieval |
 
 ---
@@ -60,8 +60,8 @@ constructed by `make-schema` in `ast.lisp` (`schema-domain`, `schema-inputs`, `s
 1. **Ambient Numeric Domain $D$**: Either unbounded signed integers `:int` ($\mathbb{Z}$) or a prime finite field `(:gf p)` ($\mathbb{F}_p$ with $p$ verified prime at construction by `prime-modulus-p`; composite moduli such as `(gf 4)` raise an immediate error). All arithmetic inside $\mathbb{F}_p$ is reduced modulo $p$, with exact multiplicative inverse via extended GCD (`gf-invert`) and division by zero raising a metered `evaluation-error`. In `:int`, division `:/` is truncating toward zero (`truncate`), and any non-Boolean conditionals or out-of-bounds sequence operations raise `evaluation-error`.
 2. **Semantic Types $\tau$ and Runtime Value Sets $\mathcal{V}_\tau$**:
    - **Scalars**: `:int` ($\mathcal{V}_{\texttt{:int}} = \mathbb{Z}$), `(:gf p)` ($\mathcal{V}_{\texttt{(:gf }p\texttt{)}} = \{0, \dots, p-1\}$), and `:bool` ($\mathcal{V}_{\texttt{:bool}} = \{\texttt{nil}, \texttt{t}\}$).
-   - **Product Types**: `(:tuple tau_0 ... tau_{k-1})` represented at runtime as proper lists `(v_0 ... v_{k-1})` of length $k$.
-   - **Sequence Types**: `(:seq elem-type)` represented at runtime as proper lists of homogeneous elements, indexed by non-negative `:int` positions via `:gather` or key-value tuple tables via `:lookup`.
+   - **Product Types**: `(:tuple tau_0 ... tau_{k-1})` represented at runtime as proper lists `(v_0 ... v_{k-1})` of length $k$. Homogeneous tuples `(:tuple tau ... tau)` can be indexed by non-negative `:int` positions via `:at` with the exact same bounds-checked semantics as sequences.
+   - **Sequence Types**: `(:seq elem-type)` represented at runtime as proper lists of homogeneous elements, indexed by scalar non-negative `:int` positions via `:at`, batch index lists via `:gather`, or key-value tuple tables via `:lookup`.
    - **Quoted Syntax Types**: `(:code ((id_0 . tau_0) ...) sort)` whose runtime values $v \in \mathcal{V}_\tau$ are typed object-language ASTs wrapped as `(lit code-type expr)`. Quoted syntax values are inspected and constructed by structural `:code-*` operators (`:code-kind`, `:code-child`, `:code-operator`, `:code-apply`, `:code-match`, `:code-bind`, `:code-subst`, `:code-total`) without ever invoking `eval` or `funcall`.
 3. **Exhaustive Domain Grid $D^\Gamma$**: When every input type $\tau_r$ is finite (`(:gf p)`, `:bool`, or nested tuples thereof), the exhaustive input grid $D^\Gamma = \mathcal{V}_{\tau_0} \times \dots \times \mathcal{V}_{\tau_{m-1}}$ is enumerable (`enumerable-type-p`, `enumerate-domain-rows`), enabling complete finite-domain law validation.
 
@@ -81,13 +81,13 @@ querying the prefix-free body bit-length $S_{\mathrm{body}}(e)$ or type $\tau$ o
 
 ### 1.3 Observation Frame $\Omega$, Row $\omega$, and Strict Information Isolation
 
-An **Observation Frame** $\Omega$ (`frame` in `frame.lisp`) combines a `schema` $\Gamma$ with a sequence of **Rows** $\omega \in \Omega$ (`row` in `frame.lisp`):
+- An **Observation Frame** $\Omega$ (`frame` in `frame.lisp`) combines a `schema` $\Gamma$ with a sequence of **Rows** $\omega \in \Omega$ (`row` in `frame.lisp`):
 $$\omega = \bigl(\mathrm{key}(\omega),\; \mathbf{x}_\omega,\; A_\omega(Y)\bigr)$$
 where:
-- $\mathrm{key}(\omega)$ (`row-key`) is an explicit occurrence identifier (such as a sample index, sequence position, or transition probe tag),
-- $\mathbf{x}_\omega = (x_{\omega,0}, \dots, x_{\omega,m-1}) \in \mathcal{V}_{\tau_0} \times \dots \times \mathcal{V}_{\tau_{m-1}}$ (`row-known`) is the tuple of bound input values available at runtime, and
-- $A_\omega(Y)$ (`row-requirement`) is a **unary Boolean predicate S-expression** over the candidate output variable $Y = \texttt{(var 0 }\tau\texttt{)}$ (`#:X0` at runtime). It is *closed with respect to the row's input variables* $X_0, \dots, X_{m-1}$ because their bound runtime values $\mathbf{x}_\omega$ have already been substituted in as literals `'x_w`, leaving $Y = \texttt{(var 0 }\tau\texttt{)}$ as the sole free symbolic variable.
-  - **Execution in the VM Checker**: When search or model verification evaluates a candidate expression $e(X)$ on row $\omega$'s inputs $\mathbf{x}_\omega$ (charging `:proposal-execution` work) to obtain a proposed output value $\hat{y}_\omega = M(e, \omega) \in \mathcal{V}_\tau$, the checker (`start-requirement-evaluation` in `enumerate.lisp`, `check-requirement` in `frame.lisp`) binds `((0 . y_hat))` as the single-variable environment for `(var 0 tau)` and evaluates $A_\omega(\hat{y}_\omega)$ in the resumable VM (charging `:checker` work). Row $\omega$ passes if and only if $A_\omega(\hat{y}_\omega)$ evaluates to `'t`.
+  - $\mathrm{key}(\omega)$ (`row-key`) is an explicit occurrence identifier (such as a sample index, sequence position, or transition probe tag),
+  - $\mathbf{x}_\omega = (x_{\omega,0}, \dots, x_{\omega,m-1}) \in \mathcal{V}_{\tau_0} \times \dots \times \mathcal{V}_{\tau_{m-1}}$ (`row-known`) is the tuple of bound input values available at runtime, and
+  - $A_\omega(Y)$ (`row-requirement`) is a **unary Boolean predicate S-expression** over the candidate output variable $Y = \texttt{(var 0 }\tau\texttt{)}$ (`#:X0` at runtime). It is *closed with respect to the row's input variables* $X_0, \dots, X_{m-1}$ because their bound runtime values $\mathbf{x}_\omega$ have already been substituted in as literals `'x_w`, leaving $Y = \texttt{(var 0 }\tau\texttt{)}$ as the sole free symbolic variable.
+- **Execution in the VM Checker**: When search or model verification evaluates a candidate expression $e(X)$ on row $\omega$'s inputs $\mathbf{x}_\omega$ (charging `:proposal-execution` work) to obtain a proposed output value $\hat{y}_\omega = M(e, \omega) \in \mathcal{V}_\tau$, the checker (`start-requirement-evaluation` in `enumerate.lisp`, `check-requirement` in `frame.lisp`) binds `((0 . y_hat))` as the single-variable environment for `(var 0 tau)` and evaluates $A_\omega(\hat{y}_\omega)$ in the resumable VM (charging `:checker` work). Row $\omega$ passes if and only if $A_\omega(\hat{y}_\omega)$ evaluates to `'t`.
   - **Standard Forms & Lifecycle Across Contexts**: Depending on how the frame was constructed, $A_\omega(Y)$ takes one of four homoiconic forms:
     1. *Supervised / Witnessed I/O (`singleton-requirement`)*: `(= X0 'y_w)`, requiring the exact output $y_\omega$.
     2. *Multi-Witness / Non-Deterministic Reorientation (`set-requirement`)*: `(member X0 '(v_1 ... v_k))` (or `'t` if unconstrained, `'nil` if impossible), produced when `orient-observations` or `orient-arithmetic-requirements` reorients a relation where multiple target values correspond to the same projected input $\mathbf{x}_\omega$.
@@ -97,6 +97,7 @@ where:
 In addition to per-row unary requirements $A_\omega(Y)$, a `frame` $\Omega$ optionally carries relational row linkages `frame-pairs` and `frame-anchors` over row keys $\mathrm{key}(\omega)$, which can either be supplied from transition trajectories (`transition-probes`) or **computed** from any partition, view split, or fiber clustering (`partition-pairs-and-anchors`, `fiber-pairs-and-anchors`, `with-frame-linkage`).
 
 **Strict Information Isolation ("No Informational Loops")**:
+
 1. **Separation of Frame, Oracle, and Provenance**: The `frame` $\Omega$ contains only what the learner is allowed to observe. Any planted generating program or test fixture metadata is stored in a separate `provenance` structure that is never passed to search, law discovery, or factorization procedures. If an interactive `oracle` is used, it may only evaluate candidate inputs $\mathbf{x}$ and charge `:simulation` work; its internal syntax is inaccessible.
 2. **Copy-on-Create Boundary Isolation**: Constructing an `observation-scope` or `search-job` deep-copies `frame-rows` and `language-literals` (`copy-row-list`, `copy-value`) so subsequent mutation by a caller cannot leak information into an active job.
 3. **Standalone Model Execution**: Every synthesized `model` (`program-model`, `lookup-model`, `quotient-model`, `partition-model`, `corpus-abstraction-model`) must serialize to a self-delimiting bit vector via `encode-model`, decode in a clean state via `decode-model`, and pass `verify-model` / `execute-model` after the originating `frame`, `oracle`, and `provenance` have been nilled out.
@@ -114,12 +115,14 @@ All expression evaluation—whether inside candidate synthesis, row requirement 
 #### Description Length $S$ (Encoding v7)
 Every model $M$ is encoded into a prefix-free bit vector under **Encoding v7** (`*encoding-version* = 7`, `codec.lisp`):
 $$S(M) = S_{\mathrm{header}}(\Gamma) + S_{\mathrm{body}}(M)$$
+
 - **Header $S_{\mathrm{header}}(\Gamma)$**: Encodes the 3-bit version (`7`), 2-bit packet kind (`0` expression, `1` lookup table, `2` concatenation corpus, `3` AU template+substitutions), target type $\tau$, input variable schema $((id_0 . \tau_0) \dots)$, and lookup flag once per model. Variable IDs are mapped to 0-based positional indices within the packet so $S_{\mathrm{body}}(M)$ and enumeration order are invariant to raw symbol ID numbers.
 - **Body $S_{\mathrm{body}}(M)$**: Uses 2-bit AST node tags (`0` variable, `1` literal, `2` application, `3` hole) and Elias-gamma self-delimiting integers (`positive-bits` for $n \ge 1$ using $2\lfloor\log_2 n\rfloor + 1$ bits; `signed-bits` via zigzag encoding).
 - **Analytical Literal Inversion**: `literal-range` in `codec.lisp` inverts the zigzag Elias-gamma bit-size threshold in $O(1)$ time to determine the exact integer interval $[-2^{k-1}, 2^{k-1}-1]$ that fits within $b$ remaining bits during bounded bottom-up enumeration.
 
 #### Computational Work $W$ (Tariff v8 & Simulator v5)
 Every operation charges an explicit `work` ledger (`*tariff-version* = 8`, `*simulator-version* = 5`) partitioned into ten orthogonal buckets:
+
 - `:enumeration` (1 unit per candidate AST node or literal range step),
 - `:proposal-execution` (evaluating a candidate $e$ on row inputs $\mathbf{x}_\omega$),
 - `:checker` (evaluating requirement $A_\omega(Y)$ on the proposed output),
@@ -145,6 +148,7 @@ Individual VM instructions are priced by operand bit size (`value-bit-size`): sc
 ### 1.6 Epistemic Grades and Certificates
 
 Every discovered statement, guard, solver, or rewrite rule carries an explicit epistemic status (`law-proposal-status`):
+
 - `:replayed-observations` — holds on a finite set of empirical or held-out trajectory rows.
 - `:conjecture` — holds on all tested sample rows of an infinite domain (`:int`) or an incompletely enumerated finite domain (either due to sample scope or budget `:cutoff`).
 - `:vacuous` — guard is false on every row of the tested scope ($\Omega_{\mathrm{support}} = \emptyset$).
@@ -360,8 +364,8 @@ Operation 2 instantiates `Apply` across three algebras:
    - **Aligned Anti-Unification (`anti-unify` in `factor.lisp`)**: Given typed S-expressions $t_1, \dots, t_N$ (which may be object-language programs, quoted `:code` laws in M3B/M4, or data trees in M6), `anti-unify` computes the least general generalization (LGG) template $p$ containing typed value holes `(hole i type :kind :value)` (`#:?0, #:?1, ...`) and operator holes `(hole i sig :kind :fn)` (when applications share arity and argument/return signature `(arg-types . return-type)`), together with per-row substitution bindings $\theta_\omega$. Repeated subterms across all rows are bound to the **same hole ID** via a shared residual-signature table (`au-state`), enforcing structural equality constraints such as `(?op ?x ?x)` on `(+ '2 '2)` and `(* '3 '3)`. Calling `compile-au-constructor` lowers $p$ into a first-class typed lambda constructor so `au-substitutions-frame` reduces residual synthesis to standard child-frame search.
    - **Unaligned Subgraph Correspondence Search (`discover-subexpression-abstractions` in `factor.lisp` — M6)**: When a shared pattern $p$ occurs at **varying paths** $\pi_\omega$ inside larger trees $T_\omega = W_\omega\bigl[\pi_\omega \gets \mathrm{Subst}(p, \theta_\omega)\bigr]$, `collect-tree-occurrences` indexes all non-leaf subterms, seeds candidate patterns by anti-unifying pairs of compatible subtrees, and greedily extends occurrence sets across the remaining trees to maximize `occurrence-saved-bits` under the spliced pre-order packet codec (`corpus-abstraction-model`).
 
-2. **Sequence & Table Algebra ($\mathrm{Apply} = \mathrm{Gather}$ or $\mathrm{Reassemble}$ — M1, M7)**:
-   - **Quotient View (`quotient-values`, `restore-quotient`, `quotient-model`)**: Factors a value sequence $\{t_\omega\}_{\omega=0}^{N-1}$ into a deduplicated representative table $R = (r_0, \dots, r_{K-1})$ and an index sequence $j_\omega \in \{0, \dots, K-1\}$ such that $t_\omega = \mathrm{gather}(R, j_\omega)$.
+2. **Sequence & Table Algebra ($\mathrm{Apply} = \mathrm{Gather}$, $\mathrm{At}$, or $\mathrm{Reassemble}$ — M1, M7)**:
+   - **Quotient View (`quotient-values`, `restore-quotient`, `quotient-model`)**: Factors a value sequence $\{t_\omega\}_{\omega=0}^{N-1}$ (over scalars or generated tuple spaces) into a deduplicated representative table $R = (r_0, \dots, r_{K-1})$ and an index sequence $j_\omega \in \{0, \dots, K-1\}$ such that $t_\omega = \mathrm{gather}(R, j_\omega)$ in batch mode (`residual` a list of indices) or $t_\omega = \texttt{(at '}R\; j(X_\omega)\texttt{)}$ in per-row functional mode (`residual` an `:int` AST expression).
    - **Partition View (`partition-rows`, `reassemble-partition`, `partition-model`)**: Factors an observation frame $\Omega$ into regime sub-frames $\Omega_0, \dots, \Omega_{K-1}$ while retaining explicit occurrence coordinates so `reassemble-partition` reconstructs the exact original ordered sequence with ties and multiplicity.
 
 3. **Pulled-Back Requirement Algebra ($\mathrm{Apply} = \text{Hard-EM Fiber Intersection}$ — M5)**:
@@ -385,28 +389,33 @@ Given recorded relational observations $(v_{\omega,0}, \dots, v_{\omega,k-1})$ (
 
 #### 2.3.2 Contravariant Pullback & Closed-Subtree Constant Folding (`pullback-frame`, `compose-model` & `fold-constants` in `frame.lisp` — M1, M3C, M4, M5, M7, M8)
 Given a parent frame $\Omega_P$ with row requirements $A_\omega(Y)$ ($Y : \tau_P$), a **candidate outer decoder** $d(X, Z) \in \mathcal{L}(\Gamma \cup \{Z{:}\tau_C\} \to \tau_P)$ (any well-typed object-language expression over the parent's inputs $X$ and a fresh child variable $Z = \texttt{(var child-id }\tau_C\texttt{)}$ whose return type equals $\tau_P$), and a **child context-projection alist** `bindings` $= \bigl((c_0 . e_0(X)), \dots, (c_{k-1} . e_{k-1}(X))\bigr)$, `(pullback-frame parent decoder child-id child-type bindings)` constructs the child frame $\Omega_C$:
+
 - **Child inputs $\mathbf{x}^C_\omega$**: Evaluates each parent context expression $e_r(\mathbf{x}_\omega)$ in the VM to form the child row's known input vector $\mathbf{x}^C_\omega = \bigl(e_0(\mathbf{x}_\omega), \dots, e_{k-1}(\mathbf{x}_\omega)\bigr)$.
 - **Child requirement predicate $B_\omega(Z)$**: Substitutes the parent row's known input values $X \gets \text{'}\mathbf{x}_\omega$ and maps `child-id` $\mapsto Z = \texttt{(var 0 }\tau_C\texttt{)}$ inside $d(X, Z)$, substitutes the closed decoder $d(\mathbf{x}_\omega, Z)$ for `X0` in $A_\omega(\texttt{X0})$, and simplifies the resulting unary predicate via `fold-constants`:
 $$B_\omega(Z) := \mathrm{FoldConstants}\Bigl(A_\omega\bigl(d(\mathbf{x}_\omega, Z)\bigr)\Bigr).$$
 Specifically, `fold-constants`:
+
 - Evaluates every closed ($Z$-free) subexpression once in the metered VM (charging `:orientation` work) and replaces it with its literal value `'v` (leaving any expression that raises a runtime error unfolded so error semantics are preserved);
 - Simplifies Boolean connectives `(if 't a b) -> a`, `(if 'nil a b) -> b`, `(if c 'nil 'nil) -> 'nil`, reflexivity `(= e e) -> 't`, distinct literals `(= 'u 'v) -> 'nil`, and set membership `(member 'v '(...))`;
-- Decomposes tuple equality by constructor injectivity:
-  $$\bigl(\texttt{= (tuple } e_1 \dots e_m\texttt{) '}(v_1 \dots v_m)\bigr) \xrightarrow{\mathrm{FoldConstants}} \bigwedge_{i=1}^m (\texttt{= } e_i\;\texttt{'}v_i),$$
-  and normalizes singleton memberships `(member Z '(v))` into `(= Z 'v)`.
+- Decomposes tuple equality by constructor injectivity and $\beta$-reduces `:at` projections on `:tuple`:
+  $$\bigl(\texttt{= (tuple } e_1 \dots e_m\texttt{) '}(v_1 \dots v_m)\bigr) \xrightarrow{\mathrm{FoldConstants}} \bigwedge_{i=1}^m (\texttt{= } e_i\;\texttt{'}v_i), \qquad \texttt{(at (tuple } e_0 \dots e_{m-1}\texttt{) '}i\texttt{)} \xrightarrow{\mathrm{FoldConstants}} e_i,$$
+  reassembles complete coordinate equalities $\bigwedge_{i=0}^{m-1} (\texttt{= (at } Z\;\texttt{'}i\texttt{) '}v_i)$ back into canonical tuple equality `(= Z '(v_0 ... v_{m-1}))`, inverts 1D and 2D literal `:at` tables/grids (`(= (at 'R Z) 'v)` and `(= (at (at 'G (at Z '0)) (at Z '1)) 'v)`) into exact matching coordinate fibers, and normalizes singleton memberships `(member Z '(v))` into `(= Z 'v)`.
 - **Re-inlining the solved child (`compose-model`)**: Once recursive synthesis finds a child expression $e_C(X_C)$ satisfying $B_\omega(e_C(\mathbf{x}^C_\omega)) = \mathrm{t}$ across $\Omega_C$, `(compose-model decoder child-id e_C bindings)` substitutes $c_r \gets e_r(X)$ into $e_C$ and substitutes the resulting expression for `child-id` inside $d(X, Z)$ to produce the unified parent AST $d\bigl(X, e_C(e_0(X), \dots)\bigr)$.
 
 #### 2.3.3 Immediate Structural & Cross-Row Conflict Detection (`frame-conflict-p` in `frame.lisp` — M5, M7, M8C)
 Immediately after `pullback-frame` and `fold-constants` (before any child candidate enumeration begins), `frame-conflict-p` inspects the pulled-back child frame $\Omega_C$:
+
 - **Row-Level Structural Conflict (`:unsatisfiable-row`)**: If any row $\omega \in \Omega_C$ folds to `B_\omega(Z) = 'nil` (for example, pulling `(= Y '(2 3))` back through the diagonal decoder $d(Z) = \texttt{(tuple } Z\; Z\texttt{)}$ folds via tuple injectivity to `(if (= Z '2) (= Z '3) 'nil)` $\to$ `'nil` when $Z$ is further constrained, or when a constant branch mismatches `'2 != '3`), the decoder $d$ is rejected in $O(1)$ work.
 - **Cross-Row Context/Partition Conflict (`:incompatible-rows`)**: Grouping rows by identical child input vector $\mathbf{x}_\omega$ (`row-known`), if two rows $\omega_1, \omega_2$ share the same child inputs $\mathbf{x}_{\omega_1} = \mathbf{x}_{\omega_2}$ (e.g., because a candidate view split or restricted child signature dropped a distinguishing coordinate $r$) and their requirements conjoin via `conjoin-requirements` to `'nil` ($\mathrm{Fiber}(\omega_1) \cap \mathrm{Fiber}(\omega_2) = \emptyset$), `frame-conflict-p` returns `(values t :incompatible-rows keys)` and prunes the invalid split or decomposition immediately.
 
 #### 2.3.4 Dual-Grade Downward Algebraic Propagation & 3:1 Interleaved Scheduling (`propagate-arithmetic-child` & `propagation-search` in `laws.lisp` — M4, M5, M7, M8) {#sec-3-to-1-scheduling}
 When $B_\omega(Z)$ still contains an unsimplified operator application `(= (op K Z) 'c)` or `(= (op Z K) 'c)` (with known constant $K = k_\omega$ after `fold-constants`), the structural `:code-*` matcher (`compile-propagator-matcher`, `match-arithmetic-propagator`) matches the decoder against the learned `propagator-library`. Each `arithmetic-solver` in the library is synthesized by `discover-arithmetic-solver` and graded by `validate-arithmetic-solver` via two separate implications over $(K, C, Z)$:
+
 - **Witness Law ($\Leftarrow$, Right-Inverse)**: $G(K, C) \implies R_f\bigl(K,\, q(K, C),\, C\bigr)$ (does $z_\omega = q(k_\omega, c_\omega)$ satisfy the forward relation when guard $G(k_\omega, c_\omega)$ holds?).
 - **Uniqueness Law ($\implies$, Injectivity)**: $\bigl(G(K, C) \land R_f(K, Z, C)\bigr) \implies Z = q(K, C)$ (is $q(k_\omega, c_\omega)$ the **only** solution in $\mathcal{V}_{\tau_C}$?).
 
 Downward propagation then acts according to the solver's epistemic grade:
+
 - **Grade 1 — Certified Equivalence ($\iff$, e.g., $\mathbb{F}_p$ addition, subtraction, and nonzero multiplication/division)**: Both the witness law ($\Leftarrow$) and uniqueness law ($\implies$) have status `:validated` across the full finite domain $D^\Gamma$. Whenever $G(k_\omega, c_\omega) = \mathrm{t}$ and $q(k_\omega, c_\omega) = v_\omega$ passes forward verification $B_\omega(v_\omega) = \mathrm{t}$, `propagate-arithmetic-child` replaces $B_\omega(Z)$ **in-place** in the primary child frame with the direct equality `(= Z 'v_w)` (`propagation-certified-p = t`, `propagation-fallback = nil`). On rows where $G(k_\omega, c_\omega) = \mathrm{nil}$ (such as $0 \cdot Z = 0$, where $\mathrm{Fiber}(\omega) = \mathbb{F}_p$, or $0 \cdot Z = 1$, where $\mathrm{Fiber}(\omega) = \emptyset$), $B_\omega(Z)$ is left untouched as an exact predicate.
 - **Grade 2 — Tentative Witness & 3:1 Scheduled Propagation ($\Leftarrow$, e.g., $\mathbb{Z}$ arithmetic where sample validation yields `:conjecture`, or truncating integer division where uniqueness is `:refuted` because $Z / 2 = 1$ admits $\{2, 3\}$)**:
   - **Why in-place replacement is unsafe for $\Leftarrow$**: Because $q(k_\omega, c_\omega)$ is only a right-inverse (it picks *one* witness $v_\omega$ out of a potentially multi-valued fiber $\mathrm{Fiber}(\omega)$) or was only tested on a finite sample of $\mathbb{Z}$, replacing $B_\omega(Z)$ in-place with `(= Z 'v_w)` can over-constrain the child problem. For example, if row 1 has $Z / 2 = 1$ ($\mathrm{Fiber}(\omega_1) = \{2, 3\}$, solver picks $v_1 = 2$) and row 2 on the same input has $Z / 3 = 1$ ($\mathrm{Fiber}(\omega_2) = \{3, 4, 5\}$, solver picks $v_2 = 3$), replacing both rows in-place demands $Z = 2$ and $Z = 3$ simultaneously, making the child frame unsatisfiable even though $Z = 3$ satisfies both rows.
@@ -422,12 +431,14 @@ Downward propagation then acts according to the solver's epistemic grade:
 Operations 1–3 require lossless exactness ($\varepsilon_\omega = 0$) because an unverified error in an object-level program or law corrupts correctness. By contrast, **control heuristics**—which choose which partition branch to try, which occurrence pair or search continuation to expand next, or which library function to test first—cannot corrupt soundness provided every candidate solution is still checked by the authoritative verifier and a canonical reserve lane remains active.
 
 `condense-heuristic` (`factor.lisp`) formulates heuristic learning as **lossy MDL table condensation**:
+
 - Given a finite empirical frame $F = \{(\mathbf{x}_{\omega_i}, B_{\omega_i}(Z))\}_{i=0}^{N-1}$ mapping context features $\mathbf{x}_{\omega_i}$ (row inputs, subtree coordinates, or probe signatures) to child requirement predicates $B_{\omega_i}(Z)$ (often singleton labels `(= Z 'w_i)`, multi-valued fibers `(member Z '(...))`, or unconstrained `'t` with canonical witness $w_i \in \mathrm{Fiber}(\omega_i)$), `condense-heuristic` enumerates compact candidate expressions $\hat{\pi} \in \mathcal{L}(\Gamma_{\mathrm{control}})$ and evaluates $\hat{\pi}(\mathbf{x}_{\omega_i})$ against $B_{\omega_i}(Z)$ via `check-requirement`.
 - During training, each candidate $\hat{\pi}$ is scored by the full two-part code length plus runtime work:
   $$J_{\mathrm{heuristic}}(\hat{\pi}) = S(\hat{\pi}) + \underbrace{\sum_{i:\,B_{\omega_i}(\hat{\pi}(\mathbf{x}_{\omega_i})) \neq \mathrm{t}} \Bigl(\mathrm{positive\text{-}bit\text{-}size}(i + 1) + \mathrm{value\text{-}bit\text{-}size}(w_i, \tau)\Bigr)}_{S(\varepsilon(\hat{\pi}, F))} + \lambda_{\mathrm{run}}\, W_{\mathrm{run}}(\hat{\pi}).$$
 - **Dropping $\varepsilon$ at deployment**: Once the minimizing expression $\hat{\pi}^*$ is selected (improving over the uncondensed `lookup-model` baseline), the exception table $\varepsilon(\hat{\pi}^*, F)$ is **discarded**. At deployment, only the compact symbolic program $\hat{\pi}^*(X)$ is evaluated in the metered VM, paired with the **1-in-4 canonical reserve schedule** (`(= 3 (mod turn 4))`).
 
 Operation 4 powers three control loops across the milestones:
+
 1. **Intensional Partition Selectors (M5, M7)**: After `infer-fibers` (M5) or `discover-partition-views` (M7) assigns latent regime indices $j_\omega \in \{0, \dots, K-1\}$ to rows $\omega \in \Omega$, `condense-heuristic` compresses the extensional label table $(\mathbf{x}_\omega \mapsto j_\omega)$ into an intensional selector program $\hat{\pi}(X)$ deployed at runtime without carrying the per-row lookup table.
 2. **Locality & Continuation Return Predictors (M7, M8D)**: In M7 (`schedule-occurrence-pairs`), subtree occurrence pairs are prioritized by structural distance (`compute-tree-locality-positions`) or an induced `:locality-key` expression with a 1-in-4 canonical reserve. In M8D, logged episode continuation returns $G_t = B_t - B_T - \lambda_{\mathrm{search}}(W_T - W_t)$ are condensed via `condense-heuristic` into a symbolic value predictor $\hat{\pi}(\text{features})$ that prioritizes search continuations 3:1 over canonical enumeration.
 3. **Compositional Library Descriptors (M9)**: Given a library of opaque function symbols (`F_0, F_1, ...`) accumulated across M1–M8, `condense-heuristic` synthesizes compact symbolic probe descriptors that rank which library primitives to test first on a new partial I/O frame.
@@ -464,6 +475,7 @@ At runtime, `expr` is the ordinary cons tree `(#:+ #:X0 (#:+ #:X1 #:X1))`, which
 ### 3.2 Concrete Example 2: Pullback, `fold-constants`, `frame-conflict-p`, and $\iff$ vs. $\Leftarrow$ Propagation
 
 Consider a parent row $\omega$ with bound inputs $\mathbf{x}_\omega = (a_\omega, b_\omega) = (2, 3)$ and target requirement $A_\omega(Y) \equiv (\texttt{= } Y\;\texttt{'1})$. Suppose the parent proposes the outer decoder $Y = d(X_0, X_1, Z) = (X_0 + X_0) + Z$.
+
 1. **Pullback + Constant Folding (`pullback-frame`)**: Substituting $X_0 \gets \texttt{'2}$ into $A_\omega(d(X, Z))$ yields `(= (+ (+ '2 '2) Z) '1)`. Because `(+ '2 '2)` contains no occurrence of the child target $Z = \texttt{(var 0 ...)}$, `fold-constants` evaluates `(+ '2 '2)` once in the VM (producing `'4` in $\mathbb{F}_5$ or `'4` in $\mathbb{Z}$) and simplifies the row requirement to:
    $$B_\omega(Z) \equiv (\texttt{= (+ '4 } Z\texttt{) '1})$$
    so child search never re-evaluates `(+ '2 '2)` on any candidate for $Z$.
@@ -475,6 +487,7 @@ Consider a parent row $\omega$ with bound inputs $\mathbf{x}_\omega = (a_\omega,
 ### 3.3 Concrete Example 3: Two-Stage Unsupervised Concept Lifting via `infer-fibers` and `condense-heuristic`
 
 In Milestone 5 (`lifting-experiments.lisp`), observations of $y_{r,t} = a_{j(r)} + \iota(t)$ over $\mathbb{F}_7$ with unknown regime offsets $a_0 = 1, a_1 = 3$ and occurrence coordinate $r \in \{0, \dots, 2\cdot\text{reps}-1\}$ are pulled back through the decoder $d((r, t), Z) = \iota(t) + Z$:
+
 1. **Stage 1 (`infer-fibers`)**: On each row $\omega = (r, t)$, pulling back $A_\omega(Y) \equiv (\texttt{= } Y\;\texttt{'}y_{r,t})$ and applying `fold-constants` (or M4 certified $\mathbb{F}_7$ addition propagation) yields $B_\omega(Z) \equiv (\texttt{= } Z\;\texttt{'}a_{j(r)})$. `infer-fibers` groups identical-input rows via `tighten-same-input-requirements`, detects that projecting onto coordinate $X_0 = r$ is conflict-free whereas projecting onto $X_1 = t$ has cross-row fiber conflicts ($1 \neq 3$), and runs branch-and-bound MDL partition search to recover the exact $K = 2$ fiber clusters $B_{c_0}(Z) \equiv (\texttt{= } Z\;\texttt{'1})$ and $B_{c_1}(Z) \equiv (\texttt{= } Z\;\texttt{'3})$ along with per-row labels $j_\omega \in \{0, 1\}$.
 2. **Stage 2 (`condense-heuristic` vs. `context-label-frame`)**: The discovered labels $j_\omega$ can be deployed either extensionally via a paid `lookup-model` on $r$ (`context-label-frame`) or intensionally by calling `condense-heuristic` to synthesize a compact selector expression $\hat{\pi}(r, t)$ (with 0 residual bits when $j(r)$ is a clean predicate on $r$).
 
@@ -494,6 +507,7 @@ Each milestone below is specified in the unified vocabulary of Section 1 and Sec
 
 #### Research Question & Mathematical Formulation
 Can a single size-bounded bottom-up enumerator (`search-job`) over a typed S-expression grammar $\mathcal{L}(\Gamma)$ synthesize compact programs $e$ satisfying $\forall \omega \in \Omega,\; A_\omega(M(e, \omega)) = \mathrm{t}$ (Operation 1.1) such that:
+
 1. $J_{\mathrm{exact}}(e) = S(e) + \lambda_{\mathrm{run}} W_{\mathrm{run}}(e)$ strictly beats both a packaged `lookup-model` table and a literal sequence packet on complete finite-field tables ($\mathbb{F}_5$) and generalizes to held-out $2^{256}$-scale inputs on unbounded integers ($\mathbb{Z}$);
 2. Preemption and resumption at `quantum = 1` preserve exact continuation and work-ledger identity (`equalp`) with batch execution; and
 3. Causal reorientation (`orient-observations`), contravariant pullback (`pullback-frame`), sequence factoring (`quotient-values`, `partition-rows`), and aligned anti-unification (`anti-unify`) operate on the exact same `frame` and AST representations without side-channel leakage?
@@ -508,7 +522,7 @@ Can a single size-bounded bottom-up enumerator (`search-job`) over a typed S-exp
 
 #### Concrete Experiments & Test Suite (`experiments.lisp` `run-m1`, `tests/core.lisp`, `tests/codec.lisp`)
 - **Experiment Runner (`run-m1` in `experiments.lisp`)**: Executes the 7-row $\mathbb{F}_5$ and `:int` experimental matrix (`:cutoff-50`, `:exhausted-50`, `:extended-61` at $(\lambda_{\mathrm{run}}, \lambda_{\mathrm{search}}) = (0, 0)$ and $(1/100, 1/1000)$, `:contradiction`, `:pullback`, and `:int-linear-45` with $2^{256}$ held-out replay) plus `verify-m1-controls`.
-- **Authoritative Tests in `tests/core.lisp` (14 `deftest`s)**:
+- **Authoritative Tests in `tests/core.lisp` (15 `deftest`s)**:
   1. `domains-codec-and-runtime`: Verifies $\mathbb{F}_5$ modular arithmetic and multiplicative inverses (`gf-invert`), rejects composite modulus `(gf 4)`, rejects retired `:index` types, rejects reader macros (`#.`) and trailing tokens in `read-program-string`, verifies no host closures or `:fetch` ops exist, and checks that stepping $(2^{160})^2$ with small work budgets matches batch evaluation and charges more work than `2 * 3`.
   2. `integer-positions-and-bounds`: Tests `:gather` bounds checking on negative indices, exact length boundary, $2^{256}$ indices, and empty sequences; verifies `:lookup` feeding `:gather`; verifies `quantum = 1` vs. batch work parity on `quotient-model` execution (including prepaid bounds-check work before erroring on index 99).
   3. `isolated-reorientation-and-model-data`: Reorients a 5-row $\mathbb{F}_5$ ternary table $(a, b, c = a + 2b)$ to predict $b$ from $(a, c)$ via `orient-observations` with zero `:simulation` charges; verifies `lookup-model` roundtrips through `encode-model`/`decode-model` and executes after `frame` and `records` are nilled out; verifies undeclared variable `(var 99)` and contradictory/disallowed `lookup-model` tables raise errors; verifies overlapping `set-requirement` rows `'(1 2)` and `'(2 3)` on the same key select the shared witness `2`.
@@ -523,6 +537,7 @@ Can a single size-bounded bottom-up enumerator (`search-job`) over a typed S-exp
   12. `batched-search-preserves-continuations-and-costs`: Asserts step-by-step `equalp` identity of `(search-job-work, search-job-cursor, search-job-proposals, candidate-eval-state)` between `quantum = 1` and `quantum = 7` across 200 steps on $\mathbb{F}_5$.
   13. `batched-checker-debt-and-errors`: Tests heavy checker debt (`(= Y (* '2^128 '2^128))`) and mid-checker division-by-zero (`(/ '1 '0)`) at `quantum = 1` vs. batch, verifying exact `equalp` state and ledger parity.
   14. `unpaid-instruction-error-after-batched-work`: Verifies that an out-of-bounds `:gather` index of $2^{256}$ must drain its full 261-unit prepaid bounds-check debt before signaling `evaluation-error`, with exact `quantum = 1` vs. batch parity.
+  15. `at-operator-tuple-projections-and-quotient-pullback`: Verifies `:at` on sequences, homogeneous tuples, and 2D grids (`provably-total-p`, runtime bounds checking, and $\beta$-reduction `(at (tuple e0 e1) 'i) -> ei`); verifies coordinate-to-tuple equality reassembly and Cartesian product extraction for tuple intermediate representations $Z : \texttt{(:tuple :int :int)}$; and verifies per-row `quotient-model` pullback (`(at 'R Z)`) and 2D aliased grid pullback (`(at (at 'G (at Z '0)) (at Z '1))`) into exact coordinate fibers.
 - **Authoritative Tests in `tests/codec.lisp` (5 `deftest`s)**:
   1. `codec-roundtrip-and-boundaries`: Tests Encoding v7 bit-vector roundtrips across scalars, tuples, sequences, lookups, and holes; verifies rejection of empty packets, wrong version tags, reserved node tags (`#b11` without hole context), trailing padding bits, truncated packets, and unbound variable indices.
   2. `codec-enumerator-complete-tiny-grammars`: Verifies 1-to-1 correspondence between all expressions enumerated by `search-job` and valid roundtripping bit packets over $\mathbb{F}_5$ and `:int`.
@@ -536,6 +551,7 @@ Can a single size-bounded bottom-up enumerator (`search-job`) over a typed S-exp
 
 #### Research Question & Mathematical Formulation
 Can the system group enumerated expressions $e \in \mathcal{L}(\Gamma)$ by their empirical outcome vectors $M(e, \omega)_{\omega \in \Omega}$ into observational equivalence classes (`observation-bucket`s, Operation 1.2) so that:
+
 1. Under a state transition action $T : \mathcal{S} \to \mathcal{S}$ observed through trajectory step pairs $(\omega, T\omega)$ and cross-orbit anchors, `observation-invariants` isolates informative conservation laws ($M(e, \omega) = M(e, T\omega)$ on `pairs` and non-constant on `anchors`) without a supervised target column;
 2. Discovered invariants replay on fresh held-out transition pairs (including $2^{256}$ cancellation starts in $\mathbb{Z}$) and reject nearby non-invariant transitions; and
 3. Accidental empirical agreements (such as $X_0 = X_0^2$ on $\{0, 1\}$) split cleanly when discriminating inputs are added, while preserving the original scope's snapshot unchanged?
@@ -667,6 +683,7 @@ Can the system observe forward binary operations $f(a, b) = c$ for $+, -, \times
 
 #### Research Question & Mathematical Formulation
 When a family of observations $y_{r,t} = d\bigl((r, t),\, a_{j(r)}\bigr)$ depends on an unobserved intermediate concept $Z = a_{j(r)}$ indexed by a latent regime $j(r) \in \{0, \dots, K-1\}$ across occurrences $r$ and inner index $t$:
+
 1. Can pulling the parent frame $\Omega_P$ back through $Y = d((r, t), Z)$ (`pullback-frame`) and projecting onto a supplied regime coordinate $j(r)$ lift the child synthesis problem to $Z = g(j)$ so that total description bits $S(\text{composed})$ beat `lookup-model` and raw literal sequences as repetitions grow?
 2. When no regime labels $j(r)$ are supplied, can **unsupervised Hard-EM fiber inference** (`infer-fibers`, Operation 2.3) intersect the pulled-back value fibers $\mathrm{Fiber}(\omega) = \{z \in \mathcal{V}_{\tau_C} \mid B_\omega(z) = \mathrm{t}\}$ across rows, avoid greedy bridge merges via branch-and-bound MDL search, recover the latent regime partition $\Omega = \bigsqcup_{k=0}^{K-1} \Omega_k$, and deploy the discovered labels via either a paid `lookup-model` (`context-label-frame`) or an intensional selector $\hat{\pi}(X)$ synthesized by `condense-heuristic` (Operation 4.1)?
 
@@ -695,6 +712,7 @@ When a family of observations $y_{r,t} = d\bigl((r, t),\, a_{j(r)}\bigr)$ depend
 
 #### Research Question & Mathematical Formulation
 Can Operation 2 in the term algebra be extended from root-aligned trees (`anti-unify`) to:
+
 1. **Unaligned Subgraph Correspondence Search (`discover-subexpression-abstractions`)**: Given a corpus of trees $\{T_i\}_{i=0}^{N-1}$ where a shared template $p$ is embedded at **unknown, varying subtree paths** $\pi_i$ inside distinct outer wrappers $T_i = W_i\bigl[\pi_i \gets \mathrm{Subst}(p, \theta_i)\bigr]$ (and some trees may be unrelated distractions with $\pi_i = \texttt{:none}$), can the system discover $(p, \{\pi_i\}, \{\theta_i\})$ and encode the corpus via a spliced pre-order packet (`corpus-abstraction-model`) that beats literal storage, whole-tree dictionary storage, and root-aligned AU?
 2. **Law-Normalized Syntactic Abstraction**: When equivalent subtrees are obscured by algebraic identity wrappers (such as $e + 0$ or $e \cdot 1$ in $\mathbb{F}_5$), can normalizing the corpus through a `:validated` rewrite library (`prepare-rewrite-library`) expose a strictly tighter anti-unification template $p$ and smaller description length $S$ than raw syntactic AU, while prohibiting uncertified `:int` sample conjectures from altering syntax?
 
@@ -733,8 +751,8 @@ Can Operation 2 in the term algebra be extended from root-aligned trees (`anti-u
   - Filters out trivial splits (where `true-rows` or `false-rows` is empty) and canonicalizes complement symmetry `(G, ~G)` using canonical Boolean masks so each unordered 2-part split $\{\Omega_{\mathrm{true}}, \Omega_{\mathrm{false}}\}$ is evaluated at most once, choosing the shorter guard expression $S(G)$.
   - For each candidate split, checks `frame-conflict-p` on both parts (recording `:conflict` proposals when a branch has incompatible same-input rows), then runs child synthesis under `:separate-parts` and (when a shared outer decoder $d(X, Z)$ is supplied) `:shared-decoder` with `pullback-frame` and optional `propagate-arithmetic-child`, assembling `(if G child_true child_false)` and verifying the composed program in the metered VM.
 - **Locality Distance & 3:1 Interleaved Schedule (`compute-tree-locality-positions`, `schedule-occurrence-pairs`)**:
-  - Assigns each tree a structural position (raw tree index $0 \dots N-1$, or induced rank after evaluating a priced `:locality-key` expression in the metered VM, partitioning via `partition-rows`, and verifying inverse-permutation reconstruction via `reassemble-partition`).
-  - Orders candidate cross-tree occurrence pairs by ascending tree distance $|p_a - p_b|$, path-depth alignment $||\pi_a| - |\pi_b||$, and spine depth $|\pi_a| + |\pi_b|$ in the locality lane, interleaving 3 locality pairs with 1 canonical pair (`(= 3 (mod turn 4))`).
+  - Assigns each tree a structural position (raw tree index $0 \dots N-1$, or generated coordinates / equivalence classes after evaluating a priced `:locality-key` expression in the metered VM, partitioning via `partition-rows` with `reassemble-partition` verification, and quotienting via `quotient-values` with `restore-quotient` verification).
+  - Orders candidate cross-tree occurrence pairs by ascending generated-space distance ($\ell_1$ Manhattan distance $\sum_r |u_{a,r} - u_{b,r}|$ on tuple/vector coordinates, quotient equivalence class agreement on coarse keys, or $|p_a - p_b|$ on 1D positions), path-depth alignment $||\pi_a| - |\pi_b||$, and spine depth $|\pi_a| + |\pi_b|$ in the locality lane, interleaving 3 locality pairs with 1 canonical pair (`(= 3 (mod turn 4))`).
 
 #### Concrete Experiments & Test Suite (`view-experiments.lisp` `run-m7`, `tests/views.lisp`)
 - **Experiment Runner (`run-m7` in `view-experiments.lisp`)**:
@@ -744,7 +762,7 @@ Can Operation 2 in the term algebra be extended from root-aligned trees (`anti-u
 - **Authoritative Tests in `tests/views.lisp` (4 `deftest`s)**:
   1. `view-supplied-vs-discovered-and-three-way-comparison`: Verifies supplied vs. autonomous view discovery, $O(|\Omega|)$ conflict pruning on non-separating guards, and 3-way bit comparison (`:shared-decoder` < `:separate-parts` < `:lookup` in `:int`, and `:shared-decoder` < `:lookup` < `:separate-parts` in $\mathbb{F}_7$).
   2. `view-physical-shuffle-and-permutation-reconstruction`: Verifies `shuffle-frame-rows` invariance, `partition-model` inverse permutation reconstruction with ties, target-leakage rejection when $r$ is withheld, and computed `pairs`/`anchors` via `partition-pairs-and-anchors`, `with-frame-linkage`, and `fiber-pairs-and-anchors` feeding `make-observation-scope` / `observation-invariants`.
-  3. `view-locality-scheduling-and-canonical-reserve`: Verifies `:co-local`, `:distant` (1-in-4 reserve vs. window-only), and `:interleaved` (priced `:locality-key`) subexpression discovery on `locality-abstraction-fixture`.
+  3. `view-locality-scheduling-and-canonical-reserve`: Verifies `:co-local`, `:distant` (1-in-4 reserve vs. window-only), `:interleaved` (1D parity key), and 2D tuple generated-space / `:at`-projected quotient locality on `locality-abstraction-fixture`.
   4. `view-experiment-runner`: Runs the complete `run-m7` suite and verifies all invariants.
 
 ---
@@ -753,6 +771,7 @@ Can Operation 2 in the term algebra be extended from root-aligned trees (`anti-u
 
 #### Research Question & Mathematical Formulation
 Can the kernel compose Operations 2, 3, and 4 into a multi-step recursive synthesis engine that:
+
 1. **Milestone 8A (Recursive Multi-Step Reconstruction)**: Chains `pullback-frame` + `fold-constants` + `propagate-arithmetic-child` across multiple decomposition steps $Y = d_1(X, Z_1),\; Z_1 = d_2(X, Z_2),\; \dots$ (including partial-constraint propagation where degenerating rows leave $Z_2$ unconstrained `'t` while informative rows pin $Z_2$ down) and lifts shared solver structure across primes via `:code` anti-unification?
 2. **Milestone 8B (Backtracking, Depth & DAG Memory)**: Suspends and resumes parent/child search continuations (`search-job`, `observation-job`, `propagation-search`) across backtracking branches while sharing verified child subproblem results, `*node-meta*`, and `*prepared-rewrite-cache*` without recomputing completed subproblems?
 3. **Milestone 8C (Checked Conflict Explanations & Pruning)**: Prunes dead decomposition branches before child enumeration whenever `fold-constants` and `frame-conflict-p` detect a row-level structural contradiction (`:unsatisfiable-row`) or a cross-row input collision (`:incompatible-rows`)?
@@ -807,6 +826,7 @@ Once the system has discovered and verified reusable functions $f_0, f_1, \dots,
 ### 5.2 Required Experiment Trace Standard
 
 Every experiment runner (`run-m1` through `run-m6` and subsequent milestone drivers) emits a machine-checkable structured plist trace (`results.md`) recording:
+
 1. **Schema & Scope**: Ambient domain $D$, input signature, target type $\tau$, row count $|\Omega|$, and bit/work limits.
 2. **Synthesized / Discovered Artifacts**: Exact S-expression syntax, Encoding v7 total bits $S(M) = S_{\mathrm{header}} + S_{\mathrm{body}}$, runtime work $W_{\mathrm{run}}(M)$, and epistemic status (`:validated`, `:conjecture`, `:refuted`, `:replayed-observations`).
 3. **Full 10-Bucket Work Breakdown**: `:enumeration`, `:proposal-execution`, `:checker`, `:simulation`, `:orientation`, `:rewrite`, `:validation`, `:compression`, `:matching`, `:discovery`, and `work-total`.
@@ -815,6 +835,7 @@ Every experiment runner (`run-m1` through `run-m6` and subsequent milestone driv
 ### 5.3 Literature & Reference Boundaries (`[R1]–[R11]`)
 
 The mathematical mechanisms in `lisploop` connect to established literature under strict self-containment boundaries:
+
 - **[R1] Minimum Description Length & Two-Part Codes** (Rissanen 1978; Grünwald 2007): Motivates $J(M) = S(M) + S(\varepsilon(M, \Omega))$ under prefix-free Encoding v7 (`codec.lisp`) and residual-priced heuristic condensation (`condense-heuristic`).
 - **[R2] Levin Universal Search & Resource-Bounded Complexity** (Levin 1973; Schmidhuber 2004): Motivates combining program size $S(M)$, runtime work $W_{\mathrm{run}}(M)$, and search work $W_{\mathrm{search}}(P)$ with a guaranteed 1-in-4 canonical reserve.
 - **[R3] Bottom-Up Observational Equivalence Synthesis** (Udupa et al. 2013 *TRANSIT*; Albarghouthi et al. 2013 *Escher*): Motivates `observation-bucket`s on outcome vectors $M(e, \omega)$, extended here with action-invariant filtering (`observation-invariants`), partial-outcome retention (`:retain-outcomes t`), and exact preemption parity.
@@ -836,6 +857,7 @@ This appendix records the architectural diagnosis and stress-test that transform
 ### A.1 What `plan5` Diagnosed Correctly in `plan4` (Retained in `plan6`)
 
 `plan5` identified three major sources of architectural friction in `plan4`:
+
 1. **Elimination of the Two-Level AST Schism**: In `plan4`, object-language programs were `defstruct` nodes while Milestone 3C quoted programs (`(:code ...)`) were nested data structures manipulated by custom `:code-*` instructions. `plan5` replaced both with **canonical homoiconic S-expressions** (`(+ X0 '1)`) backed by a pooled symbol table (`*typed-symbol-pool*`) and a weak `eq` metadata table (`*node-meta*`) caching type and prefix-free bit size in $O(1)$.
 2. **Unification of Discovery Mechanisms**: `plan5` recognized that synthesis (M1), invariants (M2), laws and guards (M3A), AU compression (M3B/M6), algebraic inversion (M4), concept lifting (M5), and view discovery (M7) are not nine unrelated algorithms, but projections of a small set of operations over an observation matrix $M(e, \omega)$ and pulled-back requirement predicates $A_\omega(d(X, Z))$.
 3. **Consolidation of the Codebase**: `plan5` collapsed `plan4`'s 16 fine-grained source files into a 7-module kernel (`ast.lisp`, `codec.lisp`, `vm.lisp`, `frame.lisp`, `enumerate.lisp`, `factor.lisp`, `laws.lisp`).
