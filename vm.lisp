@@ -291,6 +291,20 @@
          (values (ast-id rhs) (ast-type rhs) lhs))
         (t nil)))))
 
+(defun extract-term-equality (expr)
+  "If EXPR is `(= term 'val)` or `(= 'val term)` for a provably-total non-literal TERM,
+return (VALUES term term-type lit-node)."
+  (when (and (app-p expr) (eq := (operator-name (first expr))))
+    (let ((lhs (first (rest expr)))
+          (rhs (second (rest expr)))
+          (type (operator-operand-type (first expr))))
+      (cond
+        ((and (not (lit-p lhs)) (lit-p rhs) (provably-total-p lhs))
+         (values lhs type rhs))
+        ((and (lit-p lhs) (not (lit-p rhs)) (provably-total-p rhs))
+         (values rhs type lhs))
+        (t nil)))))
+
 (defun extract-var-membership (expr)
   "If EXPR is `(member var '(v1 ... vk))`, return (VALUES var-id var-type values-list)."
   (when (and (app-p expr) (eq :member (operator-name (first expr))))
@@ -299,14 +313,78 @@
       (when (and (var-p lhs) (lit-p rhs))
         (values (ast-id lhs) (ast-type lhs) (ast-value rhs))))))
 
+(defun extract-term-membership (expr)
+  "If EXPR is `(member term '(v1 ... vk))` for a provably-total non-literal TERM,
+return (VALUES term term-type values-list)."
+  (when (and (app-p expr) (eq :member (operator-name (first expr))))
+    (let ((lhs (first (rest expr)))
+          (rhs (second (rest expr)))
+          (type (operator-operand-type (first expr))))
+      (when (and (not (lit-p lhs)) (lit-p rhs) (provably-total-p lhs))
+        (values lhs type (ast-value rhs))))))
+
+(defun replace-subexpression (expr target replacement)
+  "Replace every subtree of EXPR that is EQUAL to TARGET with REPLACEMENT."
+  (cond
+    ((equal expr target) replacement)
+    ((app-p expr)
+     (let* ((args (rest expr))
+            (new-args (mapcar (lambda (arg) (replace-subexpression arg target replacement)) args)))
+       (if (every #'eq new-args args)
+           expr
+           (apply #'app (first expr) new-args))))
+    (t expr)))
+
+(defun extract-conjuncts (expr)
+  "Return the list of atomic conjuncts of a `(if A B 'nil)` conjunction tree."
+  (let ((meta (ignore-errors (ensure-ast-meta expr))))
+    (if (and meta
+             (eq :app (ast-meta-kind meta))
+             (eq :bool (ast-meta-type meta))
+             (eq :if (operator-name (first expr)))
+             (lit-p (fourth expr))
+             (null (ast-value (fourth expr))))
+        (nconc (extract-conjuncts (second expr))
+               (extract-conjuncts (third expr)))
+        (list expr))))
+
+(defun propagate-conjunct-equalities (conjuncts target-expr)
+  "Substitute every singleton equality `(= term 'c)` found in CONJUNCTS into TARGET-EXPR."
+  (let ((result target-expr))
+    (dolist (c conjuncts result)
+      (multiple-value-bind (eq-term eq-type eq-lit) (extract-term-equality c)
+        (declare (ignore eq-type))
+        (when eq-term
+          (setf result (replace-subexpression result eq-term eq-lit)))))))
+
+(defun try-filter-membership (m-term m-type m-vals pred-expr schema ledger budget)
+  "Filter M-VALS by substituting M-TERM -> (lit M-TYPE v) into PRED-EXPR and folding.
+Returns (VALUES filtered-ast success-p)."
+  (let ((kept nil))
+    (dolist (v m-vals)
+      (let* ((subst (replace-subexpression pred-expr m-term (lit m-type v)))
+             (ev (fold-constants subst schema :ledger ledger :budget budget)))
+        (if (lit-p ev)
+            (when (ast-value ev) (push v kept))
+            (return-from try-filter-membership (values nil nil)))))
+    (let ((filtered (remove-duplicates (nreverse kept) :test #'equal :from-end t)))
+      (values
+       (cond
+         ((null filtered) (lit :bool nil))
+         ((null (rest filtered))
+          (app (op := m-type) m-term (lit m-type (first filtered))))
+         (t (app (op :member m-type) m-term
+                 (lit (sequence-type m-type) filtered))))
+       t))))
+
 (defun fold-constants (expr &optional schema &key ledger (budget 10000))
   "Recursively evaluate closed subtrees via the VM, short-circuiting `if`,
-propagating singleton equalities `(= x 'c)` into `then`-branches, and
-decomposing tuple equalities `(= (tuple a1 a2) '(v1 v2))`."
+propagating singleton equalities `(= term 'c)` into `then`-branches,
+filtering `:member` sets across conjunctions, and decomposing tuple equalities."
   (let ((meta (ignore-errors (ensure-ast-meta expr))))
     (cond
       ((or (null meta) (member (ast-meta-kind meta) '(:lit :var :op :hole)))
-       expr)
+        expr)
       ((eq :app (ast-meta-kind meta))
        (let ((operator (first expr))
              (args (rest expr)))
@@ -318,57 +396,44 @@ decomposing tuple equalities `(= (tuple a1 a2) '(v1 v2))`."
                   (if (ast-value cond-folded)
                       (fold-constants (second args) schema :ledger ledger :budget budget)
                       (fold-constants (third args) schema :ledger ledger :budget budget))
-                  (multiple-value-bind (eq-var eq-type eq-lit) (extract-var-equality cond-folded)
-                    (declare (ignore eq-type))
-                    (let* ((yes-source (if eq-var
-                                           (instantiate (second args) (list (cons eq-var eq-lit)) :var)
-                                           (second args)))
-                           (yes-folded (fold-constants yes-source schema :ledger ledger :budget budget))
-                           (no-folded (fold-constants (third args) schema :ledger ledger :budget budget)))
-                      (cond
-                        ;; Idempotent branches on a total condition: `(if cond X X) -> X`
-                        ((and (provably-total-p cond-folded) (equal yes-folded no-folded))
-                         yes-folded)
-                        ;; Boolean identity: `(if cond 't 'nil) -> cond`
-                        ((and (eq :bool (ast-meta-type meta))
-                              (lit-p yes-folded) (eq t (ast-value yes-folded))
-                              (lit-p no-folded) (null (ast-value no-folded)))
-                         cond-folded)
-                        ;; Symmetric conjunction with singleton equality in `yes` branch: `(if cond (= x 'c) 'nil)`
-                        ((and (lit-p no-folded) (null (ast-value no-folded))
-                              (nth-value 0 (extract-var-equality yes-folded)))
-                         (multiple-value-bind (y-var y-type y-lit) (extract-var-equality yes-folded)
-                           (declare (ignore y-type))
-                           (let ((cond-subst (fold-constants
-                                              (instantiate cond-folded (list (cons y-var y-lit)) :var)
-                                              schema :ledger ledger :budget budget)))
-                             (if (lit-p cond-subst)
-                                 (if (ast-value cond-subst) yes-folded (lit :bool nil))
-                                 (app operator cond-folded yes-folded no-folded)))))
-                        ;; Finite-set filtering in a conjunction: `(if (member x S) yes 'nil)`
-                        ((and (lit-p no-folded) (null (ast-value no-folded))
-                              (nth-value 0 (extract-var-membership cond-folded)))
-                         (multiple-value-bind (m-var m-type m-vals) (extract-var-membership cond-folded)
-                           (if (subsetp (free-vars yes-folded) (list m-var))
-                               (let ((kept nil) (all-decided t))
-                                 (dolist (v m-vals)
-                                   (let ((ev (fold-constants
-                                              (instantiate yes-folded (list (cons m-var (lit m-type v))) :var)
-                                              schema :ledger ledger :budget budget)))
-                                     (if (lit-p ev)
-                                         (when (ast-value ev) (push v kept))
-                                         (setf all-decided nil))))
-                                 (if all-decided
-                                     (let ((filtered (nreverse kept)))
-                                       (cond
-                                         ((null filtered) (lit :bool nil))
-                                         ((null (rest filtered))
-                                          (app (op := m-type) (var m-var m-type) (lit m-type (first filtered))))
-                                         (t (app (op :member m-type) (var m-var m-type)
-                                                 (lit (sequence-type m-type) filtered)))))
-                                     (app operator cond-folded yes-folded no-folded)))
-                               (app operator cond-folded yes-folded no-folded))))
-                        (t (app operator cond-folded yes-folded no-folded))))))))
+                  (let* ((cond-conjuncts (extract-conjuncts cond-folded))
+                         (yes-source (propagate-conjunct-equalities cond-conjuncts (second args)))
+                         (yes-folded (fold-constants yes-source schema :ledger ledger :budget budget))
+                         (no-folded (fold-constants (third args) schema :ledger ledger :budget budget)))
+                    (cond
+                      ;; Idempotent branches on a total condition: `(if cond X X) -> X`
+                      ((and (provably-total-p cond-folded) (equal yes-folded no-folded))
+                       yes-folded)
+                      ;; Boolean identity: `(if cond 't 'nil) -> cond`
+                      ((and (eq :bool (ast-meta-type meta))
+                            (lit-p yes-folded) (eq t (ast-value yes-folded))
+                            (lit-p no-folded) (null (ast-value no-folded)))
+                       cond-folded)
+                      ;; Conjunction symmetry & finite-set filtering: `(if cond yes 'nil)`
+                      ((and (lit-p no-folded) (null (ast-value no-folded)))
+                       (let* ((yes-conjuncts (extract-conjuncts yes-folded))
+                              (cond-subst-source (propagate-conjunct-equalities yes-conjuncts cond-folded)))
+                         (unless (eq cond-subst-source cond-folded)
+                           (let ((cond-subst (fold-constants cond-subst-source schema :ledger ledger :budget budget)))
+                             (when (lit-p cond-subst)
+                               (return-from fold-constants
+                                 (if (ast-value cond-subst) yes-folded (lit :bool nil))))
+                             (setf cond-folded cond-subst
+                                   cond-conjuncts (extract-conjuncts cond-folded))))
+                         (dolist (c cond-conjuncts)
+                           (multiple-value-bind (m-term m-type m-vals) (extract-term-membership c)
+                             (when m-term
+                               (multiple-value-bind (res ok)
+                                   (try-filter-membership m-term m-type m-vals yes-folded schema ledger budget)
+                                 (when ok (return-from fold-constants res))))))
+                         (dolist (c yes-conjuncts)
+                           (multiple-value-bind (m-term m-type m-vals) (extract-term-membership c)
+                             (when m-term
+                               (multiple-value-bind (res ok)
+                                   (try-filter-membership m-term m-type m-vals cond-folded schema ledger budget)
+                                 (when ok (return-from fold-constants res))))))
+                         (app operator cond-folded yes-folded no-folded)))
+                      (t (app operator cond-folded yes-folded no-folded)))))))
            ;; Strict application: fold arguments first
            (t
             (let* ((folded-args (mapcar (lambda (arg)
@@ -377,6 +442,19 @@ decomposing tuple equalities `(= (tuple a1 a2) '(v1 v2))`."
                    (rebuilt (if (every #'eq folded-args args)
                                 expr
                                 (apply #'app operator folded-args))))
+              ;; Normalize 0-element and 1-element `:member` on provably-total terms
+              (when (and (eq :member (operator-name operator))
+                         (lit-p (second folded-args))
+                         (provably-total-p (first folded-args)))
+                (let* ((elem-type (operator-operand-type operator))
+                       (vals (remove-duplicates (ast-value (second folded-args)) :test #'equal :from-end t)))
+                  (cond
+                    ((null vals)
+                     (return-from fold-constants (lit :bool nil)))
+                    ((null (rest vals))
+                     (return-from fold-constants
+                       (fold-constants (app (op := elem-type) (first folded-args) (lit elem-type (first vals)))
+                                       schema :ledger ledger :budget budget))))))
               ;; Tuple equality decomposition: `(= (tuple a1 a2) '(v1 v2))`
               (when (eq := (operator-name operator))
                 (let ((lhs (first folded-args))

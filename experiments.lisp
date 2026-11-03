@@ -169,6 +169,8 @@
 
 (load (merge-pathnames "law-experiments.lisp" *load-truename*))
 (load (merge-pathnames "algebra-experiments.lisp" *load-truename*))
+(load (merge-pathnames "lifting-experiments.lisp" *load-truename*))
+(load (merge-pathnames "abstraction-experiments.lisp" *load-truename*))
 
 (let ((mode (second sb-ext:*posix-argv*)) (start (get-internal-real-time)))
   (format t "Encoding ~D; structural tariff ~D; simulator ~D; SBCL ~A; deterministic fixtures; no seed.~%"
@@ -180,6 +182,8 @@
                            (run-split (gf 5)) (run-split :int))
         ((equal mode "m3") (run-m3))
         ((equal mode "m4") (run-m4))
-        (t (error "Expected m1, m2, m3 or m4")))
+        ((equal mode "m5") (run-m5))
+        ((equal mode "m6") (run-m6))
+        (t (error "Expected m1, m2, m3, m4, m5 or m6")))
   (format t "Wall seconds (includes fixtures/controls, excludes loading): ~,6F.~%"
           (/ (- (get-internal-real-time) start) (float internal-time-units-per-second 1d0))))

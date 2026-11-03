@@ -93,7 +93,7 @@ Operator holes are quoted operator values, not callable host functions."
         (charge ledger :construction (syntax-work model))
         (values model (nreverse inputs))))))
 
-;;; Operation 2.4: Hard-EM Fiber & Partition Inference (infer-fibers)
+;;; Operation 2.4: Minimal-MDL Fiber Partition Search (infer-fibers)
 
 (defstruct fiber-class
   (id 0 :type fixnum)
@@ -101,126 +101,281 @@ Operator holes are quoted operator values, not callable host functions."
   rows
   keys)
 
-(defun fiber-tightness-rank (req)
-  "Rank requirements by constraint tightness:
-   0 = singleton fiber, 1 = finite set (by cardinality), 2 = general predicate."
-  (let ((vals (extract-allowed-values req)))
-    (cond
-      ((and (listp vals) (= 1 (length vals)))
-       (list 0 1 (syntax-work req)))
-      ((and (listp vals) (> (length vals) 1))
-       (list 1 (length vals) (syntax-work req)))
-      (t
-       (list 2 0 (syntax-work req))))))
+(defun unconstrained-requirement-p (expr)
+  (and (lit-p expr) (eq :bool (ast-type expr)) (eq t (ast-value expr))))
 
-(defun tightness-less-p (rank1 rank2)
-  (loop for a in rank1 for b in rank2
-        when (/= a b) return (< a b)
-        finally (return nil)))
-
-(defun infer-fibers (frame &optional ledger (budget 10000))
-  "Hard-EM fiber/partition inference over ambiguous or relational row requirements.
-Orders rows by constraint tightness (singletons -> small finite sets -> general predicates),
-enforces cannot-links via `conjoin-requirements` folding to `nil`, assigns already-satisfied
-rows for free (E-step), and merges/nucleates equivalence classes using coverage-vote
-amortized DL cost (M-step).
-Returns (VALUES classes labels refined-frame partition)."
+(defun tighten-same-input-requirements (frame &optional ledger (budget 10000))
+  "Fold each row's requirement and enforce functional determinism:
+1. Rows sharing identical non-empty `row-known` conjoin their compatible requirements.
+2. When `frame` has multiple input columns and distinct full `row-known` tuples, search
+   candidate single-coordinate input projections `X_i` via the metered VM and adopt the
+   minimum-MDL conflict-free projection (if one exists) that narrows all buckets."
   (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
          (target-type (schema-target schema))
          (checker-schema (make-schema :inputs (list (cons 0 target-type)) :target :bool))
          (rows-vec (coerce (frame-rows frame) 'vector))
          (n (length rows-vec))
          (folded-reqs (make-array n))
-         (ranks (make-array n))
-         (order (loop for i below n collect i))
-         (classes nil)
-         (assignments (make-array n :initial-element nil)))
-    ;; Pre-fold each row's requirement and compute tightness rank
+         (repeated-full-known-p nil))
+    ;; 1. Fold closed subtrees in each row's requirement
     (loop for i below n
           for row = (aref rows-vec i)
           for folded = (fold-constants (row-requirement row) checker-schema
                                        :ledger ledger :budget budget)
           do (charge ledger :fiber-inference (syntax-work folded))
-             (setf (aref folded-reqs i) folded
-                   (aref ranks i) (fiber-tightness-rank folded)))
-    ;; Sort row indices in confidence order (tightest constraints first)
-    (setf order (stable-sort order (lambda (i j)
-                                     (tightness-less-p (aref ranks i) (aref ranks j)))))
-    ;; Hard-EM E-step & M-step loop
-    (loop for pos from 0
-          for idx in order
-          for row = (aref rows-vec idx)
-          for req = (aref folded-reqs idx)
-          for remaining-indices = (nthcdr (1+ pos) order)
-          do (if (unsatisfiable-requirement-p req)
-                 ;; Unsatisfiable row forms its own conflict class
-                 (let ((new-class (make-fiber-class :id (length classes)
-                                                    :requirement req
-                                                    :rows (list idx)
-                                                    :keys (list (row-key row)))))
-                   (setf classes (append classes (list new-class))
-                         (aref assignments idx) (fiber-class-id new-class)))
-                 (let ((best-class nil)
-                       (best-joint nil)
-                       (best-free-p nil)
-                       (best-score nil)
-                       (best-votes -1))
-                   (dolist (class classes)
-                     (charge ledger :fiber-inference)
-                     (let ((joint (conjoin-requirements (fiber-class-requirement class) req target-type
-                                                        :ledger ledger :budget budget)))
-                       ;; Cannot-link check: if joint folds to 'nil, row cannot join this class
+             (setf (aref folded-reqs i) folded))
+    ;; 2. Exact same-input functional determinism over full `row-known`
+    (let ((by-known (make-hash-table :test #'equal)))
+      (loop for i below n
+            for known = (row-known (aref rows-vec i))
+            when known
+            do (push i (gethash known by-known)))
+      (maphash
+       (lambda (known indices)
+         (declare (ignore known))
+         (when (> (length indices) 1)
+           (setf repeated-full-known-p t)
+           (let ((joint (aref folded-reqs (first indices))))
+             (dolist (idx (rest indices))
+               (unless (unsatisfiable-requirement-p joint)
+                 (charge ledger :fiber-inference)
+                 (setf joint (conjoin-requirements joint (aref folded-reqs idx) target-type
+                                                   :ledger ledger :budget budget))))
+             (unless (unsatisfiable-requirement-p joint)
+               (dolist (idx indices)
+                 (setf (aref folded-reqs idx) joint))))))
+       by-known))
+    ;; 3. Candidate sub-projection search when full `row-known` has multiple columns and no repeats
+    (when (and (> (length inputs) 1) (not repeated-full-known-p) (> n 1))
+      (let ((best-reqs nil)
+            (best-bits most-positive-fixnum))
+        (dolist (spec inputs)
+          (let ((proj-expr (var (car spec) (cdr spec)))
+                (by-proj (make-hash-table :test #'equal))
+                (consistent-p t)
+                (narrowed-any-p nil)
+                (candidate-reqs (make-array n))
+                (total-bits 0))
+            (loop for i below n
+                  for row = (aref rows-vec i)
+                  for run = (evaluate proj-expr inputs (row-known row) :ledger ledger :budget budget)
+                  do (if (eq :value (evaluation-status run))
+                         (push i (gethash (evaluation-value run) by-proj))
+                         (setf consistent-p nil)))
+            (when (and consistent-p (< (hash-table-count by-proj) n))
+              (maphash
+               (lambda (val indices)
+                 (declare (ignore val))
+                 (when consistent-p
+                   (let ((joint (aref folded-reqs (first indices))))
+                     (dolist (idx (rest indices))
                        (unless (unsatisfiable-requirement-p joint)
-                         (let* ((old-bits (body-size (fiber-class-requirement class) (list (cons 0 target-type))))
-                                (new-bits (body-size joint (list (cons 0 target-type))))
-                                (free-p (equal joint (fiber-class-requirement class)))
-                                (delta-bits (if free-p 0 (max 0 (- new-bits old-bits))))
-                                ;; Coverage votes among remaining unassigned rows
-                                (votes (1+ (loop for rem-idx in remaining-indices
-                                                 for rem-req = (aref folded-reqs rem-idx)
-                                                 count (not (unsatisfiable-requirement-p
-                                                             (conjoin-requirements joint rem-req target-type
-                                                                                   :ledger ledger :budget budget))))))
-                                (amortized-score (/ delta-bits (max 1 votes))))
-                           (when (or (null best-class)
-                                     (and free-p (not best-free-p))
-                                     (and (eq free-p best-free-p)
-                                          (or (< amortized-score best-score)
-                                              (and (= amortized-score best-score)
-                                                   (> votes best-votes)))))
-                             (setf best-class class
-                                   best-joint joint
-                                   best-free-p free-p
-                                   best-score amortized-score
-                                   best-votes votes))))))
-                   (if best-class
-                       ;; Merge into best compatible class
+                         (charge ledger :fiber-inference)
+                         (setf joint (conjoin-requirements joint (aref folded-reqs idx) target-type
+                                                           :ledger ledger :budget budget))))
+                     (if (or (unsatisfiable-requirement-p joint)
+                             (unconstrained-requirement-p joint))
+                         (setf consistent-p nil)
+                         (let ((bits (body-size joint (list (cons 0 target-type)))))
+                           (dolist (idx indices)
+                             (unless (equal joint (aref folded-reqs idx))
+                               (setf narrowed-any-p t))
+                             (setf (aref candidate-reqs idx) joint)
+                             (incf total-bits bits)))))))
+               by-proj)
+              (when (and consistent-p narrowed-any-p (< total-bits best-bits))
+                (setf best-reqs candidate-reqs
+                      best-bits total-bits)))))
+        (when best-reqs
+          (setf folded-reqs best-reqs))))
+    folded-reqs))
+
+(defstruct req-group
+  requirement
+  indices
+  (count 0 :type fixnum))
+
+(defun infer-fibers (frame &optional ledger (budget 10000))
+  "Minimal-MDL fiber partition search over ambiguous or relational row requirements:
+1. Folds closed subtrees and enforces same-input functional determinism (including
+   conflict-free input coordinate projection search when multiple inputs are present).
+2. Deduplicates rows sharing identical satisfiable requirements into unique groups.
+3. Runs bounded branch-and-bound search over compatible group partitions using
+   `conjoin-requirements`, minimizing class count K, then total requirement bit-length
+   S_body, then empirical label entropy (maximizing class-size concentration).
+Returns (VALUES classes labels refined-frame partition)."
+  (let* ((schema (frame-schema frame))
+         (target-type (schema-target schema))
+         (target-inputs (list (cons 0 target-type)))
+         (rows-vec (coerce (frame-rows frame) 'vector))
+         (n (length rows-vec))
+         (folded-reqs (tighten-same-input-requirements frame ledger budget))
+         (groups nil)
+         (unsat-indices nil)
+         (assignments (make-array n :initial-element nil)))
+    ;; 1. Deduplicate satisfiable rows with identical requirements into unique groups
+    (loop for i below n
+          for req = (aref folded-reqs i)
+          do (if (unsatisfiable-requirement-p req)
+                 (push i unsat-indices)
+                 (let ((existing (find req groups :key #'req-group-requirement :test #'equal)))
+                   (if existing
                        (progn
-                         (setf (fiber-class-requirement best-class) best-joint
-                               (fiber-class-rows best-class) (append (fiber-class-rows best-class) (list idx))
-                               (fiber-class-keys best-class) (append (fiber-class-keys best-class) (list (row-key row)))
-                               (aref assignments idx) (fiber-class-id best-class)))
-                       ;; Nucleate a new equivalence class
-                       (let ((new-class (make-fiber-class :id (length classes)
-                                                          :requirement req
-                                                          :rows (list idx)
-                                                          :keys (list (row-key row)))))
-                         (setf classes (append classes (list new-class))
-                               (aref assignments idx) (fiber-class-id new-class)))))))
-    ;; Build final labels, refined frame, and row partition
-    (let* ((labels (coerce assignments 'list))
-           (refined-rows
-             (loop for i below n
-                   for row = (aref rows-vec i)
-                   for cid = (aref assignments i)
-                   for class = (nth cid classes)
-                   collect (make-row :key (copy-tree (row-key row))
-                                     :known (copy-tree (row-known row))
-                                     :requirement (copy-tree (fiber-class-requirement class)))))
-           (refined-frame (make-frame (copy-schema schema) refined-rows
-                                      :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
-           (part (partition-rows (frame-rows frame) labels ledger)))
-      (values classes labels refined-frame part))))
+                         (push i (req-group-indices existing))
+                         (incf (req-group-count existing)))
+                       (push (make-req-group :requirement req :indices (list i) :count 1)
+                             groups)))))
+    (setf groups (nreverse groups)
+          unsat-indices (nreverse unsat-indices))
+    (dolist (g groups)
+      (setf (req-group-indices g) (nreverse (req-group-indices g))))
+    ;; Order constrained groups before unconstrained `'t` groups, then by ascending body-size
+    (setf groups
+          (stable-sort groups
+                       (lambda (g1 g2)
+                         (let ((u1 (unconstrained-requirement-p (req-group-requirement g1)))
+                               (u2 (unconstrained-requirement-p (req-group-requirement g2))))
+                           (if (not (eq u1 u2))
+                               (not u1)
+                               (< (body-size (req-group-requirement g1) target-inputs)
+                                  (body-size (req-group-requirement g2) target-inputs)))))))
+    ;; 2. Bounded branch-and-bound search for the minimum-MDL compatible partition of `groups`
+    (let ((u (length groups))
+          (groups-vec (coerce groups 'vector))
+          (best-classes nil)
+          (best-k most-positive-fixnum)
+          (best-bits most-positive-fixnum)
+          (best-conc -1)
+          (branches 0)
+          (max-branches 2048))
+      (labels ((partition-better-p (k bits conc)
+                 (or (< k best-k)
+                     (and (= k best-k)
+                          (or (< bits best-bits)
+                              (and (= bits best-bits)
+                                   (> conc best-conc))))))
+               (dfs (g-idx current-classes)
+                 (when (> (incf branches) max-branches)
+                   (return-from dfs))
+                 (let ((k (length current-classes)))
+                   (when (> k best-k)
+                     (return-from dfs))
+                   (if (= g-idx u)
+                       (let ((total-bits 0)
+                             (conc 0))
+                         (dolist (c current-classes)
+                           (let* ((c-req (first c))
+                                  (c-rows (second c))
+                                  (cnt (length c-rows)))
+                             (incf total-bits (* cnt (body-size c-req target-inputs)))
+                             (incf conc (* cnt cnt))))
+                         (when (partition-better-p k total-bits conc)
+                           (setf best-k k
+                                 best-bits total-bits
+                                 best-conc conc
+                                 best-classes (mapcar (lambda (c)
+                                                        (list (first c) (copy-list (second c))))
+                                                      current-classes))))
+                       (let* ((g (aref groups-vec g-idx))
+                              (g-req (req-group-requirement g))
+                              (g-rows (req-group-indices g)))
+                         ;; Branch A: merge group `g` into each compatible existing class
+                         (loop for pos from 0
+                               for c in current-classes
+                               for c-req = (first c)
+                               do (charge ledger :fiber-inference)
+                                  (let ((joint (conjoin-requirements c-req g-req target-type
+                                                                     :ledger ledger :budget budget)))
+                                    (unless (unsatisfiable-requirement-p joint)
+                                      (let ((next-classes
+                                              (loop for elem in current-classes
+                                                    for idx from 0
+                                                    collect (if (= idx pos)
+                                                                (list joint (append (second elem) g-rows))
+                                                                elem))))
+                                        (dfs (1+ g-idx) next-classes)))))
+                         ;; Branch B: nucleate a new class for group `g` (if within K bound)
+                         (when (< k best-k)
+                           (dfs (1+ g-idx)
+                                (append current-classes
+                                        (list (list g-req (copy-list g-rows)))))))))))
+        (dfs 0 nil))
+      ;; 3. Assemble `fiber-class` records (including any isolated unsatisfiable rows)
+      (let ((classes
+              (append (loop for c in best-classes
+                            for idx from 0
+                            collect (make-fiber-class :id idx
+                                                      :requirement (first c)
+                                                      :rows (second c)))
+                      (loop for u-idx in unsat-indices
+                            for idx from (length best-classes)
+                            collect (make-fiber-class :id idx
+                                                      :requirement (aref folded-reqs u-idx)
+                                                      :rows (list u-idx))))))
+        ;; Canonicalize class ordering and IDs by first-appearance row index in FRAME
+        (setf classes (sort classes #'< :key (lambda (c) (reduce #'min (fiber-class-rows c)))))
+        (loop for class in classes
+              for new-id from 0
+              do (setf (fiber-class-id class) new-id
+                       (fiber-class-rows class) (sort (copy-list (fiber-class-rows class)) #'<)
+                       (fiber-class-keys class) (mapcar (lambda (i) (row-key (aref rows-vec i)))
+                                                        (fiber-class-rows class)))
+                 (dolist (r-idx (fiber-class-rows class))
+                   (setf (aref assignments r-idx) new-id)))
+        ;; Build final labels, refined frame, and row partition
+        (let* ((labels (coerce assignments 'list))
+               (refined-rows
+                 (loop for i below n
+                       for row = (aref rows-vec i)
+                       for cid = (aref assignments i)
+                       for class = (nth cid classes)
+                       collect (make-row :key (copy-tree (row-key row))
+                                         :known (copy-tree (row-known row))
+                                         :requirement (copy-tree (fiber-class-requirement class)))))
+               (refined-frame (make-frame (copy-schema schema) refined-rows
+                                          :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
+               (part (partition-rows (frame-rows frame) labels ledger)))
+          (values classes labels refined-frame part))))))
+
+(defun context-label-frame (parent labels &key bindings (label-type :int) (lookup-p t) ledger)
+  "Project PARENT rows through BINDINGS (an alist of (child-input-id . parent-expr),
+defaulting to all parent inputs) onto singleton requirements for LABELS of type LABEL-TYPE.
+Charges evaluation of each context binding expression on LEDGER."
+  (let* ((parent-schema (frame-schema parent))
+         (parent-inputs (schema-inputs parent-schema))
+         (parent-rows (frame-rows parent))
+         (effective-bindings
+           (or bindings
+               (loop for spec in parent-inputs
+                     collect (cons (car spec) (var (car spec) (cdr spec))))))
+         (child-inputs
+           (mapcar (lambda (b)
+                     (cons (car b) (expression-type (cdr b) parent-inputs)))
+                   effective-bindings)))
+    (assert (= (length labels) (length parent-rows)) ()
+            "Label count (~D) must match parent row count (~D)"
+            (length labels) (length parent-rows))
+    (make-frame
+     (make-schema :domain (if (eq label-type :bool) (schema-domain parent-schema) label-type)
+                  :inputs child-inputs
+                  :target label-type
+                  :lookup-p lookup-p)
+     (loop for row in parent-rows
+           for label in labels
+           collect (let* ((known
+                            (mapcar (lambda (binding)
+                                      (let ((run (evaluate (cdr binding) parent-inputs (row-known row)
+                                                           :ledger ledger)))
+                                        (unless (eq (evaluation-status run) :value)
+                                          (error "Context binding did not finish: ~S" run))
+                                        (evaluation-value run)))
+                                    effective-bindings))
+                          (req (singleton-requirement label-type label)))
+                     (charge ledger :context-frame (syntax-work req))
+                     (make-row :key (copy-tree (row-key row))
+                               :known known
+                               :requirement req))))))
 
 ;;; Operation 4: Heuristic Condensation (condense-heuristic)
 
@@ -234,67 +389,73 @@ Returns (VALUES classes labels refined-frame partition)."
   (score 0))
 
 (defun condense-heuristic (frame language &key description-limit (work-limit 100000) (run-weight 0) ledger)
-  "Two-stage MDL heuristic synthesis:
-1. Run Hard-EM `infer-fibers` on FRAME to resolve ambiguous fibers into narrowed requirements.
+  "Direct MDL heuristic synthesis over underconstrained row requirements:
+1. Enforce same-input functional determinism on FRAME via `tighten-same-input-requirements`.
 2. Enumerate candidate selectors/programs in LANGUAGE up to DESCRIPTION-LIMIT and WORK-LIMIT,
-   scoring each candidate by S(program) + S(residual) + run-weight * W_run(program), where
-   residual is the exact bit cost of encoding mismatched rows.
+   checking each candidate's outputs directly against the row requirements via `check-requirement`
+   and scoring by S(program) + S(residual) + run-weight * W_run(program).
 3. Return the best `heuristic-model` (whose deployed `program` drops the training residual)."
-  (multiple-value-bind (classes labels refined-frame)
-      (infer-fibers frame ledger)
-    (declare (ignore classes labels))
-    (let* ((schema (frame-schema refined-frame))
-           (target-type (schema-target schema))
-           (inputs (schema-inputs schema))
-           (bound (or description-limit (+ (header-size inputs target-type) 18)))
-           (scope (make-observation-scope refined-frame language :pairs nil :anchors nil))
-           (obs-job (start-observation-search scope :retain-outcomes t)))
-      (resume-observation-search obs-job bound work-limit)
-      (charge ledger :heuristic-search (ledger-total (observation-job-ledger obs-job)))
-      (let ((best-model nil)
-            (rows (frame-rows refined-frame)))
-        (dolist (record (reverse (observation-job-records obs-job)))
-          (when (equal (observed-expression-type record) target-type)
-            (let* ((expr (observed-expression-expression record))
-                   (prog-bits (description-size expr inputs))
-                   (run-work (observed-expression-run-work record))
-                   (residual nil)
-                   (res-bits 0)
-                   (valid-residual-p t))
-              (loop for row in rows
-                    for outcome in (observed-expression-outcomes record)
-                    for row-idx from 0
-                    do (let ((satisfied-p
-                               (and (eq :value (observation-outcome-status outcome))
-                                    (let ((chk (check-requirement (row-requirement row)
-                                                                  (observation-outcome-value outcome)
-                                                                  :ledger ledger :type target-type)))
-                                      (and (eq :value (evaluation-status chk))
-                                           (eq t (evaluation-value chk)))))))
-                         (unless satisfied-p
-                           (let ((vals (extract-allowed-values (row-requirement row))))
-                             (if (and (listp vals) vals)
-                                 (let ((witness (first vals)))
-                                   (push (cons (row-key row) witness) residual)
-                                   (incf res-bits (+ (positive-bit-size (1+ row-idx))
-                                                     (value-bit-size witness target-type))))
-                                 (setf valid-residual-p nil))))))
-              (when valid-residual-p
-                (let* ((score (+ prog-bits res-bits (* run-weight run-work)))
-                       (candidate-model
-                         (make-heuristic-model :program expr
-                                               :residual (nreverse residual)
-                                               :exact-p (null residual)
-                                               :program-bits prog-bits
-                                               :residual-bits res-bits
-                                               :run-work run-work
-                                               :score score)))
-                  (when (or (null best-model)
-                            (< score (heuristic-score best-model))
-                            (and (= score (heuristic-score best-model))
-                                 (< prog-bits (heuristic-program-bits best-model))))
-                    (setf best-model candidate-model)))))))
-        best-model))))
+  (let* ((schema (frame-schema frame))
+         (target-type (schema-target schema))
+         (inputs (schema-inputs schema))
+         (tightened-reqs (tighten-same-input-requirements frame ledger))
+         (refined-rows
+           (loop for row in (frame-rows frame)
+                 for idx from 0
+                 collect (make-row :key (copy-tree (row-key row))
+                                   :known (copy-tree (row-known row))
+                                   :requirement (aref tightened-reqs idx))))
+         (refined-frame (make-frame (copy-schema schema) refined-rows
+                                    :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
+         (bound (or description-limit (+ (header-size inputs target-type) 18)))
+         (scope (make-observation-scope refined-frame language :pairs nil :anchors nil))
+         (obs-job (start-observation-search scope :retain-outcomes t)))
+    (resume-observation-search obs-job bound work-limit)
+    (charge ledger :heuristic-search (ledger-total (observation-job-ledger obs-job)))
+    (let ((best-model nil)
+          (rows (frame-rows refined-frame)))
+      (dolist (record (reverse (observation-job-records obs-job)))
+        (when (equal (observed-expression-type record) target-type)
+          (let* ((expr (observed-expression-expression record))
+                 (prog-bits (description-size expr inputs))
+                 (run-work (observed-expression-run-work record))
+                 (residual nil)
+                 (res-bits 0)
+                 (valid-residual-p t))
+            (loop for row in rows
+                  for outcome in (observed-expression-outcomes record)
+                  for row-idx from 0
+                  do (let ((satisfied-p
+                             (and (eq :value (observation-outcome-status outcome))
+                                  (let ((chk (check-requirement (row-requirement row)
+                                                                (observation-outcome-value outcome)
+                                                                :ledger ledger :type target-type)))
+                                    (and (eq :value (evaluation-status chk))
+                                         (eq t (evaluation-value chk)))))))
+                       (unless satisfied-p
+                         (let ((vals (extract-allowed-values (row-requirement row))))
+                           (if (and (listp vals) vals)
+                               (let ((witness (first vals)))
+                                 (push (cons (row-key row) witness) residual)
+                                 (incf res-bits (+ (positive-bit-size (1+ row-idx))
+                                                   (value-bit-size witness target-type))))
+                               (setf valid-residual-p nil))))))
+            (when valid-residual-p
+              (let* ((score (+ prog-bits res-bits (* run-weight run-work)))
+                     (candidate-model
+                       (make-heuristic-model :program expr
+                                             :residual (nreverse residual)
+                                             :exact-p (null residual)
+                                             :program-bits prog-bits
+                                             :residual-bits res-bits
+                                             :run-work run-work
+                                             :score score)))
+                (when (or (null best-model)
+                          (< score (heuristic-score best-model))
+                          (and (= score (heuristic-score best-model))
+                               (< prog-bits (heuristic-program-bits best-model))))
+                  (setf best-model candidate-model)))))))
+      best-model)))
 
 ;;; Law Corpus Compression (M3B)
 
@@ -488,3 +649,641 @@ compatible operator names, preserving application shape and all types."
     (charge ledger :corpus-frame (syntax-work req))
     (make-frame (make-schema :inputs nil :target (sequence-type :bool))
                 (list (make-row :key :law-corpus :known nil :requirement req)))))
+
+;;; Subexpression Occurrence Search & Corpus Abstraction (M6)
+
+(defun patterns-isomorphic-p (pattern-a pattern-b &optional inputs ledger)
+  "Check whether PATTERN-A and PATTERN-B are identical up to a sort-preserving
+bijection (alpha-renaming) of hole IDs."
+  (unless (equal (term-sort pattern-a inputs) (term-sort pattern-b inputs))
+    (return-from patterns-isomorphic-p nil))
+  (let ((forward nil)
+        (reverse nil))
+    (labels ((walk (a b)
+               (charge ledger :matching)
+               (cond
+                 ((and (hole-p a) (hole-p b))
+                  (and (equal (ast-type a) (ast-type b))
+                       (let ((f-entry (assoc (ast-id a) forward))
+                             (r-entry (assoc (ast-id b) reverse)))
+                         (cond
+                           ((and f-entry r-entry)
+                            (and (= (cdr f-entry) (ast-id b))
+                                 (= (cdr r-entry) (ast-id a))))
+                           ((or f-entry r-entry) nil)
+                           (t
+                            (push (cons (ast-id a) (ast-id b)) forward)
+                            (push (cons (ast-id b) (ast-id a)) reverse)
+                            t)))))
+                 ((or (hole-p a) (hole-p b)) nil)
+                 ((equal a b) t)
+                 ((and (app-p a) (app-p b)
+                       (= (length (rest a)) (length (rest b))))
+                  (and (walk (first a) (first b))
+                       (every #'walk (rest a) (rest b))))
+                 (t nil))))
+      (walk pattern-a pattern-b))))
+
+(defun pattern-holes (pattern)
+  "Return the ordered list of unique (hole-id . hole-sort) pairs in pre-order."
+  (let ((holes nil))
+    (labels ((walk (term)
+               (cond
+                 ((hole-p term)
+                  (unless (assoc (ast-id term) holes)
+                    (push (cons (ast-id term) (ast-type term)) holes)))
+                 ((app-p term)
+                  (walk (first term))
+                  (mapc #'walk (rest term))))))
+      (walk pattern)
+      (nreverse holes))))
+
+(defun pattern-hole-counts (pattern)
+  "Return an alist (hole-id . multiplicity) for all holes in PATTERN."
+  (let ((counts nil))
+    (labels ((walk (term)
+               (cond
+                 ((hole-p term)
+                  (let ((entry (assoc (ast-id term) counts)))
+                    (if entry
+                        (incf (cdr entry))
+                        (push (cons (ast-id term) 1) counts))))
+                 ((app-p term)
+                  (walk (first term))
+                  (mapc #'walk (rest term))))))
+      (walk pattern)
+      (nreverse counts))))
+
+(defun subtree-at-path (term path &optional ledger)
+  "Return the subexpression of TERM at PATH (a list of 0-based argument indices)."
+  (let ((cur term))
+    (dolist (idx path cur)
+      (charge ledger :occurrence-access)
+      (assert (and (app-p cur) (integerp idx) (<= 0 idx) (< idx (length (rest cur)))) ()
+              "Invalid occurrence path ~S on ~S" path term)
+      (setf cur (nth idx (rest cur))))))
+
+(defun replace-at-path (term path replacement &optional ledger)
+  "Return a copy of TERM with the subexpression at PATH replaced by REPLACEMENT."
+  (charge ledger :occurrence-wrapper)
+  (if (null path)
+      replacement
+      (let ((idx (first path))
+            (args (rest term)))
+        (assert (and (app-p term) (integerp idx) (<= 0 idx) (< idx (length args))) ()
+                "Invalid replacement path ~S on ~S" path term)
+        (apply #'app (first term)
+               (loop for child in args
+                     for i from 0
+                     collect (if (= i idx)
+                                 (replace-at-path child (rest path) replacement ledger)
+                                 child))))))
+
+(defstruct tree-occurrence
+  (tree-index 0 :type fixnum)
+  path
+  term
+  sort
+  signature
+  wrapper
+  (context-hole-id 999 :type fixnum))
+
+(defun collect-tree-occurrences (tree inputs &key (tree-index 0) (context-hole-id 999) ledger)
+  "Collect all subexpression occurrences in TREE in pre-order."
+  (let ((occurrences nil))
+    (labels ((walk (sub rev-path)
+               (charge ledger :occurrence-enumeration)
+               (let* ((path (nreverse (copy-list rev-path)))
+                      (sort (expression-type sub inputs t))
+                      (sig (and (app-p sub) (operator-type (first sub))))
+                      (wrapper (replace-at-path tree path (hole context-hole-id sort) ledger)))
+                 (push (make-tree-occurrence :tree-index tree-index
+                                             :path path
+                                             :term sub
+                                             :sort sort
+                                             :signature sig
+                                             :wrapper wrapper
+                                             :context-hole-id context-hole-id)
+                       occurrences)
+                 (when (app-p sub)
+                   (loop for child in (rest sub)
+                         for i from 0
+                         do (walk child (cons i rev-path)))))))
+      (walk tree nil)
+      (nreverse occurrences))))
+
+(defun au-substitutions-frame (pattern substitutions &key keys known inputs ledger)
+  "Convert recovered AU SUBSTITUTIONS for PATTERN into an ordinary child frame
+whose target is the tuple of quoted hole values `(:tuple (:code inputs hole-sort) ...)`.
+When KNOWN is omitted, defaults each row's known input to its occurrence coordinate `(idx)`."
+  (let* ((holes (pattern-holes pattern))
+         (hole-code-types (mapcar (lambda (h) (code-type inputs (cdr h))) holes))
+         (target-type (apply #'tuple-type hole-code-types))
+         (effective-known (or known
+                              (loop for i below (length substitutions)
+                                    collect (list i))))
+         (schema-inputs (when (first effective-known)
+                          (loop for v in (first effective-known)
+                                for i from 0
+                                collect (cons i :int))))
+         (rows
+           (loop for subst in substitutions
+                 for idx from 0
+                 for key = (if keys (nth idx keys) idx)
+                 for row-known = (nth idx effective-known)
+                 for tuple-val = (mapcar (lambda (h)
+                                           (let ((entry (assoc (car h) subst)))
+                                             (assert entry () "Missing binding for hole ~S" (car h))
+                                             (cdr entry)))
+                                         holes)
+                 for req = (set-requirement target-type (list tuple-val))
+                 do (charge ledger :au-child-frame (syntax-work req))
+                 collect (make-row :key key :known row-known :requirement req))))
+    (make-frame (make-schema :inputs schema-inputs :target target-type :lookup-p t) rows)))
+
+(defstruct (tree-corpus (:constructor %make-tree-corpus))
+  domain
+  inputs
+  sort
+  trees
+  packet)
+
+(defun make-tree-corpus (trees inputs &key domain sort ledger)
+  "Snapshot an ordered sequence of typed ASTs under INPUTS into a standalone bit packet."
+  (assert trees)
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (inferred-sort (or sort (expression-type (first trees) norm-inputs)))
+         (inferred-domain (or domain
+                              (if (and (consp inferred-sort) (eq :gf (first inferred-sort)))
+                                  inferred-sort
+                                  (let ((gf-in (find-if (lambda (spec)
+                                                          (and (consp (cdr spec)) (eq :gf (first (cdr spec)))))
+                                                        norm-inputs)))
+                                    (if gf-in (cdr gf-in) :int)))))
+         (copies (mapcar #'copy-tree trees))
+         (packets
+           (mapcar (lambda (tree)
+                     (assert (equal inferred-sort (expression-type tree norm-inputs)))
+                     (charge ledger :corpus-encoding (syntax-work tree))
+                     (collect-code-values (lambda (emit) (emit-bit-model tree norm-inputs emit)) ledger))
+                   copies))
+         (literal (lit (law-corpus-type inferred-domain) (list 0 packets))))
+    (%make-tree-corpus :domain (copy-tree inferred-domain)
+                       :inputs (copy-tree norm-inputs)
+                       :sort (copy-tree inferred-sort)
+                       :trees copies
+                       :packet (collect-code-values (lambda (emit) (emit-bit-model literal nil emit)) ledger))))
+
+(defun decode-tree-corpus (packet)
+  "Decode a standalone tree-corpus packet back into fresh ASTs and verify schema consistency."
+  (multiple-value-bind (literal top-inputs) (decode-model (values-as-bits packet))
+    (assert (and (null top-inputs) (lit-p literal)))
+    (let* ((type (ast-type literal))
+           (domain (second type))
+           (value (ast-value literal)))
+      (assert (equal type (law-corpus-type domain)))
+      (assert (eql 0 (first value)))
+      (let ((trees nil)
+            (first-schema nil)
+            (first-sort nil))
+        (dolist (bits (second value))
+          (multiple-value-bind (tree schema) (decode-model (values-as-bits bits))
+            (let ((sort (expression-type tree schema)))
+              (if (null trees)
+                  (setf first-schema schema
+                        first-sort sort)
+                  (assert (and (equal schema first-schema)
+                               (equal sort first-sort))))
+              (push tree trees))))
+        (assert trees)
+        (values (nreverse trees) first-schema first-sort domain)))))
+
+(defun tree-corpus-prefix (corpus &optional ledger)
+  (collect-code-values
+   (lambda (emit)
+     (emit-bit-header nil (law-corpus-type (tree-corpus-domain corpus)) emit)
+     (funcall emit 2 1) ; literal
+     (emit-bit-value 0 (tree-corpus-domain corpus) emit)
+     (emit-positive (1+ (length (tree-corpus-trees corpus))) emit))
+   ledger))
+
+(defun tree-corpus-frame (corpus &optional ledger)
+  (let ((req (set-requirement (sequence-type :bool) (list (tree-corpus-packet corpus)))))
+    (charge ledger :corpus-frame (syntax-work req))
+    (make-frame (make-schema :inputs nil :target (sequence-type :bool))
+                (list (make-row :key :tree-corpus :known nil :requirement req)))))
+
+(defun au-body-pieces (pattern inputs &key include-header-p ledger)
+  "Compile a typed AU pattern into fixed bit fragments and hole references.
+When INCLUDE-HEADER-P is nil, omits the outer packet header so the body pieces
+can be spliced at any occurrence path inside an outer wrapper."
+  (let ((pieces nil) (fixed nil))
+    (labels ((emit (width value)
+               (charge ledger :packet-assembly width)
+               (loop for i downfrom (1- width) to 0 do (push (logbitp i value) fixed)))
+             (flush-fixed ()
+               (when fixed (push (list :fixed (nreverse fixed)) pieces) (setf fixed nil)))
+             (walk (term)
+               (charge ledger :au-compilation (syntax-work term))
+               (cond
+                 ((hole-p term) (flush-fixed) (push term pieces))
+                 ((operator-p term) (emit-operator term #'emit))
+                 ((not (pattern-has-holes-p term))
+                  (emit-bit-expression term inputs (expression-type term inputs) #'emit))
+                 (t (assert (app-p term))
+                    (emit 2 2) (walk (first term)) (mapc #'walk (rest term))))))
+      (when include-header-p
+        (emit-bit-header inputs (expression-type pattern inputs t) #'emit))
+      (walk pattern)
+      (flush-fixed)
+      (nreverse pieces))))
+
+(defun tree-occurrence-packet-pieces (tree path body-pieces substitution inputs &key header-in-body-p ledger)
+  "Emit the ordered bit pieces of TREE when the subexpression at PATH is factored
+through BODY-PIECES and SUBSTITUTION. If PATH is :NONE, emits TREE as a single chunk."
+  (let ((root-sort (expression-type tree inputs)))
+    (cond
+      ((eq path :none)
+       (list (collect-code-values (lambda (emit) (emit-bit-model tree inputs emit)) ledger)))
+      ((and (null path) header-in-body-p)
+       (instantiate-packet-pieces body-pieces substitution inputs ledger))
+      (t
+       (let ((chunks nil)
+             (fixed nil))
+         (labels ((emit (width value)
+                    (charge ledger :packet-assembly width)
+                    (loop for i downfrom (1- width) to 0 do (push (logbitp i value) fixed)))
+                  (flush-fixed ()
+                    (when fixed
+                      (push (nreverse fixed) chunks)
+                      (setf fixed nil)))
+                  (walk-wrapper (term rel-path expected-type)
+                    (declare (ignore expected-type))
+                    (if (null rel-path)
+                        (progn
+                          (flush-fixed)
+                          (dolist (piece-bits (instantiate-packet-pieces body-pieces substitution inputs ledger))
+                            (push piece-bits chunks)))
+                        (let ((idx (first rel-path))
+                              (operator (first term)))
+                          (assert (app-p term))
+                          (emit 2 2)
+                          (emit-operator operator #'emit)
+                          (loop for child in (rest term)
+                                for child-type in (second (operator-type operator))
+                                for k from 0
+                                do (if (= k idx)
+                                       (walk-wrapper child (rest rel-path) child-type)
+                                       (emit-bit-expression child inputs child-type #'emit)))))))
+           (emit-bit-header inputs root-sort #'emit)
+           (walk-wrapper tree path root-sort)
+           (flush-fixed)
+           (nreverse chunks)))))))
+
+(defun tree-row-pieces-model (corpus rows &optional ledger)
+  (assert (= (length rows) (length (tree-corpus-trees corpus))))
+  (let ((chunks (list (tree-corpus-prefix corpus ledger))))
+    (map nil (lambda (body)
+               (let ((size (reduce #'+ body :key #'length)))
+                 (push (collect-code-values (lambda (emit) (emit-positive (1+ size) emit)) ledger) chunks)
+                 (dolist (piece body) (push piece chunks))))
+         rows)
+    (packet-chunks-model (nreverse chunks) ledger)))
+
+(defun corpus-abstraction-model (corpus pattern paths substitutions &optional ledger)
+  "Construct a closed VM program reconstructing CORPUS by factoring each tree i
+at `(nth i paths)` (or leaving it unfactored when `(eq :none (nth i paths))`)."
+  (let* ((trees (tree-corpus-trees corpus))
+         (inputs (tree-corpus-inputs corpus))
+         (all-root-p (every #'null paths))
+         (body-pieces (au-body-pieces pattern inputs :include-header-p all-root-p :ledger ledger))
+         (sub-cursor substitutions)
+         (rows
+           (loop for tree in trees
+                 for path in paths
+                 collect (if (eq path :none)
+                             (tree-occurrence-packet-pieces tree :none nil nil inputs :ledger ledger)
+                             (let ((subst (pop sub-cursor)))
+                               (tree-occurrence-packet-pieces tree path body-pieces subst inputs
+                                                              :header-in-body-p all-root-p
+                                                              :ledger ledger))))))
+    (tree-row-pieces-model corpus rows ledger)))
+
+(defstruct subexpression-abstraction
+  (kind :subexpression)
+  pattern
+  sort
+  occurrences
+  substitutions
+  wrappers
+  paths
+  model
+  (bits 0 :type fixnum)
+  (literal-bits 0 :type fixnum)
+  (gain 0 :type fixnum)
+  (structural-score 0 :type fixnum))
+
+(defun term-body-bits (term inputs)
+  "Return the exact body bit length of a concrete term or operator."
+  (if (operator-p term)
+      (length (collect-code-values (lambda (emit) (emit-operator term emit))))
+      (body-size term inputs)))
+
+(defun occurrence-saved-bits (occ pattern substitution inputs)
+  "Exact bit savings inside OCC's tree from factoring `(tree-occurrence-term occ)`
+through PATTERN and unique hole bindings in SUBSTITUTION."
+  (declare (ignore pattern))
+  (let ((sub-bits (body-size (tree-occurrence-term occ) inputs))
+        (unique-hole-bits
+          (loop for (hole-id . hole-val) in substitution
+                sum (term-body-bits hole-val inputs))))
+    (- sub-bits unique-hole-bits)))
+
+(defun abstraction-structural-score (pattern occurrences substitutions inputs)
+  "Compute the structural bit-sharing utility of PATTERN across OCCURRENCES:
+shared fixed template bits across (K - 1) occurrences plus repeated-hole savings
+within each occurrence."
+  (let ((k (length occurrences)))
+    (if (or (< k 2) (null pattern) (hole-p pattern))
+        0
+        (let* ((first-occ (first occurrences))
+               (first-subst (first substitutions))
+               (fixed-bits
+                 (max 0 (- (body-size (tree-occurrence-term first-occ) inputs)
+                           (loop for (hid . mult) in (pattern-hole-counts pattern)
+                                 for entry = (assoc hid first-subst)
+                                 when entry
+                                 sum (* mult (term-body-bits (cdr entry) inputs))))))
+               (total-saved
+                 (loop for occ in occurrences
+                       for subst in substitutions
+                       sum (occurrence-saved-bits occ pattern subst inputs))))
+          (- total-saved fixed-bits)))))
+
+(defun normalize-trees-with-library (trees inputs rewrite-library &key (budget 100000) ledger)
+  "Normalize each tree in TREES using validated REWRITE-LIBRARY in the metered VM."
+  (mapcar (lambda (tree)
+            (let ((state (start-rewriting tree inputs rewrite-library)))
+              (advance-rewriting state budget)
+              (charge ledger :rewriting (rewriting-work state))
+              (if (eq :complete (rewriting-status state))
+                  (rewriting-value state)
+                  tree)))
+          trees))
+
+(defun discover-subexpression-abstractions (trees inputs &key domain rewrite-library ledger)
+  "Search for shared subexpression abstractions across TREES (even when occurrence
+paths are hidden under different outer wrappers or unrelated control trees are present).
+Returns (VALUES best-compression best-structural proposals corpus normalized-trees)."
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (active-trees (if rewrite-library
+                           (normalize-trees-with-library trees norm-inputs rewrite-library :ledger ledger)
+                           trees))
+         (corpus (make-tree-corpus active-trees norm-inputs :domain domain :ledger ledger))
+         (n (length active-trees))
+         (literal-model (lit (sequence-type :bool) (tree-corpus-packet corpus)))
+         (literal-bits (description-size literal-model nil))
+         (dict-chunks (cons (tree-corpus-prefix corpus ledger)
+                            (loop for tree in active-trees
+                                  for pkt = (collect-code-values
+                                             (lambda (emit) (emit-bit-model tree norm-inputs emit))
+                                             ledger)
+                                  collect (append (collect-code-values
+                                                   (lambda (emit) (emit-positive (1+ (length pkt)) emit))
+                                                   ledger)
+                                                  pkt))))
+         (dict-model (packet-chunks-model dict-chunks ledger))
+         (dict-bits (description-size dict-model nil))
+         (proposals
+           (list (make-subexpression-abstraction
+                  :kind :literal
+                  :pattern nil
+                  :sort (tree-corpus-sort corpus)
+                  :paths (make-list n :initial-element :none)
+                  :model literal-model
+                  :bits literal-bits
+                  :literal-bits literal-bits
+                  :gain 0
+                  :structural-score 0)
+                 (make-subexpression-abstraction
+                  :kind :dictionary
+                  :pattern nil
+                  :sort (tree-corpus-sort corpus)
+                  :paths (make-list n :initial-element :none)
+                  :model dict-model
+                  :bits dict-bits
+                  :literal-bits literal-bits
+                  :gain (- literal-bits dict-bits)
+                  :structural-score 0)))
+         (per-tree-occs (make-array n))
+         (buckets (make-hash-table :test #'equal))
+         (candidate-patterns (make-hash-table :test #'equal))
+         (evaluated-selections (make-hash-table :test #'equal)))
+    (charge ledger :construction (syntax-work literal-model))
+    ;; 1. Collect and index all subexpression occurrences across all trees by (sort . signature)
+    (loop for tree in active-trees
+          for i from 0
+          for occs = (collect-tree-occurrences tree norm-inputs :tree-index i :ledger ledger)
+          do (setf (aref per-tree-occs i) occs)
+             (dolist (occ occs)
+               (let ((key (cons (tree-occurrence-sort occ)
+                                (tree-occurrence-signature occ))))
+                 (push occ (gethash key buckets)))))
+    ;; 2. Generate candidate LGG patterns per (sort . signature) bucket
+    (labels ((trivial-subexpression-pattern-p (pat)
+               (or (hole-p pat)
+                   (and (app-p pat)
+                        (every #'hole-p pat)
+                        (every (lambda (entry) (= 1 (cdr entry)))
+                               (pattern-hole-counts pat))))))
+      ;; 2a. Pairwise LGG seeds across distinct subterms in each bucket
+      (maphash
+       (lambda (bucket-key occs)
+         (declare (ignore bucket-key))
+         (let ((rev-occs (nreverse occs))
+               (distinct-occs nil)
+               (term-counts (make-hash-table :test #'equal)))
+           (dolist (o rev-occs)
+             (let ((term (tree-occurrence-term o)))
+               (when (zerop (gethash term term-counts 0))
+                 (push o distinct-occs))
+               (incf (gethash term term-counts 0))))
+           (setf distinct-occs (nreverse distinct-occs))
+           ;; Exact repeated subterms (appearing >= 2 times across occurrences)
+           (dolist (o distinct-occs)
+             (let ((term (tree-occurrence-term o)))
+               (when (and (> (gethash term term-counts 0) 1)
+                          (not (trivial-subexpression-pattern-p term))
+                          (not (gethash term candidate-patterns)))
+                 (setf (gethash term candidate-patterns) (list term term)))))
+           ;; Pairwise LGG of distinct subterms in the same (sort . signature) bucket
+           (loop for tail on distinct-occs
+                 for oa = (first tail)
+                 do (dolist (ob (rest tail))
+                      (let* ((terms (list (tree-occurrence-term oa)
+                                          (tree-occurrence-term ob)))
+                             (pat (anti-unify terms norm-inputs ledger)))
+                        (unless (or (trivial-subexpression-pattern-p pat)
+                                    (gethash pat candidate-patterns))
+                          (setf (gethash pat candidate-patterns) terms)))))))
+       buckets)
+      ;; 2b. Multi-tree LGG relaxation across non-matching trees
+      (let ((seed-entries nil))
+        (maphash (lambda (pat witnesses) (push (cons pat witnesses) seed-entries))
+                 candidate-patterns)
+        (dolist (entry (nreverse seed-entries))
+          (let ((cur-pat (car entry))
+                (cur-witnesses (cdr entry)))
+            (loop for i below n
+                  for tree-occs = (aref per-tree-occs i)
+                  for pat-sort = (term-sort cur-pat norm-inputs)
+                  unless (some (lambda (o)
+                                 (and (equal (tree-occurrence-sort o) pat-sort)
+                                      (nth-value 1 (match-pattern cur-pat (tree-occurrence-term o)
+                                                                  norm-inputs ledger))))
+                               tree-occs)
+                  do (let ((best-relaxed nil)
+                           (best-witnesses nil)
+                           (best-saved 0))
+                       (dolist (o tree-occs)
+                         (when (and (equal (tree-occurrence-sort o) pat-sort)
+                                    (equal (tree-occurrence-signature o)
+                                           (and (app-p cur-pat) (term-sort (first cur-pat) norm-inputs))))
+                           (let ((new-witnesses (append cur-witnesses (list (tree-occurrence-term o)))))
+                             (multiple-value-bind (relaxed substs)
+                                 (anti-unify new-witnesses norm-inputs ledger)
+                               (unless (trivial-subexpression-pattern-p relaxed)
+                                 (let ((saved (occurrence-saved-bits o relaxed (car (last substs)) norm-inputs)))
+                                   (when (> saved best-saved)
+                                     (setf best-saved saved
+                                           best-relaxed relaxed
+                                           best-witnesses new-witnesses))))))))
+                       (when best-relaxed
+                         (setf cur-pat best-relaxed
+                               cur-witnesses best-witnesses)
+                         (unless (gethash cur-pat candidate-patterns)
+                           (setf (gethash cur-pat candidate-patterns) cur-witnesses)))))))))
+    ;; Always include aligned whole-tree AU when all trees share the corpus root sort
+    (when (> n 1)
+      (let ((root-pat (anti-unify active-trees norm-inputs ledger)))
+        (unless (gethash root-pat candidate-patterns)
+          (setf (gethash root-pat candidate-patterns) active-trees))))
+    ;; 3. For each candidate pattern, select optimal matching occurrences per tree, tighten via AU, and price
+    (let ((scored-selections nil))
+      (labels ((record-occurrence-selection (selected-occs kind)
+                 (when (>= (length selected-occs) 2)
+                   (let ((sel-key (cons kind
+                                        (mapcar (lambda (o) (cons (tree-occurrence-tree-index o)
+                                                                  (tree-occurrence-path o)))
+                                                selected-occs))))
+                     (unless (gethash sel-key evaluated-selections)
+                       (setf (gethash sel-key evaluated-selections) t)
+                       (multiple-value-bind (tight-pat substs)
+                           (anti-unify (mapcar #'tree-occurrence-term selected-occs) norm-inputs ledger)
+                         (let ((struct-score (abstraction-structural-score tight-pat selected-occs substs norm-inputs)))
+                           (push (list :kind kind
+                                       :selected-occs selected-occs
+                                       :tight-pat tight-pat
+                                       :substs substs
+                                       :struct-score struct-score)
+                                 scored-selections)))))))
+               (price-selection (entry)
+                 (let* ((kind (getf entry :kind))
+                        (selected-occs (getf entry :selected-occs))
+                        (tight-pat (getf entry :tight-pat))
+                        (substs (getf entry :substs))
+                        (struct-score (getf entry :struct-score))
+                        (paths (loop for i below n
+                                     for occ = (find i selected-occs :key #'tree-occurrence-tree-index)
+                                     collect (if occ (tree-occurrence-path occ) :none)))
+                        (wrappers (loop for i below n
+                                        for occ = (find i selected-occs :key #'tree-occurrence-tree-index)
+                                        collect (when occ (tree-occurrence-wrapper occ))))
+                        (model (corpus-abstraction-model corpus tight-pat paths substs ledger))
+                        (bits (description-size model nil)))
+                   (push (make-subexpression-abstraction
+                          :kind kind
+                          :pattern tight-pat
+                          :sort (term-sort tight-pat norm-inputs)
+                          :occurrences selected-occs
+                          :substitutions substs
+                          :wrappers wrappers
+                          :paths paths
+                          :model model
+                          :bits bits
+                          :literal-bits literal-bits
+                          :gain (- literal-bits bits)
+                          :structural-score struct-score)
+                         proposals))))
+        ;; Record whole-tree aligned AU explicitly
+        (when (> n 1)
+          (record-occurrence-selection
+           (loop for i below n collect (first (aref per-tree-occs i)))
+           :aligned-root))
+        ;; Record each candidate pattern across all trees
+        (maphash
+         (lambda (pat witnesses)
+           (declare (ignore witnesses))
+           (let ((selected nil))
+             (loop for i below n
+                   for tree-occs = (aref per-tree-occs i)
+                   do (let ((best-occ nil)
+                            (best-saved most-negative-fixnum)
+                            (best-sub-bits most-positive-fixnum))
+                        (dolist (occ tree-occs)
+                          (when (equal (tree-occurrence-sort occ) (term-sort pat norm-inputs))
+                            (multiple-value-bind (subst matched-p)
+                                (match-pattern pat (tree-occurrence-term occ) norm-inputs ledger)
+                              (when matched-p
+                                (let ((saved (occurrence-saved-bits occ pat subst norm-inputs))
+                                      (sub-bits (body-size (tree-occurrence-term occ) norm-inputs)))
+                                  (when (or (null best-occ)
+                                            (> saved best-saved)
+                                            (and (= saved best-saved)
+                                                 (< sub-bits best-sub-bits)))
+                                    (setf best-occ occ
+                                          best-saved saved
+                                          best-sub-bits sub-bits)))))))
+                        (when best-occ
+                          (push best-occ selected))))
+             (setf selected (nreverse selected))
+             (record-occurrence-selection selected :subexpression)))
+         candidate-patterns)
+        ;; Price :aligned-root plus top-ranked structural candidates
+        (let* ((ordered (stable-sort (nreverse scored-selections)
+                                     (lambda (a b)
+                                       (> (getf a :struct-score) (getf b :struct-score)))))
+               (sub-count 0))
+          (dolist (entry ordered)
+            (when (or (eq :aligned-root (getf entry :kind))
+                      (< sub-count 8))
+              (when (eq :subexpression (getf entry :kind))
+                (incf sub-count))
+              (price-selection entry))))))
+    (setf proposals (nreverse proposals))
+    (let* ((best-compression
+             (first (stable-sort (copy-list proposals)
+                                 (lambda (a b)
+                                   (or (< (subexpression-abstraction-bits a)
+                                          (subexpression-abstraction-bits b))
+                                       (and (= (subexpression-abstraction-bits a)
+                                               (subexpression-abstraction-bits b))
+                                            (> (subexpression-abstraction-structural-score a)
+                                               (subexpression-abstraction-structural-score b))))))))
+           (non-trivial-Abstractions
+             (remove-if (lambda (p)
+                          (or (member (subexpression-abstraction-kind p) '(:literal :dictionary))
+                              (null (subexpression-abstraction-pattern p))
+                              (hole-p (subexpression-abstraction-pattern p))))
+                        proposals))
+           (best-structural
+             (or (first (stable-sort (copy-list non-trivial-abstractions)
+                                     (lambda (a b)
+                                       (or (> (subexpression-abstraction-structural-score a)
+                                              (subexpression-abstraction-structural-score b))
+                                           (and (= (subexpression-abstraction-structural-score a)
+                                                   (subexpression-abstraction-structural-score b))
+                                                (< (subexpression-abstraction-bits a)
+                                                   (subexpression-abstraction-bits b)))))))
+                 best-compression)))
+      (values best-compression best-structural proposals corpus active-trees))))

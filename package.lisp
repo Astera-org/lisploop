@@ -51,9 +51,25 @@
    #:start-observation-search #:resume-observation-search #:observation-job-records
    #:observation-job-buckets #:observation-job-ledger #:observation-job-completed-bound #:observation-job-messages
    #:find-observation #:observed-agreement-p #:observation-invariants
-   ;; 6. factor.lisp — Matching, AU, Hard-EM infer-fibers, corpus compression, heuristic condensation
+   ;; 6. factor.lisp — Matching, AU, Hard-EM infer-fibers, corpus compression, heuristic condensation, M6 subgraph search
    #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p #:term-sort
+   #:patterns-isomorphic-p #:pattern-holes #:pattern-hole-counts
+   #:subtree-at-path #:replace-at-path #:tree-occurrence #:tree-occurrence-p
+   #:tree-occurrence-tree-index #:tree-occurrence-path #:tree-occurrence-term
+   #:tree-occurrence-sort #:tree-occurrence-signature #:tree-occurrence-wrapper #:collect-tree-occurrences
+   #:au-substitutions-frame #:tree-corpus #:tree-corpus-domain #:tree-corpus-inputs #:tree-corpus-sort
+   #:tree-corpus-trees #:tree-corpus-packet #:make-tree-corpus #:decode-tree-corpus #:tree-corpus-frame
+   #:corpus-abstraction-model #:subexpression-abstraction #:subexpression-abstraction-p
+   #:subexpression-abstraction-kind #:subexpression-abstraction-pattern #:subexpression-abstraction-sort
+   #:subexpression-abstraction-occurrences #:subexpression-abstraction-substitutions
+   #:subexpression-abstraction-wrappers #:subexpression-abstraction-paths
+   #:subexpression-abstraction-model #:subexpression-abstraction-bits
+   #:subexpression-abstraction-literal-bits #:subexpression-abstraction-gain
+   #:subexpression-abstraction-structural-score #:discover-subexpression-abstractions
+   #:planted-abstraction-fixture #:randomized-planted-abstraction-fixture
+   #:m6-reference-aligned-au #:verify-corpus-abstraction-replay #:run-m6
    #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement #:fiber-class-rows #:fiber-class-keys #:infer-fibers
+   #:context-label-frame #:gf7-iota-conversion #:gf7-lifting-fixture #:integer-lifting-fixture #:best-composed-lifting-model #:run-m5
    #:law-corpus #:make-law-corpus #:law-corpus-laws #:law-corpus-packet #:law-corpus-frame
    #:law-template-group #:law-template-group-positions #:law-template-group-pattern #:law-template-group-substitutions
    #:propose-law-compressions #:decode-law-corpus

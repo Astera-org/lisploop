@@ -1,5 +1,14 @@
 (in-package #:lisploop)
 
+(defun report-ledger (label ledger)
+  (format t "~A: work=~D ~S~%" label (ledger-total ledger) (ledger-counts ledger)))
+
+(defun report-size (label expression inputs)
+  (let* ((total (description-size expression inputs))
+         (header (header-size inputs (expression-type expression inputs))))
+    (format t "~A: S=~D bits = ~D header + ~D body.~%"
+            label total header (- total header))))
+
 (defun code-transform-fixture (domain)
   "Supplied structural context for learning which child to retain, with nonmatches
 and partial terms. No transform program or selector is supplied to the child search."
@@ -102,3 +111,242 @@ The transition is supplied fixture machinery; no invariant sketch enters search.
                       (list key (first values) (second values) (evaluation-value run))))))
     (values (orient-observations '(:int :int :int) records '(0 1) '(2) :lookup-p t :ledger ledger)
             oracle records)))
+
+(defun gf7-iota-conversion (t-expr &key (steps 7) ledger)
+  "Declared, metered conversion \\iota(t) from :int index T-EXPR into GF(7)."
+  (assert (and (integerp steps) (plusp steps)))
+  (let* ((field (gf 7))
+         (key-type (tuple-type :int))
+         (entry-type (tuple-type key-type field))
+         (entries (loop for step below steps
+                        collect (list (list step) (mod step 7))))
+         (expr (app (op :lookup entry-type)
+                    (app (op :tuple key-type) t-expr)
+                    (lit (sequence-type entry-type) entries))))
+    (charge ledger :construction (syntax-work expr))
+    expr))
+
+(defun gf7-lifting-fixture (&key (offsets '(1 3)) (steps 7) (repetitions 1) schedule ledger)
+  "Generate indexed GF(7) sequences y_{j,t} = a_j + \\iota(t) with explicit occurrence
+coordinate r (:int) and index t (:int). Returns:
+  (values frame decoder r-to-j-map row-labels records)"
+  (assert (and (integerp steps) (plusp steps)))
+  (assert (and (integerp repetitions) (plusp repetitions)))
+  (let* ((field (gf 7))
+         (seq-tags (or schedule
+                       (loop repeat repetitions
+                             append (loop for idx below (length offsets) collect idx))))
+         (iota-t (gf7-iota-conversion (var 1 :int) :steps steps :ledger ledger))
+         (decoder (app (op :+ field) iota-t (var 9 field)))
+         (oracle-inputs (list (cons 0 field) (cons 1 :int)))
+         (oracle (app (op :+ field) (var 0 field)
+                      (gf7-iota-conversion (var 1 :int) :steps steps :ledger ledger)))
+         (records nil)
+         (row-labels nil))
+    (charge ledger :construction (syntax-work decoder))
+    (loop for tag in seq-tags
+          for r from 0
+          for offset = (nth tag offsets)
+          do (dotimes (step steps)
+               (let* ((key (list :seq r step))
+                      (run (evaluate oracle oracle-inputs (list offset step) :ledger ledger)))
+                 (assert (eq :value (evaluation-status run)))
+                 (push tag row-labels)
+                 (push (list key r step (evaluation-value run)) records))))
+    (setf records (nreverse records)
+          row-labels (nreverse row-labels))
+    (let* ((frame (orient-observations (list :int :int field) records '(0 1) '(2)
+                                       :lookup-p t :ledger ledger))
+           (label-frame (context-label-frame frame row-labels
+                                             :bindings (list (cons 0 (var 0 :int)))
+                                             :label-type field
+                                             :ledger ledger))
+           (r-to-j (lookup-model label-frame ledger)))
+      (values frame decoder r-to-j row-labels records))))
+
+(defun integer-lifting-fixture (&key (offsets '(1 3)) (steps 7) (repetitions 1) schedule ledger)
+  "Generate indexed integer sequences y_{j,t} = a_j + t with explicit occurrence
+coordinate r (:int) and index t (:int). Returns:
+  (values frame decoder r-to-j-map row-labels records)"
+  (assert (and (integerp steps) (plusp steps)))
+  (assert (and (integerp repetitions) (plusp repetitions)))
+  (let* ((domain :int)
+         (seq-tags (or schedule
+                       (loop repeat repetitions
+                             append (loop for idx below (length offsets) collect idx))))
+         (decoder (app (op :+ domain) (var 1 domain) (var 9 domain)))
+         (oracle-inputs (list (cons 0 domain) (cons 1 domain)))
+         (oracle (app (op :+ domain) (var 0 domain) (var 1 domain)))
+         (records nil)
+         (row-labels nil))
+    (charge ledger :construction (syntax-work decoder))
+    (loop for tag in seq-tags
+          for r from 0
+          for offset = (nth tag offsets)
+          do (dotimes (step steps)
+               (let* ((key (list :seq r step))
+                      (run (evaluate oracle oracle-inputs (list offset step) :ledger ledger)))
+                 (assert (eq :value (evaluation-status run)))
+                 (push tag row-labels)
+                 (push (list key r step (evaluation-value run)) records))))
+    (setf records (nreverse records)
+          row-labels (nreverse row-labels))
+    (let* ((frame (orient-observations (list domain domain domain) records '(0 1) '(2)
+                                       :lookup-p t :ledger ledger))
+           (label-frame (context-label-frame frame row-labels
+                                             :bindings (list (cons 0 (var 0 domain)))
+                                             :label-type domain
+                                             :ledger ledger))
+           (r-to-j (lookup-model label-frame ledger)))
+      (values frame decoder r-to-j row-labels records))))
+
+(defun planted-abstraction-fixture (&key (domain :int) (repetitions 1) include-unrelated-p ledger)
+  "Construct whole trees T_i = W_i[p[\\theta_i]] from a hidden planted template p,
+substitutions \\theta_i, and varied outer wrappers W_i at distinct occurrence paths.
+Returns (VALUES trees inputs hidden-oracle)."
+  (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
+         (x0 (var 0 domain))
+         (x1 (var 1 domain))
+         (plus (op :+ domain))
+         (mul (op :* domain))
+         (sub (op :- domain))
+         ;; Shared inner anchor: (+ (* X0 '2) (+ (* X1 '3) (* (+ X0 X1) '5)))
+         (anchor (app plus
+                      (app mul x0 (lit domain 2))
+                      (app plus
+                           (app mul x1 (lit domain 3))
+                           (app mul (app plus x0 x1) (lit domain 5)))))
+         ;; Planted template p: (+ (* ?0 anchor) (* ?0 anchor))
+         ;; Has a repeated hole ?0 AND two copies of the 31-bit fixed anchor expression.
+         (branch (app mul (hole 0 domain) anchor))
+         (pattern (app plus branch branch))
+         (ctx-hole (hole 999 domain))
+         (base-wrappers-and-paths
+           (list (cons ctx-hole nil)
+                 (cons (app plus (lit domain 1) ctx-hole) '(1))
+                 (cons (app mul ctx-hole (lit domain 2)) '(0))
+                 (cons (app sub (lit domain 4) (app plus ctx-hole x1)) '(1 0))))
+         (trees nil)
+         (subtrees nil)
+         (paths nil)
+         (wrappers nil)
+         (substs nil)
+         (idx 0))
+    (dotimes (rep repetitions)
+      (loop for (wrapper . path) in base-wrappers-and-paths
+            for k = (+ 2 idx)
+            for arg = (case (mod idx 4)
+                        (0 (if (evenp rep) x0 x1))
+                        (1 (app plus x1 (lit domain k)))
+                        (2 (app mul x0 (lit domain k)))
+                        (otherwise (app sub (app plus x0 x1) (lit domain k))))
+            for subst = (list (cons 0 arg))
+            for sub-term = (instantiate pattern subst)
+            for whole-tree = (instantiate wrapper (list (cons 999 sub-term)))
+            do (incf idx)
+               (charge ledger :construction (+ (syntax-work sub-term) (syntax-work whole-tree)))
+               (push whole-tree trees)
+               (push sub-term subtrees)
+               (push path paths)
+               (push wrapper wrappers)
+               (push subst substs)))
+    (when include-unrelated-p
+      (let ((unrelated-1 (app plus x0 (lit domain 0)))
+            (unrelated-2 (app mul x1 (lit domain 1))))
+        (charge ledger :construction (+ (syntax-work unrelated-1) (syntax-work unrelated-2)))
+        (push unrelated-1 trees)
+        (push nil subtrees)
+        (push :none paths)
+        (push nil wrappers)
+        (push nil substs)
+        (push unrelated-2 trees)
+        (push nil subtrees)
+        (push :none paths)
+        (push nil wrappers)
+        (push nil substs)))
+    (values (nreverse trees)
+            inputs
+            (list :pattern pattern
+                  :substitutions (nreverse substs)
+                  :subtrees (nreverse subtrees)
+                  :paths (nreverse paths)
+                  :wrappers (nreverse wrappers)))))
+
+(defun randomized-planted-abstraction-fixture (&key (domain :int) (state 424242) (count 4) include-unrelated-p ledger)
+  "Deterministic LCG-generated planted templates, substitutions, and wrapper paths.
+Returns (VALUES trees inputs hidden-oracle next-state)."
+  (labels ((next-int (bound)
+             (setf state (mod (+ (* state 1103515245) 12345) #x7fffffff))
+             (mod (ash state -8) bound)))
+    (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
+           (vars (list (var 0 domain) (var 1 domain)))
+           (ops (list (op :+ domain) (op :* domain) (op :- domain)))
+           (sig (operator-type (first ops)))
+           (const-val (1+ (next-int 4)))
+           (template-choice (next-int 3))
+           (pattern
+             (ecase template-choice
+               (0 ;; (?op (?op2 ?x 'c) (?op2 ?x 'c))
+                (let ((sub (app (first ops) (hole 1 domain) (lit domain const-val))))
+                  (app (hole 0 sig) sub sub)))
+               (1 ;; (+ (* ?x ?y) (* ?x ?y))
+                (let ((sub (app (second ops) (hole 0 domain) (hole 1 domain))))
+                  (app (first ops) sub sub)))
+               (2 ;; (?op (+ ?x 'c) (* ?x ?y))
+                (app (hole 0 sig)
+                     (app (first ops) (hole 1 domain) (lit domain const-val))
+                     (app (second ops) (hole 1 domain) (hole 2 domain))))))
+           (holes (pattern-holes pattern))
+           (ctx-hole (hole 999 domain))
+           (trees nil)
+           (subtrees nil)
+           (paths nil)
+           (wrappers nil)
+           (substs nil))
+      (dotimes (i count)
+        (let* ((subst
+                 (loop for (hid . hsort) in holes
+                       collect (cons hid
+                                     (if (function-sort-p hsort)
+                                         (nth (next-int (length ops)) ops)
+                                         (ecase (next-int 3)
+                                           (0 (nth (next-int (length vars)) vars))
+                                           (1 (lit domain (1+ (next-int 4))))
+                                           (2 (app (nth (next-int (length ops)) ops)
+                                                   (nth (next-int (length vars)) vars)
+                                                   (lit domain (1+ (next-int 3))))))))))
+               (wrapper-choice (next-int 4))
+               (w-const (lit domain (1+ (next-int 4))))
+               (w-var (nth (next-int (length vars)) vars))
+               (wrapper-and-path
+                 (ecase wrapper-choice
+                   (0 (cons ctx-hole nil))
+                   (1 (cons (app (first ops) w-const ctx-hole) '(1)))
+                   (2 (cons (app (second ops) ctx-hole w-const) '(0)))
+                   (3 (cons (app (third ops) w-var (app (first ops) ctx-hole w-const)) '(1 0)))))
+               (wrapper (car wrapper-and-path))
+               (path (cdr wrapper-and-path))
+               (sub-term (instantiate pattern subst))
+               (whole-tree (instantiate wrapper (list (cons 999 sub-term)))))
+          (charge ledger :construction (+ (syntax-work sub-term) (syntax-work whole-tree)))
+          (push whole-tree trees)
+          (push sub-term subtrees)
+          (push path paths)
+          (push wrapper wrappers)
+          (push subst substs)))
+      (when include-unrelated-p
+        (let ((u (app (first ops) (first vars) (lit domain 0))))
+          (charge ledger :construction (syntax-work u))
+          (push u trees)
+          (push nil subtrees)
+          (push :none paths)
+          (push nil wrappers)
+          (push nil substs)))
+      (values (nreverse trees)
+              inputs
+              (list :pattern pattern
+                    :substitutions (nreverse substs)
+                    :subtrees (nreverse subtrees)
+                    :paths (nreverse paths)
+                    :wrappers (nreverse wrappers))
+              state))))
