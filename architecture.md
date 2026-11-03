@@ -425,11 +425,12 @@ A `frame` consists of `(schema rows pairs anchors)` where `pairs` and `anchors` 
 
 ---
 
-### Module 6: `factor.lisp` --- Pattern Matching, Anti-Unification, Subgraph Search, `infer-fibers`, `condense-heuristic` & Corpus Compression
+### Module 6: `factor.lisp` --- Pattern Matching, Anti-Unification, Subgraph Search, `infer-fibers`, `condense-heuristic`, View & Locality Discovery & Corpus Compression
 
 - `match-pattern` & `patterns-isomorphic-p`: First-order pattern matcher supporting value holes and operator holes with consistent repeated-hole bindings, plus mutual-matching isomorphism up to hole renaming.
 - `anti-unify`, `compile-au-constructor` & `au-substitutions-frame`: Typed LGG with memoized disagreement tuples, lowering to `:code-apply` / `:code-subst` DSL constructors, and conversion of recovered hole bindings into child substitution frames.
-- `subtree-at-path`, `replace-at-path`, `collect-tree-occurrences`, `make-tree-corpus`, `decode-tree-corpus`, `corpus-abstraction-model` & `discover-subexpression-abstractions`: Milestone 6 subexpression occurrence indexing, subgraph correspondence search across varied outer wrappers and `:none` unrelated trees, spliced pre-order packet factorization (`packet-chunks-model`), and optional validated `rewrite-library` normalization.
+- `subtree-at-path`, `replace-at-path`, `collect-tree-occurrences`, `make-tree-corpus`, `decode-tree-corpus`, `corpus-abstraction-model` & `discover-subexpression-abstractions`: Milestone 6 & 7 subexpression occurrence indexing, subgraph correspondence search across varied outer wrappers and `:none` unrelated trees, locality-prioritized occurrence-pair scheduling (`compute-tree-locality-positions`, `schedule-occurrence-pairs` with `:canonical`, `:locality` 1-in-4 canonical reserve, `:locality-only`, `:pair-budget`, and priced `:locality-key`), spliced pre-order packet factorization (`packet-chunks-model`), and optional validated `rewrite-library` normalization.
+- `shuffle-frame-rows`, `evaluate-guard-partition`, `synthesize-supplied-partition-view` & `discover-partition-views`: Milestone 7 & 8C view and partition discovery --- grammar-enumerated Boolean view selector search (`start-observation-search` with `observation-bucket` complement-symmetric deduplication), $O(|\Omega|)$ conflict pruning (`frame-conflict-p`), recursive synthesis of `:separate-parts` `(if G M_true M_false)` and `:shared-decoder` `d(X, (if G Z_true Z_false))` models vs.\ `:lookup` baseline, physical storage permutation invariance, and occurrence-preserving inverse permutation reconstruction (`partition-rows`, `reassemble-partition`, `partition-model`).
 - `infer-fibers` & `context-label-frame`: Confidence-ordered Hard-EM latent fiber inference over row requirements $B_\omega(Z)$, returning `(values classes labels refined-frame partition)`, paired with `context-label-frame` to project target-derived fiber labels onto declared available parent inputs for paid lookup or selector synthesis.
 - `condense-heuristic`: Two-stage MDL lossy heuristic condensation returning a `heuristic-model` (`heuristic-program`, `heuristic-residual`, `heuristic-exact-p`, `heuristic-score`).
 - `make-law-corpus`, `propose-law-compressions`, `decode-law-corpus`: Milestone 3B law corpus compressor.
@@ -449,14 +450,15 @@ A `frame` consists of `(schema rows pairs anchors)` where `pairs` and `anchors` 
 
 | File / Directory | Role in the Repository |
 | :--- | :--- |
-| `fixtures.lisp` | Data-only observation generators and independent replay helpers (`code-transform-fixture`, `gf5-fixture`, `gf5-transition-fixture`, `integer-transition-fixture`, `integer-linear-fixture`, `gf7-iota-conversion`, `gf7-lifting-fixture`, `integer-lifting-fixture`, `planted-abstraction-fixture`, `randomized-planted-abstraction-fixture`, `replay-model`). |
-| `experiments.lisp` | Top-level CLI runner and executable driver for **Milestone 1** (`run-m1`) and **Milestone 2** (`run-m2`). Also loads `law-experiments.lisp` (`m3`), `algebra-experiments.lisp` (`m4`), `lifting-experiments.lisp` (`m5`), and `abstraction-experiments.lisp` (`m6`). |
+| `fixtures.lisp` | Data-only observation generators and independent replay helpers (`code-transform-fixture`, `gf5-fixture`, `gf5-transition-fixture`, `integer-transition-fixture`, `integer-linear-fixture`, `gf7-iota-conversion`, `gf7-lifting-fixture`, `integer-lifting-fixture`, `planted-abstraction-fixture`, `randomized-planted-abstraction-fixture`, `locality-abstraction-fixture`, `replay-model`). |
+| `experiments.lisp` | Top-level CLI runner and executable driver for **Milestone 1** (`run-m1`) and **Milestone 2** (`run-m2`). Also loads `law-experiments.lisp` (`m3`), `algebra-experiments.lisp` (`m4`), `lifting-experiments.lisp` (`m5`), `abstraction-experiments.lisp` (`m6`), and `view-experiments.lisp` (`m7`). |
 | `law-experiments.lisp` | Executable driver for **Milestone 3** (`run-m3`: 3A guarded modular division laws & rewrite speedup vs.\ uncertified integer non-transfer; 3B AU compression of discovered field laws; 3C checked symbolic DSL rule compilation and amortization crossover after 2 jobs). |
 | `algebra-experiments.lisp` | Executable driver for **Milestone 4** (`run-m4`: all $(+, -, \times, /) \times (\mathrm{left}, \mathrm{right})$ orientations in $\mathbb{F}_5, \mathbb{F}_7, \mathbb{Z}$, AU solver-family reconstruction, certified field propagation, and tentative integer propagation with forward replay). |
 | `lifting-experiments.lisp` | Executable driver for **Milestone 5** (`run-m5`: $\mathbb{F}_7$ and `:int` indexed sequence lifting $y_{j,t} = a_j + \iota(t)$ / $y_{j,t} = a_j + t$, repetition compression crossover, contradictory $t$-only control & unavailable-key rejection, paid context restoration, and unsupervised Hard-EM `infer-fibers` discovery + certified/tentative propagation + paid/condensed selector deployment). |
 | `abstraction-experiments.lisp` | Executable driver for **Milestone 6** (`run-m6`: Stages 1--3 pattern reconstruction, matching, aligned AU & controls; Stage 4 hidden occurrence path subgraph correspondence search, repetition compression sweep, unrelated-tree controls & randomized trials; Stage 5 validated law alternate-syntax AU vs.\ exact AST spelling preservation). |
+| `view-experiments.lisp` | Executable driver for **Milestone 7** (`run-m7`: Part 1 supplied vs.\ grammar-enumerated Boolean view discovery on `:int` and $\mathbb{F}_7$ interleaved sequences, M8C $O(|\Omega|)$ conflict pruning, and 3-way comparison of `:shared-decoder` vs.\ `:separate-parts` vs.\ `:lookup`; Part 2 physical row shuffle invariance, `partition-model` inverse permutation reconstruction with ties/multiplicity, and target-leakage control; Part 3 locality-prioritized occurrence-pair scheduling, 1-in-4 canonical reserve on distant matches, and induced locality under a priced parity key). |
 | `benchmark.lisp` | Timing harness measuring real wall-clock and GC time across the M1--M3 workloads. |
-| `tests/` | 13 core test suites loaded by `tests/run.lisp` (`core`, `observations`, `codec`, `laws`, `guards`, `compression`, `symbolic`, `amortization`, `algebra`, `propagation`, `lifting`, `abstraction` --- 101 tests) plus `tests/visualizer.lisp` --- 100% passing via `make test`. |
+| `tests/` | 14 core test suites loaded by `tests/run.lisp` (`core`, `observations`, `codec`, `laws`, `guards`, `compression`, `symbolic`, `amortization`, `algebra`, `propagation`, `lifting`, `abstraction`, `views` --- 105 tests) plus `tests/visualizer.lisp` --- 100% passing via `make test`. |
 | `visualizer/` | Static HTML/JSON report exporter (`export.lisp`, `generate.lisp`) for Milestone 2 observation scopes. |
 
 ---
@@ -471,23 +473,23 @@ A `frame` consists of `(schema rows pairs anchors)` where `pairs` and `anchors` 
 | **M4: Arithmetic Reorientation, Solvers & Dual-Grade Propagation** | Implemented in `laws.lisp` and `propagation-search` (`enumerate.lisp`). Driven by `algebra-experiments.lisp` (`m4`); tested in `tests/algebra.lisp` and `tests/propagation.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
 | **M5: Intermediate Concept Lifting via Hard-EM Latent Fibers** | Implemented in `factor.lisp` (`infer-fibers`, `context-label-frame`), `vm.lisp` (`fold-constants`), and `frame.lisp` (`pullback-frame`, `frame-conflict-p`). Driven by `lifting-experiments.lisp` (`m5`); tested in `tests/lifting.lisp` and `tests/propagation.lisp`. | **Complete & Verified** |
 | **M6: Typed Anti-Unification & Subexpression Correspondence Search** | Implemented in `factor.lisp` (`anti-unify`, `compile-au-constructor`, `au-substitutions-frame`, `collect-tree-occurrences`, `corpus-abstraction-model`, `discover-subexpression-abstractions`). Driven by `abstraction-experiments.lisp` (`m6`); tested in `tests/abstraction.lisp`, `tests/core.lisp`, and `tests/symbolic.lisp`. | **Complete & Verified** |
-| **M7: Autonomous View Discovery & Feature-Locality Projection** | `partition-rows` (`frame.lisp`), `infer-fibers`, and `condense-heuristic` (`factor.lisp`) implemented and tested in `tests/core.lisp` and `tests/propagation.lisp`; **autonomous regime-predicate search & input-subset locality loop not yet wired**. | **Kernel Primitives Complete / Search Loop Pending** |
+| **M7: Autonomous View Discovery & Feature-Locality Projection** | Implemented in `factor.lisp` (`shuffle-frame-rows`, `evaluate-guard-partition`, `synthesize-supplied-partition-view`, `discover-partition-views`, `compute-tree-locality-positions`, `schedule-occurrence-pairs`) and `frame.lisp` (`partition-rows`, `reassemble-partition`, `partition-model`). Driven by `view-experiments.lisp` (`m7`); tested in `tests/views.lisp` and `tests/core.lisp`. | **Complete & Verified** |
 | **M8A: Nested Decoder Composition (Multi-Step Pullback & Propagation)** | `fold-constants` (`vm.lisp`), `pullback-frame` (`frame.lisp`), and `propagate-arithmetic-child` (`laws.lisp`) implemented; **chained multi-step decoder rewrite loop over nested contexts not yet wired**. | **Pending Chained Driver** |
-| **M8B: Shared Sub-Expression Memoization & DAG GC** | Weak `*node-meta*` table and `*prepared-rewrite-cache*` implemented; **observation-bucket DAG node sharing & GC across iterative rounds not yet wired**. | **Pending** |
-| **M8C: Contradiction Detection & Backtracking under Shared Latent Variables** | `fold-constants` tuple decomposition (`vm.lisp`) and `frame-conflict-p` (`frame.lisp`) implemented and unit-tested in `tests/propagation.lisp`; **agenda lane pruning on conflict not yet wired**. | **Kernel Complete / Agenda Wiring Pending** |
-| **M8D: Lossy Heuristic Search Control via Residual-Priced Condensation** | `condense-heuristic` (`factor.lisp`) and `start-propagation-search` (`enumerate.lisp`) implemented and unit-tested in `tests/propagation.lisp`; **end-to-end agenda-routing benchmark not yet wired**. | **Kernel Complete / Benchmark Pending** |
+| **M8B: Shared Sub-Expression Memoization & DAG GC** | Weak `*node-meta*` table, `*prepared-rewrite-cache*`, and `observation-bucket` guard deduplication in `discover-partition-views` implemented; **cross-round DAG node sharing & GC not yet wired**. | **Partial (View Guard Dedup Complete)** |
+| **M8C: Contradiction Detection & Backtracking under Shared Latent Variables** | `fold-constants` tuple decomposition (`vm.lisp`), `frame-conflict-p` (`frame.lisp`), and $O(|\Omega|)$ conflict pruning in `synthesize-supplied-partition-view` / `discover-partition-views` (`factor.lisp`) implemented and tested in `tests/propagation.lisp` and `tests/views.lisp`. | **Complete in Pullback & View Search** |
+| **M8D: Lossy Heuristic Search Control via Residual-Priced Condensation** | `condense-heuristic` (`factor.lisp`) and `start-propagation-search` (`enumerate.lisp`) implemented and unit-tested in `tests/propagation.lisp` and `tests/lifting.lisp`; **end-to-end agenda-routing benchmark not yet wired**. | **Kernel Complete / Benchmark Pending** |
 | **M9: Self-Hosted Policy & Vocabulary Amortization** | `:code-*` VM, `condense-heuristic`, and `compile-au-constructor` implemented; **multi-problem vocabulary/policy promotion loop with automatic eviction not yet wired**. | **Pending** |
 
 ---
 
 ## 7. Quick-Start Verification Commands
 
-To run the full test suite (all 100 core tests + visualizer exporter checks):
+To run the full test suite (all 105 core tests + visualizer exporter checks):
 ```bash
 make test
 ```
 
-To reproduce the Milestone 1--6 empirical reports:
+To reproduce the Milestone 1--7 empirical reports:
 ```bash
 sbcl --script experiments.lisp m1
 sbcl --script experiments.lisp m2
@@ -495,4 +497,5 @@ sbcl --script experiments.lisp m3
 sbcl --script experiments.lisp m4
 sbcl --script experiments.lisp m5
 sbcl --script experiments.lisp m6
+sbcl --script experiments.lisp m7
 ```

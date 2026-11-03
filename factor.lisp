@@ -1031,9 +1031,132 @@ within each occurrence."
                   tree)))
           trees))
 
-(defun discover-subexpression-abstractions (trees inputs &key domain rewrite-library ledger)
+(defun compute-tree-locality-positions (n locality-key &optional ledger)
+  "Compute the induced position vector (0..N-1) for tree indices under LOCALITY-KEY.
+When LOCALITY-KEY is nil, position(i) = i. When LOCALITY-KEY is a function or DSL expression
+over `((0 . :int))`, evaluates the key for each tree index i, partitions the indices via
+`partition-rows`, and verifies inverse-permutation reassembly via `reassemble-partition`."
+  (let ((pos-vec (make-array n)))
+    (if (null locality-key)
+        (dotimes (i n pos-vec)
+          (setf (aref pos-vec i) i))
+        (let* ((indices (loop for i below n collect i))
+               (labels
+                 (loop for i below n
+                       collect (if (functionp locality-key)
+                                   (progn
+                                     (charge ledger :locality-key)
+                                     (funcall locality-key i))
+                                   (let ((run (evaluate locality-key '((0 . :int)) (list i) :ledger ledger)))
+                                     (unless (eq :value (evaluation-status run))
+                                       (error "Locality key evaluation failed on ~D: ~S" i run))
+                                     (evaluation-value run)))))
+               (part (partition-rows indices labels ledger))
+               (ordered-indices (apply #'append (partition-groups part))))
+          (assert (equal indices (reassemble-partition part ledger)))
+          (loop for tree-idx in ordered-indices
+                for rank from 0
+                do (setf (aref pos-vec tree-idx) rank))
+          pos-vec))))
+
+(defun schedule-occurrence-pairs (canonical-pairs tree-pos schedule pair-budget &optional ledger)
+  "Order candidate occurrence pairs `(oa . ob)` under SCHEDULE (:CANONICAL, :LOCALITY with 1-in-4
+canonical reserve, or :LOCALITY-ONLY restricted to adjacent tree distance <= 1) up to PAIR-BUDGET."
+  (assert (member schedule '(:canonical :locality :locality-only)))
+  (if (and (eq schedule :canonical) (null pair-budget))
+      canonical-pairs
+      (flet ((pair-cross-tree-p (p)
+               (/= (tree-occurrence-tree-index (car p))
+                   (tree-occurrence-tree-index (cdr p))))
+             (pair-tree-dist (p)
+               (abs (- (aref tree-pos (tree-occurrence-tree-index (car p)))
+                       (aref tree-pos (tree-occurrence-tree-index (cdr p))))))
+             (pair-path-dist (p)
+               (abs (- (length (tree-occurrence-path (car p)))
+                       (length (tree-occurrence-path (cdr p))))))
+             (pair-depth-sum (p)
+               (+ (length (tree-occurrence-path (car p)))
+                  (length (tree-occurrence-path (cdr p))))))
+        (ecase schedule
+          (:canonical
+           (if pair-budget
+               (subseq canonical-pairs 0 (min pair-budget (length canonical-pairs)))
+               canonical-pairs))
+          (:locality-only
+           (let* ((local-pairs
+                    (remove-if-not (lambda (p)
+                                     (and (pair-cross-tree-p p)
+                                          (<= (pair-tree-dist p) 1)))
+                                   canonical-pairs))
+                  (sorted (stable-sort (copy-list local-pairs)
+                                       (lambda (a b)
+                                         (let ((pa (pair-path-dist a))
+                                               (pb (pair-path-dist b)))
+                                           (if (/= pa pb)
+                                               (< pa pb)
+                                               (< (pair-depth-sum a) (pair-depth-sum b))))))))
+             (charge ledger :locality-scheduling (length sorted))
+             (if pair-budget
+                 (subseq sorted 0 (min pair-budget (length sorted)))
+                 sorted)))
+          (:locality
+           (let* ((loc-queue
+                    (stable-sort (copy-list canonical-pairs)
+                                 (lambda (a b)
+                                   (let ((ca (pair-cross-tree-p a))
+                                         (cb (pair-cross-tree-p b)))
+                                     (if (not (eq ca cb))
+                                         ca
+                                         (let ((da (pair-tree-dist a))
+                                               (db (pair-tree-dist b)))
+                                           (if (/= da db)
+                                               (< da db)
+                                               (let ((pa (pair-path-dist a))
+                                                     (pb (pair-path-dist b)))
+                                                 (if (/= pa pb)
+                                                     (< pa pb)
+                                                     (< (pair-depth-sum a) (pair-depth-sum b)))))))))))
+                  (can-queue (copy-list canonical-pairs))
+                  (seen (make-hash-table :test #'equal))
+                  (selected nil)
+                  (limit (or pair-budget (length canonical-pairs)))
+                  (turn 0))
+             (loop while (and (< (length selected) limit)
+                              (or loc-queue can-queue))
+                   do (charge ledger :locality-scheduling)
+                      (let* ((reserve-p (= 3 (mod turn 4)))
+                             (next-pair nil))
+                        (incf turn)
+                        (if reserve-p
+                            (loop while can-queue
+                                  for cand = (pop can-queue)
+                                  unless (gethash cand seen)
+                                  do (setf next-pair cand) (return))
+                            (loop while loc-queue
+                                  for cand = (pop loc-queue)
+                                  unless (gethash cand seen)
+                                  do (setf next-pair cand) (return)))
+                        (unless next-pair
+                          (loop while loc-queue
+                                for cand = (pop loc-queue)
+                                unless (gethash cand seen)
+                                do (setf next-pair cand) (return))
+                          (unless next-pair
+                            (loop while can-queue
+                                  for cand = (pop can-queue)
+                                  unless (gethash cand seen)
+                                  do (setf next-pair cand) (return))))
+                        (when next-pair
+                          (setf (gethash next-pair seen) t)
+                          (push next-pair selected))))
+             (nreverse selected)))))))
+
+(defun discover-subexpression-abstractions (trees inputs &key domain rewrite-library
+                                                           (schedule :canonical) pair-budget locality-key ledger)
   "Search for shared subexpression abstractions across TREES (even when occurrence
 paths are hidden under different outer wrappers or unrelated control trees are present).
+Supports :SCHEDULE (:CANONICAL, :LOCALITY with 1-in-4 canonical reserve, or :LOCALITY-ONLY),
+optional :PAIR-BUDGET, and optional :LOCALITY-KEY (priced on LEDGER).
 Returns (VALUES best-compression best-structural proposals corpus normalized-trees)."
   (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
          (active-trees (if rewrite-library
@@ -1041,6 +1164,7 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                            trees))
          (corpus (make-tree-corpus active-trees norm-inputs :domain domain :ledger ledger))
          (n (length active-trees))
+         (tree-pos (compute-tree-locality-positions n locality-key ledger))
          (literal-model (lit (sequence-type :bool) (tree-corpus-packet corpus)))
          (literal-bits (description-size literal-model nil))
          (dict-chunks (cons (tree-corpus-prefix corpus ledger)
@@ -1096,73 +1220,80 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                         (every #'hole-p pat)
                         (every (lambda (entry) (= 1 (cdr entry)))
                                (pattern-hole-counts pat))))))
-      ;; 2a. Pairwise LGG seeds across distinct subterms in each bucket
-      (maphash
-       (lambda (bucket-key occs)
-         (declare (ignore bucket-key))
-         (let ((rev-occs (nreverse occs))
-               (distinct-occs nil)
-               (term-counts (make-hash-table :test #'equal)))
-           (dolist (o rev-occs)
-             (let ((term (tree-occurrence-term o)))
-               (when (zerop (gethash term term-counts 0))
-                 (push o distinct-occs))
-               (incf (gethash term term-counts 0))))
-           (setf distinct-occs (nreverse distinct-occs))
-           ;; Exact repeated subterms (appearing >= 2 times across occurrences)
-           (dolist (o distinct-occs)
-             (let ((term (tree-occurrence-term o)))
-               (when (and (> (gethash term term-counts 0) 1)
-                          (not (trivial-subexpression-pattern-p term))
-                          (not (gethash term candidate-patterns)))
-                 (setf (gethash term candidate-patterns) (list term term)))))
-           ;; Pairwise LGG of distinct subterms in the same (sort . signature) bucket
-           (loop for tail on distinct-occs
-                 for oa = (first tail)
-                 do (dolist (ob (rest tail))
-                      (let* ((terms (list (tree-occurrence-term oa)
-                                          (tree-occurrence-term ob)))
-                             (pat (anti-unify terms norm-inputs ledger)))
-                        (unless (or (trivial-subexpression-pattern-p pat)
-                                    (gethash pat candidate-patterns))
-                          (setf (gethash pat candidate-patterns) terms)))))))
-       buckets)
-      ;; 2b. Multi-tree LGG relaxation across non-matching trees
-      (let ((seed-entries nil))
-        (maphash (lambda (pat witnesses) (push (cons pat witnesses) seed-entries))
-                 candidate-patterns)
-        (dolist (entry (nreverse seed-entries))
-          (let ((cur-pat (car entry))
-                (cur-witnesses (cdr entry)))
-            (loop for i below n
-                  for tree-occs = (aref per-tree-occs i)
-                  for pat-sort = (term-sort cur-pat norm-inputs)
-                  unless (some (lambda (o)
-                                 (and (equal (tree-occurrence-sort o) pat-sort)
-                                      (nth-value 1 (match-pattern cur-pat (tree-occurrence-term o)
-                                                                  norm-inputs ledger))))
-                               tree-occs)
-                  do (let ((best-relaxed nil)
-                           (best-witnesses nil)
-                           (best-saved 0))
-                       (dolist (o tree-occs)
-                         (when (and (equal (tree-occurrence-sort o) pat-sort)
-                                    (equal (tree-occurrence-signature o)
-                                           (and (app-p cur-pat) (term-sort (first cur-pat) norm-inputs))))
-                           (let ((new-witnesses (append cur-witnesses (list (tree-occurrence-term o)))))
-                             (multiple-value-bind (relaxed substs)
-                                 (anti-unify new-witnesses norm-inputs ledger)
-                               (unless (trivial-subexpression-pattern-p relaxed)
-                                 (let ((saved (occurrence-saved-bits o relaxed (car (last substs)) norm-inputs)))
-                                   (when (> saved best-saved)
-                                     (setf best-saved saved
-                                           best-relaxed relaxed
-                                           best-witnesses new-witnesses))))))))
-                       (when best-relaxed
-                         (setf cur-pat best-relaxed
-                               cur-witnesses best-witnesses)
-                         (unless (gethash cur-pat candidate-patterns)
-                           (setf (gethash cur-pat candidate-patterns) cur-witnesses)))))))))
+      ;; 2a. Collect distinct subterms and candidate occurrence pairs across buckets
+      (let ((all-canonical-pairs nil))
+        (maphash
+         (lambda (bucket-key occs)
+           (declare (ignore bucket-key))
+           (let ((rev-occs (nreverse occs))
+                 (distinct-occs nil)
+                 (term-counts (make-hash-table :test #'equal)))
+             (dolist (o rev-occs)
+               (let ((term (tree-occurrence-term o)))
+                 (when (zerop (gethash term term-counts 0))
+                   (push o distinct-occs))
+                 (incf (gethash term term-counts 0))))
+             (setf distinct-occs (nreverse distinct-occs))
+             ;; Exact repeated subterms (when unconstrained by pair-budget or locality-only schedule)
+             (when (and (null pair-budget) (eq schedule :canonical))
+               (dolist (o distinct-occs)
+                 (let ((term (tree-occurrence-term o)))
+                   (when (and (> (gethash term term-counts 0) 1)
+                              (not (trivial-subexpression-pattern-p term))
+                              (not (gethash term candidate-patterns)))
+                     (setf (gethash term candidate-patterns) (list term term))))))
+             (loop for tail on distinct-occs
+                   for oa = (first tail)
+                   do (dolist (ob (rest tail))
+                        (push (cons oa ob) all-canonical-pairs)))))
+         buckets)
+        (setf all-canonical-pairs (nreverse all-canonical-pairs))
+        (dolist (pair (schedule-occurrence-pairs all-canonical-pairs tree-pos schedule pair-budget ledger))
+          (let* ((oa (car pair))
+                 (ob (cdr pair))
+                 (terms (list (tree-occurrence-term oa)
+                              (tree-occurrence-term ob)))
+                 (pat (anti-unify terms norm-inputs ledger)))
+            (unless (or (trivial-subexpression-pattern-p pat)
+                        (gethash pat candidate-patterns))
+              (setf (gethash pat candidate-patterns) terms)))))
+      ;; 2b. Multi-tree LGG relaxation across non-matching trees (when unconstrained by pair-budget)
+      (when (and (null pair-budget) (not (eq schedule :locality-only)))
+        (let ((seed-entries nil))
+          (maphash (lambda (pat witnesses) (push (cons pat witnesses) seed-entries))
+                   candidate-patterns)
+          (dolist (entry (nreverse seed-entries))
+            (let ((cur-pat (car entry))
+                  (cur-witnesses (cdr entry)))
+              (loop for i below n
+                    for tree-occs = (aref per-tree-occs i)
+                    for pat-sort = (term-sort cur-pat norm-inputs)
+                    unless (some (lambda (o)
+                                   (and (equal (tree-occurrence-sort o) pat-sort)
+                                        (nth-value 1 (match-pattern cur-pat (tree-occurrence-term o)
+                                                                    norm-inputs ledger))))
+                                 tree-occs)
+                    do (let ((best-relaxed nil)
+                             (best-witnesses nil)
+                             (best-saved 0))
+                         (dolist (o tree-occs)
+                           (when (and (equal (tree-occurrence-sort o) pat-sort)
+                                      (equal (tree-occurrence-signature o)
+                                             (and (app-p cur-pat) (term-sort (first cur-pat) norm-inputs))))
+                             (let ((new-witnesses (append cur-witnesses (list (tree-occurrence-term o)))))
+                               (multiple-value-bind (relaxed substs)
+                                   (anti-unify new-witnesses norm-inputs ledger)
+                                 (unless (trivial-subexpression-pattern-p relaxed)
+                                   (let ((saved (occurrence-saved-bits o relaxed (car (last substs)) norm-inputs)))
+                                     (when (> saved best-saved)
+                                       (setf best-saved saved
+                                             best-relaxed relaxed
+                                             best-witnesses new-witnesses))))))))
+                         (when best-relaxed
+                           (setf cur-pat best-relaxed
+                                 cur-witnesses best-witnesses)
+                           (unless (gethash cur-pat candidate-patterns)
+                             (setf (gethash cur-pat candidate-patterns) cur-witnesses))))))))))
     ;; Always include aligned whole-tree AU when all trees share the corpus root sort
     (when (> n 1)
       (let ((root-pat (anti-unify active-trees norm-inputs ledger)))
@@ -1270,7 +1401,7 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                                                (subexpression-abstraction-bits b))
                                             (> (subexpression-abstraction-structural-score a)
                                                (subexpression-abstraction-structural-score b))))))))
-           (non-trivial-Abstractions
+           (non-trivial-abstractions
              (remove-if (lambda (p)
                           (or (member (subexpression-abstraction-kind p) '(:literal :dictionary))
                               (null (subexpression-abstraction-pattern p))
@@ -1287,3 +1418,317 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                                                    (subexpression-abstraction-bits b)))))))
                  best-compression)))
       (values best-compression best-structural proposals corpus active-trees))))
+
+;;; Partitioning, Autonomous View Discovery, and Locality (M7 & M8C)
+
+(defun shuffle-frame-rows (frame permutation &optional ledger)
+  "Permute the physical storage order of FRAME's rows according to PERMUTATION
+(a bijection of 0..N-1) while preserving declared coordinates and occurrence keys."
+  (let* ((rows-vec (coerce (frame-rows frame) 'vector))
+         (n (length rows-vec)))
+    (assert (= n (length permutation)))
+    (assert (= n (length (remove-duplicates permutation :test #'eql))))
+    (assert (every (lambda (idx) (and (integerp idx) (<= 0 idx) (< idx n))) permutation))
+    (charge ledger :orientation n)
+    (make-frame (copy-schema (frame-schema frame))
+                (loop for idx in permutation
+                      for row = (aref rows-vec idx)
+                      collect (make-row :key (copy-tree (row-key row))
+                                        :known (copy-tree (row-known row))
+                                        :requirement (copy-tree (row-requirement row))))
+                :pairs (frame-pairs frame)
+                :anchors (frame-anchors frame))))
+
+(defstruct partition-view-proposal
+  (kind :separate-parts)
+  guard
+  labels
+  partition
+  part-models
+  model
+  conflict
+  (bits 0 :type fixnum)
+  (run-work 0 :type fixnum))
+
+(defun project-frame-rows (frame bindings &optional ledger)
+  "Project FRAME's `row-known` values through BINDINGS (an alist of (child-id . parent-expr))."
+  (if (null bindings)
+      frame
+      (let* ((schema (frame-schema frame))
+             (parent-inputs (schema-inputs schema))
+             (child-inputs (mapcar (lambda (b)
+                                     (cons (car b) (expression-type (cdr b) parent-inputs)))
+                                   bindings)))
+        (make-frame
+         (make-schema :domain (schema-domain schema)
+                      :inputs child-inputs
+                      :target (schema-target schema)
+                      :lookup-p (schema-lookup-p schema))
+         (loop for row in (frame-rows frame)
+               collect (let ((known
+                               (mapcar (lambda (b)
+                                         (let ((run (evaluate (cdr b) parent-inputs (row-known row) :ledger ledger)))
+                                           (unless (eq :value (evaluation-status run))
+                                             (error "View projection binding failed: ~S" run))
+                                           (evaluation-value run)))
+                                       bindings)))
+                         (charge ledger :orientation (length known))
+                         (make-row :key (copy-tree (row-key row))
+                                   :known known
+                                   :requirement (copy-tree (row-requirement row)))))))))
+
+(defun evaluate-guard-partition (frame guard-expr &key child-bindings ledger (budget 100000))
+  "Evaluate Boolean GUARD-EXPR on every row of FRAME in the metered VM, split into
+TRUE-FRAME and FALSE-FRAME (projected through CHILD-BINDINGS if supplied), and record
+the occurrence-preserving `partition` via `partition-rows`.
+Returns (VALUES true-frame false-frame labels partition)."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (rows (frame-rows frame))
+         (labels nil)
+         (true-rows nil)
+         (false-rows nil))
+    (assert (eq :bool (expression-type guard-expr inputs)))
+    (dolist (row rows)
+      (let ((run (evaluate guard-expr inputs (row-known row) :ledger ledger :budget budget)))
+        (unless (eq :value (evaluation-status run))
+          (return-from evaluate-guard-partition (values nil nil nil nil)))
+        (let ((val (not (null (evaluation-value run)))))
+          (push val labels)
+          (if val
+              (push row true-rows)
+              (push row false-rows)))))
+    (setf labels (nreverse labels)
+          true-rows (nreverse true-rows)
+          false-rows (nreverse false-rows))
+    (when (or (null true-rows) (null false-rows))
+      (return-from evaluate-guard-partition (values nil nil labels nil)))
+    (let* ((part (partition-rows rows labels ledger))
+           (raw-true (make-frame (copy-schema schema) true-rows))
+           (raw-false (make-frame (copy-schema schema) false-rows))
+           (true-frame (project-frame-rows raw-true child-bindings ledger))
+           (false-frame (project-frame-rows raw-false child-bindings ledger)))
+      (values true-frame false-frame labels part))))
+
+(defun solve-part-subframe (part-frame language bound work-limit &key propagation ledger)
+  "Solve PART-FRAME via `start-search` (or `start-propagation-search` when PROPAGATION is supplied)
+and return the best candidate expression, charging discovery work to LEDGER."
+  (if (and propagation (propagation-fallback propagation))
+      (let ((psearch (start-propagation-search propagation language)))
+        (resume-propagation-search psearch bound work-limit)
+        (charge ledger :view-child-search (ledger-total (propagation-search-ledger psearch)))
+        (when (propagation-search-best psearch)
+          (candidate-expression (propagation-search-best psearch))))
+      (let ((job (start-search (if propagation (propagation-frame propagation) part-frame) language)))
+        (resume-search job bound work-limit)
+        (charge ledger :view-child-search (ledger-total (search-job-ledger job)))
+        (when (search-job-best job)
+          (candidate-expression (search-job-best job))))))
+
+(defun evaluate-model-run-work (model frame &optional ledger)
+  "Verify MODEL across all rows of FRAME in the metered VM and return total runtime work W_run."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target-type (schema-target schema)))
+    (loop for row in (frame-rows frame)
+          sum (let ((run (evaluate model inputs (row-known row) :ledger ledger)))
+                (unless (eq :value (evaluation-status run))
+                  (return-from evaluate-model-run-work nil))
+                (let ((chk (check-requirement (row-requirement row) (evaluation-value run)
+                                              :ledger ledger :type target-type)))
+                  (unless (and (eq :value (evaluation-status chk))
+                               (eq t (evaluation-value chk)))
+                    (return-from evaluate-model-run-work nil)))
+                (evaluation-work run)))))
+
+(defun synthesize-supplied-partition-view (frame guard-expr child-language
+                                           &key child-bindings child-bound (work-limit 1000000)
+                                                decoder child-id child-type solver ledger)
+  "Given a supplied Boolean GUARD-EXPR on FRAME:
+1. Splits FRAME into TRUE-FRAME and FALSE-FRAME (projected via CHILD-BINDINGS).
+2. Immediately checks `frame-conflict-p` on each part (M8C conflict pruning).
+3. Recursively synthesizes per-part models to form `:separate-parts` `(if guard M_true M_false)`
+   and, when DECODER is supplied, `:shared-decoder` `d(X, (if guard Z_true Z_false))`.
+Returns (VALUES proposals conflict-proposal)."
+  (let* ((schema (frame-schema frame))
+         (parent-inputs (schema-inputs schema))
+         (target-type (schema-target schema)))
+    (multiple-value-bind (true-frame false-frame labels part)
+        (evaluate-guard-partition frame guard-expr :child-bindings child-bindings :ledger ledger)
+      (unless (and true-frame false-frame)
+        (return-from synthesize-supplied-partition-view (values nil nil)))
+      ;; M8C Conflict check on projected subframes
+      (let ((conflict (or (frame-conflict-p true-frame :ledger ledger)
+                          (frame-conflict-p false-frame :ledger ledger))))
+        (when conflict
+          (return-from synthesize-supplied-partition-view
+            (values nil
+                    (make-partition-view-proposal :kind :conflict
+                                                  :guard guard-expr
+                                                  :labels labels
+                                                  :partition part
+                                                  :conflict conflict)))))
+      (let* ((part-inputs (schema-inputs (frame-schema true-frame)))
+             (eff-bound (or child-bound (+ (header-size part-inputs target-type) 48)))
+             (proposals nil)
+             (true-expr (solve-part-subframe true-frame child-language eff-bound work-limit :ledger ledger))
+             (false-expr (when true-expr
+                           (solve-part-subframe false-frame child-language eff-bound work-limit :ledger ledger))))
+        (when (and true-expr false-expr)
+          (let* ((lifted-true (if child-bindings (instantiate true-expr child-bindings :var) true-expr))
+                 (lifted-false (if child-bindings (instantiate false-expr child-bindings :var) false-expr))
+                 (sep-model (app (op :if target-type) guard-expr lifted-true lifted-false))
+                 (sep-bits (description-size sep-model parent-inputs))
+                 (sep-work (evaluate-model-run-work sep-model frame ledger)))
+            (charge ledger :construction (syntax-work sep-model))
+            (when sep-work
+              (push (make-partition-view-proposal
+                     :kind :separate-parts
+                     :guard guard-expr
+                     :labels labels
+                     :partition part
+                     :part-models (list true-expr false-expr)
+                     :model sep-model
+                     :bits sep-bits
+                     :run-work sep-work)
+                    proposals))))
+        ;; When a shared decoder d(X, Z) is supplied, also synthesize context-dependent child arguments Z_true, Z_false
+        (when decoder
+          (let* ((eff-child-type (or child-type target-type))
+                 (true-parent (make-frame (copy-schema schema)
+                                          (loop for row in (frame-rows frame)
+                                                for b in labels
+                                                when b collect row)))
+                 (false-parent (make-frame (copy-schema schema)
+                                           (loop for row in (frame-rows frame)
+                                                 for b in labels
+                                                 unless b collect row)))
+                 (true-prop (when solver
+                              (propagate-arithmetic-child true-parent decoder child-id child-bindings solver ledger)))
+                 (false-prop (when solver
+                               (propagate-arithmetic-child false-parent decoder child-id child-bindings solver ledger)))
+                 (true-child (if true-prop
+                                 (propagation-frame true-prop)
+                                 (pullback-frame true-parent decoder child-id eff-child-type child-bindings ledger)))
+                 (false-child (if false-prop
+                                  (propagation-frame false-prop)
+                                  (pullback-frame false-parent decoder child-id eff-child-type child-bindings ledger)))
+                 (child-conflict (or (frame-conflict-p true-child :ledger ledger)
+                                     (frame-conflict-p false-child :ledger ledger))))
+            (if child-conflict
+                (return-from synthesize-supplied-partition-view
+                  (values (nreverse proposals)
+                          (make-partition-view-proposal :kind :conflict
+                                                        :guard guard-expr
+                                                        :labels labels
+                                                        :partition part
+                                                        :conflict child-conflict)))
+                (let* ((z-inputs (schema-inputs (frame-schema true-child)))
+                       (z-lang (make-language (if (eq eff-child-type :int) :int eff-child-type)
+                                              z-inputs
+                                              :operators (language-operators child-language)
+                                              :literals (language-literals child-language)))
+                       (z-bound (or child-bound (+ (header-size z-inputs eff-child-type) 48)))
+                       (z-true (solve-part-subframe true-child z-lang z-bound work-limit
+                                                    :propagation true-prop :ledger ledger))
+                       (z-false (when z-true
+                                  (solve-part-subframe false-child z-lang z-bound work-limit
+                                                       :propagation false-prop :ledger ledger))))
+                  (when (and z-true z-false)
+                    (let* ((lifted-z-true (if child-bindings (instantiate z-true child-bindings :var) z-true))
+                           (lifted-z-false (if child-bindings (instantiate z-false child-bindings :var) z-false))
+                           (z-branch (app (op :if eff-child-type) guard-expr lifted-z-true lifted-z-false))
+                           (shared-model (instantiate decoder (list (cons child-id z-branch)) :var))
+                           (shared-bits (description-size shared-model parent-inputs))
+                           (shared-work (evaluate-model-run-work shared-model frame ledger)))
+                      (charge ledger :construction (syntax-work shared-model))
+                      (when shared-work
+                        (push (make-partition-view-proposal
+                               :kind :shared-decoder
+                               :guard guard-expr
+                               :labels labels
+                               :partition part
+                               :part-models (list z-true z-false)
+                               :model shared-model
+                               :bits shared-bits
+                               :run-work shared-work)
+                              proposals))))))))
+        (values (nreverse proposals) nil)))))
+
+(defun discover-partition-views (frame guard-language child-language
+                                 &key guard-bound child-bindings child-bound (work-limit 1000000)
+                                      decoder child-id child-type solver ledger)
+  "Autonomously search GUARD-LANGUAGE for Boolean view selectors on FRAME:
+1. Enumerates candidate guards via `start-observation-search` and deduplicates equivalent
+   partitions via `observation-bucket` (including complement symmetry G vs (not G)).
+2. Prunes inconsistent view splits in O(|Omega|) via `frame-conflict-p` (recording M8C conflicts).
+3. Synthesizes `:separate-parts` and `:shared-decoder` models via recursive child search and
+   compares them against the unfactored `:lookup` baseline by total description size S.
+Returns (VALUES best-proposal proposals conflicts)."
+  (let* ((schema (frame-schema frame))
+         (parent-inputs (schema-inputs schema))
+         (bool-frame (make-frame (make-schema :domain (language-domain guard-language)
+                                              :inputs parent-inputs
+                                              :target :bool)
+                                 (loop for row in (frame-rows frame)
+                                       collect (make-row :key (copy-tree (row-key row))
+                                                         :known (copy-tree (row-known row))
+                                                         :requirement (lit :bool t)))))
+         (eff-guard-bound (or guard-bound (+ (header-size parent-inputs :bool) 48)))
+         (scope (make-observation-scope bool-frame guard-language))
+         (obs-job (start-observation-search scope))
+         (proposals nil)
+         (conflicts nil)
+         (seen-partitions (make-hash-table :test #'equal)))
+    (resume-observation-search obs-job eff-guard-bound work-limit)
+    (charge ledger :view-guard-search (ledger-total (observation-job-ledger obs-job)))
+    ;; Include unfactored lookup baseline when available
+    (when (schema-lookup-p schema)
+      (handler-case
+          (let* ((lookup (lookup-model frame ledger))
+                 (bits (description-size lookup parent-inputs))
+                 (run-work (evaluate-model-run-work lookup frame ledger)))
+            (when run-work
+              (push (make-partition-view-proposal
+                     :kind :lookup
+                     :model lookup
+                     :bits bits
+                     :run-work run-work)
+                    proposals)))
+        (error () nil)))
+    ;; Inspect each distinct Boolean observation bucket (shortest guard representative)
+    (dolist (bucket (reverse (observation-job-buckets obs-job)))
+      (when (eq :bool (observation-bucket-type bucket))
+        (let* ((vals (observation-bucket-values bucket))
+               (non-trivial-p (and (member t vals) (member nil vals)))
+               ;; Canonicalize complement symmetry so G and (not G) share one partition key
+               (canon-vals (if (first vals) vals (mapcar #'not vals))))
+          (when (and non-trivial-p (not (gethash canon-vals seen-partitions)))
+            (setf (gethash canon-vals seen-partitions) t)
+            (let* ((members (observation-bucket-members bucket))
+                   (best-rec (first (stable-sort (copy-list members) #'<
+                                                 :key (lambda (r)
+                                                        (description-size (observed-expression-expression r)
+                                                                          parent-inputs)))))
+                   (guard-expr (observed-expression-expression best-rec)))
+              (multiple-value-bind (guard-proposals conflict-prop)
+                  (synthesize-supplied-partition-view
+                   frame guard-expr child-language
+                   :child-bindings child-bindings :child-bound child-bound :work-limit work-limit
+                   :decoder decoder :child-id child-id :child-type child-type
+                   :solver solver :ledger ledger)
+                (when conflict-prop
+                  (push conflict-prop conflicts))
+                (dolist (p guard-proposals)
+                  (push p proposals))))))))
+    (setf proposals (nreverse proposals)
+          conflicts (nreverse conflicts))
+    (let ((best (first (stable-sort (copy-list proposals)
+                                    (lambda (a b)
+                                      (or (< (partition-view-proposal-bits a)
+                                             (partition-view-proposal-bits b))
+                                          (and (= (partition-view-proposal-bits a)
+                                                  (partition-view-proposal-bits b))
+                                               (< (partition-view-proposal-run-work a)
+                                                  (partition-view-proposal-run-work b)))))))))
+      (values best proposals conflicts))))

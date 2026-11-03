@@ -9,7 +9,7 @@ RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
 BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp codec.lisp vm.lisp frame.lisp enumerate.lisp factor.lisp laws.lisp benchmark.lisp
 
-.PHONY: all clean test m1 m2 m3 m4 visualizer benchmark benchmark-profile
+.PHONY: all clean test m1 m2 m3 m4 m5 m6 m7 visualizer benchmark benchmark-profile
 
 all: $(DOCS)
 
@@ -32,6 +32,18 @@ m3: | $(RESULTS_DIR)
 m4: | $(RESULTS_DIR)
 	@$(SBCL) --script experiments.lisp m4 > $(RESULTS_DIR)/milestone4.txt
 	@printf 'Milestone 4 report: %s/milestone4.txt\n' '$(RESULTS_DIR)'
+
+m5: | $(RESULTS_DIR)
+	@$(SBCL) --script experiments.lisp m5 > $(RESULTS_DIR)/milestone5.txt
+	@printf 'Milestone 5 report: %s/milestone5.txt\n' '$(RESULTS_DIR)'
+
+m6: | $(RESULTS_DIR)
+	@$(SBCL) --script experiments.lisp m6 > $(RESULTS_DIR)/milestone6.txt
+	@printf 'Milestone 6 report: %s/milestone6.txt\n' '$(RESULTS_DIR)'
+
+m7: | $(RESULTS_DIR)
+	@$(SBCL) --script experiments.lisp m7 > $(RESULTS_DIR)/milestone7.txt
+	@printf 'Milestone 7 report: %s/milestone7.txt\n' '$(RESULTS_DIR)'
 
 visualizer:
 	$(SBCL) --script visualizer/generate.lisp

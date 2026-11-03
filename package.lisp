@@ -66,8 +66,14 @@
    #:subexpression-abstraction-model #:subexpression-abstraction-bits
    #:subexpression-abstraction-literal-bits #:subexpression-abstraction-gain
    #:subexpression-abstraction-structural-score #:discover-subexpression-abstractions
-   #:planted-abstraction-fixture #:randomized-planted-abstraction-fixture
+   #:planted-abstraction-fixture #:randomized-planted-abstraction-fixture #:locality-abstraction-fixture
    #:m6-reference-aligned-au #:verify-corpus-abstraction-replay #:run-m6
+   #:shuffle-frame-rows #:partition-view-proposal #:partition-view-proposal-p
+   #:partition-view-proposal-kind #:partition-view-proposal-guard #:partition-view-proposal-labels
+   #:partition-view-proposal-partition #:partition-view-proposal-part-models
+   #:partition-view-proposal-model #:partition-view-proposal-conflict
+   #:partition-view-proposal-bits #:partition-view-proposal-run-work
+   #:evaluate-guard-partition #:synthesize-supplied-partition-view #:discover-partition-views #:run-m7
    #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement #:fiber-class-rows #:fiber-class-keys #:infer-fibers
    #:context-label-frame #:gf7-iota-conversion #:gf7-lifting-fixture #:integer-lifting-fixture #:best-composed-lifting-model #:run-m5
    #:law-corpus #:make-law-corpus #:law-corpus-laws #:law-corpus-packet #:law-corpus-frame

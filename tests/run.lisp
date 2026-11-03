@@ -4,9 +4,10 @@
 (load (merge-pathnames "../algebra-experiments.lisp" *load-truename*))
 (load (merge-pathnames "../lifting-experiments.lisp" *load-truename*))
 (load (merge-pathnames "../abstraction-experiments.lisp" *load-truename*))
+(load (merge-pathnames "../view-experiments.lisp" *load-truename*))
 (in-package #:lisploop)
 
-(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic" "amortization" "algebra" "propagation" "lifting" "abstraction"))
+(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic" "amortization" "algebra" "propagation" "lifting" "abstraction" "views"))
   (load (merge-pathnames (make-pathname :name module :type "lisp") *load-truename*)))
 
 (let ((start (get-internal-real-time)))

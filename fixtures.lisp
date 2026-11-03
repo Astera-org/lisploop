@@ -350,3 +350,72 @@ Returns (VALUES trees inputs hidden-oracle next-state)."
                     :paths (nreverse paths)
                     :wrappers (nreverse wrappers))
               state))))
+
+(defun locality-abstraction-fixture (&key (domain :int) (mode :co-local) ledger)
+  "Construct a 6-tree AST corpus in which planted instances of a shared template p
+are arranged according to MODE:
+  :CO-LOCAL    — 2 planted trees placed adjacent at indices (3, 4), surrounded by 4 distractors.
+  :DISTANT     — 2 planted trees placed at opposite ends (0, 5), separated by 4 distractors.
+  :INTERLEAVED — 3 planted trees placed at even indices (0, 2, 4), interleaved with 3 odd distractors.
+Returns (VALUES trees inputs hidden-oracle)."
+  (assert (member mode '(:co-local :distant :interleaved)))
+  (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
+         (x0 (var 0 domain))
+         (x1 (var 1 domain))
+         (plus (op :+ domain))
+         (mul (op :* domain))
+         (sub (op :- domain))
+         (anchor (app plus
+                      (app mul x0 (lit domain 2))
+                      (app plus
+                           (app mul x1 (lit domain 3))
+                           (app mul (app plus x0 x1) (lit domain 5)))))
+         (branch (app mul (hole 0 domain) anchor))
+         (pattern (app plus branch branch))
+         (planted-args (list x0
+                             (app plus x1 (lit domain 2))
+                             (app mul x0 (lit domain 3))))
+         (planted-trees
+           (mapcar (lambda (arg)
+                     (instantiate pattern (list (cons 0 arg))))
+                   planted-args))
+         (distractors
+           (list (app plus x0 (lit domain 1))
+                 (app plus x1 (lit domain 2))
+                 (app plus (app sub x0 (lit domain 3)) x1)
+                 (app plus x0 (app sub x1 (lit domain 4)))))
+         (trees
+           (ecase mode
+             (:co-local
+              (list (first distractors)
+                    (second distractors)
+                    (third distractors)
+                    (first planted-trees)
+                    (second planted-trees)
+                    (fourth distractors)))
+             (:distant
+              (list (first planted-trees)
+                    (first distractors)
+                    (second distractors)
+                    (third distractors)
+                    (fourth distractors)
+                    (second planted-trees)))
+             (:interleaved
+              (list (first planted-trees)
+                    (first distractors)
+                    (second planted-trees)
+                    (second distractors)
+                    (third planted-trees)
+                    (third distractors)))))
+         (planted-indices
+           (ecase mode
+             (:co-local '(3 4))
+             (:distant '(0 5))
+             (:interleaved '(0 2 4)))))
+    (dolist (tree trees)
+      (charge ledger :construction (syntax-work tree)))
+    (values trees
+            inputs
+            (list :pattern pattern
+                  :mode mode
+                  :planted-indices planted-indices))))
