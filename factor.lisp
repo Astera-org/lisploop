@@ -323,8 +323,9 @@ Returns (VALUES classes labels refined-frame partition)."
                                                         (fiber-class-rows class)))
                  (dolist (r-idx (fiber-class-rows class))
                    (setf (aref assignments r-idx) new-id)))
-        ;; Build final labels, refined frame, and row partition
+        ;; Build final labels, refined frame (with computed intra-fiber pairs & cross-fiber anchors), and row partition
         (let* ((labels (coerce assignments 'list))
+               (part (partition-rows (frame-rows frame) labels ledger))
                (refined-rows
                  (loop for i below n
                        for row = (aref rows-vec i)
@@ -332,11 +333,25 @@ Returns (VALUES classes labels refined-frame partition)."
                        for class = (nth cid classes)
                        collect (make-row :key (copy-tree (row-key row))
                                          :known (copy-tree (row-known row))
-                                         :requirement (copy-tree (fiber-class-requirement class)))))
-               (refined-frame (make-frame (copy-schema schema) refined-rows
-                                          :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
-               (part (partition-rows (frame-rows frame) labels ledger)))
-          (values classes labels refined-frame part))))))
+                                         :requirement (copy-tree (fiber-class-requirement class))))))
+          (multiple-value-bind (inferred-pairs inferred-anchors)
+              (partition-pairs-and-anchors part nil ledger)
+            (let ((refined-frame (make-frame (copy-schema schema) refined-rows
+                                             :pairs (or (frame-pairs frame) inferred-pairs)
+                                             :anchors (or (frame-anchors frame) inferred-anchors))))
+              (values classes labels refined-frame part))))))))
+
+(defun fiber-pairs-and-anchors (frame &optional ledger (budget 10000))
+  "Compute intra-fiber must-agree `pairs` and cross-fiber must-vary `anchors` from FRAME
+via `infer-fibers`. Returns (VALUES pairs anchors refined-frame classes labels partition)."
+  (multiple-value-bind (classes labels refined-frame part)
+      (infer-fibers frame ledger budget)
+    (values (frame-pairs refined-frame)
+            (frame-anchors refined-frame)
+            refined-frame
+            classes
+            labels
+            part)))
 
 (defun context-label-frame (parent labels &key bindings (label-type :int) (lookup-p t) ledger)
   "Project PARENT rows through BINDINGS (an alist of (child-input-id . parent-expr),
@@ -1504,11 +1519,12 @@ Returns (VALUES true-frame false-frame labels partition)."
     (when (or (null true-rows) (null false-rows))
       (return-from evaluate-guard-partition (values nil nil labels nil)))
     (let* ((part (partition-rows rows labels ledger))
+           (linked-frame (with-frame-linkage frame :partition part :ledger ledger))
            (raw-true (make-frame (copy-schema schema) true-rows))
            (raw-false (make-frame (copy-schema schema) false-rows))
            (true-frame (project-frame-rows raw-true child-bindings ledger))
            (false-frame (project-frame-rows raw-false child-bindings ledger)))
-      (values true-frame false-frame labels part))))
+      (values true-frame false-frame labels part linked-frame))))
 
 (defun solve-part-subframe (part-frame language bound work-limit &key propagation ledger)
   "Solve PART-FRAME via `start-search` (or `start-propagation-search` when PROPAGATION is supplied)

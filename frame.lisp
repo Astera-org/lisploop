@@ -329,3 +329,49 @@ Every occurrence stays present. The predictor receives only the original inputs.
         (setf (aref permutation index) (+ (nth part offsets) (aref cursors part)))
         (incf (aref cursors part))))
     (quotient-model type (apply #'append groups) (coerce permutation 'list) ledger)))
+
+(defun partition-pairs-and-anchors (partition-or-rows &optional labels ledger)
+  "Derive intra-block must-agree `pairs` and cross-block must-vary `anchors` from a
+`partition` (or from PARTITION-OR-ROWS and LABELS via `partition-rows`).
+Each block G_k with >= 2 rows contributes a chain of adjacent key pairs
+`((k_{k,0} k_{k,1}) (k_{k,1} k_{k,2}) ...)` and representative anchor `k_{k,0}`.
+Returns (VALUES pairs anchors partition)."
+  (let* ((part (if (partition-p partition-or-rows)
+                   partition-or-rows
+                   (partition-rows (if (frame-p partition-or-rows)
+                                       (frame-rows partition-or-rows)
+                                       partition-or-rows)
+                                   labels ledger)))
+         (pairs nil)
+         (anchors nil))
+    (dolist (group (partition-groups part))
+      (let ((keys (mapcar (lambda (item) (if (row-p item) (row-key item) item)) group)))
+        (when (>= (length keys) 2)
+          (push (copy-tree (first keys)) anchors)
+          (loop for (a b) on keys
+                while b
+                do (charge ledger :orientation)
+                   (push (list (copy-tree a) (copy-tree b)) pairs)))))
+    (setf pairs (nreverse pairs)
+          anchors (if (>= (length anchors) 2) (nreverse anchors) nil))
+    (values pairs anchors part)))
+
+(defun with-frame-linkage (frame &key pairs anchors partition labels ledger)
+  "Construct a new `frame` over FRAME's schema and rows carrying updated `:pairs`
+and `:anchors` (either supplied directly or derived from `:partition` / `:labels`
+via `partition-pairs-and-anchors`)."
+  (multiple-value-bind (derived-pairs derived-anchors)
+      (if (or partition labels)
+          (partition-pairs-and-anchors (or partition (frame-rows frame)) labels ledger)
+          (values nil nil))
+    (let ((eff-pairs (or pairs derived-pairs))
+          (eff-anchors (or anchors derived-anchors)))
+      (charge ledger :orientation (length (frame-rows frame)))
+      (make-frame (copy-schema (frame-schema frame))
+                  (mapcar (lambda (row)
+                            (make-row :key (copy-tree (row-key row))
+                                      :known (copy-tree (row-known row))
+                                      :requirement (copy-tree (row-requirement row))))
+                          (frame-rows frame))
+                  :pairs eff-pairs
+                  :anchors eff-anchors))))
