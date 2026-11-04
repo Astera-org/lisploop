@@ -172,21 +172,55 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                   (substituted (propagate-conjunct-equalities (extract-conjuncts yes) condition)))
              (unless (equal substituted condition)
                (return-from simplify-conjunction (walk (bool-and substituted yes))))
-             (dolist (c conjuncts)
-               (multiple-value-bind (term type values) (extract-term-membership c)
-                 (when term
-                   (let ((kept nil) (resolved t))
-                     (dolist (value values)
-                       ;; Filter against the WHOLE conjunction, preserving siblings.
-                       (let ((result (walk (replace-subexpression whole term (lit type value)))))
-                         (if (lit-p result)
-                             (when (ast-value result) (push value kept))
-                             (setf resolved nil))))
-                     (when resolved
-                       (return-from simplify-conjunction
-                         (cond ((null kept) (lit :bool nil))
-                               ((null (rest kept)) (app (op := type) term (lit type (first kept))))
-                               (t (app (op :member type) term (lit (sequence-type type) (nreverse kept)))))))))))
+             (loop for c in conjuncts
+                   for c-pos from 0
+                   do (multiple-value-bind (term type values) (extract-term-membership c)
+                        (when (and term values)
+                          (let* (( probe (lit type (first values)))
+                                 (mentions-p
+                                   (loop for other in conjuncts
+                                         for o-pos from 0
+                                         collect (and (/= o-pos c-pos)
+                                                      (not (eq other (replace-subexpression other term probe)))))))
+                            (when (some #'identity mentions-p)
+                              (let ((kept nil)
+                                    (entailed (copy-list mentions-p))
+                                    (aborted nil))
+                                (dolist (value values)
+                                  (let ((val-lit (lit type value))
+                                        ( refuted nil))
+                                    (loop for other in conjuncts
+                                          for mention-p in mentions-p
+                                          for o-pos from 0
+                                          when mention-p
+                                          do (let ((res (walk (replace-subexpression other term val-lit))))
+                                               (when (zerop remaining)
+                                                 (setf aborted t))
+                                               (cond
+                                                 ((and (lit-p res) (null (ast-value res)))
+                                                  (setf refuted t)
+                                                  (return))
+                                                 ((not (and (lit-p res) (eq t (ast-value res))))
+                                                  (setf (nth o-pos entailed) nil)))))
+                                    (unless refuted
+                                      (push value kept))))
+                                (setf kept (nreverse kept))
+                                (when (and (not aborted)
+                                           (or (< (length kept) (length values))
+                                               (some #'identity entailed)))
+                                  (when (null kept)
+                                    (return-from simplify-conjunction (lit :bool nil)))
+                                  (let* ((new-c (if (null (rest kept))
+                                                    (app (op := type) term (lit type (first kept)))
+                                                    (app (op :member type) term (lit (sequence-type type) kept))))
+                                         (rebuilt-conjuncts
+                                           (loop for item in conjuncts
+                                                 for ent-p in entailed
+                                                 for o-pos from 0
+                                                 unless ent-p
+                                                 collect (if (= o-pos c-pos) new-c item))))
+                                    (return-from simplify-conjunction
+                                      (walk (reduce #'bool-and rebuilt-conjuncts :from-end t)))))))))))
              (multiple-value-bind (rebuilt changed) (try-reassemble-tuple-coordinates conjuncts)
                (if changed rebuilt whole)))))
       (walk expression))))

@@ -10,7 +10,15 @@
          (predicate (bool-and (bool-and (app (op :member :int) x (lit (sequence-type :int) '(1 2 3)))
                                         (app (op := :int) y (lit :int 0)))
                               (bool-not (app (op := :int) x (lit :int 3)))))
-         (folded (fold-constants predicate)))
+         (folded (fold-constants predicate))
+         (singleton (fold-constants
+                     (bool-and (bool-and (app (op :member :int) x (lit (sequence-type :int) '(1 2)))
+                                         (app (op := :int) y (lit :int 0)))
+                               (app (op :member :int) x (lit (sequence-type :int) '(2 3)))))))
+    (check (equal folded
+                  (bool-and (app (op :member :int) x (lit (sequence-type :int) '(1 2)))
+                            (app (op := :int) y (lit :int 0)))))
+    (check (equal singleton (app (op := pair) z (lit pair '(2 0)))))
     (loop for a from -1 to 4 do (loop for b from -1 to 2 do
       (check (equal (outcome-signature predicate (list (cons 0 pair)) (list (list a b)))
                     (outcome-signature folded (list (cons 0 pair)) (list (list a b))))))))
