@@ -2,14 +2,41 @@
 
 ;;; Module 3: vm.lisp
 ;;; Structural tariff, resumable homoiconic evaluator,
-;;; symbolic primitive execution, and closed-subtree constant folding.
+;;; and symbolic primitive execution. Simplification lives in requirements.lisp.
 
-(defconstant +tariff-version+ 8)
+(defconstant +tariff-version+ 9)
 (defconstant +simulator-version+ 5)
 
 (defstruct ledger (total 0) (counts nil))
 
+(defvar *work-limit-ledger* nil)
+(defvar *work-limit* nil)
+(defvar *work-limit-tag* nil)
+
+(defun remaining-work (ledger limit)
+  (max 0 (min limit (if (and (eq ledger *work-limit-ledger*) *work-limit*)
+                        (- *work-limit* (ledger-total ledger)) limit))))
+
+(defmacro with-work-limit ((ledger limit cutoff) &body body)
+  "Bound synchronous orchestration, including nested preparation/checking.
+LIMIT is additional work for this invocation; nested calls cannot renew it.
+CUTOFF is returned on interruption. Resumable controllers use explicit state."
+  (let ((l (gensym)) (end (gensym)) (tag (gensym)) (answer (gensym)))
+    `(let* ((,l ,ledger)
+            (,end (+ (ledger-total ,l) (remaining-work ,l ,limit)))
+            (,tag (gensym))
+            (,answer
+              (let ((*work-limit-ledger* ,l) (*work-limit* ,end) (*work-limit-tag* ,tag))
+                (catch ,tag (cons :complete (multiple-value-list (progn ,@body)))))))
+       (if (eq :complete (car ,answer)) (values-list (cdr ,answer)) ,cutoff))))
+
 (defun charge (ledger category &optional (amount 1))
+  (assert (and (integerp amount) (>= amount 0)))
+  (when (and ledger (eq ledger *work-limit-ledger*) *work-limit*
+             (> (+ (ledger-total ledger) amount) *work-limit*))
+    (let ((remaining (- *work-limit* (ledger-total ledger))))
+      (when (plusp remaining) (charge ledger category remaining)))
+    (throw *work-limit-tag* '(:cutoff)))
   (when ledger
     (incf (ledger-total ledger) amount)
     (let ((entry (assoc category (ledger-counts ledger))))
@@ -284,352 +311,3 @@
              (diagnostic (if (or unpaid (zerop spent)) 1 0)))
         (when (plusp diagnostic) (charge ledger error-category diagnostic))
         (values result (+ spent diagnostic))))))
-
-;;; Closed-Subtree Constant Folding (Section 1.2 of plan6.md)
-
-(defun extract-var-equality (expr)
-  "If EXPR is `(= var 'val)` or `(= 'val var)`, return (VALUES var-id var-type lit-node)."
-  (when (and (app-p expr) (eq := (operator-name (first expr))))
-    (let ((lhs (first (rest expr)))
-          (rhs (second (rest expr))))
-      (cond
-        ((and (var-p lhs) (lit-p rhs))
-         (values (ast-id lhs) (ast-type lhs) rhs))
-        ((and (lit-p lhs) (var-p rhs))
-         (values (ast-id rhs) (ast-type rhs) lhs))
-        (t nil)))))
-
-(defun extract-term-equality (expr)
-  "If EXPR is `(= term 'val)` or `(= 'val term)` for a provably-total non-literal TERM,
-return (VALUES term term-type lit-node)."
-  (when (and (app-p expr) (eq := (operator-name (first expr))))
-    (let ((lhs (first (rest expr)))
-          (rhs (second (rest expr)))
-          (type (operator-operand-type (first expr))))
-      (cond
-        ((and (not (lit-p lhs)) (lit-p rhs) (provably-total-p lhs))
-         (values lhs type rhs))
-        ((and (lit-p lhs) (not (lit-p rhs)) (provably-total-p rhs))
-         (values rhs type lhs))
-        (t nil)))))
-
-(defun extract-var-membership (expr)
-  "If EXPR is `(member var '(v1 ... vk))`, return (VALUES var-id var-type values-list)."
-  (when (and (app-p expr) (eq :member (operator-name (first expr))))
-    (let ((lhs (first (rest expr)))
-          (rhs (second (rest expr))))
-      (when (and (var-p lhs) (lit-p rhs))
-        (values (ast-id lhs) (ast-type lhs) (ast-value rhs))))))
-
-(defun extract-term-membership (expr)
-  "If EXPR is `(member term '(v1 ... vk))` for a provably-total non-literal TERM,
-return (VALUES term term-type values-list)."
-  (when (and (app-p expr) (eq :member (operator-name (first expr))))
-    (let ((lhs (first (rest expr)))
-          (rhs (second (rest expr)))
-          (type (operator-operand-type (first expr))))
-      (when (and (not (lit-p lhs)) (lit-p rhs) (provably-total-p lhs))
-        (values lhs type (ast-value rhs))))))
-
-(defun replace-subexpression (expr target replacement)
-  "Replace every subtree of EXPR that is EQUAL to TARGET with REPLACEMENT."
-  (cond
-    ((equal expr target) replacement)
-    ((app-p expr)
-     (let* ((args (rest expr))
-            (new-args (mapcar (lambda (arg) (replace-subexpression arg target replacement)) args)))
-       (if (every #'eq new-args args)
-           expr
-           (apply #'app (first expr) new-args))))
-    (t expr)))
-
-(defun extract-conjuncts (expr)
-  "Return the list of atomic conjuncts of a `(if A B 'nil)` conjunction tree."
-  (let ((meta (ignore-errors (ensure-ast-meta expr))))
-    (if (and meta
-             (eq :app (ast-meta-kind meta))
-             (eq :bool (ast-meta-type meta))
-             (eq :if (operator-name (first expr)))
-             (lit-p (fourth expr))
-             (null (ast-value (fourth expr))))
-        (nconc (extract-conjuncts (second expr))
-               (extract-conjuncts (third expr)))
-        (list expr))))
-
-(defun propagate-conjunct-equalities (conjuncts target-expr)
-  "Substitute every singleton equality `(= term 'c)` found in CONJUNCTS into TARGET-EXPR."
-  (let ((result target-expr))
-    (dolist (c conjuncts result)
-      (multiple-value-bind (eq-term eq-type eq-lit) (extract-term-equality c)
-        (declare (ignore eq-type))
-        (when eq-term
-          (setf result (replace-subexpression result eq-term eq-lit)))))))
-
-(defun extract-at-coordinate-equality (expr)
-  "If EXPR is `(= (at base 'idx) 'val)` on a tuple-typed BASE, return (VALUES base tuple-type idx val)."
-  (multiple-value-bind (term term-type lit-node) (extract-term-equality expr)
-    (declare (ignore term-type))
-    (when (and term (app-p term) (eq :at (operator-name (first term))))
-      (let* ((base (second term))
-             (idx-node (third term))
-             (base-meta (ignore-errors (ensure-ast-meta base)))
-             (base-type (and base-meta (ast-meta-type base-meta))))
-        (when (and base-type (consp base-type) (eq :tuple (first base-type))
-                   (provably-total-p base)
-                   (lit-p idx-node) (integerp (ast-value idx-node))
-                   (<= 0 (ast-value idx-node)) (< (ast-value idx-node) (length (rest base-type))))
-          (values base base-type (ast-value idx-node) (ast-value lit-node)))))))
-
-(defun try-reassemble-tuple-coordinates (conjuncts)
-  "When CONJUNCTS pin every slot 0..k-1 of a tuple term V via `(= (at V 'i) 'v_i)`,
-reassemble those conjuncts into `(= V '(v_0 ... v_{k-1}))`. Returns (VALUES expr changed-p)."
-  (let ((by-base nil))
-    (dolist (c conjuncts)
-      (multiple-value-bind (base tuple-type idx val) (extract-at-coordinate-equality c)
-        (when base
-          (let ((entry (assoc base by-base :test #'equal)))
-            (unless entry
-              (setf entry (list base tuple-type (make-array (length (rest tuple-type)) :initial-element :unbound) nil)
-                    by-base (cons entry by-base)))
-            (let ((slots (third entry)))
-              (cond
-                ((eq :unbound (aref slots idx))
-                 (setf (aref slots idx) val)
-                 (push c (fourth entry)))
-                ((not (equal (aref slots idx) val))
-                 (return-from try-reassemble-tuple-coordinates (values (lit :bool nil) t)))
-                (t
-                 (push c (fourth entry)))))))))
-    (dolist (entry (nreverse by-base))
-      (destructuring-bind (base tuple-type slots used-conjuncts) entry
-        (when (loop for s across slots never (eq s :unbound))
-          (let* ((tuple-val (coerce slots 'list))
-                 (tuple-eq (app (op := tuple-type) base (lit tuple-type tuple-val)))
-                 (remaining (remove-if (lambda (c) (member c used-conjuncts :test #'equal)) conjuncts))
-                 (all-conjuncts (cons tuple-eq remaining)))
-            (return-from try-reassemble-tuple-coordinates
-              (values (reduce #'bool-and all-conjuncts :from-end t) t))))))
-    (values nil nil)))
-
-(defun try-invert-literal-at (at-expr target-vals ledger)
-  "When AT-EXPR is `(at 'R idx-term)` on a literal sequence/tuple `'R` and provably-total
-`idx-term : :int`, or 2D `(at (at 'G (at T '0)) (at T '1))` on a literal 2D grid `'G` and
-provably-total 2-tuple `T : (:tuple :int :int)`, invert into the exact matching index fiber.
-Returns (VALUES term term-type allowed-values matched-p)."
-  (when (and (app-p at-expr) (eq :at (operator-name (first at-expr))))
-    (let ((container (second at-expr))
-          (index-arg (third at-expr)))
-      (cond
-        ;; 1D literal container: `(at 'R idx-term)`
-        ((and (lit-p container) (provably-total-p index-arg))
-         (let* ((items (ast-value container))
-                (indices (loop for item in items
-                               for idx from 0
-                               do (charge ledger :orientation)
-                               when (member item target-vals :test #'equal)
-                               collect idx)))
-           (values index-arg :int indices t)))
-        ;; 2D literal grid indexed by 2-tuple projections: `(at (at 'G (at T '0)) (at T '1))`
-        ((and (app-p container) (eq :at (operator-name (first container)))
-              (lit-p (second container))
-              (app-p (third container)) (eq :at (operator-name (first (third container))))
-              (app-p index-arg) (eq :at (operator-name (first index-arg)))
-              (let ((t0 (second (third container)))
-                    (i0 (third (third container)))
-                    (t1 (second index-arg))
-                    (i1 (third index-arg)))
-                (and (equal t0 t1) (provably-total-p t0)
-                     (equal '(:tuple :int :int) (ast-meta-type (ensure-ast-meta t0)))
-                     (lit-p i0) (eql 0 (ast-value i0))
-                     (lit-p i1) (eql 1 (ast-value i1)))))
-         (let* ((grid (ast-value (second container)))
-                (tup-term (second index-arg))
-                (tup-type '(:tuple :int :int))
-                (coords (loop for row in grid
-                              for r from 0
-                              append (loop for cell in row
-                                           for c from 0
-                                           do (charge ledger :orientation)
-                                           when (member cell target-vals :test #'equal)
-                                           collect (list r c)))))
-           (values tup-term tup-type coords t)))
-        (t (values nil nil nil nil))))))
-
-(defun try-filter-membership (m-term m-type m-vals pred-expr schema ledger budget)
-  "Filter M-VALS by substituting M-TERM -> (lit M-TYPE v) into PRED-EXPR and folding.
-Returns (VALUES filtered-ast success-p)."
-  (let ((kept nil))
-    (dolist (v m-vals)
-      (let* ((subst (replace-subexpression pred-expr m-term (lit m-type v)))
-             (ev (fold-constants subst schema :ledger ledger :budget budget)))
-        (if (lit-p ev)
-            (when (ast-value ev) (push v kept))
-            (return-from try-filter-membership (values nil nil)))))
-    (let ((filtered (remove-duplicates (nreverse kept) :test #'equal :from-end t)))
-      (values
-       (cond
-         ((null filtered) (lit :bool nil))
-         ((null (rest filtered))
-          (app (op := m-type) m-term (lit m-type (first filtered))))
-         (t (app (op :member m-type) m-term
-                 (lit (sequence-type m-type) filtered))))
-       t))))
-
-(defun fold-constants (expr &optional schema &key ledger (budget 10000))
-  "Recursively evaluate closed subtrees via the VM, short-circuiting `if`,
-propagating singleton equalities `(= term 'c)` into `then`-branches,
-filtering `:member` sets across conjunctions, and decomposing tuple equalities."
-  (let ((meta (ignore-errors (ensure-ast-meta expr))))
-    (cond
-      ((or (null meta) (member (ast-meta-kind meta) '(:lit :var :op :hole)))
-        expr)
-      ((eq :app (ast-meta-kind meta))
-       (let ((operator (first expr))
-             (args (rest expr)))
-         (cond
-           ;; Special form: IF short-circuiting and branch-local equality/membership propagation
-           ((eq :if (operator-name operator))
-            (let ((cond-folded (fold-constants (first args) schema :ledger ledger :budget budget)))
-              (if (lit-p cond-folded)
-                  (if (ast-value cond-folded)
-                      (fold-constants (second args) schema :ledger ledger :budget budget)
-                      (fold-constants (third args) schema :ledger ledger :budget budget))
-                  (let* ((cond-conjuncts (extract-conjuncts cond-folded))
-                         (yes-source (propagate-conjunct-equalities cond-conjuncts (second args)))
-                         (yes-folded (fold-constants yes-source schema :ledger ledger :budget budget))
-                         (no-folded (fold-constants (third args) schema :ledger ledger :budget budget)))
-                    (cond
-                      ;; Idempotent branches on a total condition: `(if cond X X) -> X`
-                      ((and (provably-total-p cond-folded) (equal yes-folded no-folded))
-                       yes-folded)
-                      ;; Boolean identity: `(if cond 't 'nil) -> cond`
-                      ((and (eq :bool (ast-meta-type meta))
-                            (lit-p yes-folded) (eq t (ast-value yes-folded))
-                            (lit-p no-folded) (null (ast-value no-folded)))
-                       cond-folded)
-                      ;; Conjunction symmetry & finite-set filtering: `(if cond yes 'nil)`
-                      ((and (lit-p no-folded) (null (ast-value no-folded)))
-                       (let* ((yes-conjuncts (extract-conjuncts yes-folded))
-                              (cond-subst-source (propagate-conjunct-equalities yes-conjuncts cond-folded)))
-                         (unless (eq cond-subst-source cond-folded)
-                           (let ((cond-subst (fold-constants cond-subst-source schema :ledger ledger :budget budget)))
-                             (when (lit-p cond-subst)
-                               (return-from fold-constants
-                                 (if (ast-value cond-subst) yes-folded (lit :bool nil))))
-                             (setf cond-folded cond-subst
-                                   cond-conjuncts (extract-conjuncts cond-folded))))
-                         (dolist (c cond-conjuncts)
-                           (multiple-value-bind (m-term m-type m-vals) (extract-term-membership c)
-                             (when m-term
-                               (multiple-value-bind (res ok)
-                                   (try-filter-membership m-term m-type m-vals yes-folded schema ledger budget)
-                                 (when ok (return-from fold-constants res))))))
-                         (dolist (c yes-conjuncts)
-                           (multiple-value-bind (m-term m-type m-vals) (extract-term-membership c)
-                             (when m-term
-                               (multiple-value-bind (res ok)
-                                   (try-filter-membership m-term m-type m-vals cond-folded schema ledger budget)
-                                 (when ok (return-from fold-constants res))))))
-                         (multiple-value-bind (reassembled reassembled-p)
-                             (try-reassemble-tuple-coordinates (append cond-conjuncts yes-conjuncts))
-                           (when reassembled-p
-                             (return-from fold-constants
-                               (if (and (app-p reassembled) (eq :if (operator-name (first reassembled))))
-                                   (fold-constants reassembled schema :ledger ledger :budget budget)
-                                   reassembled))))
-                         (app operator cond-folded yes-folded no-folded)))
-                      (t (app operator cond-folded yes-folded no-folded)))))))
-           ;; Strict application: fold arguments first
-           (t
-            (let* ((folded-args (mapcar (lambda (arg)
-                                          (fold-constants arg schema :ledger ledger :budget budget))
-                                        args))
-                   (rebuilt (if (every #'eq folded-args args)
-                                expr
-                                (apply #'app operator folded-args))))
-              ;; Beta-reduction of `:at` on `:tuple` with in-bounds literal index:
-              ;; `(at (tuple e_0 ... e_{k-1}) 'i) -> e_i` when all components are provably total
-              (when (and (eq :at (operator-name operator))
-                         (app-p (first folded-args))
-                         (eq :tuple (operator-name (first (first folded-args))))
-                         (lit-p (second folded-args))
-                         (every #'provably-total-p (rest (first folded-args))))
-                (let ((idx (ast-value (second folded-args)))
-                      (parts (rest (first folded-args))))
-                  (when (and (integerp idx) (<= 0 idx) (< idx (length parts)))
-                    (return-from fold-constants (nth idx parts)))))
-              ;; Normalize 0-element and 1-element `:member` on provably-total terms,
-              ;; and invert `:member` over literal `:at` tables/grids into index fibers
-              (when (and (eq :member (operator-name operator))
-                         (lit-p (second folded-args)))
-                (let* ((elem-type (operator-operand-type operator))
-                       (vals (remove-duplicates (ast-value (second folded-args)) :test #'equal :from-end t)))
-                  (multiple-value-bind (idx-term idx-type idx-vals inverted-p)
-                      (try-invert-literal-at (first folded-args) vals ledger)
-                    (when inverted-p
-                      (return-from fold-constants
-                        (cond
-                          ((null idx-vals) (lit :bool nil))
-                          ((null (rest idx-vals))
-                           (fold-constants (app (op := idx-type) idx-term (lit idx-type (first idx-vals)))
-                                           schema :ledger ledger :budget budget))
-                          (t (app (op :member idx-type) idx-term
-                                  (lit (sequence-type idx-type) idx-vals)))))))
-                  (when (provably-total-p (first folded-args))
-                    (cond
-                      ((null vals)
-                       (return-from fold-constants (lit :bool nil)))
-                      ((null (rest vals))
-                       (return-from fold-constants
-                         (fold-constants (app (op := elem-type) (first folded-args) (lit elem-type (first vals)))
-                                         schema :ledger ledger :budget budget)))))))
-              ;; Tuple equality decomposition `(= (tuple a1 a2) '(v1 v2))`
-              ;; and literal `:at` table/grid inversion `(= (at 'R idx) 'v)`
-              (when (eq := (operator-name operator))
-                (let ((lhs (first folded-args))
-                      (rhs (second folded-args)))
-                  (multiple-value-bind (at-side lit-side)
-                      (cond
-                        ((and (app-p lhs) (eq :at (operator-name (first lhs))) (lit-p rhs))
-                         (values lhs rhs))
-                        ((and (lit-p lhs) (app-p rhs) (eq :at (operator-name (first rhs))))
-                         (values rhs lhs))
-                        (t (values nil nil)))
-                    (when at-side
-                      (multiple-value-bind (idx-term idx-type idx-vals inverted-p)
-                          (try-invert-literal-at at-side (list (ast-value lit-side)) ledger)
-                        (when inverted-p
-                          (return-from fold-constants
-                            (cond
-                              ((null idx-vals) (lit :bool nil))
-                              ((null (rest idx-vals))
-                               (if (and (equal idx-term at-side) (equal (first idx-vals) (ast-value lit-side)))
-                                   rebuilt
-                                   (fold-constants (app (op := idx-type) idx-term (lit idx-type (first idx-vals)))
-                                                   schema :ledger ledger :budget budget)))
-                              (t (app (op :member idx-type) idx-term
-                                      (lit (sequence-type idx-type) idx-vals)))))))))
-                  (multiple-value-bind (tuple-expr lit-expr)
-                      (cond
-                        ((and (app-p lhs) (eq :tuple (operator-name (first lhs))) (lit-p rhs))
-                         (values lhs rhs))
-                        ((and (lit-p lhs) (app-p rhs) (eq :tuple (operator-name (first rhs))))
-                         (values rhs lhs))
-                        (t (values nil nil)))
-                    (when (and tuple-expr (every #'provably-total-p (rest tuple-expr)))
-                      (let* ((tuple-types (rest (operator-operand-type (first tuple-expr))))
-                              (lit-vals (ast-value lit-expr))
-                              (conjuncts (loop for part-expr in (rest tuple-expr)
-                                               for part-type in tuple-types
-                                               for part-val in lit-vals
-                                               collect (app (op := part-type) part-expr (lit part-type part-val)))))
-                        (return-from fold-constants
-                          (fold-constants (reduce #'bool-and conjuncts :from-end t)
-                                          schema :ledger ledger :budget budget)))))))
-              ;; Closed-subtree VM evaluation
-              (if (null (free-vars rebuilt))
-                  (let ((ev (evaluate rebuilt nil nil :budget budget :ledger ledger)))
-                    (if (eq :value (evaluation-status ev))
-                        (lit (ast-meta-type (ensure-ast-meta rebuilt)) (evaluation-value ev))
-                        rebuilt))
-                  rebuilt)))))))))

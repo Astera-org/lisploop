@@ -15,6 +15,20 @@
   pairs
   anchors)
 
+(defun snapshot-frame (frame)
+  "Own the problem's mutable data before starting a resumable computation."
+  (let ((schema (copy-schema (frame-schema frame))))
+    (setf (schema-domain schema) (copy-tree (schema-domain schema))
+          (schema-inputs schema) (copy-tree (schema-inputs schema))
+          (schema-target schema) (copy-tree (schema-target schema)))
+    (make-frame schema
+                (mapcar (lambda (row)
+                          (make-row :key (copy-tree (row-key row))
+                                    :known (copy-tree (row-known row))
+                                    :requirement (copy-tree (row-requirement row))))
+                        (frame-rows frame))
+                :pairs (frame-pairs frame) :anchors (frame-anchors frame))))
+
 (defun extract-slot-constraint (conjunct)
   "If CONJUNCT is `(= (at x0 'idx) 'v)` or `(member (at x0 'idx) '(v1 ... vm))` on tuple var 0,
 return (VALUES tuple-type idx allowed-values)."

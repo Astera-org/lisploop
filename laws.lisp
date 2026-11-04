@@ -253,7 +253,7 @@
 
 (defun propose-guarded-laws (problem search &optional ledger)
   "Attach the best successful guard so far to each equation, as conjectures only."
-  (assert (eq (search-job-frame search) (guard-problem-frame problem)))
+  (assert (equalp (search-job-frame search) (guard-problem-frame problem)))
   (let* ((scope (guard-problem-scope problem)) (language (observation-scope-language scope))
          (best (search-job-best search)) (guard (and best (candidate-expression best))))
     (when best

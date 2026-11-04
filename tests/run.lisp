@@ -7,7 +7,7 @@
 (load (merge-pathnames "../view-experiments.lisp" *load-truename*))
 (in-package #:lisploop)
 
-(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic" "amortization" "algebra" "propagation" "lifting" "abstraction" "views"))
+(dolist (module '("support" "core" "observations" "codec" "laws" "guards" "compression" "symbolic" "amortization" "algebra" "propagation" "lifting" "abstraction" "views" "refactor"))
   (load (merge-pathnames (make-pathname :name module :type "lisp") *load-truename*)))
 
 (let ((start (get-internal-real-time)))

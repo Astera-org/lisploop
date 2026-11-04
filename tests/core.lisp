@@ -555,7 +555,7 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (equal '((2 4)) (extract-allowed-values folded-conj)))
     (check (equal '((2 4) (2 6)) (extract-allowed-values member-conj))))
   ;; 3. Quotienting a generated tuple space and pulling back through per-row `(quotient-model type reps Z)`:
-  ;;    `fold-constants` inverts `(at 'R Z)` into exact quotient index requirements (including aliased fibers)
+  ;;    Pullback retains forward relational requirements, including errors outside the table.
   (let* ((ledger (make-ledger))
          (pair-type (tuple-type :int :int))
          (generated-points '((10 20) (30 40) (10 20) (50 60))))
@@ -575,13 +575,13 @@ For this finite shape these orderings select the LGG; no general optimality is c
              (folded-reqs (mapcar (lambda (r) (fold-constants (row-requirement r) checker-schema :ledger ledger))
                                   (frame-rows pulled))))
         (check (equal generated-points (evaluation-value (evaluate batch-qmodel nil nil :ledger ledger))))
-        ;; Each row's pulled-back `(at 'R Z)` folds to `(= Z 'j_w)` matching `residual` `(0 1 0 2)`!
-        (check (equal (mapcar (lambda (j) (singleton-requirement :int j)) residual)
-                      folded-reqs))
-        (check (equal (mapcar #'list residual)
-                      (mapcar #'extract-allowed-values folded-reqs))))))
+        ;; Pullback stays relational. Inversion is no longer a built-in simplifier rule.
+        (loop for req in folded-reqs for j in residual do
+          (check (accepts req j))
+          (check (eq :error (evaluation-status (check-requirement req -1)))))
+        (check (every (lambda (req) (eq :unknown (extract-allowed-values req))) folded-reqs)))))
   ;; 4. 2D grid pullback through `(at (at 'G (at Z '0)) (at Z '1))` with color aliasing:
-  ;;    inverts into 2D coordinate fibers `((r0 c0) (r1 c1))` for Hard-EM `infer-fibers`
+  ;;    preserves aliased coordinates without any built-in 2D inversion rule.
   (let* ((ledger (make-ledger))
          (pair-type (tuple-type :int :int))
          (seq-int (sequence-type :int))
@@ -601,7 +601,12 @@ For this finite shape these orderings select the LGG; no general optimality is c
          (checker-schema (make-schema :inputs (list (cons 0 pair-type)) :target :bool))
          (r0-folded (fold-constants (row-requirement (first (frame-rows pulled))) checker-schema :ledger ledger))
          (r1-folded (fold-constants (row-requirement (second (frame-rows pulled))) checker-schema :ledger ledger)))
-    (check (equal '((0 1) (1 2)) (extract-allowed-values r0-folded)))
-    (check (equal '((1 0)) (extract-allowed-values r1-folded)))))
+    (check (eq :unknown (extract-allowed-values r0-folded)))
+    (check (eq :unknown (extract-allowed-values r1-folded)))
+    (check (accepts r0-folded '(0 1)))
+    (check (accepts r0-folded '(1 2)))
+    (check (not (accepts r0-folded '(1 0))))
+    (check (accepts r1-folded '(1 0)))
+    (check (eq :error (evaluation-status (check-requirement r0-folded '(-1 0)))))))
 
 

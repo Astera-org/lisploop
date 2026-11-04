@@ -277,3 +277,19 @@
 (deftest view-experiment-runner
   (run-m7)
   (check t))
+
+(deftest view-tentative-conflict-preserves-original-alternatives
+  (let* ((frame (simple-frame :int '((0 . :int) (1 . :int))
+                              '(((2 0) 1) ((3 0) 1) ((2 1) 1) ((3 1) 1))))
+         (guard (app (op := :int) (var 1 :int) (lit :int 0)))
+         (decoder (app (op :/ :int) (var 9 :int) (var 0 :int)))
+         (language (make-language :int '((2 . :int)) :operators nil :literals '(1 2 3))))
+    (multiple-value-bind (proposals conflict)
+        (synthesize-supplied-partition-view frame guard language
+         :child-bindings (list (cons 2 (lit :int 0))) :child-bound 30
+         :decoder decoder :child-id 9 :child-type :int :solver (arithmetic-control :int :/ 0))
+      (check (null conflict))
+      (let ((shared (find :shared-decoder proposals :key #'partition-view-proposal-kind)))
+        (check shared)
+        (check (every (lambda (model) (equal model (lit :int 3))) (partition-view-proposal-part-models shared)))
+        (check (evaluate-model-run-work (partition-view-proposal-model shared) frame))))))

@@ -6,6 +6,10 @@ header-includes:
 
 # Lisploop Architecture Reference
 
+Implementation update: see [plan6-refactor.md](plan6-refactor.md) for the post-audit
+simplifier/controller split, tariff v9, budget semantics, and corrected claims.
+The older module reference below has not been comprehensively regenerated.
+
 This document is the definitive architectural specification of the **Lisploop** synthesis kernel as currently implemented in Common Lisp (SBCL). It describes the live 7-module homoiconic architecture, its mathematical foundations, its cost and epistemic contracts, how the code executes Milestones 1--4 and the core primitives of Milestones 5--9, and what remains to complete the experimental roadmap.
 
 ---

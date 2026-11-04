@@ -7,7 +7,7 @@ DOCS = plan.pdf plan2.pdf plan3.pdf plan4.pdf plan5.pdf plan6.pdf architecture.p
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
-BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp codec.lisp vm.lisp frame.lisp enumerate.lisp factor.lisp laws.lisp benchmark.lisp
+BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp codec.lisp vm.lisp requirements.lisp frame.lisp enumerate.lisp factor.lisp laws.lisp synthesize.lisp benchmark.lisp
 
 .PHONY: all clean test m1 m2 m3 m4 m5 m6 m7 visualizer benchmark benchmark-profile
 

@@ -216,22 +216,23 @@ CONSTANTS supplies additional typed literal ASTs. The default operators stay +/*
   (mode :enumeration) proposals queue (requested-bound 0)
   (phase :enumerate) expression (construction-debt 0) rows evaluation predicted
   (run-work 0) (completed-bound 0) (results nil) best (run-weight 0)
-  (rejected 0) (messages nil) library rewriting normal-form
+  (rejected 0) (messages nil) diagnostics library rewriting normal-form
   (reused-rejections 0) (rejection-cache (make-hash-table :test #'equal)))
 
 (defvar *next-call-id* 0)
 
-(defun start-search (frame language &key (call-id (incf *next-call-id*)) (run-weight 0) laws
+(defun start-search (frame language &key (call-id (incf *next-call-id*)) (run-weight 0) laws diagnostics
                                         (expressions nil supplied-p))
   "Use the canonical enumerator, or check a declared list of complete proposals.
 Listed proposals use the SAME construction, VM, checker and objective."
   (assert (equal (schema-inputs (frame-schema frame)) (language-inputs language)))
   (assert (and (realp run-weight) (>= run-weight 0)))
+  (setf frame (snapshot-frame frame) language (snapshot-language language))
   (let* ((library (when laws (prepare-rewrite-library laws (language-domain language))))
          (job (%make-search-job :call-id call-id :frame frame :language language
                                 :mode (if supplied-p :replay :enumeration)
                                 :enumerator (unless supplied-p (make-enumerator language))
-                                :run-weight run-weight :library library
+                                :run-weight run-weight :library library :diagnostics diagnostics
                                 :completed-bound (language-header-size language (schema-target (frame-schema frame))))))
     (when supplied-p
       (let ((queue (remove-duplicates (copy-tree expressions) :test #'equal)))
@@ -255,6 +256,16 @@ Listed proposals use the SAME construction, VM, checker and objective."
   (+ (candidate-size candidate) (* run-weight (candidate-run-work candidate))))
 
 (defun reject-candidate (job &optional witnessed-p)
+  (when (search-job-diagnostics job)
+    (push (make-message :call-id (search-job-call-id job) :claim :counterexample
+                        :evidence (list :row (row-key (first (search-job-rows job)))
+                                        :inputs (copy-tree (row-known (first (search-job-rows job))))
+                                        :expression (search-job-expression job)
+                                        :phase (search-job-phase job)
+                                        :status (evaluation-status (search-job-evaluation job))
+                                        :value (search-job-predicted job)
+                                        :error (evaluation-error (search-job-evaluation job))))
+          (search-job-messages job)))
   (when (and witnessed-p (search-job-library job))
     (setf (gethash (search-job-normal-form job) (search-job-rejection-cache job))
           (list :row (row-key (first (search-job-rows job))) :value (search-job-predicted job))))

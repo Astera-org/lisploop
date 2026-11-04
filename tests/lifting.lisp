@@ -73,11 +73,10 @@
       (check (= 2 (length classes)))
       (check (equal '(0 0 0 1 1 1) labels)))))
 
-(deftest hard-em-unconstrained-rows-and-context-affinity-refinement
+(deftest explicit-dependency-projection-and-fiber-refinement
   ;; 1. Unconstrained `'t` rows and ambiguous `{1, 3}` rows in a multi-input `(r, t)` frame:
-  ;;    conflict-free input projection search identifies `X0` (`r`) as the consistent context
-  ;;    projection (while `X1` (`t`) conflicts on `t=2,3`) and tightens each `r` bucket via
-  ;;    functional determinism.
+  ;;    explicitly hypothesize `X0` (`r`) as the context before tightening its buckets.
+  ;;    The unprojected frame must retain its unconstrained rows.
   (let* ((schema (make-schema :inputs '((0 . :int) (1 . :int)) :target :int))
          (frame (make-frame schema
                             (list (make-row :key :unconstrained-r1 :known '(1 0) :requirement (lit :bool t))
@@ -88,7 +87,12 @@
                                   (make-row :key :sing-r1-b        :known '(1 3) :requirement (singleton-requirement :int 3))
                                   (make-row :key :ambig-r0         :known '(0 1) :requirement (set-requirement :int '(1 3)))
                                   (make-row :key :unconstrained-r0 :known '(0 0) :requirement (lit :bool t))))))
-    (multiple-value-bind (classes labels refined) (infer-fibers frame)
+    (let ((original (tighten-same-input-requirements frame)))
+      (check (unconstrained-requirement-p (aref original 0)))
+      (check (unconstrained-requirement-p (aref original 7))))
+    ;; Choosing r as the context is an explicit hypothesis, not preprocessing.
+    (multiple-value-bind (classes labels refined)
+        (infer-fibers (project-frame-rows frame (list (cons 0 (var 0 :int)))))
       (check (= 2 (length classes)))
       ;; Rows 0, 1, 4, 5 have r=1 (target 3); rows 2, 3, 6, 7 have r=0 (target 1).
       (let ((targets (mapcar (lambda (r) (first (extract-allowed-values (row-requirement r))))
@@ -119,8 +123,8 @@
     (check (equal (lit :bool nil)
                   (conjoin-requirements pair-member eq-five field))))
   ;; 2. Cannot-link soundness on contradictory frames: when two rows share identical `row-known`
-  ;;    and have incompatible singletons `Z=1` vs `Z=3`, `infer-fibers` never merges them into `'nil`,
-  ;;    and `frame-conflict-p` still detects `:incompatible-rows` on the refined frame.
+  ;;    and have incompatible singletons `Z=1` vs `Z=3`, tightening preserves the contradiction
+  ;;    explicitly; `frame-conflict-p` detects unsatisfiable rows in the refined frame.
   (let* ((schema (make-schema :inputs '((0 . :int)) :target :int))
          (bad-frame (make-frame schema
                                 (list (make-row :key :c0 :known '(5) :requirement (singleton-requirement :int 1))
@@ -130,7 +134,7 @@
       (check (equal '(0 1) labels))
       (let ((conflict (frame-conflict-p refined)))
         (check conflict)
-        (check (eq :incompatible-rows (frame-conflict-kind conflict)))))))
+        (check (eq :unsatisfiable-row (frame-conflict-kind conflict)))))))
 
 (deftest hard-em-multi-regime-and-higher-arity-fibers
   ;; 1. Width-3 bridge vs non-singleton clusters:
@@ -165,7 +169,8 @@
                                   (make-row :key :r2-ambig :known '(2 2) :requirement (set-requirement :int '(1 3 5)))
                                   (make-row :key :r1-ambig :known '(1 2) :requirement (set-requirement :int '(1 3)))
                                   (make-row :key :r0-ambig :known '(0 2) :requirement (set-requirement :int '(1 5)))))))
-    (multiple-value-bind (classes labels refined) (infer-fibers frame)
+    (multiple-value-bind (classes labels refined)
+        (infer-fibers (project-frame-rows frame (list (cons 0 (var 0 :int)))))
       (check (= 3 (length classes)))
       (check (equal '(0 0 1 1 2 2 2 1 0) labels))
       (check (equal '((1) (1) (3) (3) (5) (5) (5) (3) (1))

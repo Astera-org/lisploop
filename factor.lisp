@@ -1,7 +1,7 @@
 (in-package #:lisploop)
 
 ;;; Module 6: factor.lisp
-;;; First-order matching, anti-unification, Hard-EM fiber inference (infer-fibers),
+;;; First-order matching, anti-unification, bounded fiber proposals (infer-fibers),
 ;;; heuristic condensation (condense-heuristic), and law corpus compression.
 
 (defun pattern-has-holes-p (term)
@@ -93,7 +93,7 @@ Operator holes are quoted operator values, not callable host functions."
         (charge ledger :construction (syntax-work model))
         (values model (nreverse inputs))))))
 
-;;; Operation 2.4: Minimal-MDL Fiber Partition Search (infer-fibers)
+;;; Operation 2.4: Optional Fiber Partition Proposals (infer-fibers)
 
 (defstruct fiber-class
   (id 0 :type fixnum)
@@ -105,106 +105,35 @@ Operator holes are quoted operator values, not callable host functions."
   (and (lit-p expr) (eq :bool (ast-type expr)) (eq t (ast-value expr))))
 
 (defun tighten-same-input-requirements (frame &optional ledger (budget 10000))
-  "Fold each row's requirement and enforce functional determinism:
-1. Rows sharing identical non-empty `row-known` conjoin their compatible requirements.
-2. When `frame` has multiple input columns and distinct full `row-known` tuples, search
-   candidate single-coordinate input projections `X_i` via the metered VM and adopt the
-   minimum-MDL conflict-free projection (if one exists) that narrows all buckets."
-  (let* ((schema (frame-schema frame))
-         (inputs (schema-inputs schema))
-         (target-type (schema-target schema))
-         (checker-schema (make-schema :inputs (list (cons 0 target-type)) :target :bool))
-         (rows-vec (coerce (frame-rows frame) 'vector))
-         (n (length rows-vec))
-         (folded-reqs (make-array n))
-         (repeated-full-known-p nil))
-    ;; 1. Fold closed subtrees in each row's requirement
-    (loop for i below n
-          for row = (aref rows-vec i)
-          for folded = (fold-constants (row-requirement row) checker-schema
-                                       :ledger ledger :budget budget)
-          do (charge ledger :fiber-inference (syntax-work folded))
-             (setf (aref folded-reqs i) folded))
-    ;; 2. Exact same-input functional determinism over full `row-known`
-    (let ((by-known (make-hash-table :test #'equal)))
-      (loop for i below n
-            for known = (row-known (aref rows-vec i))
-            when known
-            do (push i (gethash known by-known)))
-      (maphash
-       (lambda (known indices)
-         (declare (ignore known))
-         (when (> (length indices) 1)
-           (setf repeated-full-known-p t)
-           (let ((joint (aref folded-reqs (first indices))))
-             (dolist (idx (rest indices))
-               (unless (unsatisfiable-requirement-p joint)
-                 (charge ledger :fiber-inference)
-                 (setf joint (conjoin-requirements joint (aref folded-reqs idx) target-type
-                                                   :ledger ledger :budget budget))))
-             (unless (unsatisfiable-requirement-p joint)
-               (dolist (idx indices)
-                 (setf (aref folded-reqs idx) joint))))))
-       by-known))
-    ;; 3. Candidate sub-projection search when full `row-known` has multiple columns and no repeats
-    (when (and (> (length inputs) 1) (not repeated-full-known-p) (> n 1))
-      (let ((best-reqs nil)
-            (best-bits most-positive-fixnum))
-        (dolist (spec inputs)
-          (let ((proj-expr (var (car spec) (cdr spec)))
-                (by-proj (make-hash-table :test #'equal))
-                (consistent-p t)
-                (narrowed-any-p nil)
-                (candidate-reqs (make-array n))
-                (total-bits 0))
-            (loop for i below n
-                  for row = (aref rows-vec i)
-                  for run = (evaluate proj-expr inputs (row-known row) :ledger ledger :budget budget)
-                  do (if (eq :value (evaluation-status run))
-                         (push i (gethash (evaluation-value run) by-proj))
-                         (setf consistent-p nil)))
-            (when (and consistent-p (< (hash-table-count by-proj) n))
-              (maphash
-               (lambda (val indices)
-                 (declare (ignore val))
-                 (when consistent-p
-                   (let ((joint (aref folded-reqs (first indices))))
-                     (dolist (idx (rest indices))
-                       (unless (unsatisfiable-requirement-p joint)
-                         (charge ledger :fiber-inference)
-                         (setf joint (conjoin-requirements joint (aref folded-reqs idx) target-type
-                                                           :ledger ledger :budget budget))))
-                     (if (or (unsatisfiable-requirement-p joint)
-                             (unconstrained-requirement-p joint))
-                         (setf consistent-p nil)
-                         (let ((bits (body-size joint (list (cons 0 target-type)))))
-                           (dolist (idx indices)
-                             (unless (equal joint (aref folded-reqs idx))
-                               (setf narrowed-any-p t))
-                             (setf (aref candidate-reqs idx) joint)
-                             (incf total-bits bits)))))))
-               by-proj)
-              (when (and consistent-p narrowed-any-p (< total-bits best-bits))
-                (setf best-reqs candidate-reqs
-                      best-bits total-bits)))))
-        (when best-reqs
-          (setf folded-reqs best-reqs))))
-    folded-reqs))
+  "Intersect only identical COMPLETE input tuples, including zero-input problems.
+Projection onto fewer inputs is a separate synthesis hypothesis."
+  (let* ((target (schema-target (frame-schema frame)))
+         (rows (frame-rows frame))
+         (requirements (map 'vector (lambda (row)
+                                     (fold-constants (row-requirement row) nil
+                                                     :ledger ledger :budget budget)) rows))
+         (groups (make-hash-table :test #'equal)))
+    (loop for row in rows for i from 0 do (push i (gethash (row-known row) groups)))
+    (maphash (lambda (known indices)
+               (declare (ignore known))
+               (let ((joint (aref requirements (first indices))))
+                 (dolist (i (rest indices))
+                   (charge ledger :fiber-inference)
+                   (setf joint (conjoin-requirements joint (aref requirements i) target
+                                                    :ledger ledger :budget budget)))
+                 (dolist (i indices) (setf (aref requirements i) joint)))) groups)
+    requirements))
 
 (defstruct req-group
   requirement
   indices
   (count 0 :type fixnum))
 
-(defun infer-fibers (frame &optional ledger (budget 10000))
-  "Minimal-MDL fiber partition search over ambiguous or relational row requirements:
-1. Folds closed subtrees and enforces same-input functional determinism (including
-   conflict-free input coordinate projection search when multiple inputs are present).
-2. Deduplicates rows sharing identical satisfiable requirements into unique groups.
-3. Runs bounded branch-and-bound search over compatible group partitions using
-   `conjoin-requirements`, minimizing class count K, then total requirement bit-length
-   S_body, then empirical label entropy (maximizing class-size concentration).
-Returns (VALUES classes labels refined-frame partition)."
+(defun %infer-fibers (frame ledger budget branch-limit)
+  "Bounded partition proposals over requirements not yet refuted.
+Intersect identical complete inputs, then rank partitions by class count,
+repeated requirement bits, and concentration. This proxy is neither an exact
+model code length nor Shannon entropy; an unresolved intersection is not a witness."
   (let* ((schema (frame-schema frame))
          (target-type (schema-target schema))
          (target-inputs (list (cons 0 target-type)))
@@ -214,7 +143,7 @@ Returns (VALUES classes labels refined-frame partition)."
          (groups nil)
          (unsat-indices nil)
          (assignments (make-array n :initial-element nil)))
-    ;; 1. Deduplicate satisfiable rows with identical requirements into unique groups
+    ;; 1. Deduplicate identical requirements not structurally refuted.
     (loop for i below n
           for req = (aref folded-reqs i)
           do (if (unsatisfiable-requirement-p req)
@@ -240,15 +169,16 @@ Returns (VALUES classes labels refined-frame partition)."
                                (not u1)
                                (< (body-size (req-group-requirement g1) target-inputs)
                                   (body-size (req-group-requirement g2) target-inputs)))))))
-    ;; 2. Bounded branch-and-bound search for the minimum-MDL compatible partition of `groups`
+    ;; 2. Bounded branch-and-bound search under the declared lexicographic proxy.
     (let ((u (length groups))
           (groups-vec (coerce groups 'vector))
-          (best-classes nil)
-          (best-k most-positive-fixnum)
+          (best-classes (mapcar (lambda (g) (list (req-group-requirement g)
+                                                 (copy-list (req-group-indices g)))) groups))
+          (best-k (length groups))
           (best-bits most-positive-fixnum)
           (best-conc -1)
           (branches 0)
-          (max-branches 2048))
+          (max-branches branch-limit))
       (labels ((partition-better-p (k bits conc)
                  (or (< k best-k)
                      (and (= k best-k)
@@ -339,13 +269,28 @@ Returns (VALUES classes labels refined-frame partition)."
             (let ((refined-frame (make-frame (copy-schema schema) refined-rows
                                              :pairs (or (frame-pairs frame) inferred-pairs)
                                              :anchors (or (frame-anchors frame) inferred-anchors))))
-              (values classes labels refined-frame part))))))))
+              (values classes labels refined-frame part
+                      (make-message :claim :partition-proposal
+                                    :evidence (list :search-status (if (> branches max-branches) :cutoff :complete)
+                                                    :branches branches :feasibility :unresolved
+                                                    :objective :lexicographic-proxy))))))))))
 
-(defun fiber-pairs-and-anchors (frame &optional ledger (budget 10000))
+(defun infer-fibers (frame &optional ledger (budget 1000000) (branch-limit 2048))
+  "Optional bounded partition proposal. Unknown satisfiability is never a certificate.
+The fifth value reports work/branch cutoff; BUDGET covers this whole invocation."
+  (assert (and (integerp budget) (>= budget 0) (integerp branch-limit) (>= branch-limit 0)))
+  (let ((ledger (or ledger (make-ledger))))
+    (with-work-limit (ledger budget
+                      (values nil nil nil nil (make-message :claim :cutoff
+                                              :evidence (list :work (ledger-total ledger) :feasibility :unresolved))))
+      (%infer-fibers frame ledger budget branch-limit))))
+
+(defun fiber-pairs-and-anchors (frame &optional ledger (budget 1000000))
   "Compute intra-fiber must-agree `pairs` and cross-fiber must-vary `anchors` from FRAME
 via `infer-fibers`. Returns (VALUES pairs anchors refined-frame classes labels partition)."
-  (multiple-value-bind (classes labels refined-frame part)
+  (multiple-value-bind (classes labels refined-frame part status)
       (infer-fibers frame ledger budget)
+    (unless refined-frame (return-from fiber-pairs-and-anchors (values nil nil nil nil nil nil status)))
     (values (frame-pairs refined-frame)
             (frame-anchors refined-frame)
             refined-frame
@@ -404,73 +349,13 @@ Charges evaluation of each context binding expression on LEDGER."
   (score 0))
 
 (defun condense-heuristic (frame language &key description-limit (work-limit 100000) (run-weight 0) ledger)
-  "Direct MDL heuristic synthesis over underconstrained row requirements:
-1. Enforce same-input functional determinism on FRAME via `tighten-same-input-requirements`.
-2. Enumerate candidate selectors/programs in LANGUAGE up to DESCRIPTION-LIMIT and WORK-LIMIT,
-   checking each candidate's outputs directly against the row requirements via `check-requirement`
-   and scoring by S(program) + S(residual) + run-weight * W_run(program).
-3. Return the best `heuristic-model` (whose deployed `program` drops the training residual)."
-  (let* ((schema (frame-schema frame))
-         (target-type (schema-target schema))
-         (inputs (schema-inputs schema))
-         (tightened-reqs (tighten-same-input-requirements frame ledger))
-         (refined-rows
-           (loop for row in (frame-rows frame)
-                 for idx from 0
-                 collect (make-row :key (copy-tree (row-key row))
-                                   :known (copy-tree (row-known row))
-                                   :requirement (aref tightened-reqs idx))))
-         (refined-frame (make-frame (copy-schema schema) refined-rows
-                                    :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
-         (bound (or description-limit (+ (header-size inputs target-type) 18)))
-         (scope (make-observation-scope refined-frame language :pairs nil :anchors nil))
-         (obs-job (start-observation-search scope :retain-outcomes t)))
-    (resume-observation-search obs-job bound work-limit)
-    (charge ledger :heuristic-search (ledger-total (observation-job-ledger obs-job)))
-    (let ((best-model nil)
-          (rows (frame-rows refined-frame)))
-      (dolist (record (reverse (observation-job-records obs-job)))
-        (when (equal (observed-expression-type record) target-type)
-          (let* ((expr (observed-expression-expression record))
-                 (prog-bits (description-size expr inputs))
-                 (run-work (observed-expression-run-work record))
-                 (residual nil)
-                 (res-bits 0)
-                 (valid-residual-p t))
-            (loop for row in rows
-                  for outcome in (observed-expression-outcomes record)
-                  for row-idx from 0
-                  do (let ((satisfied-p
-                             (and (eq :value (observation-outcome-status outcome))
-                                  (let ((chk (check-requirement (row-requirement row)
-                                                                (observation-outcome-value outcome)
-                                                                :ledger ledger :type target-type)))
-                                    (and (eq :value (evaluation-status chk))
-                                         (eq t (evaluation-value chk)))))))
-                       (unless satisfied-p
-                         (let ((vals (extract-allowed-values (row-requirement row))))
-                           (if (and (listp vals) vals)
-                               (let ((witness (first vals)))
-                                 (push (cons (row-key row) witness) residual)
-                                 (incf res-bits (+ (positive-bit-size (1+ row-idx))
-                                                   (value-bit-size witness target-type))))
-                               (setf valid-residual-p nil))))))
-            (when valid-residual-p
-              (let* ((score (+ prog-bits res-bits (* run-weight run-work)))
-                     (candidate-model
-                       (make-heuristic-model :program expr
-                                             :residual (nreverse residual)
-                                             :exact-p (null residual)
-                                             :program-bits prog-bits
-                                             :residual-bits res-bits
-                                             :run-work run-work
-                                             :score score)))
-                (when (or (null best-model)
-                          (< score (heuristic-score best-model))
-                          (and (= score (heuristic-score best-model))
-                               (< prog-bits (heuristic-program-bits best-model))))
-                  (setf best-model candidate-model)))))))
-      best-model)))
+  "Budgeted selector approximation on ORIGINAL requirements; residuals are training costs.
+Return the best completed model and an informative completion/cutoff message."
+  (let* ((job (start-heuristic-search frame language :description-limit description-limit
+                                     :run-weight run-weight))
+         (message (resume-heuristic-search job (remaining-work ledger work-limit))))
+    (charge ledger :heuristic-search (ledger-total (heuristic-search-ledger job)))
+    (values (heuristic-search-best job) message)))
 
 ;;; Law Corpus Compression (M3B)
 
@@ -537,34 +422,19 @@ Evidence/provenance are not part of this syntax-compression task."
         (assert (every (lambda (law) (equal (law-inputs (first laws)) (law-inputs law))) laws))
         laws))))
 
-(defun law-corpus-prefix (corpus &optional ledger)
+(defun corpus-prefix (domain count &optional ledger)
   (collect-code-values
    (lambda (emit)
-     (emit-bit-header nil (law-corpus-type (law-corpus-domain corpus)) emit)
-     (funcall emit 2 1) ; literal
-     (emit-bit-value 0 (law-corpus-domain corpus) emit)
-     (emit-positive (1+ (length (law-corpus-laws corpus))) emit)) ledger))
+     (emit-bit-header nil (law-corpus-type domain) emit)
+     (funcall emit 2 1)
+     (emit-bit-value 0 domain emit)
+     (emit-positive (1+ count) emit)) ledger))
+
+(defun law-corpus-prefix (corpus &optional ledger)
+  (corpus-prefix (law-corpus-domain corpus) (length (law-corpus-laws corpus)) ledger))
 
 (defun au-packet-pieces (pattern inputs &optional ledger)
-  "Compile a typed AU pattern to fixed packet fragments and typed hole references."
-  (let ((pieces nil) (fixed nil))
-    (labels ((emit (width value)
-               (charge ledger :packet-assembly width)
-               (loop for i downfrom (1- width) to 0 do (push (logbitp i value) fixed)))
-             (flush-fixed ()
-               (when fixed (push (list :fixed (nreverse fixed)) pieces) (setf fixed nil)))
-             (walk (term)
-               (charge ledger :au-compilation (syntax-work term))
-               (cond
-                 ((hole-p term) (flush-fixed) (push term pieces))
-                 ((operator-p term) (emit-operator term #'emit))
-                 ((not (pattern-has-holes-p term))
-                  (emit-bit-expression term inputs (expression-type term inputs) #'emit))
-                 (t (assert (app-p term))
-                    (emit 2 2) (walk (first term)) (mapc #'walk (rest term))))))
-      (emit-bit-header inputs (expression-type pattern inputs t) #'emit)
-      (walk pattern) (flush-fixed)
-      (nreverse pieces))))
+  (au-body-pieces pattern inputs :include-header-p t :ledger ledger))
 
 (defun instantiate-packet-pieces (pieces substitution inputs &optional ledger)
   (mapcar
@@ -591,14 +461,17 @@ Evidence/provenance are not part of this syntax-compression task."
       (charge ledger :construction (syntax-work model))
       model)))
 
-(defun law-row-pieces-model (corpus rows &optional ledger)
-  (assert (= (length rows) (length (law-corpus-laws corpus))))
-  (let ((chunks (list (law-corpus-prefix corpus ledger))))
+(defun corpus-rows-model (prefix rows &optional ledger)
+  (let ((chunks (list prefix)))
     (map nil (lambda (body)
                (let ((size (reduce #'+ body :key #'length)))
                  (push (collect-code-values (lambda (emit) (emit-positive (1+ size) emit)) ledger) chunks)
                  (dolist (piece body) (push piece chunks)))) rows)
     (packet-chunks-model (nreverse chunks) ledger)))
+
+(defun law-row-pieces-model (corpus rows &optional ledger)
+  (assert (= (length rows) (length (law-corpus-laws corpus))))
+  (corpus-rows-model (law-corpus-prefix corpus ledger) rows ledger))
 
 (defun law-template-model (corpus pattern substitutions &optional ledger)
   (assert (= (length substitutions) (length (law-corpus-laws corpus))))
@@ -874,13 +747,7 @@ When KNOWN is omitted, defaults each row's known input to its occurrence coordin
         (values (nreverse trees) first-schema first-sort domain)))))
 
 (defun tree-corpus-prefix (corpus &optional ledger)
-  (collect-code-values
-   (lambda (emit)
-     (emit-bit-header nil (law-corpus-type (tree-corpus-domain corpus)) emit)
-     (funcall emit 2 1) ; literal
-     (emit-bit-value 0 (tree-corpus-domain corpus) emit)
-     (emit-positive (1+ (length (tree-corpus-trees corpus))) emit))
-   ledger))
+  (corpus-prefix (tree-corpus-domain corpus) (length (tree-corpus-trees corpus)) ledger))
 
 (defun tree-corpus-frame (corpus &optional ledger)
   (let ((req (set-requirement (sequence-type :bool) (list (tree-corpus-packet corpus)))))
@@ -957,13 +824,7 @@ through BODY-PIECES and SUBSTITUTION. If PATH is :NONE, emits TREE as a single c
 
 (defun tree-row-pieces-model (corpus rows &optional ledger)
   (assert (= (length rows) (length (tree-corpus-trees corpus))))
-  (let ((chunks (list (tree-corpus-prefix corpus ledger))))
-    (map nil (lambda (body)
-               (let ((size (reduce #'+ body :key #'length)))
-                 (push (collect-code-values (lambda (emit) (emit-positive (1+ size) emit)) ledger) chunks)
-                 (dolist (piece body) (push piece chunks))))
-         rows)
-    (packet-chunks-model (nreverse chunks) ledger)))
+  (corpus-rows-model (tree-corpus-prefix corpus ledger) rows ledger))
 
 (defun corpus-abstraction-model (corpus pattern paths substitutions &optional ledger)
   "Construct a closed VM program reconstructing CORPUS by factoring each tree i
@@ -1574,19 +1435,16 @@ Returns (VALUES true-frame false-frame labels partition)."
       (values true-frame false-frame labels part linked-frame))))
 
 (defun solve-part-subframe (part-frame language bound work-limit &key propagation ledger)
-  "Solve PART-FRAME via `start-search` (or `start-propagation-search` when PROPAGATION is supplied)
-and return the best candidate expression, charging discovery work to LEDGER."
+  "Return all discovered child expressions so parent reconstruction determines cost."
   (if (and propagation (propagation-fallback propagation))
-      (let ((psearch (start-propagation-search propagation language)))
-        (resume-propagation-search psearch bound work-limit)
-        (charge ledger :view-child-search (ledger-total (propagation-search-ledger psearch)))
-        (when (propagation-search-best psearch)
-          (candidate-expression (propagation-search-best psearch))))
-      (let ((job (start-search (if propagation (propagation-frame propagation) part-frame) language)))
-        (resume-search job bound work-limit)
-        (charge ledger :view-child-search (ledger-total (search-job-ledger job)))
-        (when (search-job-best job)
-          (candidate-expression (search-job-best job))))))
+      (let ((search (start-propagation-search propagation language)))
+        (resume-propagation-search search bound (remaining-work ledger work-limit))
+        (charge ledger :view-child-search (ledger-total (propagation-search-ledger search)))
+        (mapcar #'candidate-expression (reverse (propagation-search-results search))))
+      (let ((search (start-synthesis (if propagation (propagation-frame propagation) part-frame) language bound)))
+        (resume-synthesis search (remaining-work ledger work-limit))
+        (charge ledger :view-child-search (ledger-total (synthesis-job-ledger search)))
+        (mapcar #'candidate-expression (reverse (synthesis-job-results search))))))
 
 (defun evaluate-model-run-work (model frame &optional ledger)
   "Verify MODEL across all rows of FRAME in the metered VM and return total runtime work W_run."
@@ -1604,121 +1462,72 @@ and return the best candidate expression, charging discovery work to LEDGER."
                     (return-from evaluate-model-run-work nil)))
                 (evaluation-work run)))))
 
-(defun synthesize-supplied-partition-view (frame guard-expr child-language
-                                           &key child-bindings child-bound (work-limit 1000000)
-                                                decoder child-id child-type solver ledger)
-  "Given a supplied Boolean GUARD-EXPR on FRAME:
-1. Splits FRAME into TRUE-FRAME and FALSE-FRAME (projected via CHILD-BINDINGS).
-2. Immediately checks `frame-conflict-p` on each part (M8C conflict pruning).
-3. Recursively synthesizes per-part models to form `:separate-parts` `(if guard M_true M_false)`
-   and, when DECODER is supplied, `:shared-decoder` `d(X, (if guard Z_true Z_false))`.
-Returns (VALUES proposals conflict-proposal)."
-  (let* ((schema (frame-schema frame))
-         (parent-inputs (schema-inputs schema))
-         (target-type (schema-target schema)))
-    (multiple-value-bind (true-frame false-frame labels part)
+(defun price-view-combinations (frame guard labels partition true-models false-models
+                                bindings type ledger &key decoder child-id)
+  "One reconstruction/scoring path for separate branches and shared decoders."
+  (let ((best nil) (inputs (schema-inputs (frame-schema frame))))
+    (dolist (yes true-models)
+      (dolist (no false-models)
+        (let* ((branch (app (op :if type) guard
+                            (if bindings (instantiate yes bindings :var) yes)
+                            (if bindings (instantiate no bindings :var) no)))
+               (model (if decoder (instantiate decoder (list (cons child-id branch)) :var) branch))
+               (bits (description-size model inputs)))
+          (charge ledger :construction (syntax-work model))
+          (when (or (null best) (<= bits (partition-view-proposal-bits best)))
+            (let ((work (evaluate-model-run-work model frame ledger)))
+              (when (and work (or (null best) (< bits (partition-view-proposal-bits best))
+                                  (< work (partition-view-proposal-run-work best))))
+                (setf best (make-partition-view-proposal
+                            :kind (if decoder :shared-decoder :separate-parts)
+                            :guard guard :labels labels :partition partition :part-models (list yes no)
+                            :model model :bits bits :run-work work))))))))
+    best))
+
+(defun %synthesize-supplied-partition-view (frame guard-expr child-language
+                                          &key child-bindings child-bound (work-limit 1000000)
+                                               decoder child-id child-type solver ledger)
+  "Both reconstruction alternatives use the same child solver and parent scorer."
+  (let* ((schema (frame-schema frame)) (target (schema-target schema)) (proposals nil) (conflicts nil))
+    (multiple-value-bind (true-frame false-frame labels partition)
         (evaluate-guard-partition frame guard-expr :child-bindings child-bindings :ledger ledger)
       (unless (and true-frame false-frame)
-        (return-from synthesize-supplied-partition-view (values nil nil)))
-      ;; M8C Conflict check on projected subframes
-      (let ((conflict (or (frame-conflict-p true-frame :ledger ledger)
-                          (frame-conflict-p false-frame :ledger ledger))))
-        (when conflict
-          (return-from synthesize-supplied-partition-view
-            (values nil
-                    (make-partition-view-proposal :kind :conflict
-                                                  :guard guard-expr
-                                                  :labels labels
-                                                  :partition part
-                                                  :conflict conflict)))))
-      (let* ((part-inputs (schema-inputs (frame-schema true-frame)))
-             (eff-bound (or child-bound (+ (header-size part-inputs target-type) 48)))
-             (proposals nil)
-             (true-expr (solve-part-subframe true-frame child-language eff-bound work-limit :ledger ledger))
-             (false-expr (when true-expr
-                           (solve-part-subframe false-frame child-language eff-bound work-limit :ledger ledger))))
-        (when (and true-expr false-expr)
-          (let* ((lifted-true (if child-bindings (instantiate true-expr child-bindings :var) true-expr))
-                 (lifted-false (if child-bindings (instantiate false-expr child-bindings :var) false-expr))
-                 (sep-model (app (op :if target-type) guard-expr lifted-true lifted-false))
-                 (sep-bits (description-size sep-model parent-inputs))
-                 (sep-work (evaluate-model-run-work sep-model frame ledger)))
-            (charge ledger :construction (syntax-work sep-model))
-            (when sep-work
-              (push (make-partition-view-proposal
-                     :kind :separate-parts
-                     :guard guard-expr
-                     :labels labels
-                     :partition part
-                     :part-models (list true-expr false-expr)
-                     :model sep-model
-                     :bits sep-bits
-                     :run-work sep-work)
-                    proposals))))
-        ;; When a shared decoder d(X, Z) is supplied, also synthesize context-dependent child arguments Z_true, Z_false
+        (return-from %synthesize-supplied-partition-view (values nil nil)))
+      (labels ((solve-parts (yes no language type &optional outer yes-prop no-prop)
+                 ;; A tentative narrowing cannot refute its retained original branch.
+                 (let ((conflict (or (frame-conflict-p (or (and yes-prop (propagation-fallback yes-prop)) yes) :ledger ledger)
+                                     (frame-conflict-p (or (and no-prop (propagation-fallback no-prop)) no) :ledger ledger))))
+                   (if conflict
+                       (push (make-partition-view-proposal :kind :conflict :guard guard-expr :labels labels
+                                                           :partition partition :conflict conflict) conflicts)
+                       (let* ((bound (or child-bound (+ (header-size (language-inputs language) type) 48)))
+                              (yes-models (solve-part-subframe yes language bound work-limit :propagation yes-prop :ledger ledger))
+                              (no-models (when yes-models
+                                           (solve-part-subframe no language bound work-limit :propagation no-prop :ledger ledger)))
+                              (proposal (price-view-combinations frame guard-expr labels partition yes-models no-models
+                                                                 child-bindings type ledger :decoder outer :child-id child-id)))
+                         (when proposal (push proposal proposals)))))))
+        (solve-parts true-frame false-frame child-language target)
         (when decoder
-          (let* ((eff-child-type (or child-type target-type))
-                 (true-parent (make-frame (copy-schema schema)
-                                          (loop for row in (frame-rows frame)
-                                                for b in labels
-                                                when b collect row)))
-                 (false-parent (make-frame (copy-schema schema)
-                                           (loop for row in (frame-rows frame)
-                                                 for b in labels
-                                                 unless b collect row)))
-                 (true-prop (when solver
-                              (propagate-arithmetic-child true-parent decoder child-id child-bindings solver ledger)))
-                 (false-prop (when solver
-                               (propagate-arithmetic-child false-parent decoder child-id child-bindings solver ledger)))
-                 (true-child (if true-prop
-                                 (propagation-frame true-prop)
-                                 (pullback-frame true-parent decoder child-id eff-child-type child-bindings ledger)))
-                 (false-child (if false-prop
-                                  (propagation-frame false-prop)
-                                  (pullback-frame false-parent decoder child-id eff-child-type child-bindings ledger)))
-                 (child-conflict (or (frame-conflict-p true-child :ledger ledger)
-                                     (frame-conflict-p false-child :ledger ledger))))
-            (if child-conflict
-                (return-from synthesize-supplied-partition-view
-                  (values (nreverse proposals)
-                          (make-partition-view-proposal :kind :conflict
-                                                        :guard guard-expr
-                                                        :labels labels
-                                                        :partition part
-                                                        :conflict child-conflict)))
-                (let* ((z-inputs (schema-inputs (frame-schema true-child)))
-                       (z-lang (make-language (if (eq eff-child-type :int) :int eff-child-type)
-                                              z-inputs
-                                              :operators (language-operators child-language)
-                                              :literals (language-literals child-language)))
-                       (z-bound (or child-bound (+ (header-size z-inputs eff-child-type) 48)))
-                       (z-true (solve-part-subframe true-child z-lang z-bound work-limit
-                                                    :propagation true-prop :ledger ledger))
-                       (z-false (when z-true
-                                  (solve-part-subframe false-child z-lang z-bound work-limit
-                                                       :propagation false-prop :ledger ledger))))
-                  (when (and z-true z-false)
-                    (let* ((lifted-z-true (if child-bindings (instantiate z-true child-bindings :var) z-true))
-                           (lifted-z-false (if child-bindings (instantiate z-false child-bindings :var) z-false))
-                           (z-branch (app (op :if eff-child-type) guard-expr lifted-z-true lifted-z-false))
-                           (shared-model (instantiate decoder (list (cons child-id z-branch)) :var))
-                           (shared-bits (description-size shared-model parent-inputs))
-                           (shared-work (evaluate-model-run-work shared-model frame ledger)))
-                      (charge ledger :construction (syntax-work shared-model))
-                      (when shared-work
-                        (push (make-partition-view-proposal
-                               :kind :shared-decoder
-                               :guard guard-expr
-                               :labels labels
-                               :partition part
-                               :part-models (list z-true z-false)
-                               :model shared-model
-                               :bits shared-bits
-                               :run-work shared-work)
-                              proposals))))))))
-        (values (nreverse proposals) nil)))))
+          (let* ((type (or child-type target))
+                 (parents (loop for truth in '(t nil) collect
+                            (make-frame (copy-schema schema)
+                                        (loop for row in (frame-rows frame) for label in labels
+                                              when (eq truth label) collect row))))
+                 (props (mapcar (lambda (parent) (when solver
+                                                  (propagate-arithmetic-child parent decoder child-id child-bindings solver ledger))) parents))
+                 (children (loop for parent in parents for prop in props collect
+                             (if prop (propagation-frame prop)
+                                 (pullback-frame parent decoder child-id type child-bindings ledger))))
+                 (language (make-language (language-domain child-language)
+                                          (schema-inputs (frame-schema (first children)))
+                                          :operators (language-operators child-language)
+                                          :literals (language-literals child-language)
+                                          :constants (language-constants child-language))))
+            (solve-parts (first children) (second children) language type decoder (first props) (second props)))))
+      (values (nreverse proposals) (first (nreverse conflicts))))))
 
-(defun discover-partition-views (frame guard-language child-language
+(defun %discover-partition-views (frame guard-language child-language
                                  &key guard-bound child-bindings child-bound (work-limit 1000000)
                                       decoder child-id child-type solver ledger)
   "Autonomously search GUARD-LANGUAGE for Boolean view selectors on FRAME:
@@ -1743,7 +1552,7 @@ Returns (VALUES best-proposal proposals conflicts)."
          (proposals nil)
          (conflicts nil)
          (seen-partitions (make-hash-table :test #'equal)))
-    (resume-observation-search obs-job eff-guard-bound work-limit)
+    (resume-observation-search obs-job eff-guard-bound (remaining-work ledger work-limit))
     (charge ledger :view-guard-search (ledger-total (observation-job-ledger obs-job)))
     ;; Include unfactored lookup baseline when available
     (when (schema-lookup-p schema)
@@ -1795,3 +1604,34 @@ Returns (VALUES best-proposal proposals conflicts)."
                                                (< (partition-view-proposal-run-work a)
                                                   (partition-view-proposal-run-work b)))))))))
       (values best proposals conflicts))))
+
+(defun synthesize-supplied-partition-view (frame guard-expr child-language
+                                         &key child-bindings child-bound (work-limit 1000000)
+                                              decoder child-id child-type solver ledger)
+  "A single additional-work budget covers both branches, preparation and replay.
+Returns proposals, conflict, and a status message; synchronous cutoffs retain no cursor."
+  (let ((ledger (or ledger (make-ledger))))
+    (with-work-limit (ledger work-limit
+                      (values nil nil (make-message :claim :cutoff :evidence (list :work (ledger-total ledger)))))
+      (multiple-value-bind (proposals conflict)
+          (%synthesize-supplied-partition-view frame guard-expr child-language
+           :child-bindings child-bindings :child-bound child-bound :work-limit work-limit
+           :decoder decoder :child-id child-id :child-type child-type :solver solver :ledger ledger)
+        (values proposals conflict
+                (make-message :claim (if (zerop (remaining-work ledger 1)) :cutoff :proposal-results)
+                              :evidence (list :work (ledger-total ledger) :scope :supplied-view)))))))
+
+(defun discover-partition-views (frame guard-language child-language
+                                &key guard-bound child-bindings child-bound (work-limit 1000000)
+                                     decoder child-id child-type solver ledger)
+  "Share one additional-work budget across guard discovery and every child branch."
+  (let ((ledger (or ledger (make-ledger))))
+    (with-work-limit (ledger work-limit
+                      (values nil nil nil (make-message :claim :cutoff :evidence (list :work (ledger-total ledger)))))
+      (multiple-value-bind (best proposals conflicts)
+          (%discover-partition-views frame guard-language child-language
+           :guard-bound guard-bound :child-bindings child-bindings :child-bound child-bound :work-limit work-limit
+           :decoder decoder :child-id child-id :child-type child-type :solver solver :ledger ledger)
+        (values best proposals conflicts
+                (make-message :claim (if (zerop (remaining-work ledger 1)) :cutoff :proposal-results)
+                              :evidence (list :work (ledger-total ledger) :scope :view-proposals)))))))

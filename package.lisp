@@ -52,7 +52,7 @@
    #:start-observation-search #:resume-observation-search #:observation-job-records
    #:observation-job-buckets #:observation-job-ledger #:observation-job-completed-bound #:observation-job-messages
    #:find-observation #:observed-agreement-p #:observation-invariants
-   ;; 6. factor.lisp — Matching, AU, Hard-EM infer-fibers, corpus compression, heuristic condensation, M6 subgraph search
+   ;; 6. factor.lisp — Matching, AU, fiber proposals, corpus compression, heuristic condensation, M6 subgraph search
    #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p #:term-sort
    #:patterns-isomorphic-p #:pattern-holes #:pattern-hole-counts
    #:subtree-at-path #:replace-at-path #:tree-occurrence #:tree-occurrence-p
@@ -102,5 +102,14 @@
    #:propagation-narrowed #:propagation-suggested #:propagation-retained #:propagation-rejected
    #:prepare-propagator-library #:match-arithmetic-propagator #:propagate-arithmetic-child
    #:start-propagation-search #:resume-propagation-search #:propagation-search-results
-   #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work))
+   #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work
+   ;; Recursive orchestration and explicit dependency/selector targets.
+   #:snapshot-frame #:remaining-work
+   #:decomposition #:make-decomposition #:decomposition-name
+   #:start-synthesis #:resume-synthesis #:synthesis-job-best #:synthesis-job-results
+   #:synthesis-job-ledger #:synthesis-job-messages
+   #:dependency-proposals #:start-selector-search
+   #:start-dependency-search #:resume-dependency-search #:dependency-search-synthesis
+   #:dependency-search-features #:dependency-search-ledger
+   #:start-heuristic-search #:resume-heuristic-search #:heuristic-search-best #:heuristic-search-ledger))
 (in-package #:lisploop)

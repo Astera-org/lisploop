@@ -6,6 +6,10 @@ header-includes:
 
 # `lisploop` — plan 6
 
+Implementation update: [plan6-refactor.md](plan6-refactor.md) records the post-audit
+refactor, tariff v9, corrected semantic contracts, and remaining M8 work. Its
+implementation notes supersede the older code descriptions below.
+
 ## Overview: Aim, Design Principle, and Milestone Map
 
 ### Aim
