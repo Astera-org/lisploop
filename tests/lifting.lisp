@@ -1,5 +1,93 @@
 (in-package #:lisploop)
 
+(defun best-composed-lifting-model (decoder child-id candidates bindings parent-inputs &optional ledger)
+  "Compose each candidate child expression with DECODER and BINDINGS and return
+the composed parent model with minimum total description size S."
+  (let ((best-model nil)
+        (best-candidate nil)
+        (best-bits nil))
+    (dolist (cand candidates)
+      (let* ((expr (if (candidate-p cand) (candidate-expression cand) cand))
+             (composed (compose-model decoder child-id expr bindings ledger))
+             (bits (description-size composed parent-inputs)))
+        (when (or (null best-bits) (< bits best-bits))
+          (setf best-model composed
+                best-candidate cand
+                best-bits bits))))
+    (values best-model best-candidate best-bits)))
+
+(deftest hard-em-infer-fibers-and-cannot-links
+  ;; 1. Confidence ordering: singletons nucleate classes first, cannot-links separate incompatible
+  ;;    singletons, and ambiguous finite-set rows merge into compatible classes for free.
+  (let* ((schema (make-schema :inputs '((0 . :int)) :target :int))
+         (frame (make-frame schema
+                            (list (make-row :key :ambig-a :known '(10) :requirement (set-requirement :int '(1 2)))
+                                  (make-row :key :sing-2  :known '(20) :requirement (singleton-requirement :int 2))
+                                  (make-row :key :sing-3  :known '(30) :requirement (singleton-requirement :int 3))
+                                  (make-row :key :ambig-b :known '(40) :requirement (set-requirement :int '(2 3))))))
+         (ledger (make-ledger)))
+    (multiple-value-bind (classes labels refined partition) (infer-fibers frame ledger)
+      (check (= 2 (length classes)))
+      (check (equal '(0 0 1 0) labels))
+      (check (plusp (ledger-total ledger)))
+      (check (equal '((2) (2) (3) (2))
+                    (mapcar (lambda (row) (extract-allowed-values (row-requirement row)))
+                            (frame-rows refined))))
+      (check (equal (frame-rows frame) (reassemble-partition partition)))))
+  ;; 2. Purely ambiguous intersecting sets collapse to a single shared singleton fiber via M-step votes.
+  (let* ((schema (make-schema :inputs '((0 . :int)) :target :int))
+         (frame (make-frame schema
+                            (list (make-row :key :s1 :known '(1) :requirement (set-requirement :int '(1 2)))
+                                  (make-row :key :s2 :known '(2) :requirement (set-requirement :int '(2 3)))
+                                  (make-row :key :s3 :known '(3) :requirement (set-requirement :int '(2 4)))))))
+    (multiple-value-bind (classes labels refined) (infer-fibers frame)
+      (check (= 1 (length classes)))
+      (check (equal '(0 0 0) labels))
+      (check (every (lambda (row) (equal '(2) (extract-allowed-values (row-requirement row))))
+                    (frame-rows refined))))))
+
+(deftest condense-heuristic-with-priced-residual
+  ;; Synthesize an intensional heuristic selector directly over underconstrained fibers with one outlier row.
+  ;; The MDL objective prices the outlier in the residual during training and drops it at deployment.
+  (let* ((field (gf 5))
+         (inputs (list (cons 0 field)))
+         (schema (make-schema :domain field :inputs inputs :target field))
+         ;; Rows 0..3 follow y = x, while row 4 (x=4) has an outlier target y=0.
+         (frame (make-frame schema
+                            (list (make-row :key 0 :known '(0) :requirement (set-requirement field '(0 4)))
+                                  (make-row :key 1 :known '(1) :requirement (set-requirement field '(1)))
+                                  (make-row :key 2 :known '(2) :requirement (set-requirement field '(2)))
+                                  (make-row :key 3 :known '(3) :requirement (set-requirement field '(3)))
+                                  (make-row :key 4 :known '(4) :requirement (set-requirement field '(0))))))
+         (language (make-language field inputs :operators (list (op :+ field)) :literals '(0 1)))
+         (ledger (make-ledger))
+         (heuristic (condense-heuristic frame language :ledger ledger)))
+    (check (heuristic-model-p heuristic))
+    (check (plusp (ledger-total ledger)))
+    ;; `x0` matches rows 0, 1, 2, 3 and has a 1-row residual on key 4.
+    (check (equal (var 0 field) (heuristic-program heuristic)))
+    (check (= 1 (length (heuristic-residual heuristic))))
+    (check (equal (cons 4 0) (first (heuristic-residual heuristic)))))
+  ;; Direct requirement synthesis vs pre-clustering trap:
+  ;; When row 0 has fiber {0, 4} at x=0 and row 3 (x=3) has outlier singleton {4},
+  ;; pre-clustering fibers before synthesis would merge row 0 into {4} and break `x0` on row 0.
+  ;; Evaluating `check-requirement` directly on `{0, 4}` lets `x0` satisfy row 0 (outputting 0)
+  ;; with only the single outlier residual on row 3.
+  (let* ((field (gf 5))
+         (inputs (list (cons 0 field)))
+         (schema (make-schema :domain field :inputs inputs :target field))
+         (frame (make-frame schema
+                            (list (make-row :key 0 :known '(0) :requirement (set-requirement field '(0 4)))
+                                  (make-row :key 1 :known '(1) :requirement (set-requirement field '(1)))
+                                  (make-row :key 2 :known '(2) :requirement (set-requirement field '(2)))
+                                  (make-row :key 3 :known '(3) :requirement (set-requirement field '(4)))
+                                  (make-row :key 4 :known '(4) :requirement (set-requirement field '(4))))))
+         (language (make-language field inputs :operators (list (op :+ field)) :literals '(0 1)))
+         (heuristic (condense-heuristic frame language)))
+    (check (equal (var 0 field) (heuristic-program heuristic)))
+    (check (= 1 (length (heuristic-residual heuristic))))
+    (check (equal (cons 3 4) (first (heuristic-residual heuristic))))))
+
 (deftest hard-em-bridge-vs-leaf-disambiguation
   ;; Four-row bridge-vs-leaf ambiguity trap:
   ;;   Row 0 (bridge): {1, 2}
@@ -178,37 +266,6 @@
                             (frame-rows refined)))))))
 
 (deftest m5-supplied-lift-and-repetition-compression
-  (let ((field (gf 7))
-        (ledger (make-ledger)))
-    (multiple-value-bind (frame decoder r-to-j row-labels records)
-        (gf7-lifting-fixture :offsets '(1 3) :steps 7 :repetitions 1 :ledger ledger)
-      ;; Occurrence keys are distinct from supplied coordinate r
-      (check (= 14 (length (frame-rows frame))))
-      (check (equal '(:seq 0 0) (row-key (first (frame-rows frame)))))
-      (check (equal '(0 0) (row-known (first (frame-rows frame)))))
-      (check (equal '(0 0 0 0 0 0 0 1 1 1 1 1 1 1) row-labels))
-      (let* ((parent-inputs (schema-inputs (frame-schema frame)))
-             (bindings (list (cons 3 r-to-j)))
-             (child (pullback-frame frame decoder 9 field bindings ledger))
-             (child-inputs (schema-inputs (frame-schema child)))
-             (job (start-search child (make-language field child-inputs)))
-             (bound (description-size (app (op :+ field) (lit field 1)
-                                           (app (op :* field) (lit field 2) (var 3 field)))
-                                      child-inputs)))
-        ;; Child receives only j in GF(7); requirements remain symbolic predicates without inverse enumeration
-        (check (equal (list (cons 3 field)) child-inputs))
-        (check (every (lambda (r) (eq :unknown (extract-allowed-values (row-requirement r))))
-                      (frame-rows child)))
-        (check (null (frame-conflict-p child :ledger ledger)))
-        (check (eq :bounded-exhaustion (message-claim (resume-search job bound 10000000))))
-        (check (search-job-best job))
-        (multiple-value-bind (composed-best chosen-cand composed-bits)
-            (best-composed-lifting-model decoder 9 (search-job-results job) bindings parent-inputs ledger)
-          (declare (ignore chosen-cand))
-          (let ((lookup-bits (description-size (lookup-model frame ledger) parent-inputs)))
-            (check (< composed-bits lookup-bits))
-            (check (plusp (replay-model composed-best frame ledger)))
-            (check (= (length records) 14)))))))
   ;; Compression savings grow monotonically with repetitions (1, 2, 4, 8)
   (let ((field (gf 7))
         (prev-saving 0))
@@ -216,7 +273,13 @@
       (let ((ledger (make-ledger)))
         (multiple-value-bind (frame decoder r-to-j row-labels records)
             (gf7-lifting-fixture :offsets '(1 3) :steps 7 :repetitions reps :ledger ledger)
-          (declare (ignore row-labels))
+          (when (= reps 1)
+            ;; Occurrence keys are distinct from supplied coordinate r
+            (check (= 14 (length (frame-rows frame))))
+            (check (= 14 (length records)))
+            (check (equal '(:seq 0 0) (row-key (first (frame-rows frame)))))
+            (check (equal '(0 0) (row-known (first (frame-rows frame)))))
+            (check (equal '(0 0 0 0 0 0 0 1 1 1 1 1 1 1) row-labels)))
           (let* ((parent-inputs (schema-inputs (frame-schema frame)))
                  (bindings (list (cons 3 r-to-j)))
                  (child (pullback-frame frame decoder 9 field bindings ledger))
@@ -225,13 +288,21 @@
                  (bound (description-size (app (op :+ field) (lit field 1)
                                                (app (op :* field) (lit field 2) (var 3 field)))
                                           child-inputs)))
+            (when (= reps 1)
+              ;; Child receives only j in GF(7); requirements remain symbolic predicates without inverse enumeration
+              (check (equal (list (cons 3 field)) child-inputs))
+              (check (every (lambda (r) (eq :unknown (extract-allowed-values (row-requirement r))))
+                            (frame-rows child)))
+              (check (null (frame-conflict-p child :ledger ledger))))
             (check (eq :bounded-exhaustion (message-claim (resume-search job bound 10000000))))
+            (check (search-job-best job))
             (multiple-value-bind (lifted-model chosen-cand lifted-bits)
                 (best-composed-lifting-model decoder 9 (search-job-results job) bindings parent-inputs ledger)
               (declare (ignore chosen-cand))
               (let* ((lookup-bits (description-size (lookup-model frame ledger) parent-inputs))
                      (seq-bits (description-size (lit (sequence-type field) (mapcar #'fourth records)) nil))
                      (saving (- lookup-bits lifted-bits)))
+                (check (< lifted-bits lookup-bits))
                 (check (plusp (replay-model lifted-model frame ledger)))
                 (check (> saving prev-saving))
                 (when (= reps 8)
@@ -292,8 +363,7 @@
       (declare (ignore supplied-r-to-j))
       ;; 1. Unsupervised discovery both directly on raw pulled-back requirements and via M4 certified solver
       (let* ((raw-child (pullback-frame frame decoder 9 field (list (cons 0 (var 0 :int))) ledger))
-             (plus-rel (observe-arithmetic-relation field :+ '(0 1 2 3 4 5 6)))
-             (plus-solver (validate-arithmetic-solver (discover-arithmetic-solver plus-rel 1 '(0 1 2 3 4 5 6))))
+             (plus-solver (arithmetic-control field :+ 1))
              (prop (propagate-arithmetic-child frame decoder 9 (list (cons 0 (var 0 :int))) plus-solver ledger)))
         (check (certified-solve-discovery-p plus-solver))
         (check (= 28 (propagation-narrowed prop)))

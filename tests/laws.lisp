@@ -92,11 +92,6 @@
         (check (equal predicate (instantiate pattern (first substitutions))))
         (check (equal oracle (instantiate pattern (second substitutions))))))))
 
-(defun checked-law (law)
-  (let ((validation (resume-law-validation (start-law-validation law) 1000000)))
-    (check (eq :validated (law-validation-status validation)))
-    validation))
-
 (defun test-law-discovery (domain)
   (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
          (rows (loop for a below (second domain) append (loop for b below (second domain) collect (list a b))))
@@ -155,12 +150,6 @@
     (check (prepare-rewrite-library (list five) domain))
     (setf (law-guard (law-validation-law five)) (lit :bool nil))
     (raises (prepare-rewrite-library (list five) domain))))
-
-(defun normalize-for-test (expression inputs validations domain)
-  (let ((state (start-rewriting expression inputs (prepare-rewrite-library validations domain))))
-    (advance-rewriting state 10000000)
-    (check (eq :complete (rewriting-status state)))
-    (rewriting-value state)))
 
 (deftest guarded-rewrites-preserve-errors-and-terminate
   (let* ((domain (gf 5)) (inputs (list (cons 0 domain))) (x (var 0 domain))

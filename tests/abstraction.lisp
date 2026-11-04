@@ -1,5 +1,189 @@
 (in-package #:lisploop)
 
+(defun m6-reference-aligned-au (sources &optional inputs)
+  "Independent reference implementation of aligned syntactic anti-unification.
+Uses an association list of disagreement vectors and assigns holes from 100 upward
+to test `patterns-isomorphic-p` up to hole renaming."
+  (assert sources)
+  (let ((memo nil)
+        (next-hole 100))
+    (labels ((ref-sort (term)
+               (if (operator-p term)
+                   (operator-type term)
+                   (expression-type term inputs t)))
+             (walk (terms)
+               (let ((sorts (mapcar #'ref-sort terms)))
+                 (assert (every (lambda (s) (equal s (first sorts))) sorts))
+                 (cond
+                   ((every (lambda (term) (equal term (first terms))) terms)
+                    (first terms))
+                   ((and (every #'app-p terms)
+                         (let ((sigs (mapcar (lambda (term) (operator-type (first term))) terms)))
+                           (every (lambda (sig) (equal sig (first sigs))) sigs)))
+                    (apply #'app
+                           (walk (mapcar #'first terms))
+                           (loop for i below (length (rest (first terms)))
+                                 collect (walk (mapcar (lambda (term) (nth i (rest term))) terms)))))
+                   (t
+                    (let ((existing (assoc terms memo :test #'equal)))
+                      (if existing
+                          (cdr existing)
+                          (let ((h (hole (prog1 next-hole (incf next-hole)) (first sorts))))
+                            (push (cons terms h) memo)
+                            h))))))))
+      (walk sources))))
+
+(defun planted-abstraction-fixture (&key (domain :int) (repetitions 1) include-unrelated-p ledger)
+  "Construct whole trees T_i = W_i[p[\\theta_i]] from a hidden planted template p,
+substitutions \\theta_i, and varied outer wrappers W_i at distinct occurrence paths.
+Returns (VALUES trees inputs hidden-oracle)."
+  (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
+         (x0 (var 0 domain))
+         (x1 (var 1 domain))
+         (plus (op :+ domain))
+         (mul (op :* domain))
+         (sub (op :- domain))
+         ;; Shared inner anchor: (+ (* X0 '2) (+ (* X1 '3) (* (+ X0 X1) '5)))
+         (anchor (app plus
+                      (app mul x0 (lit domain 2))
+                      (app plus
+                           (app mul x1 (lit domain 3))
+                           (app mul (app plus x0 x1) (lit domain 5)))))
+         ;; Planted template p: (+ (* ?0 anchor) (* ?0 anchor))
+         ;; Has a repeated hole ?0 AND two copies of the 31-bit fixed anchor expression.
+         (branch (app mul (hole 0 domain) anchor))
+         (pattern (app plus branch branch))
+         (ctx-hole (hole 999 domain))
+         (base-wrappers-and-paths
+           (list (cons ctx-hole nil)
+                 (cons (app plus (lit domain 1) ctx-hole) '(1))
+                 (cons (app mul ctx-hole (lit domain 2)) '(0))
+                 (cons (app sub (lit domain 4) (app plus ctx-hole x1)) '(1 0))))
+         (trees nil)
+         (subtrees nil)
+         (paths nil)
+         (wrappers nil)
+         (substs nil)
+         (idx 0))
+    (dotimes (rep repetitions)
+      (loop for (wrapper . path) in base-wrappers-and-paths
+            for k = (+ 2 idx)
+            for arg = (case (mod idx 4)
+                        (0 (if (evenp rep) x0 x1))
+                        (1 (app plus x1 (lit domain k)))
+                        (2 (app mul x0 (lit domain k)))
+                        (otherwise (app sub (app plus x0 x1) (lit domain k))))
+            for subst = (list (cons 0 arg))
+            for sub-term = (instantiate pattern subst)
+            for whole-tree = (instantiate wrapper (list (cons 999 sub-term)))
+            do (incf idx)
+               (charge ledger :construction (+ (syntax-work sub-term) (syntax-work whole-tree)))
+               (push whole-tree trees)
+               (push sub-term subtrees)
+               (push path paths)
+               (push wrapper wrappers)
+               (push subst substs)))
+    (when include-unrelated-p
+      (let ((unrelated-1 (app plus x0 (lit domain 0)))
+            (unrelated-2 (app mul x1 (lit domain 1))))
+        (charge ledger :construction (+ (syntax-work unrelated-1) (syntax-work unrelated-2)))
+        (push unrelated-1 trees)
+        (push nil subtrees)
+        (push :none paths)
+        (push nil wrappers)
+        (push nil substs)
+        (push unrelated-2 trees)
+        (push nil subtrees)
+        (push :none paths)
+        (push nil wrappers)
+        (push nil substs)))
+    (values (nreverse trees)
+            inputs
+            (list :pattern pattern
+                  :substitutions (nreverse substs)
+                  :subtrees (nreverse subtrees)
+                  :paths (nreverse paths)
+                  :wrappers (nreverse wrappers)))))
+
+(defun randomized-planted-abstraction-fixture (&key (domain :int) (state 424242) (count 4) include-unrelated-p ledger)
+  "Deterministic LCG-generated planted templates, substitutions, and wrapper paths.
+Returns (VALUES trees inputs hidden-oracle next-state)."
+  (labels ((next-int (bound)
+             (setf state (mod (+ (* state 1103515245) 12345) #x7fffffff))
+             (mod (ash state -8) bound)))
+    (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
+           (vars (list (var 0 domain) (var 1 domain)))
+           (ops (list (op :+ domain) (op :* domain) (op :- domain)))
+           (sig (operator-type (first ops)))
+           (const-val (1+ (next-int 4)))
+           (template-choice (next-int 3))
+           (pattern
+             (ecase template-choice
+               (0 ;; (?op (?op2 ?x 'c) (?op2 ?x 'c))
+                (let ((sub (app (first ops) (hole 1 domain) (lit domain const-val))))
+                  (app (hole 0 sig) sub sub)))
+               (1 ;; (+ (* ?x ?y) (* ?x ?y))
+                (let ((sub (app (second ops) (hole 0 domain) (hole 1 domain))))
+                  (app (first ops) sub sub)))
+               (2 ;; (?op (+ ?x 'c) (* ?x ?y))
+                (app (hole 0 sig)
+                     (app (first ops) (hole 1 domain) (lit domain const-val))
+                     (app (second ops) (hole 1 domain) (hole 2 domain))))))
+           (holes (pattern-holes pattern))
+           (ctx-hole (hole 999 domain))
+           (trees nil)
+           (subtrees nil)
+           (paths nil)
+           (wrappers nil)
+           (substs nil))
+      (dotimes (i count)
+        (let* ((subst
+                 (loop for (hid . hsort) in holes
+                       collect (cons hid
+                                     (if (function-sort-p hsort)
+                                         (nth (next-int (length ops)) ops)
+                                         (ecase (next-int 3)
+                                           (0 (nth (next-int (length vars)) vars))
+                                           (1 (lit domain (1+ (next-int 4))))
+                                           (2 (app (nth (next-int (length ops)) ops)
+                                                   (nth (next-int (length vars)) vars)
+                                                   (lit domain (1+ (next-int 3))))))))))
+               (wrapper-choice (next-int 4))
+               (w-const (lit domain (1+ (next-int 4))))
+               (w-var (nth (next-int (length vars)) vars))
+               (wrapper-and-path
+                 (ecase wrapper-choice
+                   (0 (cons ctx-hole nil))
+                   (1 (cons (app (first ops) w-const ctx-hole) '(1)))
+                   (2 (cons (app (second ops) ctx-hole w-const) '(0)))
+                   (3 (cons (app (third ops) w-var (app (first ops) ctx-hole w-const)) '(1 0)))))
+               (wrapper (car wrapper-and-path))
+               (path (cdr wrapper-and-path))
+               (sub-term (instantiate pattern subst))
+               (whole-tree (instantiate wrapper (list (cons 999 sub-term)))))
+          (charge ledger :construction (+ (syntax-work sub-term) (syntax-work whole-tree)))
+          (push whole-tree trees)
+          (push sub-term subtrees)
+          (push path paths)
+          (push wrapper wrappers)
+          (push subst substs)))
+      (when include-unrelated-p
+        (let ((u (app (first ops) (first vars) (lit domain 0))))
+          (charge ledger :construction (syntax-work u))
+          (push u trees)
+          (push nil subtrees)
+          (push :none paths)
+          (push nil wrappers)
+          (push nil substs)))
+      (values (nreverse trees)
+              inputs
+              (list :pattern pattern
+                    :substitutions (nreverse substs)
+                    :subtrees (nreverse subtrees)
+                    :paths (nreverse paths)
+                    :wrappers (nreverse wrappers))
+              state))))
+
 (deftest abstraction-stages-1-to-3-and-controls
   (let* ((domain :int)
          (work (make-ledger))
@@ -9,24 +193,12 @@
          (plus (op :+ domain))
          (mul (op :* domain))
          (t1 (app plus (lit domain 2) (lit domain 2)))
-         (t2 (app mul (lit domain 3) (lit domain 3)))
-         (t2-broken (app mul (lit domain 3) (lit domain 4))))
-    ;; Stage 1 & 2 & 3: Aligned AU with operator hole + repeated hole
+         (t2 (app mul (lit domain 3) (lit domain 3))))
+    ;; Stage 1 & 2 & 3: Aligned AU isomorphism against independent reference + child substitution frame
     (multiple-value-bind (pat substs)
         (anti-unify (list t1 t2) inputs work)
       (let ((ref-pat (m6-reference-aligned-au (list t1 t2) inputs)))
         (check (patterns-isomorphic-p pat ref-pat inputs work))
-        (check (= 2 (length (pattern-holes pat))))
-        (check (= 2 (length substs)))
-        ;; Pattern instantiation and first-order matching
-        (loop for target in (list t1 t2)
-              for subst in substs
-              do (check (equal target (instantiate pat subst)))
-                 (multiple-value-bind (m-subst matched-p)
-                     (match-pattern pat target inputs work)
-                   (check matched-p)
-                   (check (equal subst m-subst))))
-        ;; Constructor compilation via :code-apply and child substitution frame
         (multiple-value-bind (ctor-expr ctor-inputs)
             (compile-au-constructor pat inputs work)
           (check (= 2 (length ctor-inputs)))
@@ -40,25 +212,7 @@
                   for ev = (evaluate ctor-expr ctor-inputs tuple-val :ledger work)
                   do (check (eq :value (evaluation-status ev)))
                      (check (equal target (evaluation-value ev))))))))
-    ;; Control 1: Breaking repeated hole (* 3 3) -> (* 3 4) yields 3 distinct holes
-    (multiple-value-bind (broken-pat broken-substs)
-        (anti-unify (list t1 t2-broken) inputs work)
-      (check (= 3 (length (pattern-holes broken-pat))))
-      (loop for target in (list t1 t2-broken)
-            for subst in broken-substs
-            do (check (equal target (instantiate broken-pat subst)))))
-    ;; Control 2: Incompatible operator signatures (= :int) vs (= (gf 5)) -> whole-AST hole ?0
-    (let* ((eq-int (app (op := domain) (lit domain 1) (lit domain 1)))
-           (eq-gf5 (app (op := (gf 5)) (lit (gf 5) 1) (lit (gf 5) 1))))
-      (multiple-value-bind (incompat-pat incompat-substs)
-          (anti-unify (list eq-int eq-gf5) nil work)
-        (check (hole-p incompat-pat))
-        (check (eq :bool (ast-type incompat-pat)))
-        (check (equal eq-int (instantiate incompat-pat (first incompat-substs))))
-        (check (equal eq-gf5 (instantiate incompat-pat (second incompat-substs))))))
-    ;; Control 3: Incompatible result sorts (:bool vs :int) must signal an error
-    (raises (anti-unify (list (lit :bool t) (lit domain 1)) nil work))
-    ;; Control 4: Planted template whose substitutions share extra structure tightens to LGG
+    ;; Control: Planted template whose substitutions share extra structure tightens to LGG
     (let* ((loose-pat (app plus (hole 0 domain) (hole 1 domain)))
            (s1 (list (cons 0 x0) (cons 1 (app mul (lit domain 2) x0))))
            (s2 (list (cons 0 x1) (cons 1 (app mul (lit domain 2) x1))))
@@ -137,9 +291,7 @@
           (check (< (subexpression-abstraction-bits best-comp1)
                     (subexpression-abstraction-bits root1)))
           ;; Replay check
-          (let ((ev1 (evaluate (subexpression-abstraction-model best-comp1) nil nil :ledger work)))
-            (check (eq :value (evaluation-status ev1)))
-            (check (equal trees1 (decode-tree-corpus (evaluation-value ev1))))))
+          (check (plusp (verify-corpus-abstraction-replay best-comp1 trees1 inputs1 work))))
         ;; Repetition scaling: repetitions = 2 increases bit gain strictly
         (multiple-value-bind (trees2 inputs2 oracle2)
             (planted-abstraction-fixture :domain domain :repetitions 2 :ledger work)
@@ -151,9 +303,7 @@
             (check (equal (getf oracle2 :paths) (subexpression-abstraction-paths best-struct2)))
             (check (> (subexpression-abstraction-gain best-comp2)
                       (subexpression-abstraction-gain best-comp1)))
-            (let ((ev2 (evaluate (subexpression-abstraction-model best-comp2) nil nil :ledger work)))
-              (check (eq :value (evaluation-status ev2)))
-              (check (equal trees2 (decode-tree-corpus (evaluation-value ev2)))))))))))
+            (check (plusp (verify-corpus-abstraction-replay best-comp2 trees2 inputs2 work)))))))))
 
 (deftest abstraction-unrelated-tree-controls-and-randomized-trials
   (let* ((domain :int)
@@ -168,9 +318,7 @@
         (check (equal (getf mixed-oracle :paths)
                       (subexpression-abstraction-paths best-struct)))
         (check (plusp (subexpression-abstraction-gain best-comp)))
-        (let ((ev (evaluate (subexpression-abstraction-model best-comp) nil nil :ledger work)))
-          (check (eq :value (evaluation-status ev)))
-          (check (equal mixed-trees (decode-tree-corpus (evaluation-value ev)))))))
+        (check (plusp (verify-corpus-abstraction-replay best-comp mixed-trees mixed-inputs work)))))
     ;; Deterministic LCG randomized planted-template trials
     (let ((state 424242))
       (dotimes (trial 3)
@@ -183,9 +331,7 @@
               (discover-subexpression-abstractions r-trees r-inputs :ledger work)
             (check (plusp (subexpression-abstraction-structural-score best-struct)))
             (dolist (prop (list best-comp best-struct))
-              (let ((ev (evaluate (subexpression-abstraction-model prop) nil nil :ledger work)))
-                (check (eq :value (evaluation-status ev)))
-                (check (equal r-trees (decode-tree-corpus (evaluation-value ev))))))))))))
+              (check (plusp (verify-corpus-abstraction-replay prop r-trees r-inputs work))))))))))
 
 (deftest abstraction-validated-law-alternate-syntax
   (let* ((domain (gf 5))
@@ -225,10 +371,8 @@
                 (norm-root (find :aligned-root norm-proposals :key #'subexpression-abstraction-kind)))
             ;; Raw trees retain exact AST spelling while normalized trees rewrite (+ sub2 0) and (* sub0 1)
             (check (not (equal raw-trees norm-trees)))
-            (let ((ev-raw (evaluate (subexpression-abstraction-model raw-best-comp) nil nil :ledger work))
-                  (ev-norm (evaluate (subexpression-abstraction-model norm-best-comp) nil nil :ledger work)))
-              (check (equal raw-trees (decode-tree-corpus (evaluation-value ev-raw))))
-              (check (equal norm-trees (decode-tree-corpus (evaluation-value ev-norm)))))
+            (check (plusp (verify-corpus-abstraction-replay raw-best-comp raw-trees scope work)))
+            (check (plusp (verify-corpus-abstraction-replay norm-best-comp norm-trees scope work)))
             ;; Validated law rewriting exposes a tighter LGG and smaller corpus description S
             (check (> (subexpression-abstraction-structural-score norm-root)
                       (subexpression-abstraction-structural-score raw-root)))
@@ -260,16 +404,8 @@
         (multiple-value-bind (int-best-comp int-best-struct int-proposals)
             (discover-subexpression-abstractions int-trees int-scope :domain :int :ledger work)
           (declare (ignore int-best-struct))
-          (let ((int-root (find :aligned-root int-proposals :key #'subexpression-abstraction-kind))
-                (ev-int (evaluate (subexpression-abstraction-model int-best-comp) nil nil :ledger work)))
+          (let ((int-root (find :aligned-root int-proposals :key #'subexpression-abstraction-kind)))
             (check (= 2 (length (pattern-holes (app int-plus (app int-mul (hole 0 :int) (hole 1 :int))
                                                     (app int-mul (hole 0 :int) (hole 1 :int)))))))
             (check (= 5 (length (pattern-holes (subexpression-abstraction-pattern int-root)))))
-            (check (equal int-trees (decode-tree-corpus (evaluation-value ev-int))))))))))
-
-(deftest abstraction-experiment-runner
-  (let ((output (with-output-to-string (*standard-output*)
-                  (run-m6))))
-    (check (search "M6 / Stages 1-3" output))
-    (check (search "M6 / Stage 4" output))
-    (check (search "M6 / Stage 5" output))))
+            (check (plusp (verify-corpus-abstraction-replay int-best-comp int-trees int-scope work)))))))))

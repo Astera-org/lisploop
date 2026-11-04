@@ -1,11 +1,5 @@
 (in-package #:lisploop)
 
-(defun probe-frame (type inputs known-values)
-  (make-frame (make-schema :inputs inputs :target type)
-              (loop for known in known-values for key from 0 collect
-                (make-row :key key :known (copy-tree known)
-                          :requirement (lit :bool t)))))
-
 (defun bucket-for (job expression)
   (let ((record (find-observation job expression)))
     (and record (eq (observed-expression-status record) :complete)
@@ -236,17 +230,6 @@
     (check (eq :complete (observed-expression-status (find-observation batch heavy))))
     (check (equal '(t t) (observed-expression-values (find-observation batch heavy))))
     (check (= 1 (length (observation-job-buckets batch))))))
-
-(defun integer-reference-value (expression inputs)
-  "Independent arithmetic oracle for the tiny integer grammar; no simulator calls."
-  (ecase (ast-kind expression)
-    (:lit (ast-value expression))
-    (:var (cdr (assoc (ast-id expression) inputs)))
-    (:app
-     (let ((values (mapcar (lambda (e) (integer-reference-value e inputs)) (rest expression))))
-       (ecase (operator-name (first expression))
-         (:+ (+ (first values) (second values)))
-         (:* (* (first values) (second values))))))))
 
 (deftest declared-literal-vocabulary
   (let* ((literals (list -1 0 1 1))

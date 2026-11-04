@@ -234,28 +234,6 @@
     (check (equal (hole 0 :bool) (anti-unify sources))))
   (raises (anti-unify (list (lit :int 1) (lit (gf 5) 1)))))
 
-(defun reference-one-application (domain inputs operators bound)
-  "Independent exhaustive reference: this bound permits leaves and ONE binary app."
-  (let* ((leaves (append (mapcar (lambda (spec) (var (car spec) (cdr spec))) inputs)
-                          (loop for i below (second domain) collect (lit domain i))))
-         (candidates (copy-list leaves)))
-    (dolist (operator operators)
-      (dolist (left leaves)
-        (dolist (right leaves) (push (app operator left right) candidates))))
-    (check (< bound (+ (header-size inputs domain)
-                       (* 3 (reduce #'min leaves :key (lambda (e) (body-size e inputs)))) 10)))
-    (remove-if (lambda (expression) (> (description-size expression inputs) bound)) candidates)))
-
-(defun reference-value (expression inputs prime)
-  (case (ast-kind expression)
-    (:lit (ast-value expression))
-    (:var (cdr (assoc (ast-id expression) inputs)))
-    (:app
-     (let ((a (reference-value (first (rest expression)) inputs prime))
-           (b (reference-value (second (rest expression)) inputs prime)))
-       (ecase (operator-name (first expression))
-         (:+ (mod (+ a b) prime)) (:* (mod (* a b) prime)))))))
-
 (deftest independent-complete-tiny-bound
   (let* ((field (gf 2)) (inputs (list (cons 0 field)))
          (language (make-language field inputs))

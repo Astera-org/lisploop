@@ -1,13 +1,5 @@
 (in-package #:lisploop)
 
-(defun check-codec-roundtrip (expression inputs)
-  (let ((bits (encode-model expression inputs)))
-    (check (= (length bits) (description-size expression inputs)))
-    (multiple-value-bind (decoded schema) (decode-model bits)
-      (check (equal expression decoded)) (check (equal inputs schema)))
-    (raises (decode-model (subseq bits 0 (1- (length bits)))))
-    (raises (decode-model (concatenate 'bit-vector bits #*0)))))
-
 (deftest codec-roundtrip-and-boundaries
   (let* ((inputs '((0 . :int) (1 . :int))) (a (var 0 :int)) (b (var 1 :int)))
     (check (= 23 (header-size inputs :int)))
@@ -54,14 +46,6 @@
   (let ((bits (encode-model (lit (gf 5) 0) nil)))
     (setf (subseq bits (- (length bits) 3)) #*111)
     (raises (decode-model bits))))
-
-(defun reference-node-trees (leaves operators applications)
-  "Enumerate by application count, independently of the size-indexed search."
-  (if (zerop applications) leaves
-      (loop for left-count below applications append
-        (loop for left in (reference-node-trees leaves operators left-count) append
-          (loop for right in (reference-node-trees leaves operators (- applications 1 left-count)) append
-            (loop for operator in operators collect (app operator left right)))))))
 
 (deftest codec-enumerator-complete-tiny-grammars
   (dolist (domain (list :int (gf 2) (gf 5)))

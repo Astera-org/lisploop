@@ -159,6 +159,29 @@
     (check (null (set-exclusive-or actual (list (var 0 :bool) (lit :int 0) (lit :int 1)
                                                (lit :bool nil) (lit :bool t)) :test #'equal)))))
 
+(defun code-transform-fixture (domain)
+  "Supplied structural context for learning which child to retain, with nonmatches
+and partial terms. No transform program or selector is supplied to the child search."
+  (let* ((scope (list (cons 99 domain))) (code (code-type scope domain))
+         (x (var 99 domain)) (zero (lit domain 0)) (one (lit domain 1))
+         (plus (op :+ domain)) (mul (op :* domain))
+         (partial (app (op :/ domain) one zero))
+         (positive (list x (lit domain 2) (app mul x one)))
+         (negative (list x zero (app mul x zero) (app plus x one) (app plus partial zero)))
+         (rows (append (loop for term in positive collect (list (app plus term zero) term))
+                       (loop for term in negative collect (list term term))))
+         (pattern-type (code-type (list (cons 7 domain)) domain))
+         (pattern (lit pattern-type (app plus (var 7 domain) zero)))
+         (source (var 0 code))
+         (child (app (op :code-child (tuple-type code code)) source (var 1 :int)))
+         (decoder (app (op :if code)
+                       (app (op :code-match (tuple-type pattern-type code)) pattern source)
+                       (app (op :if code) (app (op :code-total code) child) child source) source)))
+    (values (make-frame (make-schema :inputs (list (cons 0 code)) :target code)
+                        (loop for (source target) in rows for i from 0 collect
+                          (make-row :key i :known (list source) :requirement (set-requirement code (list target)))))
+            decoder scope)))
+
 (deftest symbolic-pullback-learns-a-checked-transformation
   (dolist (domain (list :int (gf 5) (gf 7)))
     (multiple-value-bind (parent decoder scope) (code-transform-fixture domain)

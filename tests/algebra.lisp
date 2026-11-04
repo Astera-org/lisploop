@@ -1,22 +1,5 @@
 (in-package #:lisploop)
 
-(defvar *arithmetic-controls* (make-hash-table :test #'equal))
-(defun arithmetic-controls (domain)
-  (or (gethash domain *arithmetic-controls*)
-      (setf (gethash domain *arithmetic-controls*)
-            (loop with values = (if (eq domain :int) '(-4 -3 -2 -1 0 1 2 3 4)
-                                    (loop for i below (second domain) collect i))
-                  for name in '(:+ :- :* :/)
-                  for relation = (observe-arithmetic-relation domain name values) append
-                    (loop for position below 2
-                          for discovery = (discover-arithmetic-solver relation position values :literals (if (eq domain :int) '(-1 0 1) :all))
-                          do (if (eq domain :int) (integer-solver-held-out discovery) (validate-arithmetic-solver discovery))
-                          collect discovery)))))
-
-(defun arithmetic-control (domain name position)
-  (find-if (lambda (d) (and (eq name (operator-name (arithmetic-relation-operator (solve-discovery-relation d))))
-                            (= position (solve-discovery-position d)))) (arithmetic-controls domain)))
-
 (defun independent-arithmetic (name a b domain)
   "Test oracle only: field reciprocals by exhaustive multiplication, not Euclid."
   (if (and (eq name :/) (zerop b)) (values nil nil)

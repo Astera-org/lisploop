@@ -3,47 +3,19 @@
 # is left to the TeX installation's default paper.
 PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt
 
-DOCS = plan6.pdf architecture.pdf plan6-refactor.pdf
+DOCS = plan6.pdf plan7.pdf architecture.pdf plan6-refactor.pdf tests/README.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
 BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp codec.lisp vm.lisp requirements.lisp frame.lisp enumerate.lisp factor.lisp laws.lisp synthesize.lisp benchmark.lisp
 
-.PHONY: all clean test m1 m2 m3 m4 m5 m6 m7 visualizer benchmark benchmark-profile
+.PHONY: all clean test visualizer benchmark benchmark-profile
 
 all: $(DOCS)
 
 test:
 	$(SBCL) --script tests/run.lisp
 	$(SBCL) --script tests/visualizer.lisp
-
-m1: | $(RESULTS_DIR)
-	@$(SBCL) --script experiments.lisp m1 > $(RESULTS_DIR)/milestone1.txt
-	@printf 'Milestone 1 report: %s/milestone1.txt\n' '$(RESULTS_DIR)'
-
-m2: | $(RESULTS_DIR)
-	@$(SBCL) --script experiments.lisp m2 > $(RESULTS_DIR)/milestone2.txt
-	@printf 'Milestone 2 report: %s/milestone2.txt\n' '$(RESULTS_DIR)'
-
-m3: | $(RESULTS_DIR)
-	@$(SBCL) --script experiments.lisp m3 > $(RESULTS_DIR)/milestone3.txt
-	@printf 'Milestone 3 report: %s/milestone3.txt\n' '$(RESULTS_DIR)'
-
-m4: | $(RESULTS_DIR)
-	@$(SBCL) --script experiments.lisp m4 > $(RESULTS_DIR)/milestone4.txt
-	@printf 'Milestone 4 report: %s/milestone4.txt\n' '$(RESULTS_DIR)'
-
-m5: | $(RESULTS_DIR)
-	@$(SBCL) --script experiments.lisp m5 > $(RESULTS_DIR)/milestone5.txt
-	@printf 'Milestone 5 report: %s/milestone5.txt\n' '$(RESULTS_DIR)'
-
-m6: | $(RESULTS_DIR)
-	@$(SBCL) --script experiments.lisp m6 > $(RESULTS_DIR)/milestone6.txt
-	@printf 'Milestone 6 report: %s/milestone6.txt\n' '$(RESULTS_DIR)'
-
-m7: | $(RESULTS_DIR)
-	@$(SBCL) --script experiments.lisp m7 > $(RESULTS_DIR)/milestone7.txt
-	@printf 'Milestone 7 report: %s/milestone7.txt\n' '$(RESULTS_DIR)'
 
 visualizer:
 	$(SBCL) --script visualizer/generate.lisp

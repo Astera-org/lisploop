@@ -1,6 +1,6 @@
 ;;; Run from any working directory: sbcl --script /path/to/visualizer/generate.lisp
 (load (merge-pathnames "export.lisp" *load-truename*))
-(load (merge-pathnames "../fixtures.lisp" *load-truename*))
+(load (merge-pathnames "../tests/support.lisp" *load-truename*))
 (in-package #:lisploop-visualizer)
 
 (defun transitions-for (domain ledger &key fresh changed)
