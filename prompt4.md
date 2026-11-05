@@ -39,16 +39,29 @@ The research is motivated by N pillars:
   a. This is anti-unification, which forms the key method for variable introduction. 
   b. Anti-unification, like everything else here, is contextual, and depends on a frame or reference: *what* expressions are anti-unified into a LGG.
     1. The cost structure remains the same: description length (DL). 
-7. **Partitioning & Locality**.  In many cases, there are an unlimited number of ways of deciding what expressions to anti-unify or build a library from.
-  a. Human search proceeds with some intrinsic metric of locality: data that is close in time or space. 
-  b. This serves to bias any breadth-first search to local neighborhoods, and is reflective of the dependency structure of the real world: things generally don't depend on variables that are distant. 
-  c. Locality can of course be bootstrapped: items that have a certificate for being co-local via search & computational validation can have induced locality (which, in turn, can be amortized / synthesized / explained through a subsequent synthesis step). 
-    1. Or, vice-versa, locality can be imposed (via sorting), and equivalence checked. 
-  d. Partitioning hence can be through basic equality (same types and/or values for each expression), through ordering, through basic computation.
-    1. Factoring is another matter (as happens with library learning over one graph). 
+7. **Partitioning & Locality**.  In many cases, there are an unlimited number of ways of deciding what expressions to anti-unify, or build a library from, or look to unify through a conserved executable description.
+  a. Human search proceeds with some intrinsic metric of locality: data that is close in time or space, or close in a constructed, learned space. 
+    1. This can extend to even abstract concepts, like 'colonies' or 'mountain passes', wherein similarity and hence locality is purely computational, in a sense. 
+  b. Locality serves to bias any breadth-first search to neighborhoods, and is reflective of the dependency structure of the real world: things generally don't depend on variables that are distant. 
+    1. In terms of the example above, abstract locality helps to transform computable attributes, like arithmetic in a constructed space. 
+  c. Locality can of course be bootstrapped: items that have a certificate for being co-local via search & computational validation can have induced locality -- which, in turn, can be amortized / synthesized / explained through a subsequent synthesis step. 
+    1. Or, vice-versa, locality can be imposed (via selection and sorting), and equivalence checked. 
+  d. Partitioning hence can be through basic equality (same types and/or values for each expression), through ordering; either can be supplied or computed.
+    1. Factoring is another related matter, as happens with library learning over one graph.  
+    2. Here similarity is typically exact and structural, though human cognition also treats these as invented & analogical spaces. 
   e. Partitions form frames for recursive program synthesis. 
     1. They are hence a straightforward form of lifting followed by a conditional. 
     2. Aside: deep learning does this in pre- and statically- allocated high-dimensional space; critical here is that space is allocated on the stack, in the search tree. 
+  f. Partitioning is a hard form of ordering, effectively selection with ha Heavisid function or Dirac delta; application relies on the generality of the compressed form of the subsequent frame for computational generalization. 
+    1. Basically saying 'these are the same, and everything else is different'. 
+  g. A **relaxed** form of partitioning involves ordering and sorting, and learned metrics: 
+    1. Each which says, effectively, 'these are this-much similar, and other things are that-much dissimilar'. 
+    2. Metrics allow for sample-based approximation and generalization, as is common in machine learning. 
+    3. They enable a related form of conservation, beyond equivalence: change is bounded for a map y = f(x) in both x and y
+      a. This means both input and output need a geometry
+      b. Geometry is not essential for this proposal, except ... 
+  h. Below, when deriving heuristics, we have to accomidate lossy and imperfect compressions and approximations, hence need a way of ranking them. 
+    1. Much of perception is seeking entities, attributes, and functions that are conserved through time or space.  Heuristics couple tightly to this, as they approximate data where the residual (and hence the residual) is measured with a learned or ambient metric. 
 8. **Recursion**. The program synthesis problem is recursive in several distinct ways: 
   a. Synthesis can proceed in stages: you solve a problem, which emits residuals or fiber indexes that need to be predicted; these serve as recursive target for another round of synthesis. 
     1. Sometimes early or first stages yield no compression, e.g. basis expansion to make a problem linear, so the full DL cost must be measured by the *full* path.  
