@@ -463,7 +463,79 @@ Listed proposals use the SAME construction, VM, checker and objective."
 (defstruct observation-outcome status value error (work 0))
 (defstruct observed-expression scope expression type (status :unknown)
   values outcomes (run-work 0) error failed-key)
-(defstruct observation-bucket scope type values members invariant-p informative-p counterexample)
+(defstruct observation-bucket scope type values members invariant-p informative-p counterexample
+  (pair-bits 0) (anchor-bits 0) (residual-bits 0))
+
+(defun relational-linkage-residual (frame outcomes &key row-residuals (type (schema-target (frame-schema frame))))
+  "Price relational obligations from (frame-pairs frame) and (frame-anchors frame) in bits
+over OUTCOMES (either a list of `observation-outcome` structs or a list of raw values)
+after applying any unary ROW-RESIDUALS ((row-key . witness) ...).
+Returns (VALUES entries total-bits pair-bits anchor-bits)."
+  (let ((pairs (frame-pairs frame))
+        (anchors (frame-anchors frame)))
+    (when (and (null pairs) (null anchors))
+      (return-from relational-linkage-residual (values nil 0 0 0)))
+    (let* ((rows (frame-rows frame))
+           (key-table (make-hash-table :test #'equal))
+           (entries nil)
+           (pair-bits 0)
+           (anchor-bits 0))
+      (loop for row in rows
+            for item in outcomes
+            for row-idx from 0
+            for key = (row-key row)
+            for override = (assoc key row-residuals :test #'equal)
+            do (multiple-value-bind (valid-p val)
+                   (cond
+                     (override (values t (cdr override)))
+                     ((observation-outcome-p item)
+                      (values (eq :value (observation-outcome-status item))
+                              (observation-outcome-value item)))
+                     (t (values t item)))
+                 (setf (gethash key key-table)
+                       (list row-idx (not (null override)) valid-p val))))
+      ;; 1. Intra-fiber / transition pair corrections
+      (loop for pair in pairs
+            for pair-idx from 0
+            for info-a = (gethash (first pair) key-table)
+            for info-b = (gethash (second pair) key-table)
+            when (and info-a info-b)
+            do (destructuring-bind (idx-a corr-a valid-a val-a) info-a
+                 (declare (ignore idx-a corr-a))
+                 (destructuring-bind (idx-b corr-b valid-b val-b) info-b
+                   (declare (ignore idx-b corr-b))
+                   (unless (and valid-a valid-b (equal val-a val-b))
+                     (let ((step-bits
+                             (cond
+                               ((and valid-a valid-b)
+                                (correction-bit-size val-a val-b type t))
+                               (valid-a (value-bit-size val-a type))
+                               (valid-b (value-bit-size val-b type))
+                               (t (1+ (type-bit-size type)))))
+                           (packet
+                             (if (and valid-a valid-b)
+                                 (correction-packet val-a val-b type t)
+                                 :error)))
+                       (push (cons (list :pair (first pair) (second pair)) packet) entries)
+                       (incf pair-bits (+ (positive-bit-size (1+ pair-idx)) step-bits)))))))
+      ;; 2. Cross-fiber / anchor separation (anti-collapse) corrections
+      (when anchors
+        (let ((seen-anchor-values nil)
+              (min-step (minimum-disambiguation-bit-size type)))
+          (dolist (anchor-key anchors)
+            (let ((info (gethash anchor-key key-table)))
+              (when info
+                (destructuring-bind (idx corr-p valid-p val) info
+                  (declare (ignore idx corr-p))
+                  (if (and valid-p (not (member val seen-anchor-values :test #'equal)))
+                      (push val seen-anchor-values)
+                      (dolist (member-key (pair-connected-component anchor-key pairs))
+                        (let ((m-info (gethash member-key key-table)))
+                          (when (and m-info (not (second m-info)))
+                            (push (cons (list :anchor member-key) :disambiguate) entries)
+                            (incf anchor-bits (+ (positive-bit-size (1+ (first m-info)))
+                                                 min-step))))))))))))
+      (values (nreverse entries) (+ pair-bits anchor-bits) pair-bits anchor-bits))))
 
 (defun observed-agreement-p (left right)
   "Agreement only between total evaluations in the exact same observation scope."
@@ -528,7 +600,15 @@ Listed proposals use the SAME construction, VM, checker and objective."
               (list :before-key (row-key (nth (first failed) rows))
                     :after-key (row-key (nth (second failed) rows))
                     :before-value (aref values (first failed))
-                    :after-value (aref values (second failed)))))))
+                    :after-value (aref values (second failed))))))
+    (multiple-value-bind (entries total-bits pair-bits anchor-bits)
+        (relational-linkage-residual (observation-scope-frame scope)
+                                     (observation-bucket-values bucket)
+                                     :type (observation-bucket-type bucket))
+      (declare (ignore entries))
+      (setf (observation-bucket-pair-bits bucket) pair-bits
+            (observation-bucket-anchor-bits bucket) anchor-bits
+            (observation-bucket-residual-bits bucket) total-bits)))
   bucket)
 
 (defun finish-observation (job)

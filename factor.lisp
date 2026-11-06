@@ -335,7 +335,9 @@ Charges evaluation of each context binding expression on LEDGER."
                      (charge ledger :context-frame (syntax-work req))
                      (make-row :key (copy-tree (row-key row))
                                :known known
-                               :requirement req))))))
+                               :requirement req)))
+     :pairs (frame-pairs parent)
+     :anchors (frame-anchors parent))))
 
 ;;; Operation 4: Heuristic Condensation (condense-heuristic)
 
@@ -1398,7 +1400,9 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                          (charge ledger :orientation (length known))
                          (make-row :key (copy-tree (row-key row))
                                    :known known
-                                   :requirement (copy-tree (row-requirement row)))))))))
+                                   :requirement (copy-tree (row-requirement row)))))
+         :pairs (frame-pairs frame)
+         :anchors (frame-anchors frame)))))
 
 (defun evaluate-guard-partition (frame guard-expr &key child-bindings ledger (budget 100000))
   "Evaluate Boolean GUARD-EXPR on every row of FRAME in the metered VM, split into

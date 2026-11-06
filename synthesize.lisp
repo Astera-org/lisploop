@@ -10,7 +10,8 @@
   (assert (and (realp run-weight) (>= run-weight 0)))
   (%make-heuristic-search
    :observation (start-observation-search (make-observation-scope frame language) :retain-outcomes t)
-   :debt (1+ (loop for row in (frame-rows frame) sum (syntax-work (row-requirement row))))
+   :debt (+ 1 (length (frame-pairs frame)) (length (frame-anchors frame))
+            (loop for row in (frame-rows frame) sum (syntax-work (row-requirement row))))
    :bound (or description-limit (+ (header-size (schema-inputs (frame-schema frame))
                                                 (schema-target (frame-schema frame))) 18))
    :run-weight run-weight))
@@ -39,7 +40,10 @@
        (charge ledger :heuristic-checking)
        (if (null (heuristic-search-rows job))
            (setf (heuristic-search-phase job) :score
-                 (heuristic-search-debt job) (syntax-work (observed-expression-expression (heuristic-search-record job))))
+                 (heuristic-search-debt job)
+                 (+ (syntax-work (observed-expression-expression (heuristic-search-record job)))
+                    (length (frame-pairs frame))
+                    (length (frame-anchors frame))))
            (let ((outcome (first (heuristic-search-outcomes job))))
              (if (eq :value (observation-outcome-status outcome))
                  (setf (heuristic-search-evaluation job)
@@ -60,13 +64,18 @@
        (charge ledger :heuristic-residual)
        (when (plusp (decf (heuristic-search-debt job))) (return-from heuristic-search-step))
        (let* ((row (first (heuristic-search-rows job)))
+              (outcome (first (heuristic-search-outcomes job)))
               (values (extract-allowed-values (row-requirement row))))
          (if (and (listp values) values)
-             (progn
-               (push (cons (row-key row) (first values)) (heuristic-search-residual job))
+             (multiple-value-bind (witness witness-bits)
+                 (select-closest-witness (observation-outcome-value outcome)
+                                         values
+                                         type
+                                         (eq :value (observation-outcome-status outcome)))
+               (push (cons (row-key row) witness) (heuristic-search-residual job))
                (incf (heuristic-search-residual-bits job)
                      (+ (positive-bit-size (1+ (heuristic-search-index job)))
-                        (value-bit-size (first values) type)))
+                        witness-bits))
                (setf (heuristic-search-phase job) :next))
              ;; No available correction witness; do not call an unresolved predicate false.
              (setf (heuristic-search-phase job) :observe))))
@@ -80,20 +89,27 @@
        (let* ((record (heuristic-search-record job))
               (program (observed-expression-expression record))
               (bits (description-size program (schema-inputs (frame-schema frame))))
-              (residual (nreverse (heuristic-search-residual job)))
-              ;; Residual length is encoded, too; exact synthesis needs no correction packet.
-              (residual-bits (+ (heuristic-search-residual-bits job)
-                                (if residual (positive-bit-size (1+ (length residual))) 0)))
-              (score (+ bits residual-bits (* (heuristic-search-run-weight job)
-                                              (observed-expression-run-work record))))
-              (old (heuristic-search-best job)))
-         (when (or (null old) (< score (heuristic-score old))
-                   (and (= score (heuristic-score old)) (< bits (heuristic-program-bits old))))
-           (setf (heuristic-search-best job)
-                 (make-heuristic-model :program program :residual residual :exact-p (null residual)
-                                       :program-bits bits :residual-bits residual-bits
-                                       :run-work (observed-expression-run-work record) :score score)))
-         (setf (heuristic-search-phase job) :observe))))))
+              (row-residual (nreverse (heuristic-search-residual job))))
+         (multiple-value-bind (rel-entries rel-bits)
+             (relational-linkage-residual frame
+                                          (observed-expression-outcomes record)
+                                          :row-residuals row-residual
+                                          :type type)
+           (let* ((residual (append row-residual rel-entries))
+                  ;; Residual length is encoded, too; exact synthesis needs no correction packet.
+                  (residual-bits (+ (heuristic-search-residual-bits job)
+                                    rel-bits
+                                    (if residual (positive-bit-size (1+ (length residual))) 0)))
+                  (score (+ bits residual-bits (* (heuristic-search-run-weight job)
+                                                  (observed-expression-run-work record))))
+                  (old (heuristic-search-best job)))
+             (when (or (null old) (< score (heuristic-score old))
+                       (and (= score (heuristic-score old)) (< bits (heuristic-program-bits old))))
+               (setf (heuristic-search-best job)
+                     (make-heuristic-model :program program :residual residual :exact-p (null residual)
+                                           :program-bits bits :residual-bits residual-bits
+                                           :run-work (observed-expression-run-work record) :score score)))
+             (setf (heuristic-search-phase job) :observe))))))))
 
 (defun heuristic-search-complete-p (job)
   (and (eq :observe (heuristic-search-phase job))

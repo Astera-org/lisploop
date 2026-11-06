@@ -6,500 +6,268 @@ header-includes:
 
 # Lisploop Architecture Reference
 
-Implementation update: see [plan6-refactor.md](plan6-refactor.md) for the post-audit
-simplifier/controller split, tariff v9, budget semantics, and corrected claims.
-The older module reference below has not been comprehensively regenerated.
+This reference describes the current Common Lisp kernel. The Lisp source is authoritative; [plan7.md](plan7.md) separates the implemented experiments from the remaining research program motivated by [prompt4.md](prompt4.md). [plan6-refactor.md](plan6-refactor.md) records the earlier audit and refactor.
 
-This document is the definitive architectural specification of the **Lisploop** synthesis kernel as currently implemented in Common Lisp (SBCL). It describes the live 7-module homoiconic architecture, its mathematical foundations, its cost and epistemic contracts, how the code executes Milestones 1--4 and the core primitives of Milestones 5--9, and what remains to complete the experimental roadmap.
+The kernel has **nine implementation modules**, plus `package.lisp` and the loader. Current accounting versions are **encoding 7, tariff 9, simulator 5**. Historical reports in [deprecated/results.md](deprecated/results.md) and [deprecated/results-history.md](deprecated/results-history.md) retain their original versions and are not current execution traces.
 
----
+## 1. Purpose and implementation boundary
 
-## 1. Purpose, Philosophy, and Lineage
+Lisploop experiments with typed program synthesis, observational invariants, guarded algebraic laws, factorization, causal reorientation, and recursive decomposition of synthesis problems. Programs, predicates, and quoted syntax use the same S-expression representation. Frames, jobs, laws, certificates, and proposal records use host Lisp structs around those expressions.
 
-### 1.1 The Core Premise (`prompt.md` & `prompt4.md`)
+The implemented search is bounded and experimental. Supplied decoders, feature vocabularies, locality keys, and candidate lists are explicit inputs, not discoveries. Tests distinguish supplied controls from grammar-discovered artifacts. The kernel has no general recursive object-language functions, learned function registry, learned scheduler, or cross-branch child-problem cache.
 
-Lisploop is a clean-room experiment in **inductive program synthesis, algebraic law discovery, causal reorientation, and self-improving search** under strict information-theoretic and computational accounting. Its design is governed by nine foundational commitments introduced in [prompt.md](prompt.md) and [prompt4.md](prompt4.md):
+Three resource quantities remain distinct:
 
-1. **No Informational Loops**: If an external agent or test harness supplies a hint, target decomposition, or unverified rule, the experiment measures the hint rather than discovery. Every benchmark fixture is strictly separated from the synthesizer across an explicit data-only boundary (`row` / `frame`).
-2. **Epistemic Honesty**: Every claim returned by the kernel carries an explicit epistemic grade (`:replayed-observations`, `:conjecture`, `:vacuous`, `:refuted`, `:validated`) together with the exact bit bound, work bound, domain scope, and (when validated) an auditable `law-certificate`. Empirical agreement on finite samples never silently upgrades into an algebraic certificate.
-3. **Closed Accounting (Description Bits + Paid Runtime Work)**: Every model, law, rewrite rule, solver, and residual pays its exact prefix-free description length $S(\cdot)$ in bits (Encoding Version 7) and its exact runtime execution work $W(\cdot)$ in structural tariff units (Tariff Version 8, Simulator Version 5). Meta-level machinery (rewriters, anti-unification constructors, propagator matchers) runs inside the same metered virtual machine and must amortize its own validation and execution cost.
-4. **Observational Conservation**: Semantics is grounded in the empirical outcome matrix $M(e, \omega) = \mathrm{Eval}(e, \mathbf{x}_\omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$ of evaluating symbolic expression $e(X)$ on row $\omega$'s bound input values $\mathbf{x}_\omega$. Observational equivalence ($e_1 \equiv_\Omega e_2$), guarded equivalence ($G(\mathbf{x}_\omega) = \mathrm{t} \implies e_1(\mathbf{x}_\omega) = e_2(\mathbf{x}_\omega)$), symmetries/invariants conserved under an action ($M(e, \omega) = M(e, T\omega)$), and algebraic laws are all projections of $M$.
-5. **Reorientation & Pullback**: "Input" and "output" are not intrinsic properties of a relation; they are **orientations** chosen relative to what is currently observed. Selecting a subset of columns as known inputs $\mathbf{x}_\omega$ and a target column $Y$ to explain creates a `frame`. Choosing a partial decomposition $Y = d(X, Z)$ pulls a parent requirement $A_\omega(Y)$ back into a symbolic child requirement $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$ without consulting any hidden oracle.
-6. **Factorization of Redundancy**: Shared structure across expressions, laws, or requirement fibers is factored by typed least general generalization (anti-unification), value quotienting, or latent fiber clustering---turning repeated sub-problems into reusable constructors or intermediate concepts.
-7. **Dual-Grade Downward Propagation**: Discovered algebraic solvers propagate parent requirements downward to child frames in two distinct epistemic modes:
-   - **Certified ($\iff$)**: Exhaustively validated bidirectional equivalences replace the child requirement $B_\omega(Z)$ in-place with `(= Z 'v_w)`, shrinking the verification frame.
-   - **Tentative ($\Leftarrow$)**: Uncertified or right-to-left integer witness rules propose a fast narrowed `propagation-frame` while retaining the original pullback frame as `propagation-fallback`. Every candidate synthesized on the narrowed frame must pass forward replay on the original frame before acceptance.
-8. **Preemptive Resumability**: Evaluation, search, observation, law validation, and rewriting are implemented as resumable state machines driven by explicit work budgets. Running a job in tiny increments (`quantum = 1`) must yield the exact same state, ledger totals, and outcomes as running it in a single large batch.
-9. **Lossy Heuristic Condensation**: While object-level verification is lossless (wrong programs are rejected), **search control** is lossy: when exact deductive propagation yields an intractable predicate or heterogeneous fibers, the synthesizer can condense a requirement frame into a compact, cheap heuristic expression $\hat{\pi}(X)$ by pricing mismatched rows $\varepsilon_\omega$ as an explicit description-length residual during training and dropping the residual at deployment.
+$$
+S(M),\qquad W_{\mathrm{run}}(M),\qquad W_{\mathrm{search}}(P).
+$$
 
-### 1.2 Evolution Across `plan4` $\to$ `plan5` $\to$ `plan6`
+A small program can be expensive to execute, and discovering it can be more expensive still. The structural work tariff is not elapsed time.
 
-The codebase evolved through three documented planning stages:
+## 2. Representation and execution contracts
 
-| Stage | Document | Architectural Contribution |
-| :--- | :--- | :--- |
-| **Plan 4** | [plan4.md](plan4.md), [results.md](results.md) | Established the frozen experimental contract (Encoding v7, Tariff v8, Simulator v5), the 4-milestone empirical progression (M1 Core Synthesis, M2 Observational Invariants, M3 Guarded Laws + AU Compression + Checked Symbolic DSL, M4 Arithmetic Reorientation + Dual-Grade Propagation), and verified every claim in [results.md](results.md). Implemented across 16 separate `.lisp` files using tagged-list ASTs `(:app (:op :+ :int) (:var 0 :int) ...)`. |
-| **Plan 5** | [plan5.md](plan5.md) | Refactored the 16-file scaffold into a **7-module homoiconic kernel** where programs are native Lisp S-expressions `(#:+ #:X0 #:X1)` backed by a weak pointer-keyed metadata table (`*node-meta*`) and a pooled typed-symbol registry (`*typed-symbol-pool*`). Preserved exact bit-for-bit and work-unit parity with `plan4` and [results.md](results.md). |
-| **Plan 6** | [plan6.md](plan6.md) | Synthesized the architecture around **four fundamental operations** (Observational Conservation, Factorization/Hard-EM Fiber Inference, Causal Reorientation/Pullback/Constant-Folding, and Lossy Heuristic Condensation), replaced `allowed` wrapper structs with pure S-expression row requirements (`row-requirement`), and added the core primitives needed for Milestones 5--9: closed-subtree constant folding (`fold-constants`), conflict detection (`frame-conflict-p`), confidence-ordered Hard-EM fiber clustering (`infer-fibers`), and residual-priced heuristic condensation (`condense-heuristic`). |
+### 2.1 Types, schemas, and expressions
 
-> **How the Live Kernel Relates to [plan6.md](plan6.md)**:
-> The live 7-module kernel implements the homoiconic S-expression representation, pure S-expression `row-requirement`s, single `evaluation` VM stepper, and all four `plan6` operations (`fold-constants`, `frame-conflict-p`, `infer-fibers`, `condense-heuristic`). At the same time, it retains the load-bearing `:code-*` symbolic primitives (`compile-rule-transformer`, `compile-propagator-matcher`, `compile-au-constructor`, `validated-program`) and `law-corpus` bit-packet compressor so that Milestones 3B, 3C, and 4 continue to meter static validation (`:validation`), rule rewriting (`:rewriting`), and propagator matching inside the preemptive VM with 100% parity against [results.md](results.md).
+A `schema` contains `domain`, `inputs`, `target`, and `lookup-p`. Inputs are an ordered association list of variable IDs and types. `make-schema` infers a numeric domain from the types unless one is supplied; frame and expression construction validate the relevant types.
 
----
+Supported types are:
 
-## 2. The Four Fundamental Operations
-
-### Nomenclature & Kernel Mapping
-
-Throughout this document and [plan6.md](plan6.md), **uppercase letters** ($X_i, Y, Z$) denote **symbolic variable AST nodes** (`#:X0`, `#:X1`, $\dots$) inside expressions and requirement predicates, whereas **lowercase letters** ($\mathbf{x}_\omega, y_\omega, z_\omega, v_\omega$) denote **concrete runtime values** in $\mathcal{V}_\tau$ bound when evaluating on a specific observation row $\omega \in \Omega$:
-
-| Symbol | Mathematical Meaning | Live Kernel Representation |
-| :--- | :--- | :--- |
-| $\Gamma = (D,\, X_0{:}\tau_0,\dots,X_{m-1}{:}\tau_{m-1} \to \tau)$ | **Typing schema**: ambient numeric domain $D$, symbolic input variables $X_i : \tau_i$, and target output type $\tau$. | `schema` struct (`make-schema` in `ast.lisp`) with slots `domain`, `inputs`, `target`, `lookup-p`. |
-| $\tau,\; \mathcal{V}_\tau$ | **Semantic type** $\tau$ and its **value domain** $\mathcal{V}_\tau$ (including base types $\mathbb{Z}, \mathbb{F}_p, \mathbb{B}$, tuples, sequences, and quoted syntax `(:code inputs sort)`). | `:int`, `(:gf p)`, `:bool`, `(:tuple ...)`, `(:seq ...)`, `(:code inputs sort)` (`valid-type-p`, `value-p` in `ast.lisp`). |
-| $X = (X_0, \dots, X_{m-1})$ and $Y, Z$ | **Symbolic variables**: $X_i$ are formal input variables in $e(X)$; $Y : \tau_P$ and $Z : \tau_C$ are the target variable (`(var 0 type)`) in parent/child requirements $A_\omega(Y), B_\omega(Z)$. | Pooled uninterned symbols `#:X0`, `#:X1`, $\dots$ constructed via `(var id type)`. |
-| $\Omega = (\omega_1, \dots, \omega_n)$ and $\omega \in \Omega$ | **Frame** $\Omega$ and **observation row** $\omega$ pairing bound input vector $\mathbf{x}_\omega = (x_{\omega,0}, \dots, x_{\omega,m-1})$ with requirement $A_\omega(Y)$. | `frame` (`make-frame`) and `row` (`make-row` with `row-key`, `row-known`, `row-requirement` in `frame.lisp`). |
-| $T\omega$ | **Action-linked row**: a row linked to $\omega$ by an empirical action, symmetry transformation, or co-locality relation $(\omega, T\omega)$ (with M2 trajectory steps as the dynamical special case). | Row-index pair $(\omega, T\omega)$ in `observation-scope-pairs` (inherited automatically from optional `frame-pairs`, or produced from transition records by `transition-probes`). |
-| $M(e, \omega) = \mathrm{Eval}(e, \mathbf{x}_\omega)$ | **Outcome Matrix cell**: result of evaluating $e(X) \in \mathcal{E}$ on $\mathbf{x}_\omega$, in $\mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$. | Computed by `evaluation` (`vm.lisp`) inside `search-job` or `observation-job`. |
-| $A_\omega(Y),\; B_\omega(Z),\; \mathrm{Fiber}(\omega)$ | **Symbolic row requirements** and **target-value fiber** $\mathrm{Fiber}(\omega) = \{z \in \mathcal{V}_{\tau_C} \mid B_\omega(z) = \mathrm{t}\}$. | `row-requirement` (`singleton-requirement`, `set-requirement`, or general Boolean AST), `extract-allowed-values`, `conjoin-requirements` (`frame.lisp`). |
-| $t_\omega,\; p,\; \theta_\omega$ | **Factorization & residual value (Operation 2)**: $t_\omega \in \mathcal{V}_\tau$ is a witnessed object on row $\omega$; $p$ is a shared template/table; $\theta_\omega \in \mathrm{Fiber}(\omega)$ is the per-row residual value satisfying $\mathrm{Apply}(p, \theta_\omega) = t_\omega$. | `anti-unify` & `compile-au-constructor` (where $t_\omega$ is a `:code` AST and $\theta_\omega$ is the hole-binding tuple), `quotient-values` (where $\theta_\omega = j_\omega$). |
-| $\Omega_k \subseteq \Omega$ and $j_\omega \in \{0,\dots,K-1\}$ | **Row-space value fiber (level set in $\Omega$) & cluster index**: $\Omega_k = \{\omega \in \Omega \mid j_\omega = k\}$ groups rows sharing representative $R_k$ or compatible intersected fiber $\bigcap_{\omega \in \Omega_k} \mathrm{Fiber}(\omega) \neq \emptyset$. | `quotient-values` & `partition-rows` (`frame.lisp`), `infer-fibers` returning `fiber-class` structs with `fiber-class-rows` ($\Omega_k$) and `fiber-class-requirement` ($B_{c_k}(Z) = \bigwedge_{\omega \in \Omega_k} B_\omega(Z)$). |
-| $d(X, Z),\; q(K, C),\; G(K, C),\; v_\omega$ | **Decoder AST** $Y = d(X, Z)$, **learned solver witness/guard** $q, G$, and **folded witness value** $v_\omega \in \mathrm{Fiber}(\omega)$. | `pullback-frame`, `fold-constants`, `discover-arithmetic-solver`, `propagate-arithmetic-child`. |
-| $\hat{\pi}(X)$ and $\varepsilon_\omega$ | **Condensed heuristic expression** $\hat{\pi}(X)$ and **training residual** $\varepsilon_\omega$ (priced in bits during learning, dropped at deployment). | `condense-heuristic` (`heuristic-model` in `factor.lisp`). |
-
-> **Key Conceptual Distinctions**
->
-> 1. **Unary Per-Row Requirements (`search-job`) vs. Cross-Row Action Conservation (`observation-scope`)**:
->    - In `search-job`, each row $\omega$ carries a *unary* predicate $A_\omega(Y)$ (`row-requirement`) that judges a single output value $y_\omega = M(e, \omega)$ in isolation (e.g., learning an action $T$ sets $A_\omega(Y) := (Y = \mathbf{x}_{T\omega})$).
->    - In `observation-scope` (`observation-job`), testing whether a candidate observable $e(X)$ is **conserved under an action $T$** ($M(e, \omega) = M(e, T\omega)$) is a *relational* query across linked rows $(\omega, T\omega) \in \texttt{pairs}$ where the target value $y_\omega$ is not known in advance (and must vary across orbit `anchors`).
-> 2. **Right-Inverse of `Apply` (Operation 2: Factorization) vs. Pullback (Operation 3: Predicate Precomposition)**:
->    - **Factorization** operates on *concrete witnessed values* $\{t_\omega\}_{\omega \in \Omega}$, computing a right-inverse of forward execution `Apply` by splitting $\{t_\omega\}$ into a shared pattern/table $p$ and per-row residuals $\{\theta_\omega\}$ such that $\mathrm{Apply}(p, \theta_\omega) = t_\omega$.
->    - **Pullback** operates contravariantly on *symbolic requirement predicates* $A_\omega(Y)$ via function precomposition $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$ even when $z \mapsto d(\mathbf{x}_\omega, z)$ is many-to-one or non-surjective. Once pulled back, cross-row compatibility is internalized into the per-row predicates $B_\omega(Z)$.
-> 3. **Two Dual Uses of "Fiber" ($\mathrm{Fiber}(\omega) \subseteq \mathcal{V}_{\tau_C}$ vs. $\Omega_k \subseteq \Omega$), and Extensional ($j_\omega$) vs. Intensional ($\hat{\pi}(X)$) Lifting**:
->    - In **value space**, $\mathrm{Fiber}(\omega) = \{z \in \mathcal{V}_{\tau_C} \mid B_\omega(z) = \mathrm{t}\}$ is the admissible target-value set of row $\omega$, while $\theta_\omega \in \mathrm{Fiber}(\omega)$ is a single concrete residual value chosen from it.
->    - In **row space**, $\Omega_k = \{\omega \in \Omega \mid j_\omega = k\}$ is a level set of rows sharing a representative value $R_k$ (`quotient-values`) or a non-empty intersected fiber $\bigcap_{\omega \in \Omega_k} \mathrm{Fiber}(\omega) \neq \emptyset$ (`infer-fibers`). The cluster index vector $(j_{\omega_1}, \dots, j_{\omega_n})$ is *extensional* (indexed by $\omega \in \Omega$), whereas Operation 4 (`condense-heuristic`) synthesizes an *intensional* symbolic selector $\hat{\pi}(X)$ predicting $\hat{\pi}(\mathbf{x}_\omega) \approx j_\omega$ on new inputs and dropping Stage-1 assignment noise $\varepsilon_\omega$ at deployment.
-
-At the heart of the kernel, every synthesis, law-discovery, decomposition, and propagation step is an instance of four interacting operations over $M(e, \omega)$:
-
-```{=latex}
-\begin{figure}[htbp]
-\centering
-\begin{tikzpicture}[
-    >=Latex,
-    box/.style={draw, rounded corners=3pt, align=left, font=\scriptsize, inner sep=5pt, fill=white, minimum height=2.7cm},
-    hdr/.style={draw, rounded corners=3pt, align=center, font=\small, inner sep=6pt, fill=gray!10},
-    lbl/.style={font=\scriptsize\itshape, align=center}
-]
-    % Top: Homoiconic Kernel
-    \node[hdr, text width=16.2cm] (kernel) at (0, 0) {
-        \textbf{Homoiconic S-Expression, Frame \& Metered Evaluator Kernel}\\
-        Schema $\Gamma = (D,\, X_0{:}\tau_0,\dots,X_{m-1}{:}\tau_{m-1} \to \tau)$, \quad Frame Rows $\omega \in \Omega$ with values $\mathbf{x}_\omega$, \quad Candidates $e(X) \in \mathcal{E} \subseteq \mathcal{L}(\Gamma)$\\
-        Outcome Matrix $M(e, \omega) = \mathrm{Eval}(e, \mathbf{x}_\omega) \in \mathcal{V}_\tau \cup \{\bot_{\mathrm{err}}, \bot_{\mathrm{cut}}(q)\}$, \quad $O(1)$ Cached Metadata $(\mathrm{bits}, W_{\mathrm{syn}}, \mathrm{total?}, \mathrm{vars})$
-    };
-
-    % Four Operations below
-    \node[box, text width=3.75cm, anchor=north] (op1) at (-6.15, -1.7) {
-        \textbf{1. Observational Conservation}\\
-        \texttt{enumerate.lisp}, \texttt{laws.lisp}\\[2pt]
-        $\bullet$ \textbf{Synthesis}: $A_\omega(M(e, \omega)) = \mathrm{t}$\\
-        $\bullet$ \textbf{Buckets}: level sets of $M(e, \omega)$\\
-        $\bullet$ \textbf{Symmetries}: $M(e, \omega) = M(e, T\omega)$\\
-        \phantom{$\bullet$ }(\texttt{observation-invariants})\\
-        $\bullet$ \textbf{Guards}: support masks $\Omega_{\mathrm{ok}}$
-    };
-
-    \node[box, text width=3.75cm, anchor=north] (op2) at (-2.05, -1.7) {
-        \textbf{2. Factorization \& Fibers}\\
-        Right-inverse of $\mathrm{Apply}$:\\
-        $t_\omega = \mathrm{Apply}(p, \theta_\omega)$, keep $\theta_\omega$\\[2pt]
-        $\bullet$ \textbf{Term AU}: $\mathrm{Subst}(p, \theta_\omega)$\\
-        \phantom{$\bullet$ }(\texttt{anti-unify})\\
-        $\bullet$ \textbf{Quotients}: $\mathrm{gather}(R, j_\omega)$\\
-        $\bullet$ \textbf{Hard-EM Fibers}: cluster $B_\omega(Z)$\\
-        \phantom{$\bullet$ }(\texttt{infer-fibers})
-    };
-
-    \node[box, text width=3.75cm, anchor=north] (op3) at (2.05, -1.7) {
-        \textbf{3. Reorient, Pullback \& Propagate}\\
-        \texttt{frame.lisp}, \texttt{vm.lisp}, \texttt{laws.lisp}\\[2pt]
-        $\bullet$ \textbf{Reorient}: project $(K, C) \mapsto Z$\\
-        \phantom{$\bullet$ }(\texttt{orient-observations})\\
-        $\bullet$ \textbf{Pullback \& Fold}: $A_\omega(d(\mathbf{x}_\omega, Z))$\\
-        \phantom{$\bullet$ }(\texttt{pullback-frame}, \texttt{fold-constants})\\
-        $\bullet$ \textbf{Propagate}: $\iff$ certified in-place\\
-        \phantom{$\bullet$ }vs.\ $\Leftarrow$ tentative (\texttt{frame-conflict-p})
-    };
-
-    \node[box, text width=3.75cm, anchor=north] (op4) at (6.15, -1.7) {
-        \textbf{4. Heuristic Condensation}\\
-        \texttt{factor.lisp}, \texttt{enumerate.lisp}\\[2pt]
-        $\bullet$ \textbf{MDL Condensation}: price misses\\
-        \phantom{$\bullet$ }$S(\hat{\pi}) + S(\varepsilon) + \lambda_{\mathrm{run}} W_{\mathrm{run}}$, drop $\varepsilon$\\
-        \phantom{$\bullet$ }at deployment (\texttt{condense-heuristic})\\
-        $\bullet$ \textbf{Multi-Lane Reserve}: $3{:}1$ schedule\\
-        \phantom{$\bullet$ }with forward replay (\texttt{propagation-search})
-    };
-
-    % Arrows from kernel
-    \draw[->, thick] (kernel.south) -- ++(0,-0.3) -| (op1.north);
-    \draw[->, thick] (kernel.south) -- ++(0,-0.3) -| (op2.north);
-    \draw[->, thick] (kernel.south) -- ++(0,-0.3) -| (op3.north);
-    \draw[->, thick] (kernel.south) -- ++(0,-0.3) -| (op4.north);
-
-    % Cross-links at bottom
-    \draw[->, thick] (op2.south) -- ++(0,-0.45) -| node[pos=0.25, below, lbl] {Residuals $\theta_\omega, j_\omega$ form child frames} (op1.south);
-    \draw[->, thick] (op3.south) -- ++(0,-0.9) -| node[pos=0.25, below, lbl] {Folded fibers $B_\omega(Z)$ \& narrowed witnesses feed MDL condensation \& multi-lane search} (op4.south);
-\end{tikzpicture}
-\caption{The four fundamental operations of the Lisploop kernel interacting over the empirical outcome matrix $M(e, \omega)$.}
-\end{figure}
-```
-
-### Operation 1: Observational Conservation Across Frame Rows
-
-Given a candidate stream $\mathcal{E} \subseteq \mathcal{L}(\Gamma)$ and a finite frame $\Omega = (\omega_1, \dots, \omega_n)$, evaluating $e(X) \in \mathcal{E}$ on row $\omega$'s input value vector $\mathbf{x}_\omega$ under quantum $q$ produces an Outcome Matrix cell $M(e, \omega)$ with three possible outcomes:
-
-- `:value` --- total evaluation returning a domain-valid payload $v \in \mathcal{V}_\tau$,
-- `:error` --- domain or operational error (e.g., division by zero, out-of-bounds `:gather`, missing `:lookup` key, or failed `:code-*` assertion),
-- `:unknown` / `:cutoff` --- resource exhaustion when the evaluation debt exceeds the work budget.
-
-Every discovery task in Milestones 1--4 is a conservation query over $M(e, \omega)$, distinguishing **unary per-row satisfaction** from **cross-row relational conservation**:
-
-- **Function Synthesis via Unary Row Requirements (`search-job`, M1)**: Each row $\omega \in \Omega$ carries a *unary* Boolean predicate $A_\omega(Y)$ (`row-requirement`) that judges a single candidate output value $y_\omega = M(e, \omega)$ in isolation. `search-job` finds $e(X) \in \mathcal{E}$ such that $\forall \omega \in \Omega,\ A_\omega(M(e, \omega)) = \mathrm{t}$, early-exiting the row loop on the first `:error` or `nil`. For example, learning a state-transition action $T$ itself in Milestone 2 sets $A_\omega(Y) := (Y = \mathbf{x}_{T\omega})$.
-- **Empirical Equivalence & Symmetries via Cross-Row Conservation (`observation-job`, `observation-invariants`, M2)**: By contrast, testing whether a candidate observable $e(X)$ is **conserved under an action $T$** ($M(e, \omega) = M(e, T\omega)$) is a *relational* property across linked rows $(\omega, T\omega) \in \texttt{pairs}$---the target value $y_\omega$ is not fixed in advance; we only require that $e$ take the *same* value before and after the action while taking at least two distinct values across orbit `anchors`. `observation-job` partitions $\mathcal{E}$ into `observation-bucket`s by complete non-error output vectors $[M(e, \omega_1), \dots, M(e, \omega_n)]$ (ranked by `expression-less-p`) and checks invariance across `observation-scope-pairs` (which automatically inherit optional `frame-pairs` and `frame-anchors` when present on a `frame`, or are constructed from transition records by `transition-probes`).
-- **Exhaustive Finite-Domain Laws (`start-law-validation`, M3)**: On the exhaustive finite input grid $\Omega = D^\Gamma$, verifies $\forall \omega \in \Omega,\ \bigl(G(\mathbf{x}_\omega) \implies e_1(\mathbf{x}_\omega) = e_2(\mathbf{x}_\omega)\bigr) = \mathrm{t}$ with positive active support ($\exists \omega,\ G(\mathbf{x}_\omega) = \mathrm{t}$).
-- **Partial-Domain Support Masks & Exact Guards (`observed-support`, `propose-guard-problems`, `propose-guarded-laws`, M3/M4)**: When `:retain-outcomes t` is enabled on an `observation-job`, any partially valid expression or equation pair $(e_1, e_2)$ partitions $\Omega$ into its **positive support rows** $\Omega_{\mathrm{ok}} = \{\omega \in \Omega \mid e_1(\mathbf{x}_\omega) = e_2(\mathbf{x}_\omega) \in \mathcal{V}_\tau\}$ and **failure/error rows** $\Omega_{\mathrm{fail}} = \Omega \setminus \Omega_{\mathrm{ok}}$. Synthesizing an exact guard $G(X)$ on `support-frame` is simply synthesizing a Boolean predictor via `search-job` conserved on the indicator $\mathbf{1}_{\Omega_{\mathrm{ok}}}(\omega)$ with zero residual error ($\varepsilon_\omega \equiv 0$).
-
-### Operation 2: Factorization & Latent Fiber Inference ($S$ Compression)
-
-Whereas forward evaluation applies a shared operator or template $p$ to a row-specific argument $\theta_\omega$ to produce a concrete value $t_\omega = \mathrm{Apply}(p, \theta_\omega) \in \mathcal{V}_\tau$, lossless factorization computes a **right-inverse of `Apply`**: given a collection of concrete values $\{t_\omega\}_{\omega \in \Omega}$ (either base values or quoted `:code` ASTs), it factors them into a shared template $p$ and per-row residuals $\{\theta_\omega\}_{\omega \in \Omega}$ minimizing $S(p) + S(\{\theta_\omega\}) + \lambda_{\mathrm{run}} W_{\mathrm{run}}$:
-
-1. **Term Algebra & Subexpression Correspondence Search (`anti-unify`, `discover-subexpression-abstractions`, M3B Law Corpus & M6 Abstraction)**:
-   - *Aligned Anti-Unification (`anti-unify`, `compile-au-constructor`, `au-substitutions-frame`)*: Each $t_\omega \in \mathcal{V}_{\texttt{(:code ...)}}$ is a quoted S-expression; $\mathrm{Apply}$ is syntactic hole substitution $\mathrm{Subst}(p, \theta_\omega)$ (`instantiate` / `:code-subst` / `:code-apply`). `anti-unify` computes the least general generalization (LGG) pattern $p$ (with typed value and operator holes `?0`, `?1`, $\dots$) and per-row residual bindings $\theta_\omega$, memoizing disagreement tuples so repeated subexpressions share a hole ID.
-   - *Unaligned Subgraph Correspondence Search (`collect-tree-occurrences`, `discover-subexpression-abstractions`, `corpus-abstraction-model`)*: When a pattern $p$ occurs at unknown, varied subtree paths $\pi_i$ inside larger trees $T_i = W_i[p[\theta_i]]$ (alongside optional unrelated trees with $\pi_i = \texttt{:none}$), `discover-subexpression-abstractions` indexes all subexpression occurrences by `(sort . signature)`, generates pairwise LGG seeds across distinct subterms, relaxes seeds across non-matching trees by maximizing per-occurrence bit savings (`occurrence-saved-bits`), selects the best matching occurrence per tree, tightens the selected subtrees via `anti-unify`, and prices the resulting spliced pre-order packet program (`corpus-abstraction-model` over `packet-chunks-model`). When a validated `rewrite-library` is supplied, trees are normalized first while raw trees retain exact AST spelling.
-2. **Sequence Algebra (`quotient-values` & `partition-rows`, M1/M5/M7 Quotients & Partitions)**: Each $t_\omega = y_\omega \in \mathcal{V}_\tau$ is a concrete value; $\mathrm{Apply}$ is indexed sequence lookup `(gather R j_w)`. `quotient-values` factors $\{y_\omega\}_{\omega \in \Omega}$ into a deduplicated sequence of unique representatives $R$ and integer index residuals $\theta_\omega = j_\omega \in \{0, \dots, |R|-1\}$, while `partition-rows` splits occurrence rows into level-set subframes $\Omega_k = \{\omega \in \Omega \mid j_\omega = k\}$ with exact permutation reassembly (`partition-model`).
-3. **Minimal-MDL Fiber Partition Search (`infer-fibers`, M5/M7)**:
-   When every row's target requirement is already a concrete singleton `(= Z 'v_w)`, `quotient-values` groups identical values $v_\omega$ directly. However, when row requirements $B_\omega(Z)$ are **multi-valued or relational** (e.g., `(member Z '(2 3))`, `(= (/ Z '2) '1)`, or unconstrained `'t`), we do not have a single value $t_\omega$ on every row---instead, each row $\omega$ specifies an admissible **target-value fiber** $\mathrm{Fiber}(\omega) = \{z \in \mathcal{V}_{\tau_C} \mid B_\omega(z) = \mathrm{t}\}$. Crucially, once a parent requirement $A_\omega(Y)$ has been pulled back through a decoder $Y = d(X, Z)$ to per-row child predicates $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$, cross-row compatibility is *already internalized* into the unary predicates $B_\omega(Z)$: two rows $\omega_i, \omega_j$ can share a latent coordinate $z$ iff $\mathrm{Fiber}(\omega_i) \cap \mathrm{Fiber}(\omega_j) \neq \emptyset$. To partition $\Omega$ into $K$ latent classes $j_\omega \in \{0, \dots, K-1\}$ (with row level-sets $\Omega_k$ and narrowed class requirements $B_{c_k}(Z) = \bigwedge_{\omega \in \Omega_k} B_\omega(Z)$) using only kernel operations and MDL bit-accounting:
-   - **Same-Input Functional Determinism & Conflict-Free Projection Search (`tighten-same-input-requirements`)**: Each row requirement $B_\omega(Z)$ is simplified via `fold-constants`, and rows sharing identical non-empty `row-known` input values $\mathbf{x}_\omega$ with a satisfiable conjunction are tightened to their shared intersection $B_{\mathbf{x}}(Z) = \bigwedge_{\mathbf{x}_\omega = \mathbf{x}} B_\omega(Z)$. When the frame has multiple input columns and distinct full `row-known` vectors, `tighten-same-input-requirements` evaluates candidate single-coordinate projections $X_i$ in the metered VM and adopts the minimum-bit projection whose induced level sets are 100% conflict-free (`conjoin-requirements` $\neq$ `'nil`) and narrow all buckets.
-   - **Lossless Requirement Deduplication**: Because conjunction is idempotent ($B \land B = B$), satisfiable rows with syntactically identical tightened requirements are grouped into $U$ unique requirement groups $G_0, \dots, G_{U-1}$ (while any unsatisfiable `'nil` rows remain isolated conflict singletons).
-   - **Bounded Branch-and-Bound Partition Search**: Explores compatible partitions of $\{G_0, \dots, G_{U-1}\}$ via `conjoin-requirements` (vetoing any merge that constant-folds to `'nil`), optimizing the lexicographic MDL objective:
-     1. Minimal class count $K$ (minimum codebook cardinality),
-     2. Minimal total requirement description bits $\sum_{k=0}^{K-1} |\Omega_k| \cdot S_{\mathrm{body}}(B_{c_k}(Z))$, and
-     3. Maximal class concentration $\sum_{k=0}^{K-1} |\Omega_k|^2$ (minimal empirical label entropy).
-   Once `infer-fibers` assigns each row $\omega \in \Omega_k$ its narrowed requirement $B_{c_k}(Z)$ (or class index $j_\omega = k$), `context-label-frame` projects the discovered labels onto available parent context so deployment can either price an explicit context map (`lookup-model`) or synthesize an intensional selector (`condense-heuristic`).
-
-### Operation 3: Causal Reorientation, Pullback, Closed-Subtree Constant Folding & Dual-Grade Propagation
-
-1. **Reorientation (`orient-observations`, `orient-arithmetic-requirements`)**: Projects raw witnessed records `(key . values)` into a `frame` with chosen input columns $\mathbf{x}_\omega$ (`schema-inputs`) and target column(s) $Y$ (`schema-target`) without executing any simulation.
-2. **Pullback (`pullback-frame`) & Closed-Subtree Constant Folding (`fold-constants`)**:
-   - Given a parent `frame` with symbolic row requirements $A_\omega(Y)$ and a decoder expression $Y = d(X, Z)$ over symbolic parent inputs $X$ and latent child variable $Z$, `pullback-frame` substitutes the row's known input values $X \gets \mathbf{x}_\omega$ and `(var 0 child-type)` into $d$, and precomposes $A_\omega(Y)$ with the resulting decoder to form the symbolic child requirement $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$.
-   - `fold-constants` simplifies open requirement S-expressions bottom-up: any **closed subtree** `(null (free-vars subtree))` is evaluated in the metered VM (`evaluate`), replacing the subtree with `(lit type value)` on `:value` or propagating `:error` cleanly (`(= err Z)` $\to$ `'nil`). It also folds `:if` on literal conditions, propagates singleton equalities `(= Z 'c)` into `:if` branches, intersects `:member` sets and predicates, and decomposes tuple equalities `(= (tuple e1 e2) '(v1 v2))` into conjunctions of element equalities.
-3. **Conflict Detection (`frame-conflict-p`)**: Checks a frame for unsatisfiability in $O(|\Omega|)$:
-   - **Row-level contradiction (`:unsatisfiable-row`)**: A single row's requirement $B_\omega(Z)$ folds to `'nil` (e.g., `(= (tuple Z Z) '(2 3))` decomposes into `(if (= Z '2) (= Z '3) 'nil)` and folds to `'nil`).
-   - **Cross-row contradiction (`:incompatible-rows`)**: Two or more rows sharing identical `row-known` input values $\mathbf{x}_\omega$ have requirements whose conjunction via `conjoin-requirements` folds to `'nil`.
-4. **Dual-Grade Downward Propagation (`propagate-arithmetic-child`)**:
-   When a parent requirement is pulled back through an arithmetic decoder $Y = f(K, Z)$, the child requirement $B_\omega(Z) \equiv \texttt{(= (op '}k_\omega\ \texttt{Z) '}c_\omega\texttt{)}$ is an uninverted equation. To avoid re-evaluating `(op 'k_w z)` on every candidate child program, `propagate-arithmetic-child` matches the frame and decoder against a `propagator-library` of learned inverse solvers $v_\omega = q(k_\omega, c_\omega)$ with admissibility guard $G(K, C)$. Crucially, rewriting $f(k_\omega, Z) = c_\omega$ to the singleton `(= Z 'v_w)` is only exact if $v_\omega$ is both **a valid solution** (witness direction $\Leftarrow$: $G(k, c) \implies f(k, q(k, c)) = c$) and **the *only* solution** (uniqueness direction $\implies$: $(G(k, c) \land f(k, z) = c) \implies z = q(k, c)$). `validate-arithmetic-solver` tests both directions, giving rise to two epistemic grades:
-   - **Grade 1 — Certified Bidirectional Equivalence ($\iff$, `certified-p = t`)**: Over finite fields (`(:gf p)`), when *both* the witness law ($\Leftarrow$) and uniqueness law ($\implies$) are exhaustively `:validated` across $D^\Gamma$, every active row fiber $\mathrm{Fiber}(\omega) = \{v_\omega\}$ has size 1. `propagate-arithmetic-child` **replaces $B_\omega(Z)$ in-place** with `(set-requirement domain (list v_w))` (`(= Z 'v_w)`) and sets `propagation-fallback = nil`, shrinking the child verification frame with zero risk of losing or fabricating solutions.
-   - **Grade 2 — Tentative One-Way Witness ($\Leftarrow$, `certified-p = nil`)**: Over unbounded integers (`:int`), universal validation is impossible (laws only achieve status `:conjecture` on finite samples) and operations like truncating division are many-to-one (e.g., `(= (/ Z '2) '1)` has fiber $\mathrm{Fiber}(\omega_1) = \{2, 3\}$ and `(= (/ Z '3) '1)` has fiber $\mathrm{Fiber}(\omega_2) = \{3, 4, 5\}$). Because the integer witness $q(K, C) = K \cdot C$ picks only a single element ($v_1 = 2$ and $v_2 = 3$), overwriting the frame in-place would **discard the shared solution $Z = 3$** and falsely make the child problem unsatisfiable. Instead, `propagate-arithmetic-child`:
-     1. Evaluates $v_\omega = q(k_\omega, c_\omega)$ and **forward-verifies** $B_\omega(v_\omega) = \mathrm{t}$ against the original pulled-back requirement on each row,
-     2. Places the narrowed singletons `(= Z 'v_w)` into `propagation-frame` (`:primary` lane, 3/4 of search quanta) while **retaining the original un-narrowed pullback frame as `propagation-fallback`** (`:fallback` lane, 1/4 reserve), and
-     3. Replays any candidate synthesized on `:primary` against `propagation-original` before acceptance (`propagation-search`).
-
-### Operation 4: Lossy Heuristic Condensation & Multi-Lane Search Control
-
-1. **Residual-Priced Heuristic Condensation (`condense-heuristic`)**: Synthesizes a compact `heuristic-model` directly against a frame $F$'s row requirements:
-   - First, enforces same-input functional determinism on $F$ via `tighten-same-input-requirements` (without pre-clustering rows across distinct inputs).
-   - Second, runs `observation-job` with `:retain-outcomes t` over `language`, checking each candidate symbolic expression $\hat{\pi}(X)$ directly against `(row-requirement row)` via `check-requirement` and scoring by the two-part MDL objective:
-     $$J_{\mathrm{heuristic}}(\hat{\pi}) = S(\hat{\pi}) + S\bigl(\varepsilon(\hat{\pi}, F)\bigr) + \lambda_{\mathrm{run}} W_{\mathrm{run}}(\hat{\pi})$$
-     where every row $\omega_i$ where $\hat{\pi}(\mathbf{x}_{\omega_i})$ fails to satisfy $B_{\omega_i}(Z)$ pays its exact row-index and witness-value bit cost:
-     $$\Delta S_{\mathrm{miss}}(i) = \mathrm{positive\text{-}bit\text{-}size}(i + 1) + \mathrm{value\text{-}bit\text{-}size}(w_i, \tau)$$
-   - Returns the minimum-score `heuristic-model` whose deployed `(heuristic-program model)` is the bare symbolic S-expression $\hat{\pi}^*(X)$ with the training residual $\varepsilon$ discarded.
-2. **Multi-Lane Scheduler with 1-in-4 Canonical Reserve (`propagation-search`)**: Coordinates a tentative `:primary` search lane (over `propagation-frame`) and a canonical `:fallback` search lane (over `propagation-fallback`):
-   - Every 4th quantum (`(= 3 (mod turn 4))`) is reserved for `:fallback`; the other 3 quanta advance `:primary` (or `:verification`).
-   - Any candidate discovered by `:primary` is replayed against `:original` (`:verification` lane) before it can enter `propagation-search-results`, guaranteeing soundness and completeness even when tentative integer witnesses fail or miss multi-valued fibers.
-
----
-
-## 3. Epistemic, Isolation, and Accounting Contracts
-
-### 3.1 Strict Information Isolation
-
-- **No Hidden Oracle Calls**: All benchmark generators in `fixtures.lisp` emit only plain `frame`s or `(key . values)` records. No oracle AST or closure ever crosses into the synthesizer.
-- **Self-Hosted Meta-Programs**: Because the type system includes quoted syntax types $\tau = \texttt{(:code } \Gamma'\ \sigma\texttt{)}$, quoted object-language ASTs are first-class runtime values $v \in \mathcal{V}_\tau$. When a meta-level artifact (an anti-unification constructor, a rewrite rule transformer, or a propagator matcher) is applied during search, it is lowered into an explicit symbolic DSL program (`:code-*` operators), statically validated once per `(versions, scope)` (`validated-program`), and executed inside the metered VM.
-
-### 3.2 Cost Objective & Frozen Accounting Versions
-
-The kernel enforces three frozen version constants exported from `package.lisp`:
-
-- `+encoding-version+ = 7` (`codec.lisp`)
-- `+tariff-version+ = 8` (`vm.lisp`)
-- `+simulator-version+ = 5` (`vm.lisp`)
-
-#### Object-Level Model Objective
-
-For a candidate model $M$ evaluated against a frame $E$:
-$$J(M) = S(M) + S(E \mid M) + \lambda_{\mathrm{run}} W_{\mathrm{run}}(M)$$
-
-- $S(M)$ is $\mathrm{description\text{-}size}(\mathit{expr}, \mathit{inputs})$ in bits under Encoding Version 7 ($\mathrm{header\text{-}size}(\mathit{inputs}, \mathit{target}) + \mathrm{body\text{-}size}(\mathit{expr}, \mathit{inputs})$).
-- For lossless synthesis (`search-job`), $S(E \mid M) = 0$ because only models satisfying every row requirement are accepted; for lossy heuristic condensation (`condense-heuristic`), $S(E \mid M)$ is `heuristic-residual-bits`.
-
-#### Meta-Level Procedure Objective
-
-For reusable meta-programs (such as compiled rewrite rules):
-$$J_{\mathrm{procedure}}(P) = S(P) + \lambda_{\mathrm{prep}} W_{\mathrm{validate}}(P) + \lambda_{\mathrm{run}} \sum_{\mathrm{uses}} \bigl(W_{\mathrm{apply}}(P) + \Delta W_{\mathrm{search}}(P)\bigr)$$
-where static structural validation cost $W_{\mathrm{validate}}(P)$ is charged **once** per unique `(rule, inputs, versions)` key in `*prepared-rewrite-cache*` (`laws.lisp`) and amortized across all subsequent search jobs in that scope.
-
-### 3.3 Epistemic Grades
-
-Every search, validation, and propagation result carries an explicit claim or validation status:
-
-| Claim / Status | Meaning |
+| Type | Runtime value |
 | :--- | :--- |
-| `:replayed-observations` | Empirical scope evidence grade: candidate satisfies all observed rows in the current frame or replays across held-out observations. Not a universal proof. |
-| `:conjecture` | Law or solver holds on all tested sample rows (`:samples` scope) with positive support, or is an uncertified integer $\Leftarrow$ witness rule. Cannot be used for in-place rewrite or certified frame replacement. |
-| `:vacuous` | Guarded law was tested across its domain/samples, never failed, but its guard was never satisfied (`active = 0`). Rejected from rewrite and solver libraries. |
-| `:refuted` | Law failed on at least one input tuple (either LHS $\neq$ RHS or an unguarded evaluation error occurred). Records the exact `counterexample` input vector. |
-| `:validated` | Exhaustively verified over the entire finite Cartesian product of its input domain (every input type must be `:bool` or $\texttt{(:gf } p\texttt{)}$), with `active > 0` and zero cutoff interruptions. Carries a `law-certificate`. |
-| `:cutoff` | Budget (`work-limit`) was exhausted before completion; job state is preserved for exact resumption. |
-| `:bounded-exhaustion` / `:replay-complete` | All candidates up to `description-limit` (or all listed replay expressions) have been evaluated. |
+| `:int` | Arbitrary-precision signed integer |
+| `(:gf p)` | Integer in $0,\ldots,p-1$; `gf` checks that $p$ is prime |
+| `:bool` | `nil` or `t` |
+| `(:tuple ...)` | Proper list of the specified component types |
+| `(:seq type)` | Proper list of homogeneous elements |
+| `(:code inputs sort)` | Typed syntax or an operator in the declared scope |
 
----
+A quoted syntax literal `(lit (code-type inputs sort) expression)` evaluates to syntax data. It does not evaluate that syntax. The DSL has no `:code-eval`, host `eval`, or arbitrary host-call primitive.
 
-## 4. Module-by-Module Kernel Reference
+Variables and holes are pooled uninterned symbols. Literals are two-element lists headed by a typed quote symbol; applications are ordinary lists headed by an operator or function-sorted hole. The actual constructors are `var`, `hole`, `lit`, `op`, and `app`; operator holes use `(hole id '(:fn argument-types return-type))`, with no `:kind` keyword.
 
-The kernel is loaded in deterministic order by `load.lisp` and exports its public API from `:lisploop` in `package.lisp`.
+`*node-meta*` caches type, non-variable bits, variable count, structural work, conservative totality, and free variables in a weak `eq` table. Cached metadata access is cheap, but `body-size` and `description-size` recursively validate expression scope and types. They are not constant-time size APIs. Metadata for copied trees can be reconstructed by `ensure-ast-meta`.
 
-```{=latex}
-\begin{figure}[htbp]
-\centering
-\begin{tikzpicture}[
-    >=Latex,
-    mod/.style={draw, rounded corners=3pt, align=center, font=\scriptsize, inner sep=4.5pt, fill=white, text width=3.55cm, minimum height=1.35cm},
-    pkg/.style={draw, rounded corners=3pt, align=center, font=\scriptsize, inner sep=4.5pt, fill=gray!10, text width=3.55cm, minimum height=1.35cm}
-]
-    \node[pkg] (m0) at (-6.0, 0) {\textbf{0. \texttt{package.lisp}}\\Public API Exports\\\& Frozen Constants};
-    \node[mod] (m1) at (-2.0, 0) {\textbf{1. \texttt{ast.lisp}}\\Homoiconic S-Exprs\\\& $O(1)$ Weak Metadata};
-    \node[mod] (m2) at (2.0, 0) {\textbf{2. \texttt{codec.lisp}}\\Prefix Codec v7\\\& Canonical Order};
-    \node[mod] (m3) at (6.0, 0) {\textbf{3. \texttt{vm.lisp}}\\Tariff v8, Simulator v5,\\Evaluator \& \texttt{fold-constants}};
+The fixed vocabulary has **21 operators**:
 
-    \node[mod] (m4) at (-6.0, -2.0) {\textbf{4. \texttt{frame.lisp}}\\Frames, S-Expr Reqs,\\Pullbacks, Conflicts \& Views};
-    \node[mod] (m5) at (-2.0, -2.0) {\textbf{5. \texttt{enumerate.lisp}}\\Exact-Bit Enumerator,\\Search, Buckets \& Lanes};
-    \node[mod] (m6) at (2.0, -2.0) {\textbf{6. \texttt{factor.lisp}}\\Matching, AU, \texttt{infer-fibers},\\\texttt{condense-heuristic} \& Corpus};
-    \node[mod] (m7) at (6.0, -2.0) {\textbf{7. \texttt{laws.lisp}}\\Laws, Guards, Rewriting,\\Solvers \& Propagation};
+- Twelve object operators: `:+`, `:*`, `:=`, `:tuple`, `:member`, `:lookup`, `:gather`, `:-`, `:/`, `:if`, `:concat`, `:at`.
+- Nine symbolic operators: `:code-kind`, `:code-child`, `:code-operator`, `:code-apply`, `:code-match`, `:code-bind`, `:code-subst`, `:code-total`, `:code-less`.
 
-    \draw[->, thick] (m0) -- (m1);
-    \draw[->, thick] (m1) -- (m2);
-    \draw[->, thick] (m2) -- (m3);
-    \draw[->, thick] (m3.south) -- ++(0,-0.32) -| (m4.north);
-    \draw[->, thick] (m4) -- (m5);
-    \draw[->, thick] (m5) -- (m6);
-    \draw[->, thick] (m6) -- (m7);
-\end{tikzpicture}
-\caption{Deterministic load and dependency order of the 7-module homoiconic kernel (\texttt{load.lisp}).}
-\end{figure}
-```
+There is no general numeric ordering operator. `:code-less` orders syntax by encoded size and then bits. Integer division truncates toward zero; field division uses `field-reciprocal`. Conditionals are lazy. Bounds violations, missing lookup keys, and division by zero are evaluation errors.
 
----
+### 2.2 Frames, requirements, pairs, and anchors
 
-### Module 1: `ast.lisp` --- Homoiconic Representation & $O(1)$ Metadata
+A `frame` contains `schema`, `rows`, `pairs`, and `anchors`. A row is
 
-#### Type System & Schemas
+$$
+\omega=(\mathrm{key}_\omega,\mathbf{x}_\omega,A_\omega(Y)).
+$$
 
-Supported semantic types (`valid-type-p` in `ast.lisp`):
+`row-known` supplies the runtime inputs. `row-key` identifies the occurrence and is not an implicit predictor input. `row-requirement` is a Boolean AST whose only possible free variable is `(var 0 target-type)`.
 
-- `:int` --- arbitrary-precision integers (unbounded),
-- $\texttt{(:gf } p\texttt{)}$ --- prime field $\mathbb{F}_p$ with elements $\{0, \dots, p-1\}$ (`gf` rejects composite moduli),
-- `:bool` --- Booleans $\{\texttt{nil}, \texttt{t}\}$,
-- $\texttt{(:tuple } \tau_1 \dots \tau_k\texttt{)}$ --- fixed-length heterogeneous tuples (`tuple-type`),
-- $\texttt{(:seq } \tau\texttt{)}$ --- homogeneous sequences (`sequence-type`),
-- $\texttt{(:code } \mathit{inputs}\ \mathit{sort}\texttt{)}$ --- quoted object-language syntax trees or operators in an explicit free-variable scope (`code-type`).
+`singleton-requirement` constructs equality; `set-requirement` constructs membership in an explicit list. `extract-allowed-values` also recognizes complete tuple-coordinate constraints, but returns `:unknown` for arbitrary predicates. Failure to extract witnesses does not prove a predicate false.
 
-A `schema` (`make-schema`) packages `(domain inputs target lookup-p)`, automatically inferring the ambient numeric `domain` (`:int` or $\texttt{(:gf } p\texttt{)}$) from `target` and `inputs` when not explicitly supplied.
+Ordinary synthesis checks requirements independently by row. Observation search additionally classifies cross-row relations:
 
-#### Homoiconic S-Expression Representation
+$$
+\begin{aligned}
+\mathrm{invariant}(e)&\iff
+\mathrm{pairs}\ne\varnothing
+\;\land\;
+\forall(a,b)\in\mathrm{pairs},\ e(\mathbf{x}_a)=e(\mathbf{x}_b),\\
+\mathrm{informative}(e)&\iff
+\mathrm{invariant}(e)
+\;\land\;
+\text{at least two anchor outputs differ}.
+\end{aligned}
+$$
 
-AST nodes are native Lisp S-expressions whose symbols are interned into `*typed-symbol-pool*` (`ast.lisp`) and annotated in a weak pointer-keyed hash table `*node-meta*` (`:test #'eq :weakness :key`):
+All outputs must be successfully evaluated to enter an observation bucket. Anchors do not enforce pairwise distinctness, margins, or an ordering. Neither ordinary `search-job` acceptance nor heuristic residual scoring enforces these linkage classifications.
 
-| AST Node Kind | Native Lisp Representation | Constructor | Notes |
-| :--- | :--- | :--- | :--- |
-| **Variable** (`:var`) | Pooled uninterned symbol `#:X0`, `#:X1`, $\dots$ | `(var id type)` | Pooled by `(:var id type)` in `*typed-symbol-pool*`. |
-| **Hole** (`:hole`) | Pooled uninterned symbol `#:?0`, `#:?1`, $\dots$ | `(hole id sort)` | Used in anti-unification patterns (both value and `:fn` sorts). |
-| **Literal** (`:lit`) | 2-element list `(#:QUOTE value)` | `(lit type value)` | Head is a pooled symbol `#:QUOTE` typed by `(:quote type)`. Prints natively as `'value`. |
-| **Operator** (`:op`) | Pooled uninterned symbol `#:+`, `#:IF`, $\dots$ | `(op name type)` | Pooled by `(:op name type)` with signature `(:fn arg-types ret-type)`. |
-| **Application** (`:app`) | Cons cell `(op-sym arg1 arg2 ...)` | `(app operator &rest args)` | Head is an `:op` or function-sorted `:hole` symbol. |
+`partition-pairs-and-anchors` builds adjacent chains within blocks containing at least two rows and selects one representative from each such block. It returns anchors only when at least two multi-row blocks contribute. Singleton blocks do not contribute anchors. `with-frame-linkage` attaches supplied or computed linkage; `make-observation-scope` snapshots it and translates row keys into indexes.
 
-#### $O(1)$ Cached Structural Metadata (`ast-meta`)
+### 2.3 Encoding and model artifacts
 
-Every AST node maps in `*node-meta*` to an `ast-meta` struct caching:
+`encode-model` serializes an ordinary expression with its input signature; `decode-model` reconstructs it. `lookup-model`, `quotient-model`, `partition-model`, and corpus constructors all return ordinary ASTs, not distinct model wrappers.
 
-- `kind` (`:var`, `:hole`, `:lit`, `:op`, `:app`), `id`, `type`, `value`,
-- `non-var-bits` --- exact bit size of all non-variable nodes in the subtree,
-- `var-count` --- total variable occurrences in the subtree,
-- `syntax-work` --- exact structural construction tariff,
-- `total-p` --- conservative structural totality (`t` when the subtree is guaranteed not to raise a runtime error),
-- `free-vars` --- deduplicated list of free variable IDs in the subtree.
+Encoding v7 uses Elias delta codes for positive integers, zigzag mapping for signed integers, typed headers, two-bit AST tags, and four-bit operator tags with an extension for indexes at least 15. Headers encode the version, input count, each input ID and type, and the target type. Variable references in bodies use positions in the input signature; changing IDs can change header cost.
 
-Because `non-var-bits` and `var-count` are precomputed on every node, `body-size`, `syntax-work`, `provably-total-p`, and `free-vars` are all $O(1)$ metadata reads:
-$$\mathrm{body\text{-}size}(e, \Gamma) = \mathrm{non\text{-}var\text{-}bits}(e) + \mathrm{var\text{-}count}(e) \cdot \lceil \log_2 \max(1, |\Gamma_{\mathrm{inputs}}|) \rceil.$$
-If an expression is copied via `copy-tree`, `ensure-ast-meta` automatically reconstructs and re-caches its `ast-meta` from the pooled head symbol (`#:QUOTE` or operator symbol).
+For $m$ inputs, the cached body formula is
 
-#### Operator Vocabulary (`+operator-names+`)
+$$
+S_{\mathrm{body}}(e)=
+\mathrm{nonvarbits}(e)+
+\mathrm{varcount}(e)\,\mathrm{integer\text{-}length}(\max(0,m-1)),
+$$
 
-Defined in `ast.lisp` with 20 operators:
+after validation. Quotation, types, literal payloads, permutations, representatives, and occurrence indexes are not free.
 
-- **Object-Level Primitives (11)**: `:+`, `:*`, `:=`, `:tuple`, `:member`, `:lookup`, `:gather`, `:-`, `:/`, `:if`, `:concat`.
-- **Symbolic Code Primitives (9, `*symbolic-primitives*`)**: `:code-kind`, `:code-child`, `:code-operator`, `:code-apply`, `:code-match`, `:code-bind`, `:code-subst`, `:code-total`, `:code-less`.
+### 2.4 VM, work, and interruption
 
----
+`vm.lisp` defines the ledger and the one resumable `evaluation` machine. Its states are `:unknown`, `:value`, and `:error`; a higher-level job reports `:cutoff` when its budget ends.
 
-### Module 2: `codec.lisp` --- Binary Codec (Version 7) & Canonical Ordering
+`start-evaluation` validates the raw expression and inputs. `start-program-validation` returns an evaluation whose successful value is a `validated-program`; `start-validated-evaluation` reuses static preparation while checking new input values. There is no separate `prepare-program` or `execute-model` API.
 
-#### Prefix-Free Bit Encoding (`+encoding-version+ = 7`)
+Instructions prepay structural work through `evaluation-remaining-cost`. Arithmetic on fields with $p\le257$ has unit primitive cost. Integer addition/subtraction cost the maximum operand width; multiplication/division cost the product of widths. Larger fields add the modular penalty specified by `arithmetic-cost`. Validation, traversal, and data operations charge additional work. `value-work` uses structural visits and raw payload widths, not compressed code length.
 
-`codec.lisp` implements an exact self-delimiting bit-vector serializer (`encode-model` / `decode-model`) and an $O(1)$ packet size oracle (`description-size` = `header-size` + `body-size`):
+Errors arising before an instruction can be priced are accounted for by the job adapter `advance-accounted-evaluation`. Tests cover one-unit versus batched continuation and ledger parity, including errors.
 
-- **Positive integers** (`emit-positive`, `positive-bit-size`): Elias-style prefix code using $2\lfloor\log_2 L\rfloor + 1 + (L - 1)$ bits where $L = \lfloor\log_2 n\rfloor + 1$.
-- **Signed integers** (`signed-code`): Zigzag mapping $z(n) = 2n+1$ for $n \ge 0$ and $z(n) = -2n$ for $n < 0$.
-- **Operator Tags**: 4-bit opcode index into `+operator-names+`, with index $\ge 15$ extended by $\mathrm{positive\text{-}bit\text{-}size}(\mathit{index} - 14)$.
+Resumable search/controller budgets are absolute cumulative limits. `with-work-limit` bounds additional work in synchronous helpers; nested calls cannot renew an enclosing allowance. Synchronous view and fiber helpers return cutoff information but no resumable traversal cursor.
 
-#### Canonical Expression Ordering (`expression-less-p`)
+The recursive controller stages some atomic host preparation privately and drains its tariff debt before publishing results. This is accounting preemption, not interruption of arbitrary host traversals or a wall-clock deadline.
 
-`expression-less-p` compares two expressions by $O(1)$ `description-size` first, only encoding bit-vectors to break exact bit-length ties lexicographically.
+## 3. The four operations
 
----
+### 3.1 Observational conservation
 
-### Module 3: `vm.lisp` --- Tariff (Version 8), Simulator (Version 5), Resumable Evaluator & Constant Folder
+`enumeration-step` generates typed ASTs in nondecreasing body-size tiers under a `language`. `literal-range` derives integer payload intervals for each tier. Syntax alternatives are retained; empirical equality is not a global rewrite certificate.
 
-#### Structural Runtime Tariff (`+tariff-version+ = 8`)
+`start-search` / `resume-search` check either enumeration or supplied `:expressions` against unary row requirements. Accepted candidates are stored in `search-job-results`; `search-job-proposals` holds the supplied replay list, not accepted child results.
 
-Runtime work charges scale with structural size and operand bit-width (`integer-width`):
+`start-observation-search` evaluates expressions over a frozen `observation-scope`. Complete typed output vectors determine `observation-bucket` membership. Optional outcome retention records errors as well as values. Additional evidence is evaluated in a new scope; there is no automatic in-place refinement of a previous job.
 
-- **Arithmetic (`arithmetic-cost`)**: Unit cost ($1$) for prime fields with $p \le 257$; bit-width sensitive ($\max(w_a, w_b)$ for `:+`/`:-`, $w_a \cdot w_b$ for `:*`/`:div`, plus modular reduction penalty for large prime fields) on `:int` and large $\texttt{(:gf } p\texttt{)}$.
-- **Data & Sequence Primitives (`primitive-cost`)**: $1 + \sum \mathrm{value\text{-}work}(\mathit{args})$ plus index-width checks for `:gather`.
-- **Symbolic Primitives (`symbolic-primitive-cost`)**: Prepays traversal, pattern-matching ($w_{\mathrm{pattern}} \cdot w_{\mathrm{source}}$), substitution, or size-comparison costs. A single-entry memo cache `*last-code-match*` (`vm.lisp`) avoids re-running host `match-pattern` when `:code-bind` immediately follows `:code-match` on the same `(pattern, source, scope)`, while charging the exact tariff specification.
+`laws.lisp` proposes equations and exact support guards. `start-law-validation` exhausts supported finite inputs unless `:samples` is supplied. Law inputs and equation result types may be the ambient scalar domain, Booleans, or nested tuples over those types (`law-type-p`); the exhaustive validator enumerates finite scalar and tuple product grids (`finite-type-p`, `finite-type-cardinality`, `law-assignment`). Explicit samples never produce a certificate, even if they happen to cover a finite domain.
 
-#### Preemptive Resumable Evaluator (`evaluation` & `validated-program`)
+### 3.2 Factorization and fiber proposals
 
-The `evaluation` struct (`start-evaluation`, `advance-evaluation`, `evaluate`, `start-program-validation`, `start-validated-evaluation`, and `advance-accounted-evaluation`) is the single debt-draining VM state machine used across the entire kernel:
+`anti-unify` returns a typed shared pattern and substitutions, memoizing repeated disagreement tuples. `compile-au-constructor` lowers a pattern into symbolic DSL construction. `discover-subexpression-abstractions` searches occurrence correspondences using bounded pair proposals and greedy extensions, then constructs reconstructing corpus ASTs. It is not a globally optimal subgraph or compression solver.
 
-- Every instruction sets `evaluation-remaining-cost` to its structural tariff before execution.
-- `advance-evaluation` drains $\min(\mathit{budget}, \mathit{remaining\text{-}cost})$ first, only executing the task when $\mathit{remaining\text{-}cost} = 0$. Thus an error (`:error`) is never observed before its full instruction cost is paid, and `quantum = 1` stepping produces the exact same state and ledger as batch execution.
+`quotient-values` returns first-occurrence representatives and occurrence indexes. `partition-rows` retains positions for exact ordered reassembly, including ties and duplicates. Corpus encodings preserve syntax; a validated rewrite can provide an alternate normalized corpus, not silently replace exact original spelling.
 
-#### Closed-Subtree Constant Folding (`fold-constants`)
+For row predicates $B_\omega$, define
 
-`fold-constants` simplifies open S-expressions bottom-up:
+$$
+\mathrm{Fiber}(\omega)=\{z:B_\omega(z)=\mathrm{true}\}.
+$$
 
-1. **Closed-Subtree Evaluation (`eval-closed-expr`)**: Whenever an application has `(null (free-vars expr))`, it is evaluated in the VM up to `budget`. If it returns `:value`, it is replaced by `(lit result-type value)`; if it returns `:error`, `fold-node` propagates the failure cleanly (e.g., an equality `(= err Z)` folds to `'nil`).
-2. **Conditional & Equality Simplification**:
-   - `(:if 't yes no)` $\to$ `yes`; `(:if 'nil yes no)` $\to$ `no`.
-   - When `cond` is a singleton equality `(= Z 'v)` on a symbolic variable $Z$, substitutes $\texttt{Z} \mapsto \texttt{'v}$ into `yes` via `instantiate` and re-folds `yes`.
-   - Conjunctions `(if a b 'nil)` intersect finite sets and singletons: if `a` is `(= Z 'v)` or `(member Z '(v1 ...))`, filters the values against `b` and reduces to `'nil` (when empty), `(= Z 'v)` (when $1$ value remains), or `(member Z filtered)` (when multiple values remain).
-3. **Tuple Injectivity Decomposition**: Decomposes $\texttt{(= (tuple } e_1 \dots e_k\texttt{) '(} v_1 \dots v_k\texttt{))}$ into the conjunction $\texttt{(and (= } e_1\ \texttt{'} v_1\texttt{) } \dots \texttt{ (= } e_k\ \texttt{'} v_k\texttt{))}$ and re-folds, immediately reducing diagonal conflicts like `(= (tuple Z Z) '(2 3))` to `'nil`.
+`tighten-same-input-requirements` intersects predicates only for identical complete input tuples, including empty tuples. It does not choose coordinate projections.
 
----
+`infer-fibers` proposes shared-value blocks by bounded partition search. Its lexicographic proxy minimizes class count, then repeated requirement body bits, then maximizes class concentration. This is neither Hard EM nor global MDL optimization; concentration is not Shannon entropy. The legacy `hard-em-...` test names remain.
 
-### Module 4: `frame.lisp` --- Frames, S-Expression Requirements, Pullbacks, Conflicts, Views & Quotients
+A conjunction that does not simplify to false may still be unsatisfiable. The return contract is `(values classes labels refined-frame partition status)`. A branch-limit cutoff can retain a proposal with `:search-status :cutoff`; interruption by the total work limit returns nil proposal values and a cutoff message. Feasibility remains `:unresolved` until downstream witnesses and reconstructions are checked.
 
-#### Pure S-Expression Row Requirements (`row`, `frame`)
+### 3.3 Reorientation, pullback, simplification, and propagation
 
-A `frame` consists of `(schema rows pairs anchors)` where `pairs` and `anchors` are optional action-linkage / orbit-separation metadata (defaulting to `nil`). Each `row` holds `(key known requirement)` where `row-known` is the input value vector $\mathbf{x}_\omega$ and `row-requirement` is a Boolean S-expression $A_\omega(Y)$ or $B_\omega(Z)$ over `(var 0 target-type)`:
+`orient-observations` reuses recorded columns without simulation. It preserves per-occurrence requirements; it does not silently union conflicting targets after projecting away inputs. Arithmetic relation orientation separately constructs forward relational predicates that retain empty and multi-valued fibers.
 
-- `singleton-requirement`: `(app (op := type) (var 0 type) (lit type value))` --- `(= X0 'v)`.
-- `set-requirement`: `(app (op :member type) (var 0 type) (lit (sequence-type type) values))` --- `(member X0 '(v1 ...))`.
-- General predicates: any Boolean AST over `(var 0 target-type)` (e.g., `(lit :bool t)` for unconstrained probe frames, or pulled-back relational predicates).
-- `extract-allowed-values`: Inspects a requirement S-expression and returns `nil` for `'nil`, `(list v)` for `(= X0 'v)`, `'(v1 ...)` for `(member X0 '(v1 ...))`, or `:unknown` for general predicates.
-- `check-requirement`: Evaluates a requirement S-expression on a candidate `value` in the VM.
+For decoder $Y=d(X,Z)$, `pullback-frame` computes
 
-#### Conjunction, Conflict Detection, Pullback, Views & Quotients
+$$
+B_\omega(Z)=A_\omega(d(\mathbf{x}_\omega,Z))
+$$
 
-- `conjoin-requirements`: Conjoins two requirements over `(var 0 target-type)` via `(fold-constants (bool-and req1 req2) schema)`.
-- `frame-conflict-p`: Returns a `frame-conflict` struct (`:kind :unsatisfiable-row` or `:incompatible-rows`) if any row requirement folds to `'nil` or if rows sharing identical `row-known` input values $\mathbf{x}_\omega$ conjoin to `'nil`.
-- `orient-observations`, `transition-probes`, `lookup-model`: `transition-probes` converts a frame of recorded action transitions $\mathbf{x}_\omega \mapsto \mathbf{x}_{T\omega}$ into unconstrained `:before` / `:after` probe rows with `frame-pairs` wired for `observation-scope`.
-- `pullback-frame` & `compose-model`: Pulls a parent frame back through $Y = d(X, Z)$ into $B_\omega(Z) := A_\omega(d(\mathbf{x}_\omega, Z))$, folds closed subtrees via `fold-constants`, and composes synthesized child programs into parent solutions.
-- `support-frame`, `partition-rows`, `reassemble-partition`, `partition-model`.
-- `quotient-values`, `restore-quotient`, `quotient-model`.
+by substitution and evaluates the declared child input bindings. It **does not call `fold-constants`**, propagate pair/anchor relations, or introduce an inverse solver.
 
----
+`fold-constants` lives in `requirements.lisp`. It conservatively evaluates closed subtrees and applies totality-guarded structural reductions under one local budget. Errors and unfinished evaluations retain their expression; they do not become false. It intersects finite constraints and can reconstruct tuple-coordinate equalities, but contains no built-in table inversion.
 
-### Module 5: `enumerate.lisp` --- Size-Partitioned Enumerator, Search, Observations & Multi-Lane Propagation Search
+`frame-conflict-p` uses folding to detect false rows or incompatible requirements on identical inputs. It returns a `frame-conflict` struct or nil. It does not replace the frame with the folded predicates, and nil means no detected contradiction. Cost includes expression traversal and evaluation; it is not generally linear in row count alone.
 
-- **Exact-Bit Bottom-Up Enumerator (`language`, `enumerator`, `enumeration-step`)**: Enumerates well-typed ASTs $e(X) \in \mathcal{L}(\Gamma)$ in strictly non-decreasing order of `body-size` bits, using `integer-literals-of-bit-size` to invert the Elias/zigzag bit-length formula analytically and sorting each bucket by `expression-less-p`.
-- **Resumable Synthesis (`search-job`: `start-search`, `resume-search`)**: Evaluates enumerated or replayed candidates against a `frame` with optional normal-form rejection caching (`:library`) when a validated `rewrite-library` is supplied.
-- **Resumable Observation Discovery (`observation-scope`, `observation-job`: `make-observation-scope`, `start-observation-search`, `resume-observation-search`)**: Evaluates $\mathcal{E} \times \Omega$, groups total evaluations into typed-value `observation-bucket`s, checks conservation across `pairs` ($M(e, \omega) = M(e, T\omega)$, defaulting to `frame-pairs`) and variation across `anchors` (defaulting to `frame-anchors`), and optionally retains per-row outcomes (`:retain-outcomes t`) for guard and solver discovery.
-- **Multi-Lane Propagation Search (`propagation-search`: `start-propagation-search`, `resume-propagation-search`)**: Schedules `:primary`, `:fallback` (1-in-4 reserve), and `:verification` (forward replay on `:original`).
+`propagate-arithmetic-child` uses learned witness/guard programs. Certified witness and uniqueness laws authorize equivalent singleton replacement on applicable rows. Tentative witnesses are forward checked and retain an original fallback frame. `propagation-search` schedules primary search, original-frame verification, and a fallback reserve every fourth quantum. Certification is attached to `arithmetic-propagator`; there is no `propagation-certified-p` accessor.
 
----
+### 3.4 Heuristic condensation and recursive search
 
-### Module 6: `factor.lisp` --- Pattern Matching, Anti-Unification, Subgraph Search, `infer-fibers`, `condense-heuristic`, View & Locality Discovery & Corpus Compression
+`start-heuristic-search` / `resume-heuristic-search` in `synthesize.lisp` evaluate candidate expressions against the original requirements. The convenience wrapper `condense-heuristic` and `heuristic-model` struct remain in `factor.lisp`.
 
-- `match-pattern` & `patterns-isomorphic-p`: First-order pattern matcher supporting value holes and operator holes with consistent repeated-hole bindings, plus mutual-matching isomorphism up to hole renaming.
-- `anti-unify`, `compile-au-constructor` & `au-substitutions-frame`: Typed LGG with memoized disagreement tuples, lowering to `:code-apply` / `:code-subst` DSL constructors, and conversion of recovered hole bindings into child substitution frames.
-- `subtree-at-path`, `replace-at-path`, `collect-tree-occurrences`, `make-tree-corpus`, `decode-tree-corpus`, `corpus-abstraction-model` & `discover-subexpression-abstractions`: Milestone 6 & 7 subexpression occurrence indexing, subgraph correspondence search across varied outer wrappers and `:none` unrelated trees, locality-prioritized occurrence-pair scheduling (`compute-tree-locality-positions`, `schedule-occurrence-pairs` with `:canonical`, `:locality` 1-in-4 canonical reserve, `:locality-only`, `:pair-budget`, and priced `:locality-key`), spliced pre-order packet factorization (`packet-chunks-model`), and optional validated `rewrite-library` normalization.
-- `shuffle-frame-rows`, `evaluate-guard-partition`, `synthesize-supplied-partition-view` & `discover-partition-views`: Milestone 7 & 8C view and partition discovery --- grammar-enumerated Boolean view selector search (`start-observation-search` with `observation-bucket` complement-symmetric deduplication), $O(|\Omega|)$ conflict pruning (`frame-conflict-p`), recursive synthesis of `:separate-parts` `(if G M_true M_false)` and `:shared-decoder` `d(X, (if G Z_true Z_false))` models vs.\ `:lookup` baseline, physical storage permutation invariance, and occurrence-preserving inverse permutation reconstruction (`partition-rows`, `reassemble-partition`, `partition-model`).
-- `infer-fibers` & `context-label-frame`: Confidence-ordered Hard-EM latent fiber inference over row requirements $B_\omega(Z)$, returning `(values classes labels refined-frame partition)`, paired with `context-label-frame` to project target-derived fiber labels onto declared available parent inputs for paid lookup or selector synthesis.
-- `condense-heuristic`: Two-stage MDL lossy heuristic condensation returning a `heuristic-model` (`heuristic-program`, `heuristic-residual`, `heuristic-exact-p`, `heuristic-score`).
-- `make-law-corpus`, `propose-law-compressions`, `decode-law-corpus`: Milestone 3B law corpus compressor.
+For miss indexes $I$, the implemented score is
 
----
+$$
+J(h)=S(h)+
+\begin{cases}
+0,&I=\varnothing,\\
+L_+(|I|+1)+\displaystyle\sum_{i\in I}\bigl[L_+(i+1)+L_\tau(w_i)\bigr],&I\ne\varnothing
+\end{cases}
++\lambda_{\mathrm{run}}W_{\mathrm{run}}(h).
+$$
 
-### Module 7: `laws.lisp` --- Laws, Guard Discovery, Rewriting, Arithmetic Solvers & Propagation
+Here $L_+$ is `positive-bit-size`, $L_\tau$ is `value-bit-size`, and $w_i$ is the first explicitly extractable witness for the row. A hit accepts any value satisfying the original predicate. If a miss has no available correction witness, the candidate is not scored. The miss cost depends on physical row index and replacement value, not prediction distance. There is no correction-packet serializer or automatic lookup-baseline comparison in this API.
 
-- **Law Discovery & Validation**: `propose-observed-laws`, `start-law-validation`, `resume-law-validation`.
-- **Partial-Domain Guard Discovery**: `observed-support`, `propose-guard-problems`, `start-guard-search`, `propose-guarded-laws`.
-- **Checked Symbolic Rewriting**: `prepare-rewrite-library`, `compile-rule-transformer`, `start-rewriting`, `advance-rewriting`.
-- **M4 Arithmetic Solver Discovery & Dual-Grade Propagation**: `observe-arithmetic-relation`, `orient-arithmetic-requirements`, `discover-arithmetic-solver`, `validate-arithmetic-solver`, `prepare-propagator-library`, `propagate-arithmetic-child`.
+The returned `heuristic-model` retains its training residual for inspection. A consumer deploys `heuristic-program` alone to omit it. No general scheduler currently consumes the learned heuristic.
 
----
+`decomposition` has slots `name`, `decoder`, `child-id`, `child-type`, `bindings`, `language`, `bound`, `children`, and `fiber-p`. There is no solver slot. Arithmetic propagation is available through its own adapter and the view helpers, not automatically inside every recursive node.
 
-## 5. Supporting Infrastructure: Fixtures, Experiments, Tests & Visualizer
+`start-synthesis` retains direct root search and supplied decomposition trees. Nodes progress through preparation and child search. `reconstruct-synthesis-candidate` composes a child through all ancestors; `synthesis-verification-step` checks and scores the resulting AST on the original root frame. `compose-model` inlines expressions, so repeated bindings pay repeated syntax and execution costs.
 
-| File / Directory | Role in the Repository |
+Every fourth scheduling quantum reserves the active root. Other quanta prioritize pending verification and otherwise round-robin active children. This preserves root progress within the configured grammar/bound; it is not a fourfold wall-time bound or unrestricted completeness claim. Completed reconstructions may exceed the direct root enumeration bound.
+
+`dependency-proposals` supplies empty-input and coordinate hypotheses, or explicit feature expressions. `start-dependency-search` first enumerates and observationally groups features, then submits their induced decompositions alongside direct search. `start-selector-search` separately supports fiber and dependency proposals. These are distinct entry points, not one automatic pipeline.
+
+## 4. Views and locality
+
+The view APIs live in `factor.lisp`. They discover Boolean guards, deduplicate equivalent/complement splits, try separate branches and supplied shared decoders independently, and use `start-synthesis` or `propagation-search` for child work.
+
+`price-view-combinations` considers assembled child combinations, ranks by description bits, and uses runtime work to break ties. View APIs have no `run-weight` option. `discover-partition-views` also includes a verified lookup baseline when `schema-lookup-p` permits it and explicit compatible witnesses are available; the supplied-view helper returns branch proposals without adding that baseline.
+
+| API | Return values |
 | :--- | :--- |
-| `fixtures.lisp` | Data-only observation generators and independent replay helpers (`code-transform-fixture`, `gf5-fixture`, `gf5-transition-fixture`, `integer-transition-fixture`, `integer-linear-fixture`, `gf7-iota-conversion`, `gf7-lifting-fixture`, `integer-lifting-fixture`, `planted-abstraction-fixture`, `randomized-planted-abstraction-fixture`, `locality-abstraction-fixture`, `replay-model`). |
-| `experiments.lisp` | Top-level CLI runner and executable driver for **Milestone 1** (`run-m1`) and **Milestone 2** (`run-m2`). Also loads `law-experiments.lisp` (`m3`), `algebra-experiments.lisp` (`m4`), `lifting-experiments.lisp` (`m5`), `abstraction-experiments.lisp` (`m6`), and `view-experiments.lisp` (`m7`). |
-| `law-experiments.lisp` | Executable driver for **Milestone 3** (`run-m3`: 3A guarded modular division laws & rewrite speedup vs.\ uncertified integer non-transfer; 3B AU compression of discovered field laws; 3C checked symbolic DSL rule compilation and amortization crossover after 2 jobs). |
-| `algebra-experiments.lisp` | Executable driver for **Milestone 4** (`run-m4`: all $(+, -, \times, /) \times (\mathrm{left}, \mathrm{right})$ orientations in $\mathbb{F}_5, \mathbb{F}_7, \mathbb{Z}$, AU solver-family reconstruction, certified field propagation, and tentative integer propagation with forward replay). |
-| `lifting-experiments.lisp` | Executable driver for **Milestone 5** (`run-m5`: $\mathbb{F}_7$ and `:int` indexed sequence lifting $y_{j,t} = a_j + \iota(t)$ / $y_{j,t} = a_j + t$, repetition compression crossover, contradictory $t$-only control & unavailable-key rejection, paid context restoration, and unsupervised Hard-EM `infer-fibers` discovery + certified/tentative propagation + paid/condensed selector deployment). |
-| `abstraction-experiments.lisp` | Executable driver for **Milestone 6** (`run-m6`: Stages 1--3 pattern reconstruction, matching, aligned AU & controls; Stage 4 hidden occurrence path subgraph correspondence search, repetition compression sweep, unrelated-tree controls & randomized trials; Stage 5 validated law alternate-syntax AU vs.\ exact AST spelling preservation). |
-| `view-experiments.lisp` | Executable driver for **Milestone 7** (`run-m7`: Part 1 supplied vs.\ grammar-enumerated Boolean view discovery on `:int` and $\mathbb{F}_7$ interleaved sequences, M8C $O(|\Omega|)$ conflict pruning, and 3-way comparison of `:shared-decoder` vs.\ `:separate-parts` vs.\ `:lookup`; Part 2 physical row shuffle invariance, `partition-model` inverse permutation reconstruction with ties/multiplicity, and target-leakage control; Part 3 locality-prioritized occurrence-pair scheduling, 1-in-4 canonical reserve on distant matches, and induced locality under a priced parity key). |
-| `benchmark.lisp` | Timing harness measuring real wall-clock and GC time across the M1--M3 workloads. |
-| `tests/` | 14 core test suites loaded by `tests/run.lisp` (`core`, `observations`, `codec`, `laws`, `guards`, `compression`, `symbolic`, `amortization`, `algebra`, `propagation`, `lifting`, `abstraction`, `views` --- 105 tests) plus `tests/visualizer.lisp` --- 100% passing via `make test`. |
-| `visualizer/` | Static HTML/JSON report exporter (`export.lisp`, `generate.lisp`) for Milestone 2 observation scopes. |
+| `evaluate-guard-partition` | True frame, false frame, labels, partition, linked frame on a nontrivial successful split |
+| `synthesize-supplied-partition-view` | Proposals, conflict, status |
+| `discover-partition-views` | Best proposal, proposals, conflicts, status |
+| `condense-heuristic` | Best completed heuristic model, status |
 
----
+`compute-tree-locality-positions` evaluates a supplied key on tree indexes and constructs quotient/partition coordinates. With no key, it uses physical tree indexes. Equal keys form coarse classes; equal-length lists of integers use Manhattan distance; distinct scalar keys use the coarse-class fallback, not numeric scalar distance. Scheduling also uses rank distance, path-depth difference, and depth sum.
 
-## 6. Implementation Status & Milestone Roadmap (Milestones 1--9)
+`:locality` interleaves three locality choices with one canonical occurrence-pair choice. `:locality-only` deliberately omits that reserve for controls. These count pair selections, not equal work quanta. The helper accepts DSL expressions and host functions; DSL keys are VM-metered, while the host-function path charges a fixed callback unit and does not meter the callback body or serialize it.
 
-| Milestone | Kernel Primitives & Verification | Status |
+M7 demonstrates Boolean views and supplied locality scheduling. Learned residual geometry, graded pair/anchor constraints, loss transport through decoders, and automatic locality-key synthesis are not implemented.
+
+## 5. Module and infrastructure map
+
+The order below is the order in `load.lisp`; `package.lisp` loads first.
+
+| Module | Responsibility |
+| :--- | :--- |
+| `ast.lisp` | Types, pooled symbols, AST construction/validation, metadata, bit/work helpers |
+| `codec.lisp` | Model encoding/decoding, header and description sizing, encoded expression ordering |
+| `vm.lisp` | Ledger, work limits, resumable execution, validated programs, primitive semantics |
+| `requirements.lisp` | Conservative simplification and conjunction analysis |
+| `frame.lisp` | Rows/frames, requirement constructors, conflict checks, reorientation, pullback, composition, quotient/partition linkage |
+| `enumerate.lisp` | Grammar enumeration, exact and observation search, messages, propagation-search adapter |
+| `factor.lisp` | AU, fiber proposals, law/tree corpus models, heuristic wrapper, locality and view orchestration |
+| `laws.lisp` | Law/guard discovery, validation, rewrite libraries, solver discovery and propagation |
+| `synthesize.lisp` | Resumable heuristic search, recursive decomposition, selector/dependency search |
+
+Rewrite preparation caches belong to each `rewrite-library`; there is no global prepared-rewrite cache. `*last-code-match*` is a separate single-entry host memo used by symbolic match/bind/substitution primitives. Neither mechanism shares arbitrary child synthesis problems.
+
+Fixtures now live in `tests/support.lisp` and the relevant suites. The former standalone experiment runners have been removed. `tests/run.lisp` loads fourteen suites and accepts module names or `m1`–`m7` aliases; `tests/visualizer.lisp` is separate. `benchmark.lisp` measures bounded GF(5) search scaling and VM dispatch. The visualizer exports observation data to static reports.
+
+## 6. Status, evidence, and objectives
+
+Exact search and the recursive controller rank accepted candidates by $S+\lambda_{\mathrm{run}}W_{\mathrm{run}}$; heuristic search adds the residual proxy above. View selection uses bits then runtime. The research procedure objective $J(M_P)+\lambda_{\mathrm{search}}W_{\mathrm{search}}(P)$ is an experimental comparison criterion, not an implemented learned scheduler objective.
+
+`message` has only `call-id`, `claim`, and `evidence`. Evidence shape depends on the producer. Recursive messages include parent/proposal identities, scope, bounds, and work; there is no universal status/best/cursor envelope. Law validation uses its own status and certificate structs.
+
+| Status or claim | Interpretation |
+| :--- | :--- |
+| `:replayed-observations` | Observation-scope evidence; not universal validity |
+| `:conjecture` | A completed sampled law check with active support |
+| `:vacuous` | Completed law check with no active support |
+| `:refuted` | A witnessed law failure, including relevant evaluation errors |
+| `:validated` | Completed exhaustive finite law validation with active support |
+| `:cutoff` | Budget ended; resumable APIs preserve state, synchronous helpers need a new invocation |
+| `:bounded-exhaustion` | Exhaustion within the reported grammar/proposal bounds |
+| `:partition-proposal` | Bounded fiber proposal; feasibility remains unresolved |
+
+A law certificate stores `snapshot`, `evidence`, `assignments`, `active`, and `work`. Consumers recheck snapshots and versions; it is not a theorem certificate for infinite domains.
+
+| Milestone | Implemented evidence | Remaining boundary |
 | :--- | :--- | :--- |
-| **M1: Core Typed Synthesis, Pullback, Views, Quotients & Aligned AU** | Implemented across `ast.lisp`, `codec.lisp`, `vm.lisp`, `frame.lisp`, `enumerate.lisp`, `factor.lisp`. Driven by `experiments.lisp` (`m1`); tested in `tests/core.lisp` and `tests/codec.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
-| **M2: Observational Equivalence, Symmetries/Invariants & Replay** | Implemented via `observation-job` (`enumerate.lisp`) and `transition-probes` (`frame.lisp`). Driven by `experiments.lisp` (`m2`); tested in `tests/observations.lisp` and `tests/visualizer.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
-| **M3: Guarded Laws (3A), AU Law Compression (3B) & Symbolic Rewriting (3C)** | Implemented in `laws.lisp` and `factor.lisp`. Driven by `law-experiments.lisp` (`m3`); tested in `tests/laws.lisp`, `tests/guards.lisp`, `tests/compression.lisp`, `tests/symbolic.lisp`, and `tests/amortization.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
-| **M4: Arithmetic Reorientation, Solvers & Dual-Grade Propagation** | Implemented in `laws.lisp` and `propagation-search` (`enumerate.lisp`). Driven by `algebra-experiments.lisp` (`m4`); tested in `tests/algebra.lisp` and `tests/propagation.lisp`. | **Complete & Verified** (matches [results.md](results.md)) |
-| **M5: Intermediate Concept Lifting via Hard-EM Latent Fibers** | Implemented in `factor.lisp` (`infer-fibers`, `context-label-frame`), `vm.lisp` (`fold-constants`), and `frame.lisp` (`pullback-frame`, `frame-conflict-p`). Driven by `lifting-experiments.lisp` (`m5`); tested in `tests/lifting.lisp` and `tests/propagation.lisp`. | **Complete & Verified** |
-| **M6: Typed Anti-Unification & Subexpression Correspondence Search** | Implemented in `factor.lisp` (`anti-unify`, `compile-au-constructor`, `au-substitutions-frame`, `collect-tree-occurrences`, `corpus-abstraction-model`, `discover-subexpression-abstractions`). Driven by `abstraction-experiments.lisp` (`m6`); tested in `tests/abstraction.lisp`, `tests/core.lisp`, and `tests/symbolic.lisp`. | **Complete & Verified** |
-| **M7: Autonomous View Discovery & Feature-Locality Projection** | Implemented in `factor.lisp` (`shuffle-frame-rows`, `evaluate-guard-partition`, `synthesize-supplied-partition-view`, `discover-partition-views`, `compute-tree-locality-positions`, `schedule-occurrence-pairs`) and `frame.lisp` (`partition-rows`, `reassemble-partition`, `partition-model`). Driven by `view-experiments.lisp` (`m7`); tested in `tests/views.lisp` and `tests/core.lisp`. | **Complete & Verified** |
-| **M8A: Nested Decoder Composition (Multi-Step Pullback & Propagation)** | `fold-constants` (`vm.lisp`), `pullback-frame` (`frame.lisp`), and `propagate-arithmetic-child` (`laws.lisp`) implemented; **chained multi-step decoder rewrite loop over nested contexts not yet wired**. | **Pending Chained Driver** |
-| **M8B: Shared Sub-Expression Memoization & DAG GC** | Weak `*node-meta*` table, `*prepared-rewrite-cache*`, and `observation-bucket` guard deduplication in `discover-partition-views` implemented; **cross-round DAG node sharing & GC not yet wired**. | **Partial (View Guard Dedup Complete)** |
-| **M8C: Contradiction Detection & Backtracking under Shared Latent Variables** | `fold-constants` tuple decomposition (`vm.lisp`), `frame-conflict-p` (`frame.lisp`), and $O(|\Omega|)$ conflict pruning in `synthesize-supplied-partition-view` / `discover-partition-views` (`factor.lisp`) implemented and tested in `tests/propagation.lisp` and `tests/views.lisp`. | **Complete in Pullback & View Search** |
-| **M8D: Lossy Heuristic Search Control via Residual-Priced Condensation** | `condense-heuristic` (`factor.lisp`) and `start-propagation-search` (`enumerate.lisp`) implemented and unit-tested in `tests/propagation.lisp` and `tests/lifting.lisp`; **end-to-end agenda-routing benchmark not yet wired**. | **Kernel Complete / Benchmark Pending** |
-| **M9: Self-Hosted Policy & Vocabulary Amortization** | `:code-*` VM, `condense-heuristic`, and `compile-au-constructor` implemented; **multi-problem vocabulary/policy promotion loop with automatic eviction not yet wired**. | **Pending** |
+| M1–M4 | Typed search, observations, guarded laws, syntax compression, checked rewrites, arithmetic propagation | Finite grammars and validation scopes; supplied controls remain explicit |
+| M5 | Supplied lifting, bounded fiber proposals, selector/dependency search | No general latent-model identification guarantee |
+| M6 | Typed AU, occurrence proposals, reconstructing corpus models | Bounded/greedy correspondence search |
+| M7 | Boolean views, reassembly controls, supplied locality schedules | General learned ordering and residual geometry |
+| M8A/B | Nested supplied decompositions, resumable work accounting, root reconstruction | Autonomous decoder generation and cross-branch DAG sharing |
+| M8C | Local checked conflicts and tentative fallback preservation | Reusable learned nogoods and generalized explanations |
+| M8D | Resumable residual-priced condensation | Trace acquisition, learned node ordering, end-to-end policy evaluation |
+| M9 | Prerequisite syntax/condensation machinery | Callable learned library entries and descriptor-guided retrieval |
 
----
+## 7. Verification commands
 
-## 7. Quick-Start Verification Commands
+From this directory:
 
-To run the full test suite (all 105 core tests + visualizer exporter checks):
 ```bash
 make test
+sbcl --script tests/run.lisp m7 refactor
+sbcl --script tests/run.lisp algebra propagation
+sbcl --script benchmark.lisp meter
 ```
 
-To reproduce the Milestone 1--7 empirical reports:
-```bash
-sbcl --script experiments.lisp m1
-sbcl --script experiments.lisp m2
-sbcl --script experiments.lisp m3
-sbcl --script experiments.lisp m4
-sbcl --script experiments.lisp m5
-sbcl --script experiments.lisp m6
-sbcl --script experiments.lisp m7
-```
+`make test` runs all core suites and the visualizer exporter checks. Milestone aliases select tests; they do not regenerate the historical reports. `make visualizer` writes generated visualizer assets. `make benchmark` writes benchmark logs. The default `make` target builds document PDFs, not tests.

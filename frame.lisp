@@ -303,7 +303,9 @@ bindings. No inverse values are enumerated."
                           (evaluation-value run))) bindings)))
          (charge ledger :pullback (syntax-work predicate))
          (make-row :key (row-key row) :known known
-                   :requirement predicate))))))
+                   :requirement predicate)))
+     :pairs (frame-pairs parent)
+     :anchors (frame-anchors parent))))
 
 (defun compose-model (decoder child-id child-model bindings &optional ledger)
   "Inline the context and child; the resulting ordinary AST pays for duplication."
@@ -453,3 +455,94 @@ via `partition-pairs-and-anchors`)."
                           (frame-rows frame))
                   :pairs eff-pairs
                   :anchors eff-anchors))))
+
+(defun centered-mod-difference (predicted target modulus)
+  "Return the minimal signed modular displacement DELTA in [-floor(p/2), ceil(p/2)-1]
+such that (mod (+ predicted delta) modulus) = (mod target modulus)."
+  (let* ((raw (mod (- target predicted) modulus))
+         (half (floor modulus 2)))
+    (if (> raw half)
+        (- raw modulus)
+        raw)))
+
+(defun correction-packet (predicted target type &optional (predicted-p t))
+  "Construct an executable correction packet transforming PREDICTED into TARGET in TYPE.
+When PREDICTED-P is nil (e.g. evaluation failed with :error), returns the replacement TARGET."
+  (if (not predicted-p)
+      target
+      (case type
+        (:int (- target predicted))
+        (:bool target)
+        (otherwise
+         (ecase (first type)
+           (:gf (centered-mod-difference predicted target (second type)))
+           (:tuple (loop for p-part in predicted
+                         for t-part in target
+                         for part-type in (rest type)
+                         collect (correction-packet p-part t-part part-type t)))
+           ((:seq :code) target))))))
+
+(defun correction-bit-size (predicted target type &optional (predicted-p t))
+  "Price the correction packet from PREDICTED to TARGET in TYPE in bits.
+Returns 0 when PREDICTED-P is true and (equal predicted target).
+When PREDICTED-P is nil, falls back to replacement (value-bit-size target type)."
+  (cond
+    ((not predicted-p)
+     (value-bit-size target type))
+    ((equal predicted target)
+     0)
+    (t
+     (case type
+       (:int (value-bit-size (- target predicted) :int))
+       (:bool 1)
+       (otherwise
+        (ecase (first type)
+          (:gf (value-bit-size (centered-mod-difference predicted target (second type)) :int))
+          (:tuple (loop for p-part in predicted
+                        for t-part in target
+                        for part-type in (rest type)
+                        sum (if (equal p-part t-part)
+                                1
+                                (correction-bit-size p-part t-part part-type t))))
+          ((:seq :code) (value-bit-size target type))))))))
+
+(defun select-closest-witness (predicted values type &optional (predicted-p t))
+  "Select the witness W in VALUES minimizing (correction-bit-size predicted W type predicted-p),
+breaking ties by first appearance in VALUES.
+Returns (VALUES best-witness best-bits best-packet)."
+  (assert (and (listp values) values))
+  (let* ((best-witness (first values))
+         (best-bits (correction-bit-size predicted best-witness type predicted-p)))
+    (dolist (candidate (rest values))
+      (let ((bits (correction-bit-size predicted candidate type predicted-p)))
+        (when (< bits best-bits)
+          (setf best-witness candidate
+                best-bits bits))))
+    (values best-witness best-bits (correction-packet predicted best-witness type predicted-p))))
+
+(defun minimum-disambiguation-bit-size (type)
+  "Minimum bit cost of a non-zero disambiguating step in TYPE."
+  (case type
+    (:int (value-bit-size 1 :int))
+    (:bool 1)
+    (otherwise
+     (ecase (first type)
+       (:gf (value-bit-size 1 :int))
+       (:tuple (+ (1- (length (rest type)))
+                  (reduce #'min (rest type) :key #'minimum-disambiguation-bit-size)))
+       ((:seq :code) (1+ (type-bit-size type)))))))
+
+(defun pair-connected-component (seed-key pairs)
+  "Return the list of row keys in the undirected connected component of SEED-KEY in PAIRS."
+  (let ((visited (list seed-key))
+        (queue (list seed-key)))
+    (loop while queue
+          for current = (pop queue)
+          do (dolist (pair pairs)
+               (let ((neighbor (cond ((equal current (first pair)) (second pair))
+                                     ((equal current (second pair)) (first pair))
+                                     (t nil))))
+                 (when (and neighbor (not (member neighbor visited :test #'equal)))
+                   (push neighbor visited)
+                   (setf queue (append queue (list neighbor)))))))
+    (nreverse visited)))

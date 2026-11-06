@@ -30,6 +30,8 @@
    #:pullback-frame #:compose-model #:support-frame
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
    #:partition-pairs-and-anchors #:with-frame-linkage
+   #:centered-mod-difference #:correction-packet #:correction-bit-size #:select-closest-witness
+   #:relational-linkage-residual
    #:quotient-values #:restore-quotient #:quotient-model
    ;; 5. enumerate.lisp — Grammar enumerator, synthesis & observation search, multi-lane propagation search
    #:language #:make-language #:snapshot-language #:language-domain #:language-inputs
@@ -46,6 +48,7 @@
    #:observation-bucket #:make-observation-bucket #:observation-bucket-scope
    #:observation-bucket-type #:observation-bucket-values #:observation-bucket-members
    #:observation-bucket-invariant-p #:observation-bucket-informative-p #:observation-bucket-counterexample
+   #:observation-bucket-pair-bits #:observation-bucket-anchor-bits #:observation-bucket-residual-bits
    #:start-search #:resume-search #:search-job-results #:search-job-best #:search-job-ledger
    #:search-job-completed-bound #:search-job-messages #:search-job-proposals #:search-job-reused-rejections
    #:make-observation-scope #:observation-scope-id #:observation-scope-frame #:observation-scope-language
@@ -83,6 +86,7 @@
    #:heuristic-program #:heuristic-residual #:heuristic-exact-p #:heuristic-program-bits
    #:heuristic-residual-bits #:heuristic-run-work #:heuristic-score
    ;; 7. laws.lisp — Laws, validation, rewriting, solver discovery, dual-grade propagation
+   #:law-type-p #:finite-type-p #:finite-type-cardinality #:law-assignment
    #:law #:make-law #:law-domain #:law-inputs #:law-lhs #:law-rhs #:law-equation #:law-guard #:law-origin #:law-statement
    #:law-certificate #:law-certificate-evidence #:law-certificate-assignments #:law-certificate-active #:law-certificate-work
    #:law-validation #:start-law-validation #:resume-law-validation #:law-validation-law
