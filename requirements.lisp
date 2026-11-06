@@ -149,8 +149,9 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                            (provably-total-p (first args)))
                       (let ((values (remove-duplicates (ast-value (second args)) :test #'equal)))
                         (cond ((null values) (lit :bool nil))
-                              ((null (rest values)) (app (op := (ast-type (first args))) (first args)
-                                                        (lit (ast-type (first args)) (first values))))
+                              ;; Walk the equality too, so a tuple operand splits into coordinates.
+                              ((null (rest values)) (walk (app (op := (ast-type (first args))) (first args)
+                                                              (lit (ast-type (first args)) (first values)))))
                               (t rebuilt))))
                      ((eq := (operator-name operator))
                       (let* ((lhs (first args)) (rhs (second args))

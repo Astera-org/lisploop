@@ -288,6 +288,19 @@ The original frame remains available; this conversion executes no transition."
       (charge ledger :baseline (syntax-work model))
       model)))
 
+(defun evaluate-row-bindings (bindings inputs known &key ledger (error-p t))
+  "Evaluate BINDINGS ((id . expr) ...) on KNOWN under INPUTS.
+When ERROR-P is true, signal an error if any binding does not produce :value;
+otherwise return :error."
+  (mapcar (lambda (binding)
+            (let ((run (evaluate (cdr binding) inputs known :ledger ledger)))
+              (unless (eq (evaluation-status run) :value)
+                (if error-p
+                    (error "Context binding did not finish: ~S" run)
+                    (return-from evaluate-row-bindings :error)))
+              (evaluation-value run)))
+          bindings))
+
 (defun pullback-frame (parent decoder child-id child-type bindings &optional ledger)
   "B(z)=A(d(c,z)). BINDINGS is an alist of child input IDs to parent expressions.
 The checker closes over encoded observations; the child receives only computed
@@ -308,12 +321,7 @@ bindings. No inverse values are enumerated."
                                            (acons child-id (var 0 child-type) constants) :var))
               (predicate (instantiate (row-requirement row)
                                       (list (cons 0 closed-decoder)) :var))
-              (known (mapcar
-                      (lambda (binding)
-                        (let ((run (evaluate (cdr binding) inputs (row-known row) :ledger ledger)))
-                          (unless (eq (evaluation-status run) :value)
-                            (error "Context binding did not finish: ~S" run))
-                          (evaluation-value run))) bindings)))
+              (known (evaluate-row-bindings bindings inputs (row-known row) :ledger ledger)))
          (charge ledger :pullback (syntax-work predicate))
          (make-row :key (row-key row) :known known
                    :requirement predicate)))

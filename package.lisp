@@ -103,6 +103,7 @@
    #:propagation #:propagation-frame #:propagation-original #:propagation-fallback
    #:propagation-narrowed #:propagation-suggested #:propagation-retained #:propagation-rejected
    #:prepare-propagator-library #:match-arithmetic-propagator #:propagate-arithmetic-child
+   #:as-propagator-library #:propagate-requirements #:propagation-ambiguous
    #:start-propagation-search #:resume-propagation-search #:propagation-search-results
    #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work
    ;; Recursive orchestration and explicit dependency/selector targets.
@@ -112,7 +113,7 @@
    #:synthesis-job-ledger #:synthesis-job-messages
    #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace
    #:synthesis-node-priority #:synthesis-node-heuristic
-   #:heuristic-decompositions #:start-heuristic-synthesis #:synthesis-episode-returns
+   #:heuristic-decompositions #:heuristic-expander #:start-heuristic-synthesis #:synthesis-episode-returns
    #:dependency-proposals #:start-selector-search
    #:start-dependency-search #:resume-dependency-search #:dependency-search-synthesis
    #:dependency-search-features #:dependency-search-ledger

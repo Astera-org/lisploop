@@ -707,11 +707,32 @@ learn guards through Boolean frames."
 (defun validate-arithmetic-solver (discovery &key (samples nil samples-p)
                                                (uniqueness-samples nil uniqueness-samples-p)
                                                (work-limit 100000000))
-  (let ((witness (solve-witness-law discovery)) (unique (solve-uniqueness-law discovery)))
+  (let* ((relation (solve-discovery-relation discovery))
+         (domain (arithmetic-relation-domain relation))
+         (position (solve-discovery-position discovery))
+         (exhaustive-p (finite-type-p domain))
+         (witness (solve-witness-law discovery))
+         (unique (solve-uniqueness-law discovery))
+         (eff-samples (cond (samples-p samples)
+                            ((not exhaustive-p)
+                             (remove-duplicates (mapcar #'row-known (frame-rows (solve-discovery-frame discovery)))
+                                                :test #'equal))))
+         (eff-unique (cond (uniqueness-samples-p uniqueness-samples)
+                           ((not exhaustive-p)
+                            (loop for record in (arithmetic-relation-records relation)
+                                  collect (list (nth (1+ (- 1 position)) record)
+                                                (fourth record)
+                                                (nth (1+ position) record)))))))
     (setf (solve-discovery-validation discovery)
-          (resume-law-validation (if samples-p (start-law-validation witness :samples samples) (start-law-validation witness)) work-limit)
+          (resume-law-validation (if (or samples-p (not exhaustive-p))
+                                     (start-law-validation witness :samples eff-samples)
+                                     (start-law-validation witness))
+                                 work-limit)
           (solve-discovery-uniqueness discovery)
-          (resume-law-validation (if uniqueness-samples-p (start-law-validation unique :samples uniqueness-samples) (start-law-validation unique)) work-limit))
+          (resume-law-validation (if (or uniqueness-samples-p (not exhaustive-p))
+                                     (start-law-validation unique :samples eff-unique)
+                                     (start-law-validation unique))
+                                 work-limit))
     discovery))
 
 (defun certified-solve-discovery-p (discovery)
@@ -730,8 +751,8 @@ learn guards through Boolean frames."
 
 ;;; Checker-AST Propagation (Dual-Grade Propagators)
 
-(defstruct propagation frame original fallback (narrowed 0) (suggested 0) (retained 0) (rejected 0))
-(defstruct arithmetic-propagator domain operator position witness guard certified-p)
+(defstruct propagation frame original fallback (narrowed 0) (suggested 0) (retained 0) (rejected 0) (ambiguous 0))
+(defstruct arithmetic-propagator domain operator position witness guard certified-p unique-p)
 (defstruct propagator-library rules (versions (vm-versions)) (matchers (make-hash-table :test #'equal)))
 
 (defun current-witness-conjecture-p (discovery)
@@ -752,7 +773,12 @@ learn guards through Boolean frames."
                  :domain (copy-tree domain) :operator (copy-tree (arithmetic-relation-operator relation))
                  :position (solve-discovery-position discovery)
                  :witness (copy-tree (solve-discovery-witness discovery)) :guard (copy-tree (solve-discovery-guard discovery))
-                 :certified-p certified) rules))))
+                 :certified-p certified
+                 ;; Uniqueness is what licenses narrowing a fiber to one witness without a fallback.
+                 :unique-p (or certified
+                               (let ((uniqueness (solve-discovery-uniqueness discovery)))
+                                 (and uniqueness (member (law-validation-status uniqueness) '(:conjecture :validated))
+                                      t)))) rules))))
     (make-propagator-library :rules (nreverse rules))))
 
 (defun compile-propagator-matcher (rule inputs child-id)
@@ -852,4 +878,96 @@ checked against the ORIGINAL pullback and supply a separate tentative frame."
                                                      :anchors (frame-anchors original))
               (propagation-retained result) (- (length rows) (propagation-narrowed result) (propagation-suggested result)))
         (when (plusp (propagation-suggested result)) (setf (propagation-fallback result) original))))
+    result))
+
+;;; Requirement-Level Propagation: learned solvers applied inside pulled-back predicates
+
+(defun as-propagator-library (sources ledger)
+  "Merge SOURCES (solve discoveries, propagator libraries, or a list of either) into one
+library, or nil when there is nothing to merge. A lone library is returned as is."
+  (if (propagator-library-p sources)
+      sources
+      (let ((discoveries nil) (rules nil))
+        (dolist (source (if (listp sources) sources (list sources)))
+          (etypecase source
+            (solve-discovery (push source discoveries))
+            (propagator-library
+             (assert (equal (propagator-library-versions source) (vm-versions)) () "Stale propagator library")
+             (setf rules (append rules (propagator-library-rules source))))))
+        (when (or discoveries rules)
+          (let ((library (prepare-propagator-library (nreverse discoveries) ledger)))
+            (setf (propagator-library-rules library) (append rules (propagator-library-rules library)))
+            library)))))
+
+(defun propagator-program (library rule slot ledger)
+  "Prepared guard or witness program of RULE, cached in LIBRARY."
+  (let ((key (list rule slot)) (cache (propagator-library-matchers library)))
+    (or (gethash key cache)
+        (setf (gethash key cache)
+              (prepare-propagation-program (if (eq slot :guard) (arithmetic-propagator-guard rule)
+                                               (arithmetic-propagator-witness rule))
+                                           (arithmetic-inputs (arithmetic-propagator-domain rule))
+                                           ledger :propagation-preparation)))))
+
+(defun solve-learned-equality (conjunct library ledger)
+  "If CONJUNCT is (= (op a b) 'c) with exactly one literal operand 'k, and LIBRARY holds a
+rule for OP at the other operand whose learned guard accepts (k, c), return
+(VALUES (= unknown 'q(k,c)) rule). Uncertified witnesses are forward checked first."
+  (when (and (app-p conjunct) (eq := (operator-name (first conjunct))))
+    (let* ((lhs (second conjunct)) (rhs (third conjunct))
+           (c (cond ((lit-p rhs) rhs) ((lit-p lhs) lhs)))
+           (term (cond ((lit-p rhs) lhs) ((lit-p lhs) rhs))))
+      (when (and term (app-p term) (= 2 (length (rest term))))
+        (let ((position (cond ((and (lit-p (second term)) (not (lit-p (third term)))) 1)
+                              ((and (lit-p (third term)) (not (lit-p (second term)))) 0))))
+          (when position
+            (let ((known (if (= position 1) (second term) (third term)))
+                  (unknown (if (= position 1) (third term) (second term))))
+              (dolist (rule (propagator-library-rules library))
+                (charge ledger :propagator-dispatch (+ 1 (syntax-work (arithmetic-propagator-operator rule))))
+                (when (and (equal (first term) (arithmetic-propagator-operator rule))
+                           (= position (arithmetic-propagator-position rule)))
+                  (let* ((values (list (ast-value known) (ast-value c)))
+                         (guard (evaluate-propagation-program (propagator-program library rule :guard ledger)
+                                                              values ledger :propagation-guard)))
+                    (when (and (eq :value (evaluation-status guard)) (evaluation-value guard))
+                      (let ((witness (evaluate-propagation-program (propagator-program library rule :witness ledger)
+                                                                   values ledger :propagation-witness)))
+                        (when (eq :value (evaluation-status witness))
+                          (let* ((type (ast-type unknown))
+                                 (w (lit type (evaluation-value witness))))
+                            (when (or (arithmetic-propagator-certified-p rule)
+                                      (let ((check (run-algebra-program
+                                                    (app (op := (ast-type c))
+                                                         (arithmetic-application (first term) position known w) c)
+                                                    nil nil ledger :propagation-verification)))
+                                        (and (eq :value (evaluation-status check)) (evaluation-value check))))
+                              (return (values (app (op := type) unknown w) rule)))))))))))))))))
+
+(defun propagate-requirements (frame library ledger)
+  "Rewrite every top-level conjunct (= (op 'k T) 'c) of FRAME's requirements to (= T 'w)
+using LIBRARY's learned guards and witnesses, repeatedly, so nested operators unwind.
+Only conjuncts are rewritten: a narrowing is not sound under negation. Certified rules
+are equivalences; others are suggestions, and rules without uniqueness evidence mark the
+propagation ambiguous, so the caller keeps the original frame as a fallback."
+  (let ((result (make-propagation :original frame)))
+    (setf (propagation-frame result)
+          (make-frame (frame-schema frame)
+                      (loop for row in (frame-rows frame) collect
+                        (let ((certified t) (changed nil) (unique t))
+                          (flet ((solve (conjunct)
+                                   (loop (multiple-value-bind (next rule) (solve-learned-equality conjunct library ledger)
+                                           (unless next (return conjunct))
+                                           (setf changed t conjunct next
+                                                 certified (and certified (arithmetic-propagator-certified-p rule))
+                                                 unique (and unique (arithmetic-propagator-unique-p rule)))))))
+                            (let ((conjuncts (mapcar #'solve (extract-conjuncts (row-requirement row)))))
+                              (cond ((not changed) (incf (propagation-retained result)) row)
+                                    (t (if certified (incf (propagation-narrowed result)) (incf (propagation-suggested result)))
+                                       (unless unique (incf (propagation-ambiguous result)))
+                                       (let ((req (reduce #'bool-and conjuncts :from-end t)))
+                                         (charge ledger :propagation-frame (syntax-work req))
+                                         (make-row :key (row-key row) :known (row-known row) :requirement req))))))))
+                      :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
+    (when (plusp (propagation-suggested result)) (setf (propagation-fallback result) frame))
     result))

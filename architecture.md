@@ -159,7 +159,7 @@ by substitution and evaluates the declared child input bindings. It **does not c
 
 `fold-constants` lives in `requirements.lisp`. It conservatively evaluates closed subtrees and applies totality-guarded structural reductions under one local budget. Errors and unfinished evaluations retain their expression; they do not become false. It intersects finite constraints and can reconstruct tuple-coordinate equalities, but contains no built-in table inversion.
 
-`frame-conflict-p` uses folding to detect false rows or incompatible requirements on identical inputs. It returns a `frame-conflict` struct or nil. It does not replace the frame with the folded predicates, and nil means no detected contradiction. Cost includes expression traversal and evaluation; it is not generally linear in row count alone.
+`frame-conflict-p` uses folding to detect false rows or incompatible requirements on identical inputs. It returns `(values conflict folded-frame)` without mutating its input frame in place; when no conflict is detected (`conflict = nil`), `folded-frame` carries the folded row requirements. Cost includes expression traversal and evaluation; it is not generally linear in row count alone.
 
 `propagate-arithmetic-child` uses learned witness/guard programs. Certified witness and uniqueness laws authorize equivalent singleton replacement on applicable rows. Tentative witnesses are forward checked and retain an original fallback frame. `propagation-search` schedules primary search, original-frame verification, and a fallback reserve every fourth quantum. Certification is attached to `arithmetic-propagator`; there is no `propagation-certified-p` accessor.
 
@@ -167,26 +167,28 @@ by substitution and evaluates the declared child input bindings. It **does not c
 
 `start-heuristic-search` / `resume-heuristic-search` in `synthesize.lisp` evaluate candidate expressions against the original requirements. The convenience wrapper `condense-heuristic` and `heuristic-model` struct remain in `factor.lisp`.
 
-For miss indexes $I$, the implemented score is
+For total residual entries $\mathcal{R}$ (unary row corrections plus relational `(:pair a b)` and `(:anchor k)` entries from `relational-linkage-residual`), the implemented score is
 
 $$
 J(h)=S(h)+
 \begin{cases}
-0,&I=\varnothing,\\
-L_+(|I|+1)+\displaystyle\sum_{i\in I}\bigl[L_+(i+1)+L_\tau(w_i)\bigr],&I\ne\varnothing
+0,&\mathcal{R}=\varnothing,\\
+L_+(|\mathcal{R}|+1)+S_{\mathrm{rows}}(\varepsilon)+S_{\mathrm{pairs}}(\varepsilon)+S_{\mathrm{anchors}}(\varepsilon),&\mathcal{R}\ne\varnothing
 \end{cases}
 +\lambda_{\mathrm{run}}W_{\mathrm{run}}(h).
 $$
 
-Here $L_+$ is `positive-bit-size`, $L_\tau$ is `value-bit-size`, and $w_i$ is the first explicitly extractable witness for the row. A hit accepts any value satisfying the original predicate. If a miss has no available correction witness, the candidate is not scored. The miss cost depends on physical row index and replacement value, not prediction distance. There is no correction-packet serializer or automatic lookup-baseline comparison in this API.
+Here $L_+$ is `positive-bit-size`, and each unary row miss $i \in I_{\mathrm{miss}}$ pays $L_+(i+1) + S_{\mathrm{corr}}(\hat{y}_i, A_{\omega_i}, \tau)$ via `select-closest-witness` and `correction-bit-size` (encoding signed differences on `:int`, centered modular Lee displacements on `(:gf p)`, componentwise deltas on `(:tuple ...)`, and replacement costs on other types or runtime errors). A hit accepts any value satisfying the original predicate (or any row with an unconstrained `'t` requirement). If a miss has no extractable witness list, the candidate is not scored.
 
-The returned `heuristic-model` retains its training residual for inspection. A consumer deploys `heuristic-program` alone to omit it. No general scheduler currently consumes the learned heuristic.
+The returned `heuristic-model` retains its training residual for inspection. A consumer deploys `heuristic-program` alone to omit it. `heuristic-decompositions` and `start-heuristic-synthesis` convert a non-exact `heuristic-model` into Stage B `:heuristic-additive` and `:heuristic-conditional` residual decompositions.
 
-`decomposition` has slots `name`, `decoder`, `child-id`, `child-type`, `bindings`, `language`, `bound`, `children`, and `fiber-p`. There is no solver slot. Arithmetic propagation is available through its own adapter and the view helpers, not automatically inside every recursive node.
+`decomposition` has slots `name`, `decoder`, `child-id`, `child-type`, `bindings`, `language`, `bound`, `children`, `fiber-p`, `solver`, and `fallback-p`. `prepare-synthesis-node` folds each pulled-back child frame, narrows it with the job's `:library` plus any branch `solver` via `propagate-requirements` (learned guards and witnesses applied to every `(= (op 'k T) 'c)` conjunct), and folds again; an ambiguous narrowing adds a `:fallback` sibling.
 
-`start-synthesis` retains direct root search and supplied decomposition trees. Nodes progress through preparation and child search. `reconstruct-synthesis-candidate` composes a child through all ancestors; `synthesis-verification-step` checks and scores the resulting AST on the original root frame. `compose-model` inlines expressions, so repeated bindings pay repeated syntax and execution costs.
+`start-synthesis` also accepts `:expand`, a function `(job node frame language heuristic-model ledger)` returning decompositions, and `:max-depth` (nil for no limit). Expanding a prepared node shallower than `max-depth`, root included, is a lazy agenda action `(:expand . node)`; its branches are staged privately and published once their debt is paid. Under `:policy :heuristic`, search and expansion actions across the whole tree are ranked by full-path price (the node's Stage A program composed to the root, plus its residual), so with `:max-depth nil` the search is anytime. `heuristic-expander` wraps `heuristic-decompositions` for this purpose; `start-heuristic-synthesis` is `start-synthesis` with `:policy :heuristic` and that expander (default `:max-depth 2`). A `priority-predictor` is a host function of the node, frame, language, and Stage A model.
 
-Every fourth scheduling quantum reserves the active root. Other quanta prioritize pending verification and otherwise round-robin active children. This preserves root progress within the configured grammar/bound; it is not a fourfold wall-time bound or unrestricted completeness claim. Completed reconstructions may exceed the direct root enumeration bound.
+`start-synthesis` retains direct root search and supplied decomposition trees. Nodes progress through preparation and child search, with equivalent child `(frame, language)` scopes cached in `synthesis-job-scope-cache` and incompatible pure-projection row sets recorded as sibling nogoods in `synthesis-job-nogoods`. `reconstruct-synthesis-candidate` composes a child through all ancestors; `synthesis-verification-step` checks and scores the resulting AST on the original root frame. `compose-model` inlines expressions, so repeated bindings pay repeated syntax and execution costs.
+
+Every fourth scheduling quantum reserves the active root. Other quanta prioritize pending verification and active preparation, and then schedule active children either by round-robin (`:policy :round-robin`) or by Stage A heuristic lookahead / priority-predictor routing with a 1-in-4 exploration reserve (`:policy :heuristic`). Completed reconstructions may exceed the direct root enumeration bound.
 
 `dependency-proposals` supplies empty-input and coordinate hypotheses, or explicit feature expressions. `start-dependency-search` first enumerates and observationally groups features, then submits their induced decompositions alongside direct search. `start-selector-search` separately supports fiber and dependency proposals. These are distinct entry points, not one automatic pipeline.
 

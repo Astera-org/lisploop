@@ -270,7 +270,8 @@
          (projected (project-frame-rows linked bindings))
          (labeled (context-label-frame linked '(0 0 1 1) :bindings bindings))
          (relation (observe-arithmetic-relation :int :+ '(0 1 2 3)))
-         (discovery (discover-arithmetic-solver relation 1 '(0 1 2 3) :operators '(:-) :literals nil :body-bound 12))
+         (discovery (validate-arithmetic-solver
+                     (discover-arithmetic-solver relation 1 '(0 1 2 3) :operators '(:-) :literals nil :body-bound 12)))
          (propagated (propagation-frame (propagate-arithmetic-child linked decoder 9 bindings discovery (make-ledger)))))
     (check (and pairs anchors))
     (dolist (transformed (list pulled projected labeled propagated))
@@ -383,17 +384,23 @@
       (check (equal (lit :bool t) (row-requirement (third (frame-rows folded-child)))))
       ;; Input raw-child remains un-mutated.
       (check (not (equal (lit :bool t) (row-requirement (second (frame-rows raw-child))))))))
-  ;; 2. `start-heuristic-search` / `condense-heuristic` scores candidates on pulled-back symbolic
-  ;;    child frames (where raw `extract-allowed-values` is `:unknown`) instead of dropping them.
+  ;; 2. `propagate-arithmetic-child` uses the learned M4 solver to invert pulled-back
+  ;;    symbolic child frames so `start-heuristic-search` / `condense-heuristic` scores
+  ;;    candidates against explicit residual witnesses.
   (let* ((inputs '((0 . :int)))
          (parent (simple-frame :int inputs '(((100) 101) ((200) 201) ((300) 309))))
          (decoder (app (op :+ :int) (var 0 :int) (var 9 :int)))
-         (pulled (pullback-frame parent decoder 9 :int (list (cons 0 (var 0 :int)))))
+         (bindings (list (cons 0 (var 0 :int))))
+         (pulled (pullback-frame parent decoder 9 :int bindings))
+         (solver (prepare-propagator-library (list (arithmetic-control :int :+ 1)) (make-ledger)))
+         (propagated (propagation-frame (propagate-arithmetic-child parent decoder 9 bindings solver (make-ledger))))
          (child-lang (make-language :int inputs :operators nil :literals '(0 1)))
          (bound (+ (header-size inputs :int) 6))
-         (h (condense-heuristic pulled child-lang :description-limit bound)))
+         (h (condense-heuristic propagated child-lang :description-limit bound)))
     (check (every (lambda (r) (eq :unknown (extract-allowed-values (row-requirement r))))
                   (frame-rows pulled)))
+    (check (every (lambda (r) (listp (extract-allowed-values (row-requirement r))))
+                  (frame-rows propagated)))
     (check (heuristic-model-p h))
     ;; Latent displacement is +1 on rows 0 and 1, and +9 on outlier row 2 -> chooses literal '1!
     (check (equal (lit :int 1) (heuristic-program h)))
@@ -403,7 +410,8 @@
          (inputs (list (cons 0 field)))
          (parent (simple-frame field inputs '(((1) 4) ((2) 0) ((3) 1))))
          (relation (observe-arithmetic-relation field :+ '(0 1 2 3 4)))
-         (solver (discover-arithmetic-solver relation 1 '(0 1 2 3 4) :operators '(:+) :literals '(0 1 2 3 4) :body-bound 16))
+         (solver (validate-arithmetic-solver
+                  (discover-arithmetic-solver relation 1 '(0 1 2 3 4) :operators '(:+) :literals '(0 1 2 3 4) :body-bound 16)))
          (child-lang (make-language field nil :operators nil :literals '(0 1 2 3)))
          (prop (make-decomposition :name :with-solver
                                    :decoder (app (op :+ field) (var 0 field) (var 9 field))
@@ -428,13 +436,15 @@
          (stage-a-lang (make-language :int inputs :operators nil :literals '(0 1)))
          (child-lang (make-language :int inputs :operators (list (op :+ :int)) :literals '(1)))
          (stage-a-bound (+ (header-size inputs :int) 6))
-         (child-bound (description-size (app (op :+ :int) (var 1 :int) (lit :int 1)) inputs)))
+         (child-bound (description-size (app (op :+ :int) (var 1 :int) (lit :int 1)) inputs))
+         (solver (prepare-propagator-library (list (arithmetic-control :int :+ 1)) (make-ledger))))
     (multiple-value-bind (proposals h-model)
         (heuristic-decompositions frame stage-a-lang
                                   :child-language child-lang
                                   :description-limit stage-a-bound
                                   :child-bound child-bound
-                                  :additive-p t :conditional-p nil)
+                                  :additive-p t :conditional-p nil
+                                  :solver solver)
       (check (heuristic-model-p h-model))
       (check (equal (var 0 :int) (heuristic-program h-model)))
       (check (= 1 (length proposals)))
@@ -443,14 +453,15 @@
     (let ((job (start-heuristic-synthesis frame stage-a-lang stage-a-bound
                                           :child-language child-lang
                                           :child-bound child-bound
-                                          :additive-p t :conditional-p nil)))
+                                          :additive-p t :conditional-p nil
+                                          :library solver)))
       (check (eq :bounded-exhaustion (message-claim (resume-synthesis job 200000))))
       (check (synthesis-job-best job))
       (check (evaluate-model-run-work (candidate-expression (synthesis-job-best job)) frame))))
   ;; 2. Path B2 (Conditional Exception-Patching / Decision-List Pullback):
   ;;    Rows x0 in {1, 2, 3, 4} follow y = x0, while outlier row x0 = 0 has target y = 9.
   ;;    Stage A condenses `x0` with 1 exception on row x0 = 0; `heuristic-decompositions`
-  ;;    synthesizes a separating guard G(x0) and pulls back through `(if G(x0) x0 Z)`,
+  ;;    synthesizes a separating guard G(x0) and pulls back through `(if G(x0) Z x0)`,
   ;;    folding all 4 covered rows to `'t` so Stage B synthesizes `Z = '9`.
   (let* ((inputs '((0 . :int)))
          (frame (simple-frame :int inputs '(((0) 9) ((1) 1) ((2) 2) ((3) 3) ((4) 4))))
@@ -493,26 +504,27 @@
          (probe-bound (description-size (lit :int 1) inputs))
          (make-proposals
            (lambda ()
-             (list (make-decomposition :name :decoy-1
-                                       :decoder (app (op :+ :int) (lit :int 100) (var 9 :int))
-                                       :child-id 9 :child-type :int
-                                       :bindings (list (cons 0 (var 0 :int)))
-                                       :language child-lang :bound child-bound)
-                   (make-decomposition :name :decoy-2
-                                       :decoder (app (op :+ :int) (lit :int 200) (var 9 :int))
-                                       :child-id 9 :child-type :int
-                                       :bindings (list (cons 0 (var 0 :int)))
-                                       :language child-lang :bound child-bound)
-                   (make-decomposition :name :decoy-3
-                                       :decoder (app (op :+ :int) (lit :int 300) (var 9 :int))
-                                       :child-id 9 :child-type :int
-                                       :bindings (list (cons 0 (var 0 :int)))
-                                       :language child-lang :bound child-bound)
-                   (make-decomposition :name :good-offset
-                                       :decoder (app (op :+ :int) (var 0 :int) (var 9 :int))
-                                       :child-id 9 :child-type :int
-                                       :bindings (list (cons 0 (var 0 :int)))
-                                       :language child-lang :bound child-bound))))
+             (let ((solver (prepare-propagator-library (list (arithmetic-control :int :+ 1)) (make-ledger))))
+               (list (make-decomposition :name :decoy-1
+                                         :decoder (app (op :+ :int) (lit :int 100) (var 9 :int))
+                                         :child-id 9 :child-type :int
+                                         :bindings (list (cons 0 (var 0 :int)))
+                                         :language child-lang :bound child-bound :solver solver)
+                     (make-decomposition :name :decoy-2
+                                         :decoder (app (op :+ :int) (lit :int 200) (var 9 :int))
+                                         :child-id 9 :child-type :int
+                                         :bindings (list (cons 0 (var 0 :int)))
+                                         :language child-lang :bound child-bound :solver solver)
+                     (make-decomposition :name :decoy-3
+                                         :decoder (app (op :+ :int) (lit :int 300) (var 9 :int))
+                                         :child-id 9 :child-type :int
+                                         :bindings (list (cons 0 (var 0 :int)))
+                                         :language child-lang :bound child-bound :solver solver)
+                     (make-decomposition :name :good-offset
+                                         :decoder (app (op :+ :int) (var 0 :int) (var 9 :int))
+                                         :child-id 9 :child-type :int
+                                         :bindings (list (cons 0 (var 0 :int)))
+                                         :language child-lang :bound child-bound :solver solver)))))
          (rr-job (start-synthesis frame root-lang 16
                                   :decompositions (funcall make-proposals)
                                   :policy :round-robin :quantum 12))
@@ -595,3 +607,117 @@
     (check (find verbose-binding (synthesis-job-results job) :key #'candidate-expression :test #'equal))
     (check (find compact-binding (synthesis-job-results job) :key #'candidate-expression :test #'equal))
     (check (equal compact-binding (candidate-expression (synthesis-job-best job))))))
+
+(deftest learned-propagators-narrow-pulled-back-requirements
+  ;; Learned solvers act on requirement conjuncts, not only on a decoder's head operator.
+  (let* ((plus (as-propagator-library (arithmetic-control :int :+ 1) (make-ledger)))
+         (z (var 0 :int)))
+    ;; 1. Nested operators unwind: 1 + (2 + Z) = 10  ->  Z = 7.
+    (let* ((req (app (op := :int) (app (op :+ :int) (lit :int 1) (app (op :+ :int) (lit :int 2) z)) (lit :int 10)))
+           (frame (make-frame (make-schema :inputs nil :target :int)
+                              (list (make-row :key 0 :known nil :requirement req))))
+           (propagation (propagate-requirements frame plus (make-ledger))))
+      (check (equal (singleton-requirement :int 7) (row-requirement (first (frame-rows (propagation-frame propagation))))))
+      ;; An integer rule is a conjecture: the narrowing is a suggestion, but uniqueness holds.
+      (check (= 1 (propagation-suggested propagation)))
+      (check (zerop (propagation-ambiguous propagation)))))
+  ;; 2. A tuple additive decoder needs no tuple solver: folding splits coordinates, the
+  ;;    scalar rule solves each, and folding reassembles an explicit tuple witness.
+  (let* ((type (tuple-type :int :int))
+         (inputs (list (cons 0 type)))
+         (parent (simple-frame type inputs '((((1 2)) (4 7)))))
+         (decoder (make-additive-residual-decoder (var 0 type) (var 9 type) type))
+         (folded (nth-value 1 (frame-conflict-p (pullback-frame parent decoder 9 type (identity-bindings inputs)))))
+         (propagation (propagate-requirements folded (as-propagator-library (arithmetic-control :int :+ 1) (make-ledger))
+                                              (make-ledger)))
+         (refolded (nth-value 1 (frame-conflict-p (propagation-frame propagation)))))
+    (check (eq :unknown (extract-allowed-values (row-requirement (first (frame-rows folded))))))
+    (check (equal '((3 5)) (extract-allowed-values (row-requirement (first (frame-rows refolded)))))))
+  ;; 3. Integer division has several witnesses (Z/2 = 1 for Z in {2, 3}): the narrowing is
+  ;;    marked ambiguous and the original frame is retained as a fallback.
+  (let* ((div (as-propagator-library (arithmetic-control :int :/ 0) (make-ledger)))
+         (req (app (op := :int) (app (op :/ :int) (var 0 :int) (lit :int 2)) (lit :int 1)))
+         (frame (make-frame (make-schema :inputs nil :target :int)
+                            (list (make-row :key 0 :known nil :requirement req))))
+         (propagation (propagate-requirements frame div (make-ledger))))
+    (check (plusp (propagation-ambiguous propagation)))
+    (check (eq frame (propagation-fallback propagation)))))
+
+(deftest heuristic-expansion-recurses-through-residual-spaces
+  ;; y = x0 + x1 + 1 in a grammar with no operators. Root Stage A condenses x0; its additive
+  ;; residual Z = x1 + 1 is re-priced in the child's space, where Stage A condenses x1; that
+  ;; residual Z' = 1 is a literal. Only the job-level library inverts the pulled-back `+`.
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (frame (simple-frame :int inputs '(((100 2) 103) ((200 5) 206) ((300 7) 308) ((400 3) 404))))
+         (language (make-language :int inputs :operators nil :literals '(0 1)))
+         (bound (+ (header-size inputs :int) 6))
+         (plus (arithmetic-control :int :+ 1))
+         (shallow (start-heuristic-synthesis frame language bound :library plus :max-depth 1 :conditional-p nil))
+         (deep (start-heuristic-synthesis frame language bound :library plus :max-depth 2 :conditional-p nil)))
+    (check (eq :bounded-exhaustion (message-claim (resume-synthesis shallow 2000000))))
+    (check (null (synthesis-job-best shallow)))
+    (check (eq :bounded-exhaustion (message-claim (resume-synthesis deep 2000000))))
+    (check (equal (app (op :+ :int) (var 0 :int) (app (op :+ :int) (var 1 :int) (lit :int 1)))
+                  (candidate-expression (synthesis-job-best deep))))
+    ;; Each level's Stage A model lives in that level's residual space.
+    (check (equal (list (var 0 :int) (var 1 :int) (lit :int 1))
+                  (mapcar (lambda (node) (heuristic-program (synthesis-node-heuristic node)))
+                          (synthesis-job-nodes deep))))
+    (check (equal '(0 1 2) (mapcar #'node-depth (synthesis-job-nodes deep))))))
+
+(deftest anytime-best-first-expansion-by-full-path-price
+  ;; y = x0 + x1 + x2 + 1 in an operator-free grammar needs three nested residual spaces.
+  ;; Expansion is a scheduled action ranked by full-path price, so a decoy sibling with a
+  ;; large residual is expanded only after the promising chain; without a depth limit the
+  ;; job is anytime: resumable, monotone in its best verified score, and budget-bounded.
+  (let* ((inputs '((0 . :int) (1 . :int) (2 . :int)))
+         (frame (simple-frame :int inputs '(((1000 100 2) 1103) ((2000 500 5) 2506)
+                                            ((3000 300 7) 3308) ((4000 200 3) 4204))))
+         (language (make-language :int inputs :operators nil :literals '(0 1)))
+         (bound (+ (header-size inputs :int) 8))
+         (plus (arithmetic-control :int :+ 1))
+         (decoy (make-decomposition :name :decoy :decoder (app (op :+ :int) (lit :int 99999) (var 9 :int))
+                                    :child-id 9 :child-type :int :bindings (identity-bindings inputs)
+                                    :language language :bound bound))
+         (make-job (lambda (max-depth)
+                     (start-heuristic-synthesis frame language bound :library plus :max-depth max-depth
+                                                :conditional-p nil :heuristic-budget 10000
+                                                :decompositions (list decoy))))
+         (shallow (funcall make-job 2))
+         (anytime (funcall make-job nil))
+         (stepped (funcall make-job nil))
+         (target (app (op :+ :int) (var 0 :int)
+                      (app (op :+ :int) (var 1 :int) (app (op :+ :int) (var 2 :int) (lit :int 1))))))
+    (check (eq :bounded-exhaustion (message-claim (resume-synthesis shallow 3000000))))
+    (check (not (find target (synthesis-job-results shallow) :key #'candidate-expression :test #'equal)))
+    ;; Anytime: cutoffs first, then the three-level reconstruction; the best never worsens.
+    (let ((scores nil))
+      (dolist (limit '(2000 10000 40000 3000000))
+        (let ((message (resume-synthesis anytime limit)))
+          (when (= limit 2000) (check (eq :cutoff (message-claim message))))
+          (push (if (synthesis-job-best anytime)
+                    (candidate-score (synthesis-job-best anytime) 0)
+                    most-positive-fixnum)
+                scores)))
+      (check (apply #'<= scores))
+      (check (null (synthesis-job-best shallow)))
+      (check (equal target (candidate-expression (synthesis-job-best anytime)))))
+    ;; Best-first: the root's additive child is expanded before the decoy sibling.
+    (let* ((lanes (loop for entry in (reverse (synthesis-job-trace anytime))
+                        when (consp (getf entry :lane)) collect (second (getf entry :lane))))
+           (decoy-id (synthesis-node-id (find :decoy (synthesis-job-nodes anytime)
+                                              :key (lambda (n) (and (synthesis-node-proposal n)
+                                                                    (decomposition-name (synthesis-node-proposal n)))))))
+           (chain-id (synthesis-node-id (find-if (lambda (n) (and (synthesis-node-parent n)
+                                                                  (zerop (synthesis-node-id (synthesis-node-parent n)))
+                                                                  (consp (decomposition-name (synthesis-node-proposal n)))))
+                                                 (synthesis-job-nodes anytime)))))
+      (check (< (or (position chain-id lanes) most-positive-fixnum)
+                (or (position decoy-id lanes) most-positive-fixnum))))
+    ;; Resuming in increments matches one uninterrupted run.
+    (loop for limit from 997 to (ledger-total (synthesis-job-ledger anytime)) by 997
+          do (resume-synthesis stepped limit))
+    (resume-synthesis stepped 3000000)
+    (check (equalp (synthesis-job-ledger anytime) (synthesis-job-ledger stepped)))
+    (check (equal (candidate-expression (synthesis-job-best anytime))
+                  (candidate-expression (synthesis-job-best stepped))))))

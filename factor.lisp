@@ -323,14 +323,8 @@ Charges evaluation of each context binding expression on LEDGER."
                   :lookup-p lookup-p)
      (loop for row in parent-rows
            for label in labels
-           collect (let* ((known
-                            (mapcar (lambda (binding)
-                                      (let ((run (evaluate (cdr binding) parent-inputs (row-known row)
-                                                           :ledger ledger)))
-                                        (unless (eq (evaluation-status run) :value)
-                                          (error "Context binding did not finish: ~S" run))
-                                        (evaluation-value run)))
-                                    effective-bindings))
+           collect (let* ((known (evaluate-row-bindings effective-bindings parent-inputs
+                                                        (row-known row) :ledger ledger))
                           (req (singleton-requirement label-type label)))
                      (charge ledger :context-frame (syntax-work req))
                      (make-row :key (copy-tree (row-key row))
@@ -345,6 +339,7 @@ Charges evaluation of each context binding expression on LEDGER."
   program
   residual
   (exact-p nil :type boolean)
+  (total-p t :type boolean)
   (program-bits 0 :type fixnum)
   (residual-bits 0 :type fixnum)
   (run-work 0 :type fixnum)
@@ -1390,13 +1385,8 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
                       :target (schema-target schema)
                       :lookup-p (schema-lookup-p schema))
          (loop for row in (frame-rows frame)
-               collect (let ((known
-                               (mapcar (lambda (b)
-                                         (let ((run (evaluate (cdr b) parent-inputs (row-known row) :ledger ledger)))
-                                           (unless (eq :value (evaluation-status run))
-                                             (error "View projection binding failed: ~S" run))
-                                           (evaluation-value run)))
-                                       bindings)))
+               collect (let ((known (evaluate-row-bindings bindings parent-inputs
+                                                           (row-known row) :ledger ledger)))
                          (charge ledger :orientation (length known))
                          (make-row :key (copy-tree (row-key row))
                                    :known known
