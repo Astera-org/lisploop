@@ -436,7 +436,7 @@ Listed proposals use the SAME construction, VM, checker and objective."
   "Freeze the observed inputs and language. PAIRS and ANCHORS refer to row keys."
   (assert (frame-rows frame) () "An empirical scope needs observations")
   (assert (equal (schema-inputs (frame-schema frame)) (language-inputs language)))
-  (assert (or (null anchors) (and pairs (>= (length anchors) 2))))
+  (assert (or (null anchors) (>= (length anchors) 2)))
   (assert (= (length anchors) (length (remove-duplicates anchors :test #'equal))))
   (let* ((schema (copy-schema (frame-schema frame)))
          (rows (mapcar (lambda (row)
@@ -454,7 +454,12 @@ Listed proposals use the SAME construction, VM, checker and objective."
         (assert (= (length pair) 2))
         (assert (not (equal (first pair) (second pair)))))
       (dolist (key anchors)
-        (assert (member key pairs :key #'first :test #'equal)))
+        (index key)
+        (when pairs
+          (assert (some (lambda (pair)
+                          (or (equal key (first pair))
+                              (equal key (second pair))))
+                        pairs))))
       (%make-observation-scope
        :id id :frame (make-frame schema rows :pairs pairs :anchors anchors) :language snapshot
        :pairs (mapcar (lambda (pair) (mapcar #'index pair)) pairs)
@@ -477,6 +482,7 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
       (return-from relational-linkage-residual (values nil 0 0 0)))
     (let* ((rows (frame-rows frame))
            (key-table (make-hash-table :test #'equal))
+           (charged-keys (make-hash-table :test #'equal))
            (entries nil)
            (pair-bits 0)
            (anchor-bits 0))
@@ -487,7 +493,10 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
             for override = (assoc key row-residuals :test #'equal)
             do (multiple-value-bind (valid-p val)
                    (cond
-                     (override (values t (cdr override)))
+                     (override
+                      (if (eq :unknown (cdr override))
+                          (values nil nil)
+                          (values t (cdr override))))
                      ((observation-outcome-p item)
                       (values (eq :value (observation-outcome-status item))
                               (observation-outcome-value item)))
@@ -516,6 +525,9 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
                              (if (and valid-a valid-b)
                                  (correction-packet val-a val-b type t)
                                  :error)))
+                       (setf (gethash (second pair) charged-keys) t)
+                       (unless valid-a
+                         (setf (gethash (first pair) charged-keys) t))
                        (push (cons (list :pair (first pair) (second pair)) packet) entries)
                        (incf pair-bits (+ (positive-bit-size (1+ pair-idx)) step-bits)))))))
       ;; 2. Cross-fiber / anchor separation (anti-collapse) corrections
@@ -531,7 +543,9 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
                       (push val seen-anchor-values)
                       (dolist (member-key (pair-connected-component anchor-key pairs))
                         (let ((m-info (gethash member-key key-table)))
-                          (when (and m-info (not (second m-info)))
+                          (when (and m-info (not (second m-info))
+                                     (not (gethash member-key charged-keys)))
+                            (setf (gethash member-key charged-keys) t)
                             (push (cons (list :anchor member-key) :disambiguate) entries)
                             (incf anchor-bits (+ (positive-bit-size (1+ (first m-info)))
                                                  min-step))))))))))))

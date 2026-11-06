@@ -16,7 +16,7 @@ It is implemented as a self-contained Common Lisp kernel and experimental suite 
 The system investigates how automated mathematical and algorithmic discovery arises from three interacting components
 (below, [M1](#sec-m1)–[M9](#sec-m9) refer to the milestones summarized in the [Reading & Implementation Map](#sec-reading-map) and defined in [Section 4](#sec-milestones); concrete representations and mathematical nomenclature are defined in [Section 1](#sec-shared-contract) and [Section 2](#sec-nomenclature)):
 
-1. **Symmetry (Conservation Under Action and Across Observations)**: Discovery begins by detecting what remains invariant when inputs, states, or syntax are transformed. At the empirical data level, a synthesized program $e(X)$ conserves a target input-output relation $A_\omega(Y)$ across observation rows $\omega \in \Omega$ ([M1](#sec-m1)), while an action invariant $h(X)$ is conserved along the trajectory steps of a state transition $T$ (`pairs`) yet varies across distinct orbits (`anchors`, [M2](#sec-m2)) and hence remains informative. At the operator and meta-data level, guarded algebraic laws $G(X) \implies e_1(X) = e_2(X)$ can be certified across a supported finite domain grid $D^\Gamma$ ([M3A](#sec-m3)), and shared syntactic skeletons $p$ can be found across corpora of laws and subexpressions ([M3B](#sec-m3), [M6](#sec-m6)); cross-prime type alignment remains proposed [M8](#sec-m8) work.
+1. **Symmetry (Conservation Under Action and Across Observations)**: Discovery begins by detecting what remains invariant when inputs, states, or syntax are transformed. At the empirical data level, a synthesized program $e(X)$ conserves a target input-output relation $A_\omega(Y)$ across observation rows $\omega \in \Omega$ ([M1](#sec-m1)), while an action invariant $h(X)$ is conserved along the trajectory steps of a state transition $T$ (`pairs`) yet varies across distinct orbits (`anchors`, [M2](#sec-m2)) and hence remains informative. At the operator and meta-data level, guarded algebraic laws $G(X) \implies e_1(X) = e_2(X)$ can be certified across a supported finite domain grid $D^\Gamma$ ([M3A](#sec-m3)), and shared syntactic skeletons $p$ can be found across corpora of laws and subexpressions ([M3B](#sec-m3), [M6](#sec-m6)); `retype-law` retypes scalar and tuple laws across prime fields and `:int`, while automatic cross-prime solver-family alignment prior to anti-unification remains proposed [M8](#sec-m8) work.
 2. **Algebra (Converting Conserved Expressions into Generative Models, Descriptions, and Backward Solvers)**: A conserved relation $R(X, Y)$ or invariant $h(s) = h(Ts)$ is initially a passive test—it checks whether a given tuple is valid, but does not by itself generate solutions. Algebra turns passive conservation into **active generation and backward constraint propagation**: reorienting which coordinates of a recorded relation serve as known inputs vs. unknown targets (`orient-observations`, `orient-arithmetic-requirements`), synthesizing explicit witness functions $q(K, C)$ and solvability guards $G(K, C)$ that invert forward operators ([M4](#sec-m4)), and pulling parent requirements $A_\omega(Y)$ backward through outer decoders $Y = d(X, Z)$ to generate child synthesis problems, with explicit simplification and propagation (`pullback-frame`, `fold-constants`, `propagate-arithmetic-child`).
 3. **Interacting Views of Data & Meta-Data, and Inferring Hidden or Aliased Information**: Because object-language programs, row requirement predicates $A_\omega(Y)$, the equations and guards of algebraic laws, and anti-unification templates are all homoiconic S-expressions, the system can project both runtime data and symbolic meta-data through interchangeable views: deduplicated lookup tables (quotient views), syntactic templates with holes ([M3B](#sec-m3), [M6](#sec-m6)), synthesized input-feature projections (`start-dependency-search`), and **piecewise regimes**—subsets of observations $\Omega_k \subseteq \Omega$ that follow different local rules or parameters when a single uniform formula does not fit all rows. Specifically, a regime split may be either an **observable Boolean regime split** ([M7](#sec-m7)), where a synthesized guard predicate $G(X)$ partitions the input space into `(if G branch_1 branch_2)` (e.g., even vs. odd episodes), or a **latent regime parameter** $a_{j(r)}$ ([M5](#sec-m5)), where an unobserved intermediate value $Z = a_{j(r)}$ (such as a hidden per-episode offset $a_0 = 1$ vs. $a_1 = 3$ inside $y_{r,t} = \iota(t) + a_{j(r)}$) switches across occurrence groups $r$ without any explicit regime label $j(r)$ in the data. Whenever a projection or many-to-one operator **aliases** distinct states onto the same observable value or hides an unlabelled coordinate—such as $0 \cdot Z = 0$, truncating integer division $Z / 2 = 1 \implies \{2, 3\}$, latent regime parameters $a_{j(r)}$ in [M5](#sec-m5), or shared subexpressions buried at varying tree paths in [M6](#sec-m6)—the kernel explores candidate hidden structures via conservative requirement folding (`fold-constants`), bounded fiber partition proposals (`infer-fibers`), explicit dependency/selector synthesis (`start-dependency-search`), structural conflict pruning (`frame-conflict-p`), and subgraph correspondence search (`discover-subexpression-abstractions`).
 
@@ -40,8 +40,8 @@ This plan distinguishes **implemented mechanisms and tests** from **proposed ext
 | [4. Algebra](#sec-m4) | Learned witnesses and guards; certified versus tentative propagation | `laws.lisp`, `enumerate.lisp` | `tests/algebra.lisp`, `tests/propagation.lisp` |
 | [5. Lifting](#sec-m5) | Supplied lifting, bounded fiber proposals, explicit dependencies | `factor.lisp`, `synthesize.lisp` | `tests/lifting.lisp`, `tests/refactor.lisp` |
 | [6. Abstraction](#sec-m6) | Typed AU and bounded subexpression correspondence search | `factor.lisp`, `laws.lisp` | `tests/abstraction.lisp` |
-| [7. Views and locality](#sec-m7) | Boolean views and supplied locality schedules; graded learned geometry remains open | `frame.lisp`, `factor.lisp` | `tests/views.lisp`, `tests/refactor.lisp` |
-| [8. Recursion](#sec-m8) | Supplied nested decompositions and condensation; learned control remains open | `synthesize.lisp`, `requirements.lisp` | `tests/refactor.lisp`, `tests/propagation.lisp` |
+| [7. Views and locality](#sec-m7) | Boolean views, Stage A residual/linkage metrics, and supplied locality schedules; pluggable DSL metrics and learned locality keys remain open | `frame.lisp`, `enumerate.lisp`, `factor.lisp` | `tests/views.lisp`, `tests/refactor.lisp` |
+| [8. Recursion](#sec-m8) | Supplied & Stage B residual decompositions (`heuristic-decompositions`, `start-heuristic-synthesis`), child folding/solver propagation, nogood sibling pruning, child DAG reuse, and `:policy :heuristic` agenda routing | `synthesize.lisp`, `requirements.lisp`, `frame.lisp`, `factor.lisp` | `tests/refactor.lisp`, `tests/propagation.lisp` |
 | [9. Vocabulary](#sec-m9) | Proposed learned function registry and descriptor-guided retrieval | Existing syntax and condensation are prerequisites | No end-to-end M9 implementation |
 
 ## 1. Shared Contract: Representation, Availability, Costs, and Evidence {#sec-shared-contract}
@@ -88,7 +88,7 @@ The candidate receives only `row-known`, in schema order. The checker receives t
 
 Model-building helpers such as `lookup-model`, `quotient-model`, `partition-model`, and `corpus-abstraction-model` return ordinary ASTs. There is no `program-model` wrapper. Lookup requires `schema-lookup-p` and explicit compatible witnesses for each available input key.
 
-Pairs and anchors classify observations; they do not add acceptance conditions to ordinary synthesis or heuristic condensation. Their exact scope is described below.
+Pairs and anchors do not add acceptance conditions to ordinary exact synthesis (`start-search`). They classify observation buckets (`invariant-p`, `informative-p`) and contribute metric pair-drift and anchor-collision residual bits (`relational-linkage-residual`) to observation buckets and heuristic condensation (`start-heuristic-search`, `condense-heuristic`). Their exact scope is described below.
 
 ### 1.4 One VM, several return contracts
 
@@ -112,7 +112,7 @@ $$
 J_{\mathrm{exact}}(M)=S(M)+\lambda_{\mathrm{run}}W_{\mathrm{run}}(M).
 $$
 
-`candidate-score` implements it for search and recursive root selection. Heuristic search adds the exception cost in Operation 4. View APIs rank **description bits first and runtime second**, with no `run-weight` argument.
+`candidate-score` implements it for exact search (`start-search`) and recursive root selection (`start-synthesis`). `propagation-search` ranks accepted candidates by description bits (`candidate-size`) alone. Heuristic search adds the exception and relational residual cost in Operation 4, breaking score ties by smaller program bits. View APIs rank **description bits first and runtime second**, with no `run-weight` argument.
 
 The research procedure criterion is
 
@@ -169,7 +169,7 @@ This mathematical condition is stronger than the implementation's bounded inabil
 
 **Reconstruction residuals versus heuristic errors.** AU substitutions and quotient indexes are necessary to reconstruct the data. Heuristic exceptions are priced for training and may be omitted by deploying only `heuristic-program`. The returned heuristic record still retains those exceptions for inspection.
 
-**Generated linkage.** `partition-pairs-and-anchors` creates chains within multi-row blocks and anchors from their representatives, retaining an anchor list only if at least two such blocks exist. `classify-observation-bucket` requires all pair equalities and at least one anchor difference. It does not require all blocks to be distinct. Generated linkage is evidence about a proposed grouping, not an independently certified geometry. `pullback-frame` does not transport linkage, and heuristic scoring does not consume it.
+**Generated linkage.** `partition-pairs-and-anchors` creates chains within multi-row blocks and anchors from their representatives, retaining an anchor list only if at least two such blocks exist. `classify-observation-bucket` requires all pair equalities and at least one anchor difference. It does not require all blocks to be distinct. Generated linkage is evidence about a proposed grouping, not an independently certified geometry. One-to-one frame transforms (`pullback-frame`, `project-frame-rows`, `context-label-frame`, `shuffle-frame-rows`, and `propagate-arithmetic-child`) preserve `pairs` and `anchors`, and `infer-fibers` preserves existing linkage or installs its inferred partition linkage; row-subsetting transforms (`evaluate-guard-partition` branch subframes, `%synthesize-supplied-partition-view` shared-decoder parent frames, and `covered-frame`) do not transport linkage. Both `observation-bucket` and `start-heuristic-search` consume linkage via `relational-linkage-residual`.
 
 **Decoder scope.** A decoder can be any well-typed expression over parent inputs and a fresh child variable, including a tuple-valued child. Bindings compute the child's runtime inputs from parent inputs. `compose-model` inlines the child and bindings, charging repeated syntax and execution. General decoder enumeration and runtime sharing are not implicit in that operation.
 
@@ -275,7 +275,7 @@ This mathematical condition is stronger than the implementation's bounded inabil
 
 ### 2.1 Operation 1: Observational Conservation Across Frame Rows
 
-Exact synthesis accepts an expression only if each candidate evaluation and each corresponding requirement check returns a value and the latter value is `t$:
+Exact synthesis accepts an expression only if each candidate evaluation and each corresponding requirement check returns a value and the latter value is `t`:
 
 $$
 \forall\omega\in\Omega,\qquad A_\omega(M(e,\omega))=\mathrm{true}.
@@ -314,7 +314,7 @@ $$
 
 Compression is an objective, not a guarantee: template, selector, occurrence, and reconstruction overhead can make a factorization larger than its baseline.
 
-**Term algebra.** `anti-unify` constructs a typed least general generalization within a common scope, memoizing repeated disagreements. Value and function-sorted holes are ordinary `hole` symbols. `compile-au-constructor` lowers the pattern into the symbolic DSL; `au-substitutions-frame` exposes substitutions as another synthesis problem. Cross-schema or cross-prime type erasure is not automatic.
+**Term algebra.** `anti-unify` constructs a typed least general generalization within a common scope, memoizing repeated disagreements. Value and function-sorted holes are ordinary `hole` symbols. `compile-au-constructor` lowers the pattern into the symbolic DSL; `au-substitutions-frame` exposes substitutions as another synthesis problem. `retype-law` (backed by `retype-expr`, `retype-type`, and `retype-value` in `laws.lisp`) explicitly retypes laws and expressions across `(:gf p)` and `:int` (including nested tuples and sequences, reducing integers modulo $p$ while preserving `:int` index literals), whereas `anti-unify` itself does not erase types across schemas or primes automatically.
 
 **Unaligned syntax.** `collect-tree-occurrences` records subtree paths and contexts. `discover-subexpression-abstractions` seeds patterns from compatible occurrence pairs, extends them with bounded/greedy correspondence choices, and builds reconstructing corpus expressions. Optional checked normalization supplies an alternate syntax corpus; original syntax remains a distinct reconstruction target.
 
@@ -330,7 +330,7 @@ This is not Hard EM, global MDL, or entropy minimization. Set intersection is as
 
 The actual signature is `(infer-fibers frame &optional ledger budget branch-limit)`, returning classes, labels, refined frame, partition, and status. A branch-limited proposal can still be returned; total-budget interruption returns nil proposal values. `:feasibility :unresolved` is deliberate. Unsatisfiable rows remain explicit conflict rows, and a non-refuted block is not a witness.
 
-The refined frame can carry inferred linkage. Direct selector and dependency search remain alternatives, because the most compact partition proxy need not yield the cheapest realizable selector.
+The refined frame preserves existing `frame-pairs` and `frame-anchors` or installs the linkage inferred by `partition-pairs-and-anchors`. Direct selector and dependency search remain alternatives, because the most compact partition proxy need not yield the cheapest realizable selector.
 
 ### 2.3 Operation 3: Reorientation, Pullback, Conservative Simplification, and Propagation
 
@@ -363,7 +363,7 @@ This is ordinary AST substitution. Root verification remains necessary, especial
 
 `fold-constants` in `requirements.lisp` evaluates closed subtrees under one local budget. It retains expressions on errors or unfinished evaluation. Totality checks gate reductions that would erase or reorder potentially partial computations. Finite-set intersection, equality substitution, and tuple reconstruction are supported; literal-table inversion is not.
 
-`frame-conflict-p` folds each row and conjunctions on identical inputs, returning either a `frame-conflict` with kind `:unsatisfiable-row` or `:incompatible-rows`, or nil. It neither installs the folded predicates into the input frame nor proves all remaining predicates satisfiable. Work depends on syntax and evaluation as well as row count.
+`frame-conflict-p` folds each row and conjunctions on identical inputs, returning `(values conflict folded-frame)`: the primary value is either a `frame-conflict` with kind `:unsatisfiable-row` or `:incompatible-rows`, or `nil`, and the second value is a fresh `frame` carrying the folded row predicates when no conflict is found. It neither mutates the input frame in place nor proves all remaining predicates satisfiable. `prepare-synthesis-node` installs `folded-frame` (and optionally invokes `propagate-arithmetic-child` when `decomposition-solver` is provided) so child searches and nested pullbacks receive simplified predicates.
 
 #### 2.3.4 Dual-grade propagation and 3:1 scheduling {#sec-3-to-1-scheduling}
 
@@ -379,7 +379,7 @@ The recursive synthesis scheduler separately reserves its active root every four
 
 `start-heuristic-search` / `resume-heuristic-search` in `synthesize.lisp` interleave observation, requirement checking, correction extraction, and ranking under one cumulative ledger. `condense-heuristic` in `factor.lisp` is the synchronous convenience wrapper returning a best completed model and status.
 
-The search scores the original requirements, without silently tightening them or selecting a single witness before checking. When a prediction $\hat{y}_i$ fails row $i$'s requirement $A_{\omega_i}$, it is priced by an executable **Correction Encoder / Pricer** (`correction-packet`, `correction-bit-size`, `select-closest-witness` in `frame.lisp`):
+The search scores the original requirements, without silently tightening them or selecting a single witness before checking. When `check-requirement` returns `t` on row $i$, the row incurs zero unary residual bits (even if `extract-allowed-values` returns `:unknown`). When a prediction $\hat{y}_i$ fails row $i$'s requirement $A_{\omega_i}$ (or errors), `resolve-heuristic-witnesses` extracts explicit witnesses $\mathrm{Allowed}(A_{\omega_i})$ (fast-pathing `extract-allowed-values`, folding closed subtrees, solving linear additive/subtractive equalities over `:int`, `(:gf p)`, and tuples, or sweeping small finite domains; if the predicate is unsatisfiable `'nil`, the candidate is abandoned, and if it remains `:unknown` on an infinite/large domain, a conservative replacement fallback cost $1+\mathrm{type\text{-}bit\text{-}size}(\tau)$ is charged). Otherwise, the miss is priced by the **Correction Encoder / Pricer** (`correction-packet`, `apply-correction-packet`, `correction-bit-size`, `select-closest-witness` in `frame.lisp`):
 
 $$
 S_{\mathrm{corr}}(\hat{y}_i, A_{\omega_i}, \tau)=
@@ -387,19 +387,26 @@ S_{\mathrm{corr}}(\hat{y}_i, A_{\omega_i}, \tau)=
 S_{\mathrm{corr}}(\hat{y}_i, w, \tau),
 $$
 
-minimizing correction bit length across all explicit witnesses in $\mathrm{Allowed}(A_{\omega_i})$ (so set-valued requirements are invariant to witness list ordering):
+minimizing correction bit length across all explicit witnesses in $\mathrm{Allowed}(A_{\omega_i})$ (so set-valued requirements are invariant to witness list ordering), with total unary row cost including the 1-based physical row-index prefix $L_+(i+1)$:
+
+$$
+S_{\mathrm{rows}}(\varepsilon)=\sum_{i\in I_{\mathrm{miss}}}
+\Bigl[L_+(i+1)+S_{\mathrm{corr}}(\hat{y}_i, A_{\omega_i}, \tau)\Bigr].
+$$
+
+Specifically:
 
 - **Integers (`:int`):** encodes the signed difference $\delta = w - \hat{y}_i$ with bit cost $L_{\mathrm{int}}(\delta) = L_+(\mathrm{signed\text{-}code}(\delta))$.
 - **Prime fields (`(:gf p)`):** encodes the centered modular Lee displacement $\delta = \mathrm{centered\text{-}mod}(w - \hat{y}_i, p) \in [-\lfloor p/2\rfloor, \lceil p/2\rceil - 1]$ with bit cost $L_{\mathrm{int}}(\delta)$, rather than a flat $\lceil\log_2 p\rceil$ constant.
 - **Tuples (`(:tuple ...)`):** encodes a componentwise correction packet where unchanged coordinates ($\hat{y}_{i,j} = w_j$) pay 1 bit (`L_int(0) = 1`) and changed coordinates pay $S_{\mathrm{corr}}(\hat{y}_{i,j}, w_j, \tau_j)$.
-- **Other domains (`:bool`, `:seq`, `:code`) or evaluation errors:** fall back to replacement bit cost $L_\tau(w)$.
+- **Other domains (`:bool`, `:seq`, `:code`) or single-value evaluation errors:** fall back to replacement bit cost $L_\tau(w)$.
 
-When the frame also carries relational linkage (`frame-pairs` and/or `frame-anchors`), `relational-linkage-residual` in `enumerate.lisp` extends pair invariance and anchor diversity from Boolean Delta/Heaviside indicators to bit metrics over the post-row-correction values $\tilde{y}$:
+When the frame also carries relational linkage (`frame-pairs` and/or `frame-anchors`), `relational-linkage-residual` in `enumerate.lisp` extends pair invariance and anchor diversity from Boolean Delta/Heaviside indicators to bit metrics over the post-row-correction values $\tilde{y}$ (where row $i$ uses its selected witness $w_i$ if row $i$ had a unary correction, and $\hat{y}_i$ otherwise):
 
-1. **Intra-fiber / transition pair drift:** each linked pair $(\omega_a,\omega_b)\in\mathrm{pairs}$ with $\tilde{y}_a \ne \tilde{y}_b$ pays index cost plus $S_{\mathrm{corr}}(\tilde{y}_a, \tilde{y}_b, \tau)$.
-2. **Cross-fiber anchor collision (anti-collapse):** each anchor $\omega_{r_m}\in\mathrm{anchors}$ whose output collides with an earlier anchor ($\tilde{y}_{r_m}=\tilde{y}_{r_j}$ for $j<m$) or errors pays a disambiguation correction across the un-corrected rows of its pair-connected component $G(\omega_{r_m})$, preventing constant collapse from scoring zero residual bits on relational frames.
+1. **Intra-fiber / transition pair drift:** each linked pair $(\omega_a,\omega_b)\in\mathrm{pairs}$ with $\tilde{y}_a \ne \tilde{y}_b$ pays index cost $\max(L_+(i_a+1),L_+(i_b+1))$ plus $S_{\mathrm{corr}}(\tilde{y}_a, \tilde{y}_b, \tau)$ (or $L_\tau(\tilde{y}_b)$ / $L_\tau(\tilde{y}_a)$ when one endpoint errored, and $1+\mathrm{type\text{-}bit\text{-}size}(\tau)$ when both errored and neither endpoint was already overridden by a unary row residual).
+2. **Cross-fiber anchor collision (anti-collapse):** each anchor $\omega_{r_m}\in\mathrm{anchors}$ whose output collides with an earlier anchor ($\tilde{y}_{r_m}=\tilde{y}_{r_j}$ for $j<m$) or errors pays $L_+(i+1)+\mathrm{minimum\text{-}disambiguation\text{-}bit\text{-}size}(\tau)$ across each row $i$ in its pair-connected component $G(\omega_{r_m})$ that was not already overridden by a unary row residual, preventing constant collapse from scoring zero residual bits on relational frames.
 
-For total residual entries $\mathcal{R}$ (row corrections plus relational pair/anchor corrections),
+For total residual entries $\mathcal{R}$ (unary entries `(row-key . witness)` plus relational entries `((:pair a b) . packet)` and `((:anchor k) . :disambiguate)`),
 
 $$
 S(\varepsilon)=
@@ -534,9 +541,9 @@ Reorientation, joint tuple-valued pullback, composition, quotient/partition reco
 
 **3B — Lossless law-corpus compression.** `make-law-corpus` packages actual equation and guard syntax. `propose-law-compressions` constructs alternatives using literals, repetition, and AU templates. The decoded corpus must preserve syntax, guards, and occurrences, not merely evaluate to the same Boolean results. Negative compression gain is allowed and tested.
 
-**3C — Symbolic programs and checked rewriting.** Quoted expressions are inspected, matched, constructed, and substituted with `:code-*` programs. Rule transformers and propagator matchers use the same metered VM and validated-program boundary. Rewriting preserves relevant definedness and has a decreasing encoded syntax order; original alternatives remain available during search.
+**3C — Symbolic programs and checked rewriting.** Quoted expressions are inspected, matched, constructed, and substituted with `:code-*` programs. Rule transformers and propagator matchers use the same metered VM and validated-program boundary. Rewriting preserves relevant definedness and has a decreasing encoded syntax order; original alternatives remain available during search. `retype-law` translates scalar and tuple laws across prime fields and `:int`.
 
-**Evidence.** `tests/laws.lisp`, `tests/guards.lisp`, `tests/compression.lisp`, `tests/symbolic.lisp`, and `tests/amortization.lisp` cover discovery, finite certificates, exact reconstruction, symbolic pullback, typed constructors, scoped preparation caches, and amortization. `symbolic-pullback-learns-a-checked-transformation` uses syntax construction/equality, not a nonexistent `:code-eval` primitive.
+**Evidence.** `tests/laws.lisp`, `tests/guards.lisp`, `tests/compression.lisp`, `tests/symbolic.lisp`, and `tests/amortization.lisp` cover discovery, finite certificates, tuple-domain law validation/retyping/rewriting, exact reconstruction, symbolic pullback, typed constructors, scoped preparation caches, and amortization. `symbolic-pullback-learns-a-checked-transformation` uses syntax construction/equality, not a nonexistent `:code-eval` primitive.
 
 ### 4.4 Milestone 4: Algebraic Reorientation and Dual-Grade Propagation {#sec-m4}
 
@@ -582,9 +589,9 @@ Validated rewriting can expose alternate syntax for abstraction. Compression of 
 
 Child candidates are reconstructed at the parent. `price-view-combinations` ranks assembled candidates by bits, then runtime. `discover-partition-views` includes a verified lookup baseline when `schema-lookup-p` permits it and the frame provides compatible explicit witnesses. The supplied-view helper does not add that baseline. Supplied-view and discovery wrappers share one additional-work budget and return a final status message; they are synchronous.
 
-**Locality.** Without a key, tree indexes supply positions. A supplied `:locality-key` can produce equivalence classes or integer-list coordinates. `generated-space-distance` uses Manhattan distance for unequal, equal-length integer lists; equal keys and distinct scalar keys follow the coarse-class/rank rules in the source. A scalar key is not interpreted as an ordinary numeric distance.
+**Locality.** Without a key, tree indexes supply positions. A supplied `:locality-key` can produce equivalence classes or integer-list coordinates. `generated-space-distance` (an internal helper in `factor.lisp`) uses Manhattan distance for unequal, equal-length integer lists; equal keys and distinct scalar keys follow the coarse-class/rank rules in the source. A scalar key is not interpreted as an ordinary numeric distance.
 
-Pair ordering also considers rank distance, path-depth difference, and depth sum. `:locality` retains every-fourth canonical selection; `:locality-only` omits it as a negative control. A host-function key is supported but its body is not VM-metered; DSL-key evaluation is metered. Neither key synthesis nor a complete policy-description objective is implemented here.
+Pair ordering (`schedule-occurrence-pairs`) prioritizes cross-tree pairs (`pair-cross-tree-p`) ahead of same-tree pairs before sorting by `pair-tree-dist`, `pair-rank-dist`, `pair-path-dist`, and `pair-depth-sum`. `:locality` retains every fourth selection for canonical order (`(= 3 (mod turn 4))`). `:locality-only` serves as a hard-cutoff negative control: it omits the 1-in-4 reserve, filters candidate pairs strictly to cross-tree pairs with `(<= (pair-tree-dist p) 1)`, and disables Step 2b multi-tree LGG relaxation (which is also skipped whenever `pair-budget` is non-nil). Step 3 of `discover-subexpression-abstractions` constructs and prices full packet models only for `:aligned-root` plus at most the top 8 `:subexpression` selections ranked by `abstraction-structural-score`. A host-function key is supported but its body is not VM-metered; DSL-key evaluation is metered. Neither key synthesis nor a complete policy-description objective is implemented here.
 
 **Evidence.** `tests/views.lisp` covers supplied versus discovered views, separate/shared/lookup comparisons, ordered reassembly and physical-shuffle controls, computed linkage, co-local and distant planted occurrences, supplied parity and 2D keys, and preservation of tentative fallback alternatives. `tests/refactor.lisp` adds total-budget and shared-decoder-versus-conflicting-separate-branch controls.
 
@@ -592,33 +599,32 @@ Pair ordering also considers rank distance, path-depth difference, and depth sum
 
 ### 4.8 Milestone 8: Recursive Synthesis and Learned Search Preferences {#sec-m8}
 
-**8A — Multi-step reconstruction.** `start-synthesis` accepts explicit decomposition trees and preserves direct root search. Each child candidate is composed through every ancestor and verified on the original root. Intermediate expansion is permitted; the direct root bound does not cap a completed reconstruction obtained through separately bounded children.
+**8A — Multi-step reconstruction and Stage A $\to$ Stage B residual pullback.** `start-synthesis` accepts explicit decomposition trees and preserves direct root search. Each child candidate is composed through every ancestor and verified on the original root. Intermediate expansion is permitted; the direct root bound does not cap a completed reconstruction obtained through separately bounded children.
 
-The exact `decomposition` slots are `name`, `decoder`, `child-id`, `child-type`, `bindings`, `language`, `bound`, `children`, and `fiber-p`. Optional fiber preparation proposes refined requirements; root replay protects against unsuitable proposals.
+The `decomposition` slots are `name`, `decoder`, `child-id`, `child-type`, `bindings`, `language`, `bound`, `children`, `fiber-p`, `solver`, and `fallback-p`. When `solver` is supplied, `prepare-synthesis-node` invokes `propagate-arithmetic-child` (and spawns a `:fallback` sibling whenever tentative narrowing occurs); when `frame-conflict-p` succeeds, its second return value (`folded-frame`) is installed on the child node.
 
-**8B — Continuations and explicit dependencies.** Node preparation, search, composition debt, and root verification are preserved across cumulative-budget resumes. `dependency-proposals`, `start-selector-search`, and `start-dependency-search` expose different ways to propose contexts. Feature discovery is a first phase of dependency search, not a learned priority system.
+`heuristic-decompositions` and `start-heuristic-synthesis` bridge Stage A heuristic condensation to Stage B recursive synthesis by converting a non-exact `heuristic-model` $(\hat{\pi}, \varepsilon \ne \varnothing)$ into two complementary child `decomposition` proposals:
+- **Additive / displacement residual decoder (`:heuristic-additive`):** for `:int`, `(:gf p)`, and tuples thereof, constructs outer decoder $d(X, Z) = \hat{\pi}(X) + Z$ (or componentwise tuple sum), exposing the displacement $Z = Y - \hat{\pi}(X)$ as the child target.
+- **Conditional exception-patching decoder (`:heuristic-conditional`, anytime decision-list refinement):** converts the row hit/miss mask of $\hat{\pi}$ into a Boolean `support-frame`, synthesizes a separating (or sound partial) guard $G(X)$, and pulls $\Omega$ back through $d(X, Z) = (\texttt{if } G(X)\; \hat{\pi}(X)\; Z)$ so covered rows fold via `fold-constants` to `(lit :bool t)` (0 residual bits) and child synthesis focuses strictly on the uncovered exception rows.
 
-**8C — Checked conflicts.** A false row or incompatible identical-input requirements can stop a child before enumeration. Messages include node/parent identity and evidence. These are local diagnostics; reusable learned clauses, conflict generalization, and sibling pruning are not implemented.
+**8B — Continuations, explicit dependencies, and child-frame DAG reuse.** Node preparation, search, composition debt, and root verification are preserved across cumulative-budget resumes. `dependency-proposals`, `start-selector-search`, and `start-dependency-search` expose different ways to propose contexts. `finish-synthesis-preparation` indexes child problems by `child-scope-signature`; when an equivalent child `(frame, language)` has already been prepared (`synthesis-job-reused-subproblems`), the follower node attaches to the canonical child search (emitting `:subproblem-reused`) while still reconstructing and pricing every discovered child candidate through its own parent decoder and bindings.
 
-**8D — Condensation.** Resumable heuristic search (`start-heuristic-search`, `resume-heuristic-search`, `condense-heuristic`) prices unary and relational residuals via the Stage A correction encoder (`correction-bit-size`, `select-closest-witness`, `relational-linkage-residual`), supporting ordered difference bits on `:int` and `(:gf p)`, componentwise tuples, order-independent witness selection on sets, and anti-collapse anchor pricing. Collecting continuation episodes, fitting useful priorities, and routing the recursive agenda with them remain open.
+**8C — Checked conflicts and sibling nogood pruning.** A false row or incompatible identical-input requirements stops a child before enumeration (`frame-conflict-p`). When a pure dependency projection (`decoder = (var child-id child-type)`) fails with `:incompatible-rows` on keys $(k_1, k_2)$, `(parent-id k_1 k_2)` is recorded as a reusable induced anchor nogood in `synthesis-job-nogoods`. Any subsequent (or in-flight) sibling projection under the same parent whose bindings alias $(k_1, k_2)$ is immediately pruned with `:reused-nogood t` without pulling back or folding the full frame.
 
-**Current tests.** `tests/refactor.lisp` includes fourteen tests, covering partial-expression folding, snapshots, heuristic and recursive budget parity, nested `x+3` reconstruction, direct selectors versus fibers, parent-level candidate pricing, synthesized sum features, view budgets, synthesized inverse-grid witnesses, partition uncertainty, shared-decoder independence, correction encoding across ordered domains/tuples/sets, and frame-linkage preservation with metric anti-collapse. `tests/propagation.lisp` supplies the separate propagation controls. These tests do not implement a learned agenda-routing benchmark.
-
-**Remaining research items:**
-
-1. Enumerate outer decoder shells autonomously under a declared grammar and budget.
-2. Share compatible in-progress or completed child problems across branches using a sufficiently complete scope signature.
-3. Generalize checked conflicts into reusable nogoods without confusing cutoff with infeasibility.
-4. Collect continuation traces and test learned search ordering against canonical and existing round-robin baselines.
-5. Investigate cross-prime solver-template lifting with an explicit type-alignment scheme; ordinary AU does not erase types automatically.
-
-One proposed M8D training target from the earlier plans is
+**8D — Condensation, heuristic agenda routing, and episode returns.** Resumable heuristic search (`start-heuristic-search`, `resume-heuristic-search`, `condense-heuristic`) prices unary and relational residuals via the Stage A correction encoder (`correction-packet`, `apply-correction-packet`, `correction-bit-size`, `select-closest-witness`, `relational-linkage-residual`), supporting ordered difference bits on `:int` and `(:gf p)`, componentwise tuples, order-independent witness selection on sets, standalone or paired anti-collapse anchors, and symbolic child-frame witness resolution (`resolve-heuristic-witnesses`). Under `:policy :heuristic` (or a supplied `priority-predictor`), `prepare-synthesis-node` scores each child branch with a bounded Stage A heuristic lookahead probe, immediately promotes any `heuristic-exact-p` child hit to root verification, and routes 3 of every 4 child selections to the lowest-priority child while reserving every 4th child selection for round-robin exploration. `synthesis-episode-returns` computes the realized return
 
 $$
-G_t=B_t-B_T-\lambda_{\mathrm{search}}(W_T-W_t),
+G_t=B_t-B_T-\lambda_{\mathrm{search}}(W_T-W_t)
 $$
 
-where $B$ is the best verified objective reached during an episode. This is a proposed experiment, not an existing logged field, shrinkage estimator, or scheduling rule. Its relation to ordinal locality and residual pricing remains to be settled.
+for every scheduling step recorded in `synthesis-job-trace`.
+
+**Current tests.** `tests/refactor.lisp` includes nineteen tests, covering partial-expression folding, snapshots, heuristic and recursive budget parity, nested `x+3` reconstruction, direct selectors versus fibers, parent-level candidate pricing, synthesized sum features, view budgets, synthesized inverse-grid witnesses, partition uncertainty, shared-decoder independence, correction encoding across ordered domains/tuples/sets, frame-linkage preservation with metric anti-collapse, standalone anchors with `apply-correction-packet` roundtrips and component deduplication, pulled-back child-frame folding/solver propagation/symbolic heuristic scoring, Stage A $\to$ Stage B additive and conditional residual synthesis, heuristic agenda routing with unit-step parity and episode returns, and conflict nogood sibling pruning with child-frame DAG reuse.
+
+**Remaining open extensions:**
+
+1. Enumerate arbitrary outer decoder shells autonomously under a declared grammar and budget.
+2. Support pluggable DSL metric primitives (or problem-supplied metric programs, unified with general search reentrancy per [prompt4.md](prompt4.md) §8.b).
 
 ### 4.9 Milestone 9: Vocabulary and Library Retrieval {#sec-m9}
 
@@ -639,10 +645,10 @@ A future experiment could acquire functions, pay for their definitions and execu
 | Availability | Only declared inputs reach the candidate; keys and target-derived labels are not free context |
 | Simplification | Explicit conservative folding; errors and unfinished evaluation remain distinct from false |
 | Fiber inference | Bounded lexicographic proposal search with unresolved feasibility |
-| Heuristics | Original-row acceptance plus Stage A correction-packet pricing (`:int` / `(:gf p)` differences, componentwise tuples, min-bit set witnesses, metric `pairs`/`anchors`); pluggable DSL metrics deferred to M8B reentrancy |
-| Recursion | Supplied nested decompositions, root reconstruction, cumulative budgets |
-| Scheduling | Deterministic reserve/verification/round-robin policy; no learned priorities |
-| Reuse | Library-local rewrite preparation and metadata caches; no general child DAG cache |
+| Heuristics | Original-row acceptance plus Stage A correction-packet pricing (`:int` / `(:gf p)` differences, componentwise tuples, min-bit set witnesses, metric `pairs`/`anchors`) and Stage B additive/conditional residual pullback (`heuristic-decompositions`, `start-heuristic-synthesis`); pluggable DSL metrics deferred to reentrancy |
+| Recursion | Supplied and Stage B residual decompositions, child folding & optional solver propagation, root reconstruction, cumulative budgets |
+| Scheduling | Deterministic 1-in-4 root reserve + verification + round-robin (`:round-robin`) or Stage A heuristic / priority-predictor routing (`:heuristic`) with episode return tracking (`synthesis-episode-returns`) |
+| Reuse | Library-local rewrite caches; within-job child-frame DAG scope sharing (`synthesis-job-reused-subproblems`) and induced anchor nogood sibling pruning (`synthesis-job-nogoods`) |
 | Pricing | Complete ASTs pay inlining costs; view selection differs from weighted exact-search selection |
 
 ### 5.2 Verification and trace standard
@@ -694,13 +700,13 @@ The post-audit implementation added `requirements.lisp` and `synthesize.lisp`, b
 
 The following corrections supersede older implementation claims:
 
-1. **Pullback and folding are separate.** Raw predicate substitution lives in `pullback-frame`. Folding and conflict checks are explicit consumers; conflict detection does not replace the frame's predicates.
+1. **Pullback and folding are separate.** Raw predicate substitution lives in `pullback-frame`. `frame-conflict-p` returns `(values conflict folded-frame)` without mutating its input frame in place, and `prepare-synthesis-node` installs `folded-frame` (plus optional `decomposition-solver` propagation) on child synthesis nodes.
 2. **Partial-expression behavior is preserved.** Closed evaluation errors or cutoffs are not rewritten into false, and table inversion is not a built-in simplification.
-3. **Dependency selection is explicit.** Same-input tightening uses the complete input tuple. Feature/projection hypotheses compete through reconstruction.
+3. **Dependency selection is explicit.** Same-input tightening uses the complete input tuple. Feature/projection hypotheses compete through reconstruction, with incompatible row pairs recorded as reusable sibling nogoods (`synthesis-job-nogoods`).
 4. **Partition feasibility is unresolved.** The bounded proxy can propose a non-refuted block without proving that it has a witness. The fifth return value reports proposal/search status.
 5. **Recursive candidates are priced at the root.** Accepted children are retained; nested reconstruction may temporarily expand and may exceed the direct root grammar bound.
 6. **Return contracts remain producer-specific.** `message` has three fields; resumable state stays in its job. Synchronous helper cutoff is not a resumable continuation.
-7. **Caches have limited scope.** Rewrite preparation is library-local; AST metadata caching is not cross-branch subproblem memoization.
+7. **Caches are scoped.** Rewrite preparation is library-local; `synthesis-job` caches equivalent child `(frame, language)` scopes within a synthesis job (`synthesis-job-reused-subproblems`) while still reconstructing and pricing each parent branch.
 8. **Models are ordinary expressions.** Lookup, quotient, partition, and corpus constructors have no separate model-wrapper or packet-kind layer.
 9. **Experiments moved into tests.** Removed runner names, historical numerical traces, and obsolete helper APIs are not current reproduction instructions.
-10. **M7–M9 status.** Stage A extensional correction pricing (ordered difference bits on `:int` and `(:gf p)`, componentwise tuples, minimum-bit witness selection on sets, and metric extension of `frame-pairs`/`frame-anchors` preserved across 1-to-1 frame transforms) is implemented. Pluggable DSL metric primitives (or problem-supplied metrics, likely subsumed by M8B reentrancy), learned agenda routing, and M9 vocabulary retrieval remain open research goals.
+10. **M7–M9 status.** Stage A extensional correction pricing (`correction-packet`, `apply-correction-packet`, `correction-bit-size`, `select-closest-witness`, `relational-linkage-residual`), Stage B additive and conditional residual pullback (`heuristic-decompositions`, `start-heuristic-synthesis`), symbolic child-frame witness resolution (`resolve-heuristic-witnesses`), `:policy :heuristic` agenda routing (`synthesis-episode-returns`), nogood sibling pruning, and child-frame DAG reuse are implemented. Pluggable DSL metric primitives (unified with general search reentrancy), autonomous locality-key synthesis, and M9 vocabulary retrieval remain open research goals.

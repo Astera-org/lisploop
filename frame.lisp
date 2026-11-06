@@ -169,20 +169,28 @@ or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise r
 
 (defun frame-conflict-p (frame &key ledger (budget 10000))
   "Detect whether any row requirement in FRAME folds to `nil` or whether rows
-sharing identical known inputs have mutually incompatible requirements."
+sharing identical known inputs have mutually incompatible requirements.
+Returns (VALUES conflict folded-frame), where FOLDED-FRAME is a fresh frame
+carrying the folded row requirements when no conflict is detected."
   (let* ((schema (frame-schema frame))
          (target-type (schema-target schema))
          (checker-schema (make-schema :inputs (list (cons 0 target-type)) :target :bool))
-         (by-known (make-hash-table :test #'equal)))
+         (by-known (make-hash-table :test #'equal))
+         (folded-rows nil))
     (dolist (row (frame-rows frame))
       (let* ((req (row-requirement row))
              (folded (fold-constants req checker-schema :ledger ledger :budget budget)))
         (when (unsatisfiable-requirement-p folded)
           (return-from frame-conflict-p
-            (make-frame-conflict :kind :unsatisfiable-row
-                                 :keys (list (row-key row))
-                                 :known (row-known row)
-                                 :expression folded)))
+            (values (make-frame-conflict :kind :unsatisfiable-row
+                                         :keys (list (row-key row))
+                                         :known (row-known row)
+                                         :expression folded)
+                    nil)))
+        (push (make-row :key (row-key row)
+                        :known (row-known row)
+                        :requirement folded)
+              folded-rows)
         (let ((existing (gethash (row-known row) by-known)))
           (if existing
               (let* ((prev-keys (first existing))
@@ -191,15 +199,20 @@ sharing identical known inputs have mutually incompatible requirements."
                                                   :ledger ledger :budget budget)))
                 (when (unsatisfiable-requirement-p joint)
                   (return-from frame-conflict-p
-                    (make-frame-conflict :kind :incompatible-rows
-                                         :keys (append (reverse prev-keys) (list (row-key row)))
-                                         :known (row-known row)
-                                         :expression joint)))
+                    (values (make-frame-conflict :kind :incompatible-rows
+                                                 :keys (append (reverse prev-keys) (list (row-key row)))
+                                                 :known (row-known row)
+                                                 :expression joint)
+                            nil)))
                 (setf (gethash (row-known row) by-known)
                       (list (cons (row-key row) prev-keys) joint)))
               (setf (gethash (row-known row) by-known)
                     (list (list (row-key row)) folded))))))
-    nil))
+    (values nil
+            (make-frame (copy-schema schema)
+                        (nreverse folded-rows)
+                        :pairs (frame-pairs frame)
+                        :anchors (frame-anchors frame)))))
 
 (defun orient-observations (types records input-columns target-columns &key lookup-p ledger)
   "Re-use witnessed (key . values) records; orientation performs no simulation."
@@ -481,6 +494,23 @@ When PREDICTED-P is nil (e.g. evaluation failed with :error), returns the replac
                          for part-type in (rest type)
                          collect (correction-packet p-part t-part part-type t)))
            ((:seq :code) target))))))
+
+(defun apply-correction-packet (predicted packet type &optional (predicted-p t))
+  "Apply a correction PACKET produced by `correction-packet` to PREDICTED in TYPE,
+reconstructing the target witness value."
+  (if (not predicted-p)
+      packet
+      (case type
+        (:int (+ predicted packet))
+        (:bool packet)
+        (otherwise
+         (ecase (first type)
+           (:gf (mod (+ predicted packet) (second type)))
+           (:tuple (loop for p-part in predicted
+                         for pkt-part in packet
+                         for part-type in (rest type)
+                         collect (apply-correction-packet p-part pkt-part part-type t)))
+           ((:seq :code) packet))))))
 
 (defun correction-bit-size (predicted target type &optional (predicted-p t))
   "Price the correction packet from PREDICTED to TARGET in TYPE in bits.

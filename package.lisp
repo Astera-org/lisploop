@@ -30,7 +30,7 @@
    #:pullback-frame #:compose-model #:support-frame
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
    #:partition-pairs-and-anchors #:with-frame-linkage
-   #:centered-mod-difference #:correction-packet #:correction-bit-size #:select-closest-witness
+   #:centered-mod-difference #:correction-packet #:apply-correction-packet #:correction-bit-size #:select-closest-witness
    #:relational-linkage-residual
    #:quotient-values #:restore-quotient #:quotient-model
    ;; 5. enumerate.lisp — Grammar enumerator, synthesis & observation search, multi-lane propagation search
@@ -107,9 +107,12 @@
    #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work
    ;; Recursive orchestration and explicit dependency/selector targets.
    #:snapshot-frame #:remaining-work
-   #:decomposition #:make-decomposition #:decomposition-name
+   #:decomposition #:make-decomposition #:decomposition-name #:decomposition-solver
    #:start-synthesis #:resume-synthesis #:synthesis-job-best #:synthesis-job-results
    #:synthesis-job-ledger #:synthesis-job-messages
+   #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace
+   #:synthesis-node-priority #:synthesis-node-heuristic
+   #:heuristic-decompositions #:start-heuristic-synthesis #:synthesis-episode-returns
    #:dependency-proposals #:start-selector-search
    #:start-dependency-search #:resume-dependency-search #:dependency-search-synthesis
    #:dependency-search-features #:dependency-search-ledger

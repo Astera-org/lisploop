@@ -316,3 +316,282 @@
       (check (equal (var 0 :int) (heuristic-program (heuristic-search-best batch))))
       (check (not (heuristic-exact-p (heuristic-search-best batch))))
       (check (equal '(((:pair 6 7) . 1)) (heuristic-residual (heuristic-search-best batch)))))))
+
+(deftest standalone-anchors-correction-roundtrip-and-component-deduplication
+  ;; 1. `apply-correction-packet` is the exact right-inverse of `correction-packet`.
+  (let ((field (gf 7))
+        (tup-type (tuple-type :int (gf 7))))
+    (dolist (pair '((-5 12) (100 101) (42 42)))
+      (let* ((pred (first pair)) (targ (second pair))
+             (pkt (correction-packet pred targ :int t)))
+        (check (equal targ (apply-correction-packet pred pkt :int t)))
+        (check (equal targ (apply-correction-packet nil (correction-packet nil targ :int nil) :int nil)))))
+    (loop for a from 0 below 7 do
+      (loop for b from 0 below 7 do
+        (let ((pkt (correction-packet a b field t)))
+          (check (= b (apply-correction-packet a pkt field t))))))
+    (let* ((p-tup '(10 6)) (t-tup '(12 1))
+           (pkt (correction-packet p-tup t-tup tup-type t)))
+      (check (equal '(2 2) pkt))
+      (check (equal t-tup (apply-correction-packet p-tup pkt tup-type t)))))
+  ;; 2. Standalone anchors (without pairs) and second-endpoint anchors work in `make-observation-scope`
+  ;;    and `start-heuristic-search`.
+  (let* ((inputs '((0 . :int)))
+         (schema (make-schema :inputs inputs :target :int))
+         (rows (list (make-row :key :a :known '(10) :requirement (lit :bool t))
+                     (make-row :key :b :known '(20) :requirement (lit :bool t))))
+         (standalone (make-frame schema rows :anchors '(:a :b)))
+         (second-ep (make-frame schema rows :pairs '((:a :b)) :anchors '(:a :b)))
+         (language (make-language :int inputs :operators nil :literals '(0)))
+         (bound (+ (header-size inputs :int) 6)))
+    (check (observation-scope-frame (make-observation-scope standalone language)))
+    (check (observation-scope-frame (make-observation-scope second-ep language)))
+    (let ((h (condense-heuristic standalone language :description-limit bound)))
+      (check (heuristic-model-p h))
+      ;; `x0` separates standalone anchors :a and :b with 0 residual bits, beating constant '0.
+      (check (equal (var 0 :int) (heuristic-program h)))
+      (check (heuristic-exact-p h))))
+  ;; 3. `relational-linkage-residual` does not double-charge a row when both `:pair` drift
+  ;;    and `:anchor` collision fire in the same connected component.
+  (let* ((inputs '((0 . :int)))
+         (schema (make-schema :inputs inputs :target :int))
+         (rows (loop for k from 0 below 4
+                     collect (make-row :key k :known (list k) :requirement (lit :bool t))))
+         (frame (make-frame schema rows :pairs '((0 1) (2 3)) :anchors '(0 2))))
+    ;; Output vector '(5 5 5 9): anchor 2 collides with anchor 0 (both 5), AND pair (2 3) drifts (5 -> 9).
+    ;; Row 3 is already charged by (:pair 2 3), so (:anchor ...) only charges row 2.
+    (multiple-value-bind (entries total-bits pair-bits anchor-bits)
+        (relational-linkage-residual frame '(5 5 5 9) :type :int)
+      (check (= (+ pair-bits anchor-bits) total-bits))
+      (check (find '(:pair 2 3) entries :key #'car :test #'equal))
+      (check (find '(:anchor 2) entries :key #'car :test #'equal))
+      (check (not (find '(:anchor 3) entries :key #'car :test #'equal))))))
+
+(deftest pulled-back-child-frame-folding-solver-propagation-and-heuristic-scoring
+  ;; 1. `frame-conflict-p` returns the folded frame as its second value without mutating input.
+  (let* ((inputs '((0 . :int)))
+         (parent (simple-frame :int inputs '(((0) 5) ((1) 1) ((2) 2))))
+         (guard (app (op := :int) (var 0 :int) (lit :int 0)))
+         (decoder (app (op :if :int) guard (var 9 :int) (var 0 :int)))
+         (raw-child (pullback-frame parent decoder 9 :int (list (cons 0 (var 0 :int))))))
+    (multiple-value-bind (conflict folded-child) (frame-conflict-p raw-child)
+      (check (null conflict))
+      (check (frame-p folded-child))
+      ;; Covered rows (x=1, x=2 where guard is false) fold to `'t` in folded-child!
+      (check (equal (singleton-requirement :int 5) (row-requirement (first (frame-rows folded-child)))))
+      (check (equal (lit :bool t) (row-requirement (second (frame-rows folded-child)))))
+      (check (equal (lit :bool t) (row-requirement (third (frame-rows folded-child)))))
+      ;; Input raw-child remains un-mutated.
+      (check (not (equal (lit :bool t) (row-requirement (second (frame-rows raw-child))))))))
+  ;; 2. `start-heuristic-search` / `condense-heuristic` scores candidates on pulled-back symbolic
+  ;;    child frames (where raw `extract-allowed-values` is `:unknown`) instead of dropping them.
+  (let* ((inputs '((0 . :int)))
+         (parent (simple-frame :int inputs '(((100) 101) ((200) 201) ((300) 309))))
+         (decoder (app (op :+ :int) (var 0 :int) (var 9 :int)))
+         (pulled (pullback-frame parent decoder 9 :int (list (cons 0 (var 0 :int)))))
+         (child-lang (make-language :int inputs :operators nil :literals '(0 1)))
+         (bound (+ (header-size inputs :int) 6))
+         (h (condense-heuristic pulled child-lang :description-limit bound)))
+    (check (every (lambda (r) (eq :unknown (extract-allowed-values (row-requirement r))))
+                  (frame-rows pulled)))
+    (check (heuristic-model-p h))
+    ;; Latent displacement is +1 on rows 0 and 1, and +9 on outlier row 2 -> chooses literal '1!
+    (check (equal (lit :int 1) (heuristic-program h)))
+    (check (equal '((2 . 9)) (heuristic-residual h))))
+  ;; 3. `decomposition-solver` invokes `propagate-arithmetic-child` during node preparation.
+  (let* ((field (gf 5))
+         (inputs (list (cons 0 field)))
+         (parent (simple-frame field inputs '(((1) 4) ((2) 0) ((3) 1))))
+         (relation (observe-arithmetic-relation field :+ '(0 1 2 3 4)))
+         (solver (discover-arithmetic-solver relation 1 '(0 1 2 3 4) :operators '(:+) :literals '(0 1 2 3 4) :body-bound 16))
+         (child-lang (make-language field nil :operators nil :literals '(0 1 2 3)))
+         (prop (make-decomposition :name :with-solver
+                                   :decoder (app (op :+ field) (var 0 field) (var 9 field))
+                                   :child-id 9 :child-type field :bindings nil
+                                   :language child-lang :bound 25 :solver solver))
+         (job (start-synthesis parent (make-language field inputs :operators nil :literals '(0))
+                               20 :decompositions (list prop))))
+    (check (eq :bounded-exhaustion (message-claim (resume-synthesis job 100000))))
+    (check (synthesis-job-best job))
+    (check (evaluate-model-run-work (candidate-expression (synthesis-job-best job)) parent))))
+
+(deftest stage-a-to-stage-b-additive-and-conditional-residual-synthesis
+  ;; 1. Path B1 (Additive / Displacement Residual Pullback):
+  ;;    Target is y = 100*x0 + x1 + 1 on :int. Stage A with small bound condenses `100*x0`
+  ;;    (supplied as input coordinate 0 = 100*x0, coordinate 1 = x1), leaving small displacement
+  ;;    residuals (+1, +2) that Stage B synthesizes as `x1 + 1` and composes into `x0 + (x1 + 1)`.
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (frame (simple-frame :int inputs '(((100 0) 101)
+                                            ((100 1) 102)
+                                            ((200 0) 201)
+                                            ((200 1) 202))))
+         (stage-a-lang (make-language :int inputs :operators nil :literals '(0 1)))
+         (child-lang (make-language :int inputs :operators (list (op :+ :int)) :literals '(1)))
+         (stage-a-bound (+ (header-size inputs :int) 6))
+         (child-bound (description-size (app (op :+ :int) (var 1 :int) (lit :int 1)) inputs)))
+    (multiple-value-bind (proposals h-model)
+        (heuristic-decompositions frame stage-a-lang
+                                  :child-language child-lang
+                                  :description-limit stage-a-bound
+                                  :child-bound child-bound
+                                  :additive-p t :conditional-p nil)
+      (check (heuristic-model-p h-model))
+      (check (equal (var 0 :int) (heuristic-program h-model)))
+      (check (= 1 (length proposals)))
+      (check (equal (list :heuristic-additive (var 0 :int))
+                    (decomposition-name (first proposals)))))
+    (let ((job (start-heuristic-synthesis frame stage-a-lang stage-a-bound
+                                          :child-language child-lang
+                                          :child-bound child-bound
+                                          :additive-p t :conditional-p nil)))
+      (check (eq :bounded-exhaustion (message-claim (resume-synthesis job 200000))))
+      (check (synthesis-job-best job))
+      (check (evaluate-model-run-work (candidate-expression (synthesis-job-best job)) frame))))
+  ;; 2. Path B2 (Conditional Exception-Patching / Decision-List Pullback):
+  ;;    Rows x0 in {1, 2, 3, 4} follow y = x0, while outlier row x0 = 0 has target y = 9.
+  ;;    Stage A condenses `x0` with 1 exception on row x0 = 0; `heuristic-decompositions`
+  ;;    synthesizes a separating guard G(x0) and pulls back through `(if G(x0) x0 Z)`,
+  ;;    folding all 4 covered rows to `'t` so Stage B synthesizes `Z = '9`.
+  (let* ((inputs '((0 . :int)))
+         (frame (simple-frame :int inputs '(((0) 9) ((1) 1) ((2) 2) ((3) 3) ((4) 4))))
+         (stage-a-lang (make-language :int inputs :operators nil :literals '(0 1)))
+         (child-lang (make-language :int inputs :operators nil :literals '(9)))
+         (stage-a-bound (+ (header-size inputs :int) 6))
+         (child-bound (description-size (lit :int 9) inputs)))
+    (multiple-value-bind (proposals h-model)
+        (heuristic-decompositions frame stage-a-lang
+                                  :child-language child-lang
+                                  :description-limit stage-a-bound
+                                  :child-bound child-bound
+                                  :additive-p nil :conditional-p t)
+      (check (heuristic-model-p h-model))
+      (check (equal (var 0 :int) (heuristic-program h-model)))
+      (check (= 1 (length proposals)))
+      (check (eq :heuristic-conditional (first (decomposition-name (first proposals))))))
+    (let ((job (start-heuristic-synthesis frame stage-a-lang stage-a-bound
+                                          :child-language child-lang
+                                          :child-bound child-bound
+                                          :additive-p nil :conditional-p t)))
+      (check (eq :bounded-exhaustion (message-claim (resume-synthesis job 200000))))
+      (check (synthesis-job-best job))
+      (check (evaluate-model-run-work (candidate-expression (synthesis-job-best job)) frame)))))
+
+(deftest heuristic-agenda-routing-exact-promotion-and-episode-returns
+  ;; Multiple child decompositions where early branches are high-residual decoys and
+  ;; the last branch is a promising low-residual branch (`z = (1 + 1) + 1 = 3`, where Stage A
+  ;; probe at literal bound sees `'1` has a +2 residual on `:good-offset` vs >100 on decoys).
+  (let* ((inputs '((0 . :int)))
+         (frame (simple-frame :int inputs '(((0) 3) ((1) 4) ((2) 5) ((3) 6))))
+         (root-lang (make-language :int inputs :operators nil :literals '(0)))
+         (child-lang (make-language :int inputs
+                                    :operators (list (op :+ :int) (op :* :int))
+                                    :literals '(0 1)))
+         (target-expr (app (op :+ :int)
+                           (app (op :+ :int) (lit :int 1) (lit :int 1))
+                           (lit :int 1)))
+         (child-bound (description-size target-expr inputs))
+         (probe-bound (description-size (lit :int 1) inputs))
+         (make-proposals
+           (lambda ()
+             (list (make-decomposition :name :decoy-1
+                                       :decoder (app (op :+ :int) (lit :int 100) (var 9 :int))
+                                       :child-id 9 :child-type :int
+                                       :bindings (list (cons 0 (var 0 :int)))
+                                       :language child-lang :bound child-bound)
+                   (make-decomposition :name :decoy-2
+                                       :decoder (app (op :+ :int) (lit :int 200) (var 9 :int))
+                                       :child-id 9 :child-type :int
+                                       :bindings (list (cons 0 (var 0 :int)))
+                                       :language child-lang :bound child-bound)
+                   (make-decomposition :name :decoy-3
+                                       :decoder (app (op :+ :int) (lit :int 300) (var 9 :int))
+                                       :child-id 9 :child-type :int
+                                       :bindings (list (cons 0 (var 0 :int)))
+                                       :language child-lang :bound child-bound)
+                   (make-decomposition :name :good-offset
+                                       :decoder (app (op :+ :int) (var 0 :int) (var 9 :int))
+                                       :child-id 9 :child-type :int
+                                       :bindings (list (cons 0 (var 0 :int)))
+                                       :language child-lang :bound child-bound))))
+         (rr-job (start-synthesis frame root-lang 16
+                                  :decompositions (funcall make-proposals)
+                                  :policy :round-robin :quantum 12))
+         (h-batch (start-synthesis frame root-lang 16
+                                   :decompositions (funcall make-proposals)
+                                   :policy :heuristic :heuristic-bound probe-bound
+                                   :heuristic-budget 2000 :quantum 12))
+         (h-unit (start-synthesis frame root-lang 16
+                                  :decompositions (funcall make-proposals)
+                                  :policy :heuristic :heuristic-bound probe-bound
+                                  :heuristic-budget 2000 :quantum 12)))
+    (resume-synthesis rr-job 500000 :stop-on-first t)
+    (resume-synthesis h-batch 500000 :stop-on-first t)
+    (check (synthesis-job-best rr-job))
+    (check (synthesis-job-best h-batch))
+    (check (equal (candidate-expression (synthesis-job-best rr-job))
+                  (candidate-expression (synthesis-job-best h-batch))))
+    ;; Heuristic agenda routing prioritizes `:good-offset` over the 3 decoys and finds
+    ;; the verified root candidate in strictly less total discovery work than round-robin.
+    (check (< (candidate-discovery-work (synthesis-job-best h-batch))
+              (candidate-discovery-work (synthesis-job-best rr-job))))
+    ;; Unit-step resumption parity holds under `:policy :heuristic`.
+    (loop for limit from 1 to (ledger-total (synthesis-job-ledger h-batch)) do
+      (resume-synthesis h-unit limit :stop-on-first t)
+      (check (= limit (ledger-total (synthesis-job-ledger h-unit)))))
+    (check (equalp (synthesis-job-ledger h-batch) (synthesis-job-ledger h-unit)))
+    (check (equalp (synthesis-job-best h-batch) (synthesis-job-best h-unit)))
+    ;; Episode return computation G_t = B_t - B_T - lambda * (W_T - W_t).
+    (let ((returns (synthesis-episode-returns h-batch :search-weight 1/1000 :default-baseline 500)))
+      (check returns)
+      (check (every (lambda (r) (numberp (getf r :return))) returns))
+      (check (> (getf (first returns) :bt) (getf (first returns) :b-final))))))
+
+(deftest conflict-nogood-sibling-pruning-and-child-dag-reuse
+  ;; 1. Conflict-driven sibling pruning via induced anchor nogoods:
+  ;;    Rows :r0 (0 0)->0 and :r1 (0 1)->1 have incompatible targets.
+  ;;    When the first pure-projection child (:dep-nil) conflicts on (:r0 :r1),
+  ;;    the induced nogood (0 :r0 :r1) prunes subsequent sibling projections (like x0)
+  ;;    that alias :r0 and :r1 without pulling back or folding the full frame.
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (rows (cons (make-row :key :r0 :known '(0 0) :requirement (singleton-requirement :int 0))
+                     (cons (make-row :key :r1 :known '(0 1) :requirement (singleton-requirement :int 1))
+                           (loop for k from 2 below 12
+                                 collect (make-row :key k :known (list 0 k)
+                                                   :requirement (singleton-requirement :int k))))))
+         (frame (make-frame (make-schema :inputs inputs :target :int) rows))
+         (lang (make-language :int inputs :operators nil :literals nil))
+         (proposals (dependency-proposals frame lang 20))
+         (job (start-synthesis frame lang 20 :decompositions proposals)))
+    (check (eq :bounded-exhaustion (message-claim (resume-synthesis job 200000))))
+    (check (synthesis-job-nogoods job))
+    (check (some (lambda (msg)
+                   (and (eq :conflict (message-claim msg))
+                        (getf (message-evidence msg) :reused-nogood)))
+                 (synthesis-job-messages job)))
+    (check (synthesis-job-best job))
+    (check (equal (var 1 :int) (candidate-expression (synthesis-job-best job)))))
+  ;; 2. Child-frame DAG caching across observationally equivalent branches:
+  ;;    Two decompositions with observationally identical bindings (`(+ x0 0)` vs `x0`)
+  ;;    induce the exact same child `(frame, language)`. The second reuses the first's
+  ;;    child search while still reconstructing and pricing both at the parent.
+  (let* ((inputs '((0 . :int)))
+         (frame (simple-frame :int inputs '(((1) 1) ((2) 2) ((3) 3))))
+         (root-lang (make-language :int inputs :operators nil :literals '(0)))
+         (child-lang (make-language :int inputs :operators nil :literals nil))
+         (verbose-binding (app (op :+ :int) (var 0 :int) (lit :int 0)))
+         (compact-binding (var 0 :int))
+         (p1 (make-decomposition :name :verbose :decoder (var 9 :int) :child-id 9 :child-type :int
+                                 :bindings (list (cons 0 verbose-binding))
+                                 :language child-lang :bound 20))
+         (p2 (make-decomposition :name :compact :decoder (var 9 :int) :child-id 9 :child-type :int
+                                 :bindings (list (cons 0 compact-binding))
+                                 :language child-lang :bound 20))
+         (job (start-synthesis frame root-lang 10 :decompositions (list p1 p2))))
+    (check (eq :bounded-exhaustion (message-claim (resume-synthesis job 100000))))
+    (check (= 1 (synthesis-job-reused-subproblems job)))
+    (check (some (lambda (msg) (eq :subproblem-reused (message-claim msg)))
+                 (synthesis-job-messages job)))
+    ;; Both reconstructions are verified at the root, and the compact parent `x0` wins over `(+ x0 0)`.
+    (check (find verbose-binding (synthesis-job-results job) :key #'candidate-expression :test #'equal))
+    (check (find compact-binding (synthesis-job-results job) :key #'candidate-expression :test #'equal))
+    (check (equal compact-binding (candidate-expression (synthesis-job-best job))))))
