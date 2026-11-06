@@ -8,7 +8,7 @@
 (defconstant +opcode-width+ 4)
 
 (defun emit-operator-name (name emit)
-  (let ((index (or (position name +operator-names+) (error "Unknown operator ~S" name))))
+  (let ((index (or (operator-index name) (error "Unknown operator ~S" name))))
     (funcall emit +opcode-width+ (min 15 index))
     (when (>= index 15) (emit-positive (- index 14) emit))))
 
@@ -19,9 +19,12 @@
     (assert (eq :op (ast-meta-kind meta)))
     (emit-operator-name name emit)
     (case name
-      ((:= :member :at) (emit-bit-type type emit))
+      ((:= :member :at :length) (emit-bit-type type emit))
       (:lookup (emit-bit-type (second type) emit))
-      (otherwise (when (member name *symbolic-primitives*) (emit-bit-type type emit))))))
+      (otherwise
+       (when (or (member name *symbolic-primitives*)
+                 (member name *registered-function-names*))
+         (emit-bit-type type emit))))))
 
 (defun emit-positive (value emit)
   (let* ((width (integer-length value)) (length-width (integer-length width)))
@@ -145,7 +148,7 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
              (read-operator-name ()
                (let* ((prefix (take-bits +opcode-width+))
                       (index (if (= 15 prefix) (+ 14 (positive)) prefix)))
-                 (or (nth index +operator-names+) (error "Unused operator code"))))
+                 (or (operator-by-index index) (error "Unused operator code"))))
              (read-type ()
                (ecase (take-bits 3)
                  (0 :int) (1 :bool) (2 (gf (positive)))
@@ -182,10 +185,17 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
                  (2
                   (let* ((name (read-operator-name))
                          (operand-type (case name
-                                         ((:= :member :at) (read-type))
+                                         ((:= :member :at :length) (read-type))
                                          (:lookup (tuple-type (read-type) type))
-                                         ((:gather :concat) (assert (eq (first type) :seq)) (second type))
-                                         (otherwise (if (member name *symbolic-primitives*) (read-type) type))))
+                                         ((:gather :concat :cons :tail)
+                                          (assert (and (consp type) (eq (first type) :seq)))
+                                          (second type))
+                                         (:< (assert (eq type :bool)) :int)
+                                         (otherwise
+                                          (if (or (member name *symbolic-primitives*)
+                                                  (member name *registered-function-names*))
+                                              (read-type)
+                                              type))))
                          (operator (op name operand-type)))
                     (assert (equal type (third (operator-type operator))))
                     (apply #'app operator

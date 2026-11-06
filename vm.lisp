@@ -53,7 +53,21 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
 (defstruct (validated-program (:constructor %make-validated-program))
   (expression nil :read-only t) (inputs nil :read-only t) (versions nil :read-only t))
 
-(defun vm-versions () (list +encoding-version+ +tariff-version+ +simulator-version+))
+(define-condition unresolved-evaluation (error)
+  ((name :initarg :name :initform nil :reader unresolved-evaluation-name)
+   (arguments :initarg :arguments :initform nil :reader unresolved-evaluation-arguments))
+  (:report (lambda (condition stream)
+             (format stream "Unresolved evaluation for ~S on ~S"
+                     (unresolved-evaluation-name condition)
+                     (unresolved-evaluation-arguments condition)))))
+
+(defvar *lookup-missing-unresolved-p* nil
+  "When true, a missing :lookup entry signals UNRESOLVED-EVALUATION instead of ERROR.")
+
+(defun vm-versions ()
+  (if (plusp *function-library-version*)
+      (list +encoding-version+ +tariff-version+ +simulator-version+ *function-library-version*)
+      (list +encoding-version+ +tariff-version+ +simulator-version+)))
 
 (defun start-program-validation (expression inputs)
   "Snapshot and validate static code through the same prepaid, resumable VM."
@@ -118,7 +132,7 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
     (when (member name *symbolic-primitives*)
       (return-from primitive-cost (symbolic-primitive-cost name type values)))
     (case name
-      ((:+ :* :- :/) (arithmetic-cost name type values))
+      ((:+ :* :- :/ :<) (arithmetic-cost name type values))
       (otherwise
        (+ 1 (loop for value in values
                   for input-type in (second (operator-type operator))
@@ -189,13 +203,24 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
                         (:/ (if (eq type :int) (truncate a b)
                                 (* a (field-reciprocal b (second type))))))))
          (if (eq type :int) result (mod result (second type)))))
+      (:< (< (first values) (second values)))
       (:= (equal (first values) (second values)))
       (:tuple values)
+      (:cons (cons (copy-tree (first values)) (copy-list (second values))))
+      (:tail
+       (let ((items (first values)))
+         (when (null items)
+           (error "Cannot take :tail of empty sequence"))
+         (copy-list (rest items))))
+      (:length (length (first values)))
       (:concat (loop for part in (first values) append (copy-list part)))
       (:member (not (null (member (first values) (second values) :test #'equal))))
       (:lookup
        (let ((entry (assoc (first values) (second values) :test #'equal)))
-         (if entry (second entry) (error "No encoded lookup entry for ~S" (first values)))))
+         (cond (entry (second entry))
+               (*lookup-missing-unresolved-p*
+                (error 'unresolved-evaluation :name :lookup :arguments (list (first values))))
+               (t (error "No encoded lookup entry for ~S" (first values))))))
       (:gather
        (let* ((items (coerce (first values) 'vector)) (length (length items)))
          (mapcar (lambda (index) (aref items (checked-position index length))) (second values))))
@@ -219,7 +244,7 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
              (if (lit-p expression)
                  (1+ (value-work (ast-value expression) (ast-type expression)))
                  1)))
-    (:branch 1)
+    ((:branch :restore-env) 1)
     (:apply (primitive-cost (second task)
                             (reverse (subseq (evaluation-stack state) 0 (third task)))))))
 
@@ -265,10 +290,47 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
     (:branch
      (push (list :eval (if (pop (evaluation-stack state)) (second task) (third task)))
            (evaluation-tasks state)))
+    (:restore-env
+     (setf (evaluation-environment state) (second task)))
     (:apply
-     (let* ((values (loop repeat (third task) collect (pop (evaluation-stack state))))
-            (result (execute-primitive (second task) (reverse values))))
-       (push result (evaluation-stack state))))))
+     (let* ((operator (second task))
+            (name (operator-name operator))
+            (type (operator-operand-type operator))
+            (raw-values (loop repeat (third task) collect (pop (evaluation-stack state))))
+            (ordered-values (reverse raw-values)))
+       (cond
+         ((eq name :code-eval)
+          (let ((code-expr (first ordered-values))
+                (arg-values (rest ordered-values))
+                (inputs (code-inputs type)))
+            (assert (value-p code-expr type))
+            (push (list :restore-env (evaluation-environment state))
+                  (evaluation-tasks state))
+            (setf (evaluation-environment state)
+                  (mapcar (lambda (spec value)
+                            (cons (car spec) (if (evaluation-prepared-p state) (copy-tree value) value)))
+                          inputs arg-values))
+            (push (list :eval code-expr) (evaluation-tasks state))))
+         ((defined-function-p name)
+          (let ((def (find-function-definition name)))
+            (cond
+              ((function-definition-oracle-table def)
+               (let ((entry (assoc ordered-values (function-definition-oracle-table def) :test #'equal)))
+                 (if entry
+                     (push (copy-tree (cdr entry)) (evaluation-stack state))
+                     (error 'unresolved-evaluation :name name :arguments ordered-values))))
+              ((function-definition-body def)
+               (push (list :restore-env (evaluation-environment state))
+                     (evaluation-tasks state))
+               (setf (evaluation-environment state)
+                     (mapcar (lambda (spec value)
+                               (cons (car spec) (if (evaluation-prepared-p state) (copy-tree value) value)))
+                             (function-definition-inputs def) ordered-values))
+               (push (list :eval (function-definition-body def))
+                     (evaluation-tasks state)))
+              (t (error "Undefined body for function ~S" name)))))
+         (t
+          (push (execute-primitive operator ordered-values) (evaluation-stack state))))))))
 
 (defun advance-evaluation (state budget &optional ledger (category :simulation))
   "Spend at most BUDGET units, retaining unpaid instructions on interruption."
@@ -293,6 +355,10 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
               (assert (= (length (evaluation-stack state)) 1))
               (setf (evaluation-status state) :value
                     (evaluation-value state) (first (evaluation-stack state)))))))
+      (unresolved-evaluation (condition)
+        (setf (evaluation-status state) :unresolved
+              (evaluation-error state) (princ-to-string condition)
+              unpaid-error-p (not instruction-paid-p)))
       (error (condition)
         (setf (evaluation-status state) :error
               (evaluation-error state) (princ-to-string condition)

@@ -9,11 +9,18 @@
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p #:operator-name #:operator-type #:operator-operand-type #:application-overhead
    #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p
+   #:function-definition #:function-definition-p #:function-definition-name
+   #:function-definition-inputs #:function-definition-return-type #:function-definition-code-type
+   #:function-definition-signature #:function-definition-body #:function-definition-oracle-table
+   #:function-definition-total-p #:function-definition-conditional-code-params
+   #:declare-function-signature #:define-function #:find-function-definition #:defined-function-p
+   #:clear-function-definitions #:de-novo-function-name #:next-function-name
    ;; 2. codec.lisp — Prefix-coded binary serialization & O(1) sizes
    #:+encoding-version+ #:header-size #:body-size #:description-size
    #:encode-model #:decode-model
    ;; 3. vm.lisp — Structural tariff, resumable evaluator, constant folding
    #:+tariff-version+ #:+simulator-version+ #:vm-versions
+   #:unresolved-evaluation #:*lookup-missing-unresolved-p*
    #:ledger #:make-ledger #:ledger-total #:ledger-counts #:charge
    #:integer-width #:value-work #:type-work #:syntax-work
    #:evaluation #:start-evaluation #:advance-evaluation #:evaluate

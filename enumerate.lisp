@@ -214,7 +214,7 @@ CONSTANTS supplies additional typed literal ASTs. The default operators stay +/*
 (defstruct (search-job (:constructor %make-search-job))
   call-id frame language enumerator (ledger (make-ledger))
   (mode :enumeration) proposals queue (requested-bound 0)
-  (phase :enumerate) expression (construction-debt 0) rows evaluation predicted
+  (phase :enumerate) expression (construction-debt 0) rows (resolved-rows 0) evaluation predicted
   (run-work 0) (completed-bound 0) (results nil) best (run-weight 0)
   (rejected 0) (messages nil) diagnostics library rewriting normal-form
   (reused-rejections 0) (rejection-cache (make-hash-table :test #'equal)))
@@ -333,6 +333,7 @@ Listed proposals use the SAME construction, VM, checker and objective."
                          (expression-type (search-job-expression job) (schema-inputs schema)))))
            (if (equal type (schema-target schema))
                (setf (search-job-rows job) (frame-rows (search-job-frame job))
+                     (search-job-resolved-rows job) 0
                      (search-job-run-work job) 0
                      (search-job-phase job) (if (search-job-library job) :rewrite-start :row))
                (setf (search-job-phase job) :enumerate)))))
@@ -357,7 +358,10 @@ Listed proposals use the SAME construction, VM, checker and objective."
       (:row
        (charge ledger :scheduling)
        (if (null (search-job-rows job))
-           (accept-candidate job)
+           (if (or (null (frame-rows (search-job-frame job)))
+                   (plusp (search-job-resolved-rows job)))
+               (accept-candidate job)
+               (reject-candidate job))
            (setf (search-job-evaluation job)
                  (start-evaluation (search-job-expression job) (schema-inputs schema)
                                    (row-known (first (search-job-rows job))))
@@ -366,6 +370,10 @@ Listed proposals use the SAME construction, VM, checker and objective."
        (let ((state (advance-search-evaluation job budget :evaluation)))
          (case (evaluation-status state)
            (:error (reject-candidate job))
+           (:unresolved
+            (incf (search-job-run-work job) (evaluation-work state))
+            (pop (search-job-rows job))
+            (setf (search-job-phase job) :row))
            (:value
             (incf (search-job-run-work job) (evaluation-work state))
             (setf (search-job-predicted job) (evaluation-value state)
@@ -381,9 +389,15 @@ Listed proposals use the SAME construction, VM, checker and objective."
        (let ((state (advance-search-evaluation job budget :checking)))
          (case (evaluation-status state)
            (:error (reject-candidate job))
+           (:unresolved
+            (pop (search-job-rows job))
+            (setf (search-job-phase job) :row))
            (:value
             (if (eq t (evaluation-value state))
-                (progn (pop (search-job-rows job)) (setf (search-job-phase job) :row))
+                (progn
+                  (incf (search-job-resolved-rows job))
+                  (pop (search-job-rows job))
+                  (setf (search-job-phase job) :row))
                 (reject-candidate job t)))))))))
 
 (defun search-bound-complete-p (job bound)
@@ -720,7 +734,7 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
          (advance-accounted-evaluation state budget ledger :evaluation :validation)
          (incf (observed-expression-run-work record) (- (evaluation-work state) previous-work))
          (when (and (observation-job-retain-outcomes-p job)
-                    (member (evaluation-status state) '(:value :error)))
+                    (member (evaluation-status state) '(:value :error :unresolved)))
            (setf (observation-job-phase job) :outcome
                  (observation-job-debt job)
                  (+ 1 (if (eq :value (evaluation-status state))
@@ -731,8 +745,8 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
               (push (evaluation-value state) (observation-job-outputs job))
               (pop (observation-job-rows job))
               (setf (observation-job-phase job) :row))
-             (:error
-              (setf (observed-expression-status record) :error
+             ((:error :unresolved)
+              (setf (observed-expression-status record) (evaluation-status state)
                     (observed-expression-error record) (evaluation-error state)
                     (observed-expression-failed-key record) (row-key (first (observation-job-rows job))))
               (prepare-observation-index job))))))
@@ -747,8 +761,8 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
                  (observation-job-outcomes job))
            (if (eq :value (evaluation-status state))
                (push (evaluation-value state) (observation-job-outputs job))
-               (unless (eq :error (observed-expression-status record))
-                 (setf (observed-expression-status record) :error
+               (unless (member (observed-expression-status record) '(:error :unresolved))
+                 (setf (observed-expression-status record) (evaluation-status state)
                        (observed-expression-error record) (evaluation-error state)
                        (observed-expression-failed-key record) (row-key (first (observation-job-rows job))))))
            (pop (observation-job-rows job))
