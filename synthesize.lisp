@@ -4,7 +4,7 @@
 
 (defstruct (heuristic-search (:constructor %make-heuristic-search))
   observation bound (ledger (make-ledger)) (phase :prepare) (debt 0) record rows outcomes
-  evaluation (index 0) residual (residual-bits 0) best (run-weight 0))
+  (resolved-rows 0) evaluation (index 0) residual (residual-bits 0) best (run-weight 0))
 
 (defun start-heuristic-search (frame language &key description-limit (run-weight 0))
   (assert (and (realp run-weight) (>= run-weight 0)))
@@ -34,32 +34,45 @@
            (setf (heuristic-search-record job) (first (observation-job-records observation))
                  (heuristic-search-rows job) (frame-rows frame)
                  (heuristic-search-outcomes job) (observed-expression-outcomes (heuristic-search-record job))
+                 (heuristic-search-resolved-rows job) 0
                  (heuristic-search-index job) 0 (heuristic-search-residual job) nil
                  (heuristic-search-residual-bits job) 0 (heuristic-search-phase job) :row))))
       (:row
        (charge ledger :heuristic-checking)
        (if (null (heuristic-search-rows job))
-           (setf (heuristic-search-phase job) :score
-                 (heuristic-search-debt job)
-                 (+ (syntax-work (observed-expression-expression (heuristic-search-record job)))
-                    (length (frame-pairs frame))
-                    (length (frame-anchors frame))))
+           (if (>= (heuristic-search-resolved-rows job) (min 2 (length (frame-rows frame))))
+               (setf (heuristic-search-phase job) :score
+                     (heuristic-search-debt job)
+                     (+ (syntax-work (observed-expression-expression (heuristic-search-record job)))
+                        (length (frame-pairs frame))
+                        (length (frame-anchors frame))))
+               (setf (heuristic-search-phase job) :observe))
            (let ((outcome (first (heuristic-search-outcomes job))))
-             (if (eq :value (observation-outcome-status outcome))
-                 (setf (heuristic-search-evaluation job)
-                       (start-evaluation (row-requirement (first (heuristic-search-rows job)))
-                                         (list (cons 0 type)) (list (observation-outcome-value outcome)))
-                       (heuristic-search-phase job) :check)
-                 (setf (heuristic-search-phase job) :residual
-                       (heuristic-search-debt job) (syntax-work (row-requirement (first (heuristic-search-rows job)))))))))
+             (case (observation-outcome-status outcome)
+               (:value
+                (setf (heuristic-search-evaluation job)
+                      (start-evaluation (row-requirement (first (heuristic-search-rows job)))
+                                        (list (cons 0 type)) (list (observation-outcome-value outcome)))
+                      (heuristic-search-phase job) :check))
+               (:unresolved
+                (setf (heuristic-search-phase job) :next))
+               (otherwise
+                (incf (heuristic-search-resolved-rows job))
+                (setf (heuristic-search-phase job) :residual
+                      (heuristic-search-debt job) (syntax-work (row-requirement (first (heuristic-search-rows job))))))))))
       (:check
        (let ((run (advance-accounted-evaluation (heuristic-search-evaluation job) 1 ledger
                                                 :heuristic-checking :heuristic-checking)))
          (unless (eq :unknown (evaluation-status run))
            (setf (heuristic-search-debt job) (syntax-work (row-requirement (first (heuristic-search-rows job)))))
-           (setf (heuristic-search-phase job)
-                 (if (and (eq :value (evaluation-status run)) (eq t (evaluation-value run)))
-                     :next :residual)))))
+           (cond ((eq :unresolved (evaluation-status run))
+                  (setf (heuristic-search-phase job) :next))
+                 ((and (eq :value (evaluation-status run)) (eq t (evaluation-value run)))
+                  (incf (heuristic-search-resolved-rows job))
+                  (setf (heuristic-search-phase job) :next))
+                 (t
+                  (incf (heuristic-search-resolved-rows job))
+                  (setf (heuristic-search-phase job) :residual))))))
       (:residual
        (charge ledger :heuristic-residual)
        (when (plusp (decf (heuristic-search-debt job))) (return-from heuristic-search-step))
@@ -112,7 +125,8 @@
                        (and (= score (heuristic-score old)) (< bits (heuristic-program-bits old))))
                (setf (heuristic-search-best job)
                      (make-heuristic-model :program program :residual residual :exact-p (null residual)
-                                           :total-p (eq :complete (observed-expression-status record))
+                                           :total-p (not (null (member (observed-expression-status record)
+                                                                       '(:complete :unresolved))))
                                            :program-bits bits :residual-bits residual-bits
                                            :run-work (observed-expression-run-work record) :score score)))
              (setf (heuristic-search-phase job) :observe))))))))
@@ -132,7 +146,7 @@
                                 :phase (heuristic-search-phase job) :best (heuristic-search-best job))))
 
 (defstruct decomposition
-  name decoder child-id child-type bindings language bound children (fiber-p nil) (solver nil) (fallback-p nil))
+  name decoder child-id child-type bindings language bound children (fiber-p nil) (lift-p nil) (solver nil) (fallback-p nil))
 
 (defstruct synthesis-node
   id parent proposal frame language bound search (phase :prepare) prepared (debt 0)
@@ -279,8 +293,18 @@ already discovered on PARENT."
 (defun reconstruct-synthesis-candidate (node expression ledger)
   (loop while (synthesis-node-parent node) do
     (let ((proposal (synthesis-node-proposal node)))
-      (setf expression (compose-model (decomposition-decoder proposal) (decomposition-child-id proposal)
-                                      expression (decomposition-bindings proposal) ledger)
+      (setf expression (if (decomposition-lift-p proposal)
+                           (compose-lifted-model (decomposition-decoder proposal)
+                                                 (decomposition-child-id proposal)
+                                                 (decomposition-child-type proposal)
+                                                 expression
+                                                 (decomposition-bindings proposal)
+                                                 ledger)
+                           (compose-model (decomposition-decoder proposal)
+                                          (decomposition-child-id proposal)
+                                          expression
+                                          (decomposition-bindings proposal)
+                                          ledger))
             node (synthesis-node-parent node)))
     finally (return expression)))
 
@@ -340,11 +364,22 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
             (synthesis-node-debt node) (max 1 (ledger-total ledger))
             (synthesis-node-phase node) :preparation)
       (return-from prepare-synthesis-node))
-    (let ((frame (if parent
-                     (pullback-frame (synthesis-node-frame parent) (decomposition-decoder proposal)
-                                     (decomposition-child-id proposal) (decomposition-child-type proposal)
-                                     (decomposition-bindings proposal) ledger)
-                     (synthesis-node-frame node)))
+    (let ((frame (cond ((null parent)
+                        (synthesis-node-frame node))
+                       ((decomposition-lift-p proposal)
+                        (lift-frame (synthesis-node-frame parent)
+                                    (decomposition-decoder proposal)
+                                    (decomposition-child-id proposal)
+                                    (decomposition-child-type proposal)
+                                    (decomposition-bindings proposal)
+                                    ledger))
+                       (t
+                        (pullback-frame (synthesis-node-frame parent)
+                                        (decomposition-decoder proposal)
+                                        (decomposition-child-id proposal)
+                                        (decomposition-child-type proposal)
+                                        (decomposition-bindings proposal)
+                                        ledger))))
           (fallback-p nil))
       (when (and proposal (decomposition-fiber-p proposal))
         (let ((refined (nth-value 2 (infer-fibers frame ledger))))

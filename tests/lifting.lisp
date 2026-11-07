@@ -364,7 +364,7 @@ the composed parent model with minimum total description size S."
       ;; 1. Unsupervised discovery both directly on raw pulled-back requirements and via M4 certified solver
       (let* ((raw-child (pullback-frame frame decoder 9 field (list (cons 0 (var 0 :int))) ledger))
              (plus-solver (arithmetic-control field :+ 1))
-             (prop (propagate-arithmetic-child frame decoder 9 (list (cons 0 (var 0 :int))) plus-solver ledger)))
+             (prop (propagate-requirements raw-child plus-solver ledger)))
         (check (certified-solve-discovery-p plus-solver))
         (check (= 28 (propagation-narrowed prop)))
         (multiple-value-bind (raw-classes raw-labels) (infer-fibers raw-child ledger)
@@ -387,7 +387,7 @@ the composed parent model with minimum total description size S."
                    (paid-map (lookup-model label-frame ledger))
                    (bindings (list (cons 3 paid-map)))
                    (unprop-child (pullback-frame frame decoder 9 field bindings ledger))
-                   (prop-child (propagation-frame (propagate-arithmetic-child frame decoder 9 bindings plus-solver ledger)))
+                   (prop-child (propagation-frame (propagate-requirements unprop-child plus-solver ledger)))
                    (child-inputs (schema-inputs (frame-schema unprop-child)))
                    (bound (description-size (app (op :+ field) (lit field 1)
                                                  (app (op :+ field) (var 3 field) (var 3 field)))
@@ -420,7 +420,9 @@ the composed parent model with minimum total description size S."
                    (heuristic (condense-heuristic regime-label-frame selector-lang :ledger ledger))
                    (sel-bindings (list (cons 3 (heuristic-program heuristic))))
                    (sel-child (propagation-frame
-                               (propagate-arithmetic-child regime-frame decoder 9 sel-bindings plus-solver ledger)))
+                               (propagate-requirements
+                                (pullback-frame regime-frame decoder 9 field sel-bindings ledger)
+                                plus-solver ledger)))
                    (sel-inputs (schema-inputs (frame-schema sel-child)))
                    (sel-job (start-search sel-child (make-language field sel-inputs)))
                    (sel-bound (description-size (app (op :+ field) (lit field 1)
@@ -491,7 +493,7 @@ the composed parent model with minimum total description size S."
       (declare (ignore supplied-r-to-j))
       (let* ((raw-child (pullback-frame frame decoder 9 :int (list (cons 0 (var 0 :int))) ledger))
              (plus-solver (arithmetic-control :int :+ 1))
-             (prop (propagate-arithmetic-child frame decoder 9 (list (cons 0 (var 0 :int))) plus-solver ledger)))
+             (prop (propagate-requirements raw-child plus-solver ledger)))
         ;; Integer solver is tentative (:conjecture), not certified (:validated), yet suggests all 28 rows via forward replay
         (check (not (certified-solve-discovery-p plus-solver)))
         (check (eq :conjecture (law-validation-status (solve-discovery-validation plus-solver))))
@@ -513,7 +515,8 @@ the composed parent model with minimum total description size S."
                                                      :label-type :int :ledger ledger))
                    (paid-map (lookup-model label-frame ledger))
                    (bindings (list (cons 3 paid-map)))
-                   (child-prop (propagate-arithmetic-child frame decoder 9 bindings plus-solver ledger))
+                   (child-prop (propagate-requirements (pullback-frame frame decoder 9 :int bindings ledger)
+                                                       plus-solver ledger))
                    (child-inputs (schema-inputs (frame-schema (propagation-frame child-prop))))
                    (child-lang (make-language :int child-inputs :literals '(0 1 2 3)))
                    (bound (description-size (app (op :+ :int) (lit :int 1)

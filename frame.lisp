@@ -335,6 +335,219 @@ bindings. No inverse values are enumerated."
     (charge ledger :composition (syntax-work model))
     model))
 
+(defun default-value-for-type (type)
+  "Construct a canonical witness value belonging to TYPE."
+  (case type
+    (:int 0)
+    (:bool nil)
+    (otherwise
+     (ecase (first type)
+       (:gf 0)
+       (:tuple (mapcar #'default-value-for-type (rest type)))
+       (:seq nil)
+       (:code (lit (code-sort type) (default-value-for-type (code-sort type))))))))
+
+(defun collect-code-eval-calls (expr code-var)
+  "Return (VALUES ground-calls non-ground-p) for all (:code-eval CODE-VAR ...) subterms in EXPR."
+  (let ((ground nil)
+        (non-ground-p nil))
+    (labels ((walk (node)
+               (when (app-p node)
+                 (mapc #'walk (rest node))
+                 (when (and (operator-p (first node))
+                            (eq :code-eval (operator-name (first node)))
+                            (equal (second node) code-var))
+                   (if (every #'lit-p (cddr node))
+                       (pushnew node ground :test #'equal)
+                       (setf non-ground-p t))))))
+      (walk expr)
+      (values (nreverse ground) non-ground-p))))
+
+(defun extract-code-eval-equation (conjunct code-var)
+  "If CONJUNCT is ready to lift with a single ground call G = (:code-eval CODE-VAR 'a0 ... 'ak-1)
+and equates G with a literal 'val, return (VALUES G 'val)."
+  (multiple-value-bind (ground non-ground-p) (collect-code-eval-calls conjunct code-var)
+    (when (and (not non-ground-p) (null (rest ground)) (first ground)
+               (app-p conjunct) (operator-p (first conjunct))
+               (eq := (operator-name (first conjunct))))
+      (let ((call (first ground))
+            (lhs (second conjunct))
+            (rhs (third conjunct)))
+        (cond ((and (equal lhs call) (lit-p rhs)) (values call rhs))
+              ((and (equal rhs call) (lit-p lhs)) (values call lhs)))))))
+
+(defun congruence-close-code-evals (row-reqs extra-knowns code-var checker-schema
+                                    &key ledger (budget 10000))
+  "Iteratively propagate ground equations `(= (:code-eval CODE-VAR 'a0 ...) 'val)` across
+non-decoupled conjuncts sharing identical EXTRA-KNOWNS, folding after each substitution pass."
+  (let ((reqs (copy-list row-reqs))
+        (known-evals (make-hash-table :test #'equal)))
+    (loop
+      (let ((changed nil))
+        (loop for req in reqs
+              for extra in extra-knowns
+              do (dolist (c (extract-conjuncts req))
+                   (multiple-value-bind (call val-lit) (extract-code-eval-equation c code-var)
+                     (when call
+                       (let ((key (cons extra call)))
+                         (unless (gethash key known-evals)
+                           (setf (gethash key known-evals) val-lit)))))))
+        (setf reqs
+              (loop for req in reqs
+                    for extra in extra-knowns
+                    collect (let ((row-changed nil)
+                                  (new-conjuncts nil))
+                              (dolist (c (extract-conjuncts req))
+                                (multiple-value-bind (ground non-ground-p)
+                                    (collect-code-eval-calls c code-var)
+                                  (if (or non-ground-p (> (length ground) 1))
+                                      (let ((sub c))
+                                        (dolist (g-call ground)
+                                          (let ((val-lit (gethash (cons extra g-call) known-evals)))
+                                            (when val-lit
+                                              (charge ledger :pullback (syntax-work val-lit))
+                                              (setf sub (replace-subexpression sub g-call val-lit)))))
+                                        (if (equal sub c)
+                                            (push c new-conjuncts)
+                                            (progn
+                                              (setf row-changed t changed t)
+                                              (push (fold-constants sub checker-schema
+                                                                    :ledger ledger :budget budget)
+                                                    new-conjuncts))))
+                                      (push c new-conjuncts))))
+                              (if row-changed
+                                  (fold-constants (reduce #'bool-and (nreverse new-conjuncts)
+                                                          :from-end t :initial-value (lit :bool t))
+                                                  checker-schema :ledger ledger :budget budget)
+                                  req))))
+        (unless changed (return reqs))))))
+
+(defun lift-frame (parent decoder child-id child-type &optional bindings ledger (budget 10000))
+  "Lift a parent frame through a higher-order DECODER parameterized by CHILD-ID of (:code inputs ret)
+into a 1-to-many child frame over the code parameter's inputs (plus any extra parent BINDINGS).
+Unfolds DECODER on each parent row, runs cross-row congruence closure on ground :code-eval calls,
+and emits one child row per distinct ground call requirement.
+Returns (VALUES lifted-frame coupled-conjuncts)."
+  (assert (and (code-type-p child-type) (not (function-sort-p (code-sort child-type)))))
+  (let* ((raw (pullback-frame parent decoder child-id child-type bindings ledger))
+         (code-in (code-inputs child-type))
+         (ret (code-sort child-type))
+         (extra-in (schema-inputs (frame-schema raw)))
+         (child-inputs (append (copy-tree code-in) (copy-tree extra-in)))
+         (code-var (var 0 child-type))
+         (ret-var (var 0 ret))
+         (checker-schema (make-schema :inputs (list (cons 0 child-type)) :target :bool))
+         (ret-checker-schema (make-schema :inputs (list (cons 0 ret)) :target :bool))
+         (extra-knowns (mapcar #'row-known (frame-rows raw)))
+         (initial-reqs (mapcar (lambda (row)
+                                 (fold-constants (row-requirement row) checker-schema
+                                                 :ledger ledger :budget budget))
+                               (frame-rows raw)))
+         (closed-reqs (congruence-close-code-evals initial-reqs extra-knowns code-var checker-schema
+                                                   :ledger ledger :budget budget))
+         (seen-known-req (make-hash-table :test #'equal))
+         (lifted-rows nil)
+         (coupled nil))
+    (assert (null (intersection (mapcar #'car code-in) (mapcar #'car extra-in))))
+    (loop for parent-row in (frame-rows raw)
+          for req in closed-reqs
+          for extra in extra-knowns
+          do (if (unsatisfiable-requirement-p req)
+                 (push (make-row :key (list (row-key parent-row) :unsat)
+                                 :known (append (mapcar (lambda (s) (default-value-for-type (cdr s))) code-in)
+                                                (copy-tree extra))
+                                 :requirement (lit :bool nil))
+                       lifted-rows)
+                 (loop for c in (extract-conjuncts req)
+                       for occ-idx from 0
+                       do (multiple-value-bind (ground non-ground-p) (collect-code-eval-calls c code-var)
+                            (cond
+                              ((and (not non-ground-p) (= 1 (length ground)))
+                               (let* ((call (first ground))
+                                      (call-known (mapcar #'ast-value (cddr call)))
+                                      (known (append (copy-tree call-known) (copy-tree extra)))
+                                      (lifted-req (fold-constants (replace-subexpression c call ret-var)
+                                                                  ret-checker-schema
+                                                                  :ledger ledger :budget budget))
+                                      (dedup-key (list known lifted-req)))
+                                 (unless (gethash dedup-key seen-known-req)
+                                   (setf (gethash dedup-key seen-known-req) t)
+                                   (charge ledger :pullback (syntax-work lifted-req))
+                                   (push (make-row :key (list (row-key parent-row) occ-idx)
+                                                   :known known
+                                                   :requirement lifted-req)
+                                         lifted-rows))))
+                              ((or non-ground-p (> (length ground) 1))
+                               (push (cons (row-key parent-row) c) coupled))
+                              ((unsatisfiable-requirement-p c)
+                               (push (make-row :key (list (row-key parent-row) occ-idx)
+                                               :known (append (mapcar (lambda (s) (default-value-for-type (cdr s))) code-in)
+                                                              (copy-tree extra))
+                                               :requirement (lit :bool nil))
+                                     lifted-rows)))))))
+    (unless lifted-rows
+      (push (make-row :key :vacuous
+                      :known (mapcar (lambda (s) (default-value-for-type (cdr s))) child-inputs)
+                      :requirement (lit :bool t))
+            lifted-rows))
+    (values (make-frame (make-schema :inputs child-inputs :target ret)
+                        (nreverse lifted-rows))
+            (nreverse coupled))))
+
+(defun compose-lifted-model (decoder child-id child-type child-model &optional bindings ledger)
+  "Package a synthesized CHILD-MODEL of type (code-sort CHILD-TYPE) into a :code expression
+of type CHILD-TYPE (using :code-subst when CHILD-MODEL references outer BINDINGS) and
+inline it for CHILD-ID in DECODER."
+  (assert (and (code-type-p child-type) (not (function-sort-p (code-sort child-type)))))
+  (let* ((code-in (code-inputs child-type))
+         (ret (code-sort child-type))
+         (free (free-vars child-model))
+         (used-bindings (when bindings
+                          (some (lambda (b) (member (car b) free :test #'eql)) bindings)))
+         (code-expr
+           (if (not used-bindings)
+               (lit child-type child-model)
+               (let* ((extra-in (mapcar (lambda (b) (cons (car b) (ast-type (cdr b)))) bindings))
+                      (full-code-type (code-type (append code-in extra-in) ret))
+                      (tuple-args (append (mapcar (lambda (s)
+                                                    (lit (code-type code-in (cdr s))
+                                                         (var (car s) (cdr s))))
+                                                  code-in)
+                                          (mapcar #'cdr bindings)))
+                      (subst-tuple-type (apply #'tuple-type (mapcar #'ast-type tuple-args))))
+                 (app (op :code-subst (tuple-type full-code-type subst-tuple-type child-type))
+                      (lit full-code-type child-model)
+                      (apply #'app (op :tuple subst-tuple-type) tuple-args)))))
+         (model (instantiate decoder (list (cons child-id code-expr)) :var)))
+    (charge ledger :composition (syntax-work model))
+    model))
+
+(defun conserved-quantity-frame (obs-frame target-id conserved-expr constant-value &optional ledger)
+  "Reorient a conserved observation C(u, T) = CONSTANT-VALUE on OBS-FRAME into a pulled-back
+frame solving for column TARGET-ID in terms of the remaining columns u.
+Returns (VALUES pulled-back-frame const-frame)."
+  (let* ((schema (frame-schema obs-frame))
+         (inputs (schema-inputs schema))
+         (target-pos (position target-id inputs :key #'car))
+         (target-type (cdr (nth target-pos inputs)))
+         (u-inputs (remove target-id inputs :key #'car))
+         (c-type (expression-type conserved-expr inputs))
+         (const-req (singleton-requirement c-type constant-value))
+         (const-frame
+           (make-frame (make-schema :domain (schema-domain schema) :inputs u-inputs :target c-type)
+                       (loop for row in (frame-rows obs-frame)
+                             collect (make-row :key (row-key row)
+                                               :known (loop for val in (row-known row)
+                                                            for idx from 0
+                                                            unless (= idx target-pos) collect val)
+                                               :requirement const-req))
+                       :pairs (frame-pairs obs-frame)
+                       :anchors (frame-anchors obs-frame))))
+    (values (pullback-frame const-frame conserved-expr target-id target-type
+                            (mapcar (lambda (s) (cons (car s) (var (car s) (cdr s)))) u-inputs)
+                            ledger)
+            const-frame)))
+
 (defun support-frame (scope-or-frame support &optional ledger)
   "Turn an observed membership residual into an ordinary Boolean synthesis frame.
 Every occurrence stays present. The predictor receives only the original inputs."

@@ -11,16 +11,16 @@
    #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p
    #:function-definition #:function-definition-p #:function-definition-name
    #:function-definition-inputs #:function-definition-return-type #:function-definition-code-type
-   #:function-definition-signature #:function-definition-body #:function-definition-oracle-table
+   #:function-definition-body #:function-definition-oracle-table
    #:function-definition-total-p #:function-definition-conditional-code-params
-   #:declare-function-signature #:define-function #:find-function-definition #:defined-function-p
+   #:define-function #:find-function-definition #:defined-function-p
    #:clear-function-definitions #:de-novo-function-name #:next-function-name
    ;; 2. codec.lisp — Prefix-coded binary serialization & O(1) sizes
    #:+encoding-version+ #:header-size #:body-size #:description-size
    #:encode-model #:decode-model
    ;; 3. vm.lisp — Structural tariff, resumable evaluator, constant folding
    #:+tariff-version+ #:+simulator-version+ #:vm-versions
-   #:unresolved-evaluation #:*lookup-missing-unresolved-p*
+   #:unresolved-evaluation
    #:ledger #:make-ledger #:ledger-total #:ledger-counts #:charge
    #:integer-width #:value-work #:type-work #:syntax-work
    #:evaluation #:start-evaluation #:advance-evaluation #:evaluate
@@ -34,7 +34,7 @@
    #:singleton-requirement #:set-requirement #:extract-allowed-values #:check-requirement
    #:conjoin-requirements #:frame-conflict #:frame-conflict-p
    #:orient-observations #:transition-probes #:lookup-model
-   #:pullback-frame #:compose-model #:support-frame
+   #:pullback-frame #:compose-model #:lift-frame #:compose-lifted-model #:conserved-quantity-frame #:support-frame
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
    #:partition-pairs-and-anchors #:with-frame-linkage
    #:centered-mod-difference #:correction-packet #:apply-correction-packet #:correction-bit-size #:select-closest-witness
@@ -109,13 +109,12 @@
    #:solve-discovery-validation #:solve-discovery-uniqueness
    #:propagation #:propagation-frame #:propagation-original #:propagation-fallback
    #:propagation-narrowed #:propagation-suggested #:propagation-retained #:propagation-rejected
-   #:prepare-propagator-library #:match-arithmetic-propagator #:propagate-arithmetic-child
-   #:as-propagator-library #:propagate-requirements #:propagation-ambiguous
+   #:prepare-propagator-library #:as-propagator-library #:propagate-requirements #:propagation-ambiguous
    #:start-propagation-search #:resume-propagation-search #:propagation-search-results
    #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work
    ;; Recursive orchestration and explicit dependency/selector targets.
    #:snapshot-frame #:remaining-work
-   #:decomposition #:make-decomposition #:decomposition-name #:decomposition-solver
+   #:decomposition #:make-decomposition #:decomposition-name #:decomposition-solver #:decomposition-lift-p
    #:start-synthesis #:resume-synthesis #:synthesis-job-best #:synthesis-job-results
    #:synthesis-job-ledger #:synthesis-job-messages
    #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace

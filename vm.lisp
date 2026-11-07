@@ -4,8 +4,8 @@
 ;;; Structural tariff, resumable homoiconic evaluator,
 ;;; and symbolic primitive execution. Simplification lives in requirements.lisp.
 
-(defconstant +tariff-version+ 9)
-(defconstant +simulator-version+ 5)
+(defconstant +tariff-version+ 10)
+(defconstant +simulator-version+ 6)
 
 (defstruct ledger (total 0) (counts nil))
 
@@ -61,13 +61,8 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
                      (unresolved-evaluation-name condition)
                      (unresolved-evaluation-arguments condition)))))
 
-(defvar *lookup-missing-unresolved-p* nil
-  "When true, a missing :lookup entry signals UNRESOLVED-EVALUATION instead of ERROR.")
-
 (defun vm-versions ()
-  (if (plusp *function-library-version*)
-      (list +encoding-version+ +tariff-version+ +simulator-version+ *function-library-version*)
-      (list +encoding-version+ +tariff-version+ +simulator-version+)))
+  (list +encoding-version+ +tariff-version+ +simulator-version+ *function-library-version*))
 
 (defun start-program-validation (expression inputs)
   "Snapshot and validate static code through the same prepaid, resumable VM."
@@ -129,6 +124,8 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
 (defun primitive-cost (operator values)
   (let ((name (operator-name operator))
         (type (operator-operand-type operator)))
+    (when (or (eq name :code-eval) (defined-function-p name))
+      (return-from primitive-cost 1))
     (when (member name *symbolic-primitives*)
       (return-from primitive-cost (symbolic-primitive-cost name type values)))
     (case name
@@ -188,9 +185,18 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
          (assert (and matched entry (value-p (cdr entry) (fourth type))))
          (copy-tree (cdr entry)))))
     (:code-subst
-     (instantiate (first values)
-                  (mapcar (lambda (input value) (cons (car input) value))
-                          (code-inputs (second type)) (second values)) :var))))
+     (let ((inputs (code-inputs (second type)))
+           (binding-types (rest (third type)))
+           (out-type (fourth type)))
+       (instantiate (first values)
+                    (loop for (id . input-type) in inputs
+                          for b-type in binding-types
+                          for value in (second values)
+                          collect (cons id (if (and (same-code-scope-p b-type out-type)
+                                                    (equal (code-sort b-type) input-type))
+                                               value
+                                               (lit input-type value))))
+                    :var)))))
 
 (defun execute-primitive (operator values)
   (let ((name (operator-name operator))
@@ -217,10 +223,9 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
       (:member (not (null (member (first values) (second values) :test #'equal))))
       (:lookup
        (let ((entry (assoc (first values) (second values) :test #'equal)))
-         (cond (entry (second entry))
-               (*lookup-missing-unresolved-p*
-                (error 'unresolved-evaluation :name :lookup :arguments (list (first values))))
-               (t (error "No encoded lookup entry for ~S" (first values))))))
+         (if entry
+             (second entry)
+             (error "No encoded lookup entry for ~S" (first values)))))
       (:gather
        (let* ((items (coerce (first values) 'vector)) (length (length items)))
          (mapcar (lambda (index) (aref items (checked-position index length))) (second values))))
@@ -300,16 +305,12 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
             (ordered-values (reverse raw-values)))
        (cond
          ((eq name :code-eval)
-          (let ((code-expr (first ordered-values))
-                (arg-values (rest ordered-values))
-                (inputs (code-inputs type)))
+          (let ((code-expr (first ordered-values)))
             (assert (value-p code-expr type))
-            (push (list :restore-env (evaluation-environment state))
-                  (evaluation-tasks state))
+            (push (list :restore-env (evaluation-environment state)) (evaluation-tasks state))
             (setf (evaluation-environment state)
-                  (mapcar (lambda (spec value)
-                            (cons (car spec) (if (evaluation-prepared-p state) (copy-tree value) value)))
-                          inputs arg-values))
+                  (mapcar (lambda (spec value) (cons (car spec) value))
+                          (code-inputs type) (rest ordered-values)))
             (push (list :eval code-expr) (evaluation-tasks state))))
          ((defined-function-p name)
           (let ((def (find-function-definition name)))
@@ -320,14 +321,11 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
                      (push (copy-tree (cdr entry)) (evaluation-stack state))
                      (error 'unresolved-evaluation :name name :arguments ordered-values))))
               ((function-definition-body def)
-               (push (list :restore-env (evaluation-environment state))
-                     (evaluation-tasks state))
+               (push (list :restore-env (evaluation-environment state)) (evaluation-tasks state))
                (setf (evaluation-environment state)
-                     (mapcar (lambda (spec value)
-                               (cons (car spec) (if (evaluation-prepared-p state) (copy-tree value) value)))
+                     (mapcar (lambda (spec value) (cons (car spec) value))
                              (function-definition-inputs def) ordered-values))
-               (push (list :eval (function-definition-body def))
-                     (evaluation-tasks state)))
+               (push (list :eval (function-definition-body def)) (evaluation-tasks state)))
               (t (error "Undefined body for function ~S" name)))))
          (t
           (push (execute-primitive operator ordered-values) (evaluation-stack state))))))))

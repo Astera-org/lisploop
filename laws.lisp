@@ -781,26 +781,6 @@ learn guards through Boolean frames."
                                       t)))) rules))))
     (make-propagator-library :rules (nreverse rules))))
 
-(defun compile-propagator-matcher (rule inputs child-id)
-  "Quoted decoder -> (matched, quoted known operand)."
-  (let* ((domain (arithmetic-propagator-domain rule))
-         (scope (acons child-id domain inputs)) (source-type (code-type scope domain))
-         (parameters (arithmetic-inputs domain)) (pattern-type (code-type parameters domain))
-         (pattern (lit pattern-type (arithmetic-application (arithmetic-propagator-operator rule)
-                                   (arithmetic-propagator-position rule) (var 0 domain) (var 1 domain))))
-         (source (var 0 source-type)) (result-type (tuple-type :bool source-type))
-         (no (app (op :tuple result-type) (lit :bool nil) (lit source-type (lit domain 0)))))
-    (flet ((binding (id)
-             (app (op :code-bind (tuple-type pattern-type source-type source-type)) pattern source (lit :int id))))
-      (values
-       (app (op :if result-type)
-            (app (op :code-match (tuple-type pattern-type source-type)) pattern source)
-            (app (op :if result-type)
-                 (app (op := source-type) (binding 1) (lit source-type (var child-id domain)))
-                 (app (op :tuple result-type) (lit :bool t) (binding 0)) no)
-            no)
-       (list (cons 0 source-type))))))
-
 (defun prepare-propagation-program (model inputs ledger category)
   (let ((state (start-program-validation model inputs)))
     (advance-accounted-evaluation state 100000000 ledger category category)
@@ -813,80 +793,15 @@ learn guards through Boolean frames."
     (assert (not (eq :unknown (evaluation-status state))) () "Propagation evaluation unresolved")
     state))
 
-(defun match-arithmetic-propagator (library decoder inputs child-id domain ledger)
-  "Meter a typed operator scan, then run DSL matchers on the shortlisted rules."
-  (assert (equal (propagator-library-versions library) (vm-versions)) () "Stale propagator library")
-  (charge ledger :propagator-dispatch (syntax-work decoder))
-  (dolist (rule (propagator-library-rules library))
-    (charge ledger :propagator-dispatch (+ 1 (syntax-work (arithmetic-propagator-operator rule))))
-    (when (and (app-p decoder) (equal domain (arithmetic-propagator-domain rule))
-               (equal (first decoder) (arithmetic-propagator-operator rule)))
-      (let* ((key (list rule (copy-tree inputs) child-id))
-             (cache (propagator-library-matchers library)))
-        (charge ledger :propagator-cache (+ 1 (integer-width child-id)
-                                            (loop for (id . type) in inputs sum (+ (integer-width id) (type-work type)))))
-        (let ((program (or (gethash key cache)
-                           (multiple-value-bind (model schema) (compile-propagator-matcher rule inputs child-id)
-                             (charge ledger :propagator-compilation (syntax-work model))
-                             (setf (gethash key cache) (prepare-propagation-program model schema ledger :propagator-preparation))))))
-          (let ((run (evaluate-propagation-program program (list decoder) ledger :propagator-matching)))
-            (when (and (eq :value (evaluation-status run)) (first (evaluation-value run)))
-              (let ((known (second (evaluation-value run))))
-                (charge ledger :propagator-binding (syntax-work known))
-                (when (handler-case (equal domain (expression-type known inputs)) (error () nil))
-                  (return-from match-arithmetic-propagator (values rule known))))))))))
-  (values nil nil))
-
-(defun propagate-arithmetic-child (parent decoder child-id bindings source ledger)
-  "Certified rules replace requirements exactly. Integer witnesses are forward
-checked against the ORIGINAL pullback and supply a separate tentative frame."
-  (let* ((inputs (schema-inputs (frame-schema parent))) (domain (schema-target (frame-schema parent)))
-         (original (pullback-frame parent decoder child-id domain bindings ledger))
-         (library (etypecase source
-                    (solve-discovery (prepare-propagator-library (list source) ledger))
-                    (propagator-library source)))
-         (result (make-propagation :frame original :original original :retained (length (frame-rows original)))))
-    (multiple-value-bind (rule known) (match-arithmetic-propagator library decoder inputs child-id domain ledger)
-      (unless rule (return-from propagate-arithmetic-child result))
-      (let* ((schema (arithmetic-inputs domain))
-             (guard-program (prepare-propagation-program (arithmetic-propagator-guard rule) schema ledger :propagation-preparation))
-             (witness-program (prepare-propagation-program (arithmetic-propagator-witness rule) schema ledger :propagation-preparation))
-             (certified (arithmetic-propagator-certified-p rule))
-             (rows
-               (loop for parent-row in (frame-rows parent) for row in (frame-rows original) collect
-                 (block propose
-                   (let ((targets (extract-allowed-values (row-requirement parent-row))))
-                     (unless (and (listp targets) (= 1 (length targets))) (return-from propose row))
-                     (let ((context (run-algebra-program known inputs (row-known parent-row) ledger :propagation-context)))
-                       (unless (eq :value (evaluation-status context)) (return-from propose row))
-                       (let* ((values (list (evaluation-value context) (first targets)))
-                              (guard (evaluate-propagation-program guard-program values ledger :propagation-guard)))
-                         (unless (and (eq :value (evaluation-status guard)) (evaluation-value guard)) (return-from propose row))
-                         (let ((witness (evaluate-propagation-program witness-program values ledger :propagation-witness)))
-                           (unless (eq :value (evaluation-status witness)) (return-from propose row))
-                           (unless certified
-                             (let ((check (run-algebra-program (row-requirement row)
-                                          (list (cons 0 domain)) (list (evaluation-value witness)) ledger :propagation-verification)))
-                               (unless (and (eq :value (evaluation-status check)) (evaluation-value check))
-                                 (incf (propagation-rejected result)) (return-from propose row))))
-                           (if certified (incf (propagation-narrowed result)) (incf (propagation-suggested result)))
-                           (let ((req (set-requirement domain (list (evaluation-value witness)))))
-                             (charge ledger :propagation-frame (syntax-work req))
-                             (make-row :key (row-key row) :known (row-known row) :requirement req))))))))))
-        (setf (propagation-frame result) (make-frame (frame-schema original) rows
-                                                     :pairs (frame-pairs original)
-                                                     :anchors (frame-anchors original))
-              (propagation-retained result) (- (length rows) (propagation-narrowed result) (propagation-suggested result)))
-        (when (plusp (propagation-suggested result)) (setf (propagation-fallback result) original))))
-    result))
-
 ;;; Requirement-Level Propagation: learned solvers applied inside pulled-back predicates
 
 (defun as-propagator-library (sources ledger)
   "Merge SOURCES (solve discoveries, propagator libraries, or a list of either) into one
 library, or nil when there is nothing to merge. A lone library is returned as is."
   (if (propagator-library-p sources)
-      sources
+      (progn
+        (assert (equal (propagator-library-versions sources) (vm-versions)) () "Stale propagator library")
+        sources)
       (let ((discoveries nil) (rules nil))
         (dolist (source (if (listp sources) sources (list sources)))
           (etypecase source
@@ -909,54 +824,82 @@ library, or nil when there is nothing to merge. A lone library is returned as is
                                            (arithmetic-inputs (arithmetic-propagator-domain rule))
                                            ledger :propagation-preparation)))))
 
-(defun solve-learned-equality (conjunct library ledger)
-  "If CONJUNCT is (= (op a b) 'c) with exactly one literal operand 'k, and LIBRARY holds a
-rule for OP at the other operand whose learned guard accepts (k, c), return
-(VALUES (= unknown 'q(k,c)) rule). Uncertified witnesses are forward checked first."
-  (when (and (app-p conjunct) (eq := (operator-name (first conjunct))))
-    (let* ((lhs (second conjunct)) (rhs (third conjunct))
-           (c (cond ((lit-p rhs) rhs) ((lit-p lhs) lhs)))
-           (term (cond ((lit-p rhs) lhs) ((lit-p lhs) rhs))))
-      (when (and term (app-p term) (= 2 (length (rest term))))
-        (let ((position (cond ((and (lit-p (second term)) (not (lit-p (third term)))) 1)
-                              ((and (lit-p (third term)) (not (lit-p (second term)))) 0))))
-          (when position
-            (let ((known (if (= position 1) (second term) (third term)))
-                  (unknown (if (= position 1) (third term) (second term))))
-              (dolist (rule (propagator-library-rules library))
-                (charge ledger :propagator-dispatch (+ 1 (syntax-work (arithmetic-propagator-operator rule))))
-                (when (and (equal (first term) (arithmetic-propagator-operator rule))
-                           (= position (arithmetic-propagator-position rule)))
-                  (let* ((values (list (ast-value known) (ast-value c)))
-                         (guard (evaluate-propagation-program (propagator-program library rule :guard ledger)
-                                                              values ledger :propagation-guard)))
-                    (when (and (eq :value (evaluation-status guard)) (evaluation-value guard))
-                      (let ((witness (evaluate-propagation-program (propagator-program library rule :witness ledger)
-                                                                   values ledger :propagation-witness)))
-                        (when (eq :value (evaluation-status witness))
-                          (let* ((type (ast-type unknown))
-                                 (w (lit type (evaluation-value witness))))
-                            (when (or (arithmetic-propagator-certified-p rule)
+(defun extract-equality-target (conjunct)
+  "If CONJUNCT is `(= term 'c)` or a singleton `(member term '(c))`, return (VALUES term 'c)."
+  (when (and (app-p conjunct) (operator-p (first conjunct)))
+    (case (operator-name (first conjunct))
+      (:=
+       (let ((lhs (second conjunct)) (rhs (third conjunct)))
+         (cond ((and (lit-p rhs) (not (lit-p lhs))) (values lhs rhs))
+               ((and (lit-p lhs) (not (lit-p rhs))) (values rhs lhs)))))
+      (:member
+       (let ((lhs (second conjunct)) (rhs (third conjunct)))
+         (when (and (not (lit-p lhs)) (lit-p rhs))
+           (let ((values (remove-duplicates (ast-value rhs) :test #'equal)))
+             (when (and values (null (rest values)))
+               (values lhs (lit (ast-type lhs) (first values)))))))))))
+
+(defun solve-learned-equality (conjunct library ledger &optional result)
+  "If CONJUNCT is `(= (op a b) 'c)` or `(member (op a b) '(c))` with one closed operand and
+one open operand, and LIBRARY holds a rule for OP at the open position whose learned guard
+accepts (k, c), return (VALUES (= unknown 'q(k,c)) rule). Uncertified witnesses are forward
+checked first."
+  (multiple-value-bind (term c) (extract-equality-target conjunct)
+    (when (and term (app-p term) (= 2 (length (rest term))))
+      (let* ((arg0 (second term)) (arg1 (third term))
+             (closed0 (and (null (free-vars arg0)) (not (contains-hole-p arg0))))
+             (closed1 (and (null (free-vars arg1)) (not (contains-hole-p arg1))))
+             (position (cond ((and closed0 (not closed1)) 1)
+                             ((and closed1 (not closed0)) 0))))
+        (when position
+          (let ((known-expr (if (= position 1) arg0 arg1))
+                (unknown (if (= position 1) arg1 arg0)))
+            (dolist (rule (propagator-library-rules library))
+              (charge ledger :propagator-dispatch (+ 1 (syntax-work (arithmetic-propagator-operator rule))))
+              (when (and (equal (first term) (arithmetic-propagator-operator rule))
+                         (= position (arithmetic-propagator-position rule)))
+                (let ((known (if (lit-p known-expr)
+                                 known-expr
+                                 (let ((context (run-algebra-program known-expr nil nil ledger :propagation-context)))
+                                   (when (eq :value (evaluation-status context))
+                                     (lit (ast-type known-expr) (evaluation-value context)))))))
+                  (when known
+                    (let* ((values (list (ast-value known) (ast-value c)))
+                           (guard (evaluate-propagation-program (propagator-program library rule :guard ledger)
+                                                                values ledger :propagation-guard)))
+                      (when (and (eq :value (evaluation-status guard)) (evaluation-value guard))
+                        (let ((witness (evaluate-propagation-program (propagator-program library rule :witness ledger)
+                                                                     values ledger :propagation-witness)))
+                          (when (eq :value (evaluation-status witness))
+                            (let* ((type (ast-type unknown))
+                                   (w (lit type (evaluation-value witness))))
+                              (if (or (arithmetic-propagator-certified-p rule)
                                       (let ((check (run-algebra-program
                                                     (app (op := (ast-type c))
                                                          (arithmetic-application (first term) position known w) c)
                                                     nil nil ledger :propagation-verification)))
                                         (and (eq :value (evaluation-status check)) (evaluation-value check))))
-                              (return (values (app (op := type) unknown w) rule)))))))))))))))))
+                                  (return (values (app (op := type) unknown w) rule))
+                                  (when result (incf (propagation-rejected result)))))))))))))))))))
 
-(defun propagate-requirements (frame library ledger)
-  "Rewrite every top-level conjunct (= (op 'k T) 'c) of FRAME's requirements to (= T 'w)
-using LIBRARY's learned guards and witnesses, repeatedly, so nested operators unwind.
-Only conjuncts are rewritten: a narrowing is not sound under negation. Certified rules
-are equivalences; others are suggestions, and rules without uniqueness evidence mark the
-propagation ambiguous, so the caller keeps the original frame as a fallback."
-  (let ((result (make-propagation :original frame)))
+(defun propagate-requirements (frame source ledger)
+  "Rewrite every top-level conjunct (= (op 'k T) 'c) or (member (op 'k T) '(c)) of FRAME's
+requirements to (= T 'w) using SOURCE's learned guards and witnesses, repeatedly, so nested
+operators unwind. Only conjuncts are rewritten: a narrowing is not sound under negation.
+Certified rules are equivalences; others are suggestions, and rules without uniqueness
+evidence mark the propagation ambiguous, so the caller keeps the original frame as a fallback."
+  (let ((library (as-propagator-library source ledger))
+        (result (make-propagation :frame frame :original frame)))
+    (unless library
+      (setf (propagation-retained result) (length (frame-rows frame)))
+      (return-from propagate-requirements result))
     (setf (propagation-frame result)
           (make-frame (frame-schema frame)
                       (loop for row in (frame-rows frame) collect
                         (let ((certified t) (changed nil) (unique t))
                           (flet ((solve (conjunct)
-                                   (loop (multiple-value-bind (next rule) (solve-learned-equality conjunct library ledger)
+                                   (loop (multiple-value-bind (next rule)
+                                             (solve-learned-equality conjunct library ledger result)
                                            (unless next (return conjunct))
                                            (setf changed t conjunct next
                                                  certified (and certified (arithmetic-propagator-certified-p rule))

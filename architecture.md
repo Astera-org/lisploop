@@ -41,18 +41,18 @@ Supported types are:
 | `(:seq type)` | Proper list of homogeneous elements |
 | `(:code inputs sort)` | Typed syntax or an operator in the declared scope |
 
-A quoted syntax literal `(lit (code-type inputs sort) expression)` evaluates to syntax data. It does not evaluate that syntax. The DSL has no `:code-eval`, host `eval`, or arbitrary host-call primitive.
+A quoted syntax literal `(lit (code-type inputs sort) expression)` evaluates to syntax data. It does not implicitly evaluate that syntax; explicit execution of a `:code` value happens through `:code-eval` under the same resumable VM budget. There is no host `eval` or arbitrary host-call primitive.
 
 Variables and holes are pooled uninterned symbols. Literals are two-element lists headed by a typed quote symbol; applications are ordinary lists headed by an operator or function-sorted hole. The actual constructors are `var`, `hole`, `lit`, `op`, and `app`; operator holes use `(hole id '(:fn argument-types return-type))`, with no `:kind` keyword.
 
 `*node-meta*` caches type, non-variable bits, variable count, structural work, conservative totality, and free variables in a weak `eq` table. Cached metadata access is cheap, but `body-size` and `description-size` recursively validate expression scope and types. They are not constant-time size APIs. Metadata for copied trees can be reconstructed by `ensure-ast-meta`.
 
-The fixed vocabulary has **21 operators**:
+The fixed vocabulary has **26 operators** (plus dynamically registered homoiconic functions `:fa`, `:fb`, ... via `define-function`):
 
-- Twelve object operators: `:+`, `:*`, `:=`, `:tuple`, `:member`, `:lookup`, `:gather`, `:-`, `:/`, `:if`, `:concat`, `:at`.
-- Nine symbolic operators: `:code-kind`, `:code-child`, `:code-operator`, `:code-apply`, `:code-match`, `:code-bind`, `:code-subst`, `:code-total`, `:code-less`.
+- Sixteen object operators: `:+`, `:*`, `:=`, `:tuple`, `:member`, `:lookup`, `:gather`, `:-`, `:/`, `:if`, `:concat`, `:at`, `:cons`, `:tail`, `:length`, `:<`.
+- Ten symbolic operators: `:code-kind`, `:code-child`, `:code-operator`, `:code-apply`, `:code-match`, `:code-bind`, `:code-subst`, `:code-total`, `:code-less`, `:code-eval`.
 
-There is no general numeric ordering operator. `:code-less` orders syntax by encoded size and then bits. Integer division truncates toward zero; field division uses `field-reciprocal`. Conditionals are lazy. Bounds violations, missing lookup keys, and division by zero are evaluation errors.
+`:<` orders `:int` values (and is rejected on `:gf` or `:bool`). `:code-less` orders syntax by encoded size and then bits. `:code-subst` substitutes `:code` subtrees or lifts runtime values into typed literals inside a template `:code` expression. Integer division truncates toward zero; field division uses `field-reciprocal`. Conditionals are lazy. Bounds violations, `:tail` on an empty sequence, missing lookup keys, and division by zero are evaluation errors; missing entries in a partial function `oracle-table` signal `:unresolved`.
 
 ### 2.2 Frames, requirements, pairs, and anchors
 
@@ -161,7 +161,7 @@ by substitution and evaluates the declared child input bindings. It **does not c
 
 `frame-conflict-p` uses folding to detect false rows or incompatible requirements on identical inputs. It returns `(values conflict folded-frame)` without mutating its input frame in place; when no conflict is detected (`conflict = nil`), `folded-frame` carries the folded row requirements. Cost includes expression traversal and evaluation; it is not generally linear in row count alone.
 
-`propagate-arithmetic-child` uses learned witness/guard programs. Certified witness and uniqueness laws authorize equivalent singleton replacement on applicable rows. Tentative witnesses are forward checked and retain an original fallback frame. `propagation-search` schedules primary search, original-frame verification, and a fallback reserve every fourth quantum. Certification is attached to `arithmetic-propagator`; there is no `propagation-certified-p` accessor.
+`propagate-requirements` uses learned witness/guard programs inside pulled-back row requirements. Certified witness and uniqueness laws authorize equivalent singleton replacement on applicable conjuncts. Tentative witnesses are forward checked and retain an original fallback frame. `propagation-search` schedules primary search, original-frame verification, and a fallback reserve every fourth quantum. Certification is attached to `arithmetic-propagator`; there is no `propagation-certified-p` accessor.
 
 ### 3.4 Heuristic condensation and recursive search
 

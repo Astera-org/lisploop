@@ -272,7 +272,7 @@
          (relation (observe-arithmetic-relation :int :+ '(0 1 2 3)))
          (discovery (validate-arithmetic-solver
                      (discover-arithmetic-solver relation 1 '(0 1 2 3) :operators '(:-) :literals nil :body-bound 12)))
-         (propagated (propagation-frame (propagate-arithmetic-child linked decoder 9 bindings discovery (make-ledger)))))
+         (propagated (propagation-frame (propagate-requirements pulled discovery (make-ledger)))))
     (check (and pairs anchors))
     (dolist (transformed (list pulled projected labeled propagated))
       (check (equal pairs (frame-pairs transformed)))
@@ -384,7 +384,7 @@
       (check (equal (lit :bool t) (row-requirement (third (frame-rows folded-child)))))
       ;; Input raw-child remains un-mutated.
       (check (not (equal (lit :bool t) (row-requirement (second (frame-rows raw-child))))))))
-  ;; 2. `propagate-arithmetic-child` uses the learned M4 solver to invert pulled-back
+  ;; 2. `propagate-requirements` uses the learned M4 solver to invert pulled-back
   ;;    symbolic child frames so `start-heuristic-search` / `condense-heuristic` scores
   ;;    candidates against explicit residual witnesses.
   (let* ((inputs '((0 . :int)))
@@ -393,7 +393,7 @@
          (bindings (list (cons 0 (var 0 :int))))
          (pulled (pullback-frame parent decoder 9 :int bindings))
          (solver (prepare-propagator-library (list (arithmetic-control :int :+ 1)) (make-ledger)))
-         (propagated (propagation-frame (propagate-arithmetic-child parent decoder 9 bindings solver (make-ledger))))
+         (propagated (propagation-frame (propagate-requirements pulled solver (make-ledger))))
          (child-lang (make-language :int inputs :operators nil :literals '(0 1)))
          (bound (+ (header-size inputs :int) 6))
          (h (condense-heuristic propagated child-lang :description-limit bound)))
@@ -405,7 +405,7 @@
     ;; Latent displacement is +1 on rows 0 and 1, and +9 on outlier row 2 -> chooses literal '1!
     (check (equal (lit :int 1) (heuristic-program h)))
     (check (equal '((2 . 9)) (heuristic-residual h))))
-  ;; 3. `decomposition-solver` invokes `propagate-arithmetic-child` during node preparation.
+  ;; 3. `decomposition-solver` invokes `propagate-requirements` during node preparation.
   (let* ((field (gf 5))
          (inputs (list (cons 0 field)))
          (parent (simple-frame field inputs '(((1) 4) ((2) 0) ((3) 1))))

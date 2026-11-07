@@ -22,8 +22,7 @@
       ((:= :member :at :length) (emit-bit-type type emit))
       (:lookup (emit-bit-type (second type) emit))
       (otherwise
-       (when (or (member name *symbolic-primitives*)
-                 (member name *registered-function-names*))
+       (when (member name *symbolic-primitives*)
          (emit-bit-type type emit))))))
 
 (defun emit-positive (value emit)
@@ -192,8 +191,7 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
                                           (second type))
                                          (:< (assert (eq type :bool)) :int)
                                          (otherwise
-                                          (if (or (member name *symbolic-primitives*)
-                                                  (member name *registered-function-names*))
+                                          (if (member name *symbolic-primitives*)
                                               (read-type)
                                               type))))
                          (operator (op name operand-type)))

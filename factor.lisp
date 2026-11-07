@@ -1504,15 +1504,19 @@ Returns (VALUES true-frame false-frame labels partition)."
         (solve-parts true-frame false-frame child-language target)
         (when decoder
           (let* ((type (or child-type target))
+                 (library (when solver (as-propagator-library solver ledger)))
                  (parents (loop for truth in '(t nil) collect
                             (make-frame (copy-schema schema)
                                         (loop for row in (frame-rows frame) for label in labels
                                               when (eq truth label) collect row))))
-                 (props (mapcar (lambda (parent) (when solver
-                                                  (propagate-arithmetic-child parent decoder child-id child-bindings solver ledger))) parents))
-                 (children (loop for parent in parents for prop in props collect
-                             (if prop (propagation-frame prop)
-                                 (pullback-frame parent decoder child-id type child-bindings ledger))))
+                 (pulled (mapcar (lambda (parent)
+                                   (pullback-frame parent decoder child-id type child-bindings ledger))
+                                 parents))
+                 (props (mapcar (lambda (child)
+                                  (when library (propagate-requirements child library ledger)))
+                                pulled))
+                 (children (loop for child in pulled for prop in props collect
+                             (if prop (propagation-frame prop) child)))
                  (language (make-language (language-domain child-language)
                                           (schema-inputs (frame-schema (first children)))
                                           :operators (language-operators child-language)

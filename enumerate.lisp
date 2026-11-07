@@ -358,8 +358,8 @@ Listed proposals use the SAME construction, VM, checker and objective."
       (:row
        (charge ledger :scheduling)
        (if (null (search-job-rows job))
-           (if (or (null (frame-rows (search-job-frame job)))
-                   (plusp (search-job-resolved-rows job)))
+           (if (>= (search-job-resolved-rows job)
+                   (min 2 (length (frame-rows (search-job-frame job)))))
                (accept-candidate job)
                (reject-candidate job))
            (setf (search-job-evaluation job)
