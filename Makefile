@@ -55,8 +55,13 @@ benchmark-profile: | $(RESULTS_DIR)
 	@$(SBCL) --dynamic-space-size 2048 --script benchmark.lisp search quadratic 70 $(BENCHMARK_SECONDS) batch profile > $(RESULTS_DIR)/benchmark-profile.txt
 	@printf 'CPU profile: %s/benchmark-profile.txt\n' '$(RESULTS_DIR)'
 
+plan7-recursion.pdf: figures/phase3-lifts.pdf
+
+figures/%.pdf: figures/%.dot
+	dot -Tpdf $< -o $@
+
 %.pdf: %.md
 	pandoc $< -o $@ $(PANDOC_FLAGS)
 
 clean:
-	rm -f $(DOCS)
+	rm -f $(DOCS) figures/*.pdf

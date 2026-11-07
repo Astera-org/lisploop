@@ -15,15 +15,11 @@
 (defun emit-operator (operator emit)
   (let* ((meta (ensure-ast-meta operator))
          (name (ast-meta-id meta))
-         (type (ast-meta-type meta)))
+         (encoded-type (operator-encoded-type name (ast-meta-type meta))))
     (assert (eq :op (ast-meta-kind meta)))
     (emit-operator-name name emit)
-    (case name
-      ((:= :member :at :length) (emit-bit-type type emit))
-      (:lookup (emit-bit-type (second type) emit))
-      (otherwise
-       (when (member name *symbolic-primitives*)
-         (emit-bit-type type emit))))))
+    (when encoded-type
+      (emit-bit-type encoded-type emit))))
 
 (defun emit-positive (value emit)
   (let* ((width (integer-length value)) (length-width (integer-length width)))

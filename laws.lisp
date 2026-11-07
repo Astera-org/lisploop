@@ -743,11 +743,17 @@ learn guards through Boolean frames."
                          (law-validation-certificate state)
                          (equalp (law-certificate-snapshot (law-validation-certificate state)) (law-snapshot expected))))))
 
+(defun finish-accounted-evaluation (state ledger category error-msg &optional require-value-p)
+  (advance-accounted-evaluation state 100000000 ledger category category)
+  (assert (if require-value-p
+              (eq :value (evaluation-status state))
+              (not (eq :unknown (evaluation-status state))))
+          () error-msg)
+  state)
+
 (defun run-algebra-program (model inputs values ledger category)
-  (let ((state (start-evaluation model inputs values)))
-    (advance-accounted-evaluation state 100000000 ledger category category)
-    (assert (not (eq :unknown (evaluation-status state))) () "Algebra evaluation cutoff")
-    state))
+  (finish-accounted-evaluation (start-evaluation model inputs values)
+                               ledger category "Algebra evaluation cutoff"))
 
 ;;; Checker-AST Propagation (Dual-Grade Propagators)
 
@@ -782,16 +788,13 @@ learn guards through Boolean frames."
     (make-propagator-library :rules (nreverse rules))))
 
 (defun prepare-propagation-program (model inputs ledger category)
-  (let ((state (start-program-validation model inputs)))
-    (advance-accounted-evaluation state 100000000 ledger category category)
-    (assert (eq :value (evaluation-status state)) () "Propagation preparation unresolved")
-    (evaluation-value state)))
+  (evaluation-value
+   (finish-accounted-evaluation (start-program-validation model inputs)
+                                ledger category "Propagation preparation unresolved" t)))
 
 (defun evaluate-propagation-program (program values ledger category)
-  (let ((state (start-validated-evaluation program values)))
-    (advance-accounted-evaluation state 100000000 ledger category category)
-    (assert (not (eq :unknown (evaluation-status state))) () "Propagation evaluation unresolved")
-    state))
+  (finish-accounted-evaluation (start-validated-evaluation program values)
+                               ledger category "Propagation evaluation unresolved"))
 
 ;;; Requirement-Level Propagation: learned solvers applied inside pulled-back predicates
 
@@ -826,18 +829,10 @@ library, or nil when there is nothing to merge. A lone library is returned as is
 
 (defun extract-equality-target (conjunct)
   "If CONJUNCT is `(= term 'c)` or a singleton `(member term '(c))`, return (VALUES term 'c)."
-  (when (and (app-p conjunct) (operator-p (first conjunct)))
-    (case (operator-name (first conjunct))
-      (:=
-       (let ((lhs (second conjunct)) (rhs (third conjunct)))
-         (cond ((and (lit-p rhs) (not (lit-p lhs))) (values lhs rhs))
-               ((and (lit-p lhs) (not (lit-p rhs))) (values rhs lhs)))))
-      (:member
-       (let ((lhs (second conjunct)) (rhs (third conjunct)))
-         (when (and (not (lit-p lhs)) (lit-p rhs))
-           (let ((values (remove-duplicates (ast-value rhs) :test #'equal)))
-             (when (and values (null (rest values)))
-               (values lhs (lit (ast-type lhs) (first values)))))))))))
+  (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct :singleton-member-p t)
+    (declare (ignore term-type))
+    (when term
+      (values term lit-node))))
 
 (defun solve-learned-equality (conjunct library ledger &optional result)
   "If CONJUNCT is `(= (op a b) 'c)` or `(member (op a b) '(c))` with one closed operand and

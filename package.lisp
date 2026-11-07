@@ -14,7 +14,7 @@
    #:function-definition-body #:function-definition-oracle-table
    #:function-definition-total-p #:function-definition-conditional-code-params
    #:define-function #:find-function-definition #:defined-function-p
-   #:clear-function-definitions #:de-novo-function-name #:next-function-name
+   #:clear-function-definitions #:de-novo-function-name #:next-function-name #:rename-function-calls
    ;; 2. codec.lisp — Prefix-coded binary serialization & O(1) sizes
    #:+encoding-version+ #:header-size #:body-size #:description-size
    #:encode-model #:decode-model
@@ -33,7 +33,8 @@
    #:frame #:make-frame #:frame-schema #:frame-rows #:frame-pairs #:frame-anchors
    #:singleton-requirement #:set-requirement #:extract-allowed-values #:check-requirement
    #:conjoin-requirements #:frame-conflict #:frame-conflict-p
-   #:orient-observations #:transition-probes #:lookup-model
+   #:frame-constrained-row-count #:frame-min-resolved-rows
+   #:orient-observations #:transition-probes #:lookup-model #:frame-oracle-table
    #:pullback-frame #:compose-model #:lift-frame #:compose-lifted-model #:conserved-quantity-frame #:support-frame
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
    #:partition-pairs-and-anchors #:with-frame-linkage
@@ -64,6 +65,7 @@
    #:find-observation #:observed-agreement-p #:observation-invariants
    ;; 6. factor.lisp — Matching, AU, fiber proposals, corpus compression, heuristic condensation, M6 subgraph search
    #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p #:term-sort
+   #:shared-subterm-cover #:abstract-over-subterms
    #:patterns-isomorphic-p #:pattern-holes #:pattern-hole-counts
    #:subtree-at-path #:replace-at-path #:tree-occurrence #:tree-occurrence-p
    #:tree-occurrence-tree-index #:tree-occurrence-path #:tree-occurrence-term
@@ -91,7 +93,7 @@
    #:propose-law-compressions #:decode-law-corpus
    #:condense-heuristic #:heuristic-model #:heuristic-model-p
    #:heuristic-program #:heuristic-residual #:heuristic-exact-p #:heuristic-program-bits
-   #:heuristic-residual-bits #:heuristic-run-work #:heuristic-score
+   #:heuristic-residual-bits #:heuristic-run-work #:heuristic-score #:heuristic-alternatives
    ;; 7. laws.lisp — Laws, validation, rewriting, solver discovery, dual-grade propagation
    #:law-type-p #:finite-type-p #:finite-type-cardinality #:law-assignment
    #:law #:make-law #:law-domain #:law-inputs #:law-lhs #:law-rhs #:law-equation #:law-guard #:law-origin #:law-statement
@@ -113,13 +115,19 @@
    #:start-propagation-search #:resume-propagation-search #:propagation-search-results
    #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work
    ;; Recursive orchestration and explicit dependency/selector targets.
-   #:snapshot-frame #:remaining-work
-   #:decomposition #:make-decomposition #:decomposition-name #:decomposition-solver #:decomposition-lift-p
+   #:snapshot-frame #:remaining-work #:*synthesis-debug-mode*
+   #:decomposition #:make-decomposition #:decomposition-name #:decomposition-solver
+   #:decomposition-lift-p #:decomposition-provenance
+   #:nogood-clause #:nogood-clause-p #:nogood-clause-parent-id #:nogood-clause-kind
+   #:nogood-clause-keys #:nogood-clause-known #:nogood-clause-bindings #:nogood-clause-clause-expr
    #:start-synthesis #:resume-synthesis #:synthesis-job-best #:synthesis-job-results
-   #:synthesis-job-ledger #:synthesis-job-messages
+   #:synthesis-job-ledger #:synthesis-job-messages #:synthesis-job-debug-p
    #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace
-   #:synthesis-node-priority #:synthesis-node-heuristic
-   #:heuristic-decompositions #:heuristic-expander #:start-heuristic-synthesis #:synthesis-episode-returns
+   #:synthesis-node-priority #:synthesis-node-heuristic #:synthesis-node-provenance
+   #:lift-inductive-sequence-context #:explain-synthesis-node #:explain-synthesis-job
+   #:heuristic-decompositions #:heuristic-expander #:start-heuristic-synthesis
+   #:start-recursive-synthesis
+   #:synthesis-job-self-name #:synthesis-job-oracle-table #:synthesis-episode-returns
    #:dependency-proposals #:start-selector-search
    #:start-dependency-search #:resume-dependency-search #:dependency-search-synthesis
    #:dependency-search-features #:dependency-search-ledger

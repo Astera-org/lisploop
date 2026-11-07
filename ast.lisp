@@ -191,15 +191,17 @@ or element type `tau` (normalized to `(:seq tau)`)."
 
 (defun value-work (value type)
   "One visit per value/container plus raw payload bits; independent of the codec."
-  (1+ (case type
-        (:int (1+ (integer-width value)))
-        (:bool 1)
-        (otherwise
-         (ecase (first type)
-           (:gf (integer-width (1- (second type))))
-           (:tuple (loop for item in value for part in (rest type) sum (value-work item part)))
-           (:seq (loop for item in value sum (value-work item (second type))))
-           (:code (syntax-work value)))))))
+  (if (eq value :unresolved)
+      1
+      (1+ (case type
+            (:int (1+ (integer-width value)))
+            (:bool 1)
+            (otherwise
+             (ecase (first type)
+               (:gf (integer-width (1- (second type))))
+               (:tuple (loop for item in value for part in (rest type) sum (value-work item part)))
+               (:seq (loop for item in value sum (value-work item (second type))))
+               (:code (syntax-work value))))))))
 
 (defun signed-code (value)
   (if (minusp value) (* -2 value) (1+ (* 2 value))))
@@ -240,15 +242,19 @@ or element type `tau` (normalized to `(:seq tau)`)."
   (let ((index (or (operator-index name) (error "Unknown operator ~S" name))))
     (+ 4 (if (>= index 15) (positive-bit-size (- index 14)) 0))))
 
+(defun operator-encoded-type (name type)
+  "Return the type parameter emitted in the bitstream for operator NAME, or NIL."
+  (case name
+    ((:= :member :at :length) type)
+    (:lookup (second type))
+    (otherwise
+     (when (member name *symbolic-primitives*)
+       type))))
+
 (defun operator-bit-size (name type)
-  (+ (operator-name-bit-size name)
-     (case name
-       ((:= :member :at :length) (type-bit-size type))
-       (:lookup (type-bit-size (second type)))
-       (otherwise
-        (if (member name *symbolic-primitives*)
-            (type-bit-size type)
-            0)))))
+  (let ((encoded-type (operator-encoded-type name type)))
+    (+ (operator-name-bit-size name)
+       (if encoded-type (type-bit-size encoded-type) 0))))
 
 (defun value-bit-size (value type)
   (case type
@@ -274,6 +280,11 @@ or element type `tau` (normalized to `(:seq tau)`)."
 
 (defun same-code-scope-p (left right)
   (and (code-type-p left) (code-type-p right) (equal (code-inputs left) (code-inputs right))))
+
+(defun code-subst-code-binding-p (binding-type out-code-type input-type)
+  "True when a :code-subst tuple element of BINDING-TYPE substitutes a code AST into INPUT-TYPE."
+  (and (same-code-scope-p binding-type out-code-type)
+       (equal (code-sort binding-type) input-type)))
 
 (defun symbolic-operator-signature (name type)
   (flet ((sig (inputs output) (list :fn inputs output)))
@@ -314,8 +325,7 @@ or element type `tau` (normalized to `(:seq tau)`)."
                          (equal (code-sort a) (code-sort c))
                          (= (length (rest b)) (length (code-inputs a)))
                          (every (lambda (binding input)
-                                  (or (and (same-code-scope-p binding c)
-                                           (equal (code-sort binding) (cdr input)))
+                                  (or (code-subst-code-binding-p binding c (cdr input))
                                       (equal binding (cdr input))))
                                 (rest b) (code-inputs a))))
             (sig (list a b) c))))))))
@@ -489,14 +499,15 @@ or element type `tau` (normalized to `(:seq tau)`)."
     (setf (gethash node *node-meta*) (compute-lit-meta type copied))
     node))
 
-(defun provably-total-code-arg-p (expr)
+(defun provably-total-code-arg-p (expr &optional allow-open-code-p)
   "True when EXPR is a literal total code AST or a :code-subst of a total template with total bindings."
   (let ((meta (ensure-ast-meta expr)))
-    (or (and (eq :lit (ast-meta-kind meta))
+    (or (and allow-open-code-p (member (ast-meta-kind meta) '(:var :hole)))
+        (and (eq :lit (ast-meta-kind meta))
              (provably-total-p (ast-meta-value meta)))
         (and (eq :app (ast-meta-kind meta))
              (eq :code-subst (ast-meta-id meta))
-             (ast-meta-total-p meta)
+             (or allow-open-code-p (ast-meta-total-p meta))
              (let ((template-arg (second expr))
                    (tuple-arg (third expr)))
                (and (lit-p template-arg)
@@ -505,9 +516,95 @@ or element type `tau` (normalized to `(:seq tau)`)."
                     (eq :tuple (ast-id tuple-arg))
                     (every (lambda (b)
                              (if (code-type-p (ast-type b))
-                                 (provably-total-code-arg-p b)
-                                 (provably-total-p b)))
+                                 (provably-total-code-arg-p b allow-open-code-p)
+                                 (or allow-open-code-p (provably-total-p b))))
                            (rest tuple-arg))))))))
+
+(defun non-empty-seq-expr-p (expr &optional non-empty-vars)
+  "True when sequence expression EXPR is guaranteed non-empty."
+  (let ((meta (ensure-ast-meta expr)))
+    (case (ast-meta-kind meta)
+      (:lit (not (null (ast-meta-value meta))))
+      (:var (and non-empty-vars (member (ast-meta-id meta) non-empty-vars :test #'eql)))
+      (:app (or (eq :cons (ast-meta-id meta))
+                (and (eq :if (ast-meta-id meta))
+                     (let ((gid (empty-sequence-guard-var-id (second expr))))
+                       (and (non-empty-seq-expr-p (third expr)
+                                                  (if gid (remove gid non-empty-vars :test #'eql) non-empty-vars))
+                            (non-empty-seq-expr-p (fourth expr)
+                                                  (if gid (adjoin gid non-empty-vars :test #'eql) non-empty-vars))))))))))
+
+(defun operator-step-total-p (op-name arguments code-total-fn &optional non-empty-vars)
+  "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total."
+  (case op-name
+    (:/ (and (lit-p (second arguments))
+             (not (zerop (ast-value (second arguments))))))
+    (:at (and (lit-p (second arguments))
+              (let ((idx (ast-value (second arguments)))
+                    (container (first arguments))
+                    (container-type (ast-type (first arguments))))
+                (and (integerp idx) (<= 0 idx)
+                     (cond
+                       ((and (consp container-type) (eq :tuple (first container-type)))
+                        (< idx (length (rest container-type))))
+                       ((lit-p container)
+                        (< idx (length (ast-value container))))
+                       ((zerop idx)
+                        (non-empty-seq-expr-p container non-empty-vars))
+                       (t nil))))))
+    (:tail (non-empty-seq-expr-p (first arguments) non-empty-vars))
+    (:code-eval (funcall code-total-fn (first arguments)))
+    ((:lookup :gather :code-child :code-operator :code-bind) nil)
+    (otherwise
+     (if (defined-function-p op-name)
+         (let ((def (find-function-definition op-name)))
+           (and def
+                (or (function-definition-total-p def)
+                    (and (function-definition-conditional-code-params def)
+                         (every (lambda (param-idx)
+                                  (and (< param-idx (length arguments))
+                                       (funcall code-total-fn (nth param-idx arguments))))
+                                (function-definition-conditional-code-params def))))))
+         t))))
+
+(defun empty-sequence-guard-var-id (condition &optional seq-param-ids)
+  "If CONDITION is `(= Xi '())` or `(= '() Xi)` for a sequence variable Xi, return Xi's id."
+  (let ((meta (ensure-ast-meta condition)))
+    (when (and (eq :app (ast-meta-kind meta)) (eq := (ast-meta-id meta)))
+      (let* ((lhs (second condition)) (rhs (third condition))
+             (lm (ensure-ast-meta lhs)) (rm (ensure-ast-meta rhs)))
+        (cond ((and (eq :var (ast-meta-kind lm))
+                    (consp (ast-meta-type lm)) (eq :seq (first (ast-meta-type lm)))
+                    (or (null seq-param-ids) (member (ast-meta-id lm) seq-param-ids :test #'eql))
+                    (eq :lit (ast-meta-kind rm)) (null (ast-meta-value rm)))
+               (ast-meta-id lm))
+              ((and (eq :var (ast-meta-kind rm))
+                    (consp (ast-meta-type rm)) (eq :seq (first (ast-meta-type rm)))
+                    (or (null seq-param-ids) (member (ast-meta-id rm) seq-param-ids :test #'eql))
+                    (eq :lit (ast-meta-kind lm)) (null (ast-meta-value lm)))
+               (ast-meta-id rm)))))))
+
+(defun expr-total-under-non-empty-p (expr non-empty-vars)
+  "True when EXPR is provably total given that sequence variables in NON-EMPTY-VARS are non-empty."
+  (let ((meta (ensure-ast-meta expr)))
+    (or (ast-meta-total-p meta)
+        (case (ast-meta-kind meta)
+          ((:lit :var) t)
+          (:app
+           (let ((op-name (ast-meta-id meta))
+                 (args (rest expr)))
+             (and op-name
+                  (if (eq :if op-name)
+                      (let ((gid (empty-sequence-guard-var-id (first args))))
+                        (and (expr-total-under-non-empty-p (first args) non-empty-vars)
+                             (expr-total-under-non-empty-p
+                              (second args)
+                              (if gid (remove gid non-empty-vars :test #'eql) non-empty-vars))
+                             (expr-total-under-non-empty-p
+                              (third args)
+                              (if gid (adjoin gid non-empty-vars :test #'eql) non-empty-vars))))
+                      (and (every (lambda (a) (expr-total-under-non-empty-p a non-empty-vars)) args)
+                           (operator-step-total-p op-name args #'provably-total-code-arg-p non-empty-vars))))))))))
 
 (defun compute-app-meta (operator arguments)
   (let* ((op-meta (ensure-ast-meta operator))
@@ -518,60 +615,18 @@ or element type `tau` (normalized to `(:seq tau)`)."
          (op-name (when (eq :op (ast-meta-kind op-meta)) (ast-meta-id op-meta)))
          (total-p
            (and (eq :op (ast-meta-kind op-meta))
-                (case op-name
-                  (:/ (and (every #'ast-meta-total-p child-metas)
-                           (eq :lit (ast-meta-kind (second child-metas)))
-                           (not (zerop (ast-meta-value (second child-metas))))))
-                  (:at (and (every #'ast-meta-total-p child-metas)
-                            (eq :lit (ast-meta-kind (second child-metas)))
-                            (let ((idx (ast-meta-value (second child-metas)))
-                                  (container-type (ast-meta-type (first child-metas)))
-                                  (container-arg (first arguments)))
-                              (and (integerp idx) (<= 0 idx)
-                                   (cond
-                                     ((and (consp container-type) (eq :tuple (first container-type)))
-                                      (< idx (length (rest container-type))))
-                                     ((eq :lit (ast-meta-kind (first child-metas)))
-                                      (< idx (length (ast-meta-value (first child-metas)))))
-                                     ((and (consp container-arg) (symbolp (first container-arg))
-                                           (let ((m (gethash (first container-arg) *node-meta*)))
-                                             (and m (eq :op (ast-meta-kind m))
-                                                  (or (and (eq :tuple (ast-meta-id m))
-                                                           (< idx (length (rest container-arg))))
-                                                      (and (eq :cons (ast-meta-id m))
-                                                           (zerop idx))))))
-                                      t)
-                                     (t nil))))))
-                  (:tail (and (every #'ast-meta-total-p child-metas)
-                              (let ((seq-meta (first child-metas))
-                                    (seq-arg (first arguments)))
-                                (or (and (eq :lit (ast-meta-kind seq-meta))
-                                         (not (null (ast-meta-value seq-meta))))
-                                    (and (consp seq-arg) (symbolp (first seq-arg))
-                                         (let ((m (gethash (first seq-arg) *node-meta*)))
-                                           (and m (eq :op (ast-meta-kind m)) (eq :cons (ast-meta-id m)))))))))
-                  (:code-eval (and (every #'ast-meta-total-p child-metas)
-                                   (provably-total-code-arg-p (first arguments))))
-                  ((:lookup :gather :code-child :code-operator :code-bind) nil)
-                  (:if (and (ast-meta-total-p (first child-metas))
-                            (if (eq :lit (ast-meta-kind (first child-metas)))
-                                (ast-meta-total-p (if (ast-meta-value (first child-metas))
-                                                      (second child-metas)
-                                                      (third child-metas)))
-                                (and (ast-meta-total-p (second child-metas))
-                                     (ast-meta-total-p (third child-metas))))))
-                  (otherwise
-                   (if (defined-function-p op-name)
-                       (and (every #'ast-meta-total-p child-metas)
-                            (let ((def (find-function-definition op-name)))
-                              (and def
-                                   (or (function-definition-total-p def)
-                                       (and (function-definition-conditional-code-params def)
-                                            (every (lambda (param-idx)
-                                                     (and (< param-idx (length arguments))
-                                                          (provably-total-code-arg-p (nth param-idx arguments))))
-                                                   (function-definition-conditional-code-params def)))))))
-                       (every #'ast-meta-total-p child-metas))))))
+                (if (eq :if op-name)
+                    (and (ast-meta-total-p (first child-metas))
+                         (if (eq :lit (ast-meta-kind (first child-metas)))
+                             (ast-meta-total-p (if (ast-meta-value (first child-metas))
+                                                   (second child-metas)
+                                                   (third child-metas)))
+                             (and (ast-meta-total-p (second child-metas))
+                                  (or (ast-meta-total-p (third child-metas))
+                                      (let ((gid (empty-sequence-guard-var-id (first arguments))))
+                                        (and gid (expr-total-under-non-empty-p (third arguments) (list gid))))))))
+                    (and (every #'ast-meta-total-p child-metas)
+                         (operator-step-total-p op-name arguments #'provably-total-code-arg-p)))))
          (free-vars (remove-duplicates
                      (loop for m in child-metas append (copy-list (ast-meta-free-vars m))))))
     (make-ast-meta :kind :app :id op-name :type (third sig)
@@ -584,17 +639,6 @@ or element type `tau` (normalized to `(:seq tau)`)."
                                    (reduce #'+ child-metas :key #'ast-meta-syntax-work :initial-value 0))
                    :total-p (not (null total-p))
                    :free-vars free-vars)))
-
-(defun empty-sequence-guard-var-id (condition seq-param-ids)
-  "If CONDITION is `(= Xi '())` or `(= '() Xi)` for a sequence parameter Xi, return Xi's id."
-  (when (and (app-p condition) (eq := (operator-name (first condition))))
-    (let ((lhs (second condition)) (rhs (third condition)))
-      (cond ((and (var-p lhs) (member (ast-id lhs) seq-param-ids :test #'eql)
-                  (lit-p rhs) (null (ast-value rhs)))
-             (ast-id lhs))
-            ((and (var-p rhs) (member (ast-id rhs) seq-param-ids :test #'eql)
-                  (lit-p lhs) (null (ast-value lhs)))
-             (ast-id rhs))))))
 
 (defun analyze-function-body-totality (name inputs body)
   "Conservative structural termination & totality check for a function definition.
@@ -609,7 +653,15 @@ Returns (values total-p conditional-code-params)."
                (or (provably-total-code-arg-p arg)
                    (and (var-p arg)
                         (let ((pos (position (ast-id arg) inputs :key #'car :test #'eql)))
-                          (when pos (pushnew pos code-params) t)))))
+                          (when pos (pushnew pos code-params) t)))
+                   (and (app-p arg) (eq :code-subst (ast-id arg))
+                        (lit-p (second arg)) (provably-total-p (ast-value (second arg)))
+                        (app-p (third arg)) (eq :tuple (ast-id (third arg)))
+                        (every (lambda (b)
+                                 (if (code-type-p (ast-type b))
+                                     (code-arg-safe-p b)
+                                     t))
+                               (rest (third arg))))))
              (walk (expr non-empty-vars)
                (case (ast-kind expr)
                  ((:lit :var) t)
@@ -625,38 +677,22 @@ Returns (values total-p conditional-code-params)."
                               (let ((gid (empty-sequence-guard-var-id cond-expr seq-param-ids)))
                                 (and (walk yes-expr (if gid (remove gid non-empty-vars :test #'eql) non-empty-vars))
                                      (walk no-expr (if gid (adjoin gid non-empty-vars :test #'eql) non-empty-vars)))))))
+                      ((eq op-name name)
+                       (and (every (lambda (a) (walk a non-empty-vars)) args)
+                            (let ((matched-id
+                                    (loop for (id . nil) in inputs for arg in args
+                                          when (and (member id non-empty-vars :test #'eql)
+                                                    (app-p arg) (eq :tail (operator-name (first arg)))
+                                                    (var-p (second arg)) (eql id (ast-id (second arg))))
+                                          return id)))
+                              (and matched-id
+                                   (or (null decreasing-param-id) (eql decreasing-param-id matched-id))
+                                   (progn (setf decreasing-param-id matched-id) t)))))
                       (t
-                       (and (every (lambda (a) (walk a non-empty-vars)) (if (eq op-name :code-eval) (rest args) args))
+                       (and (every (lambda (a) (walk a non-empty-vars)) args)
                             (or (provably-total-p expr)
-                                (case op-name
-                                  (:tail (and (var-p (first args))
-                                              (member (ast-id (first args)) non-empty-vars :test #'eql)))
-                                  (:at (and (var-p (first args))
-                                            (member (ast-id (first args)) non-empty-vars :test #'eql)
-                                            (equal (second args) (lit :int 0))))
-                                  (:code-eval (code-arg-safe-p (first args)))
-                                  ((:/ :lookup :gather :code-child :code-operator :code-bind) nil)
-                                  (otherwise
-                                   (cond
-                                     ((eq op-name name)
-                                      (let ((matched-id
-                                              (loop for (id . nil) in inputs for arg in args
-                                                    when (and (member id non-empty-vars :test #'eql)
-                                                              (app-p arg) (eq :tail (operator-name (first arg)))
-                                                              (var-p (second arg)) (eql id (ast-id (second arg))))
-                                                    return id)))
-                                        (and matched-id
-                                             (or (null decreasing-param-id) (eql decreasing-param-id matched-id))
-                                             (progn (setf decreasing-param-id matched-id) t))))
-                                     ((defined-function-p op-name)
-                                      (let ((callee (find-function-definition op-name)))
-                                        (and callee
-                                             (or (function-definition-total-p callee)
-                                                 (and (function-definition-conditional-code-params callee)
-                                                      (every (lambda (idx)
-                                                               (code-arg-safe-p (nth idx args)))
-                                                             (function-definition-conditional-code-params callee)))))))
-                                     (t t)))))))))))))
+                                (expr-total-under-non-empty-p expr non-empty-vars)
+                                (operator-step-total-p op-name args #'code-arg-safe-p non-empty-vars))))))))))
       (if (walk body nil)
           (let ((sorted-params (sort (copy-list code-params) #'<)))
             (values (null sorted-params) sorted-params))
@@ -668,6 +704,32 @@ Returns (values total-p conditional-code-params)."
              (when (and (consp node) (eq :app (ast-meta-kind meta)))
                (remhash node *node-meta*)))
            *node-meta*))
+
+(defun recompute-registered-functions-totality ()
+  "Recompute totality and conditional-code-params across all registered functions until fixed point."
+  (loop
+    (let ((changed-p nil))
+      (dolist (fname *registered-function-names*)
+        (let ((fdef (find-function-definition fname)))
+          (when fdef
+            (multiple-value-bind (new-total new-cond)
+                (if (function-definition-oracle-table fdef)
+                    (values nil nil)
+                    (analyze-function-body-totality fname
+                                                    (function-definition-inputs fdef)
+                                                    (function-definition-body fdef)))
+              (unless (and (eq new-total (function-definition-total-p fdef))
+                           (equal new-cond (function-definition-conditional-code-params fdef)))
+                (setf (function-definition-total-p fdef) new-total
+                      (function-definition-conditional-code-params fdef) new-cond
+                      changed-p t))))))
+      (if changed-p
+          (invalidate-app-meta)
+          (return))))
+  (dolist (fname *registered-function-names*)
+    (let ((fdef (find-function-definition fname)))
+      (when (and fdef (function-definition-body fdef))
+        (ensure-ast-meta (function-definition-body fdef))))))
 
 (defun define-function (name inputs return-type body &key oracle-table)
   "Register a homoiconic Lisp function definition (or oracle table) under NAME."
@@ -693,19 +755,36 @@ Returns (values total-p conditional-code-params)."
                        (every (lambda (val spec) (value-p val (cdr spec))) (car entry) norm-inputs)
                        (value-p (cdr entry) return-type)))))
       (let ((copied-body (when resolved-body (copy-tree resolved-body))))
+        (setf (function-definition-body def) copied-body
+              (function-definition-oracle-table def) (copy-tree oracle-table)
+              (function-definition-total-p def) nil
+              (function-definition-conditional-code-params def) nil)
+        (invalidate-app-meta)
         (when copied-body (ensure-ast-meta copied-body))
-        (multiple-value-bind (total-p cond-params)
-            (if oracle-table
-                (values nil nil)
-                (analyze-function-body-totality kname norm-inputs copied-body))
-          (setf (function-definition-body def) copied-body
-                (function-definition-oracle-table def) (copy-tree oracle-table)
-                (function-definition-total-p def) total-p
-                (function-definition-conditional-code-params def) cond-params)
-          (invalidate-app-meta)
+        (recompute-registered-functions-totality)
+        (invalidate-app-meta)
+        (when copied-body (ensure-ast-meta copied-body))
+        (incf *function-library-version*)
+        def))))
+
+(defun set-function-active-implementation (name inputs return-type &key body oracle-table)
+  "Lightweight swap of an already-registered recursive function between an ORACLE-TABLE
+and an unverified candidate BODY during synthesis verification, without global cache eviction."
+  (let* ((kname (canonical-op-name name))
+         (norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (def (find-function-definition kname)))
+    (if (and def
+             (equal (function-definition-inputs def) norm-inputs)
+             (equal (function-definition-return-type def) return-type)
+             (null (function-definition-total-p def)))
+        (let ((copied-body (when body (copy-tree body))))
           (when copied-body (ensure-ast-meta copied-body))
-          (incf *function-library-version*)
-          def)))))
+          (setf (function-definition-body def) copied-body
+                (function-definition-oracle-table def) oracle-table
+                (function-definition-total-p def) nil
+                (function-definition-conditional-code-params def) nil)
+          def)
+        (define-function kname norm-inputs return-type body :oracle-table oracle-table))))
 
 (defun clear-function-definitions ()
   "Remove all dynamically registered function definitions and reset de novo naming."
@@ -724,7 +803,8 @@ Returns (values total-p conditional-code-params)."
           (let ((sym (gethash key *typed-symbol-pool*)))
             (remhash key *typed-symbol-pool*)
             (when sym (remhash sym *node-meta*))))))
-    (setf *function-library-version* 0)
+    (invalidate-app-meta)
+    (incf *function-library-version*)
     nil))
 
 (defun app (operator &rest arguments)
@@ -836,3 +916,49 @@ Returns (values total-p conditional-code-params)."
              tree
              (apply #'app new-op new-args))))
       (t tree))))
+
+(defun bind-inputs (inputs values)
+  "Pair input variable IDs from INPUTS (or a schema) with corresponding VALUES."
+  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+    (mapcar (lambda (spec value) (cons (car spec) value)) norm-inputs values)))
+
+(defun identity-bindings (inputs)
+  "Build the identity variable substitution ((id . (var id type)) ...) for INPUTS."
+  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+    (mapcar (lambda (spec) (cons (car spec) (var (car spec) (cdr spec)))) norm-inputs)))
+
+(defun literal-bindings (inputs values)
+  "Build the literal substitution ((id . (lit type value)) ...) for INPUTS and VALUES."
+  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+    (loop for spec in norm-inputs
+          for value in values
+          unless (eq value :unresolved)
+            collect (cons (car spec) (lit (cdr spec) value)))))
+
+(defun next-child-id (inputs)
+  "Return the next fresh variable ID after all IDs in INPUTS (or 0 if empty)."
+  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+    (if norm-inputs (1+ (reduce #'max norm-inputs :key #'car)) 0)))
+
+(defun rename-function-calls (expr from-name to-name)
+  "Replace applications of defined function operator FROM-NAME in EXPR with TO-NAME."
+  (let ((kfrom (canonical-op-name from-name))
+        (kto (canonical-op-name to-name)))
+    (cond
+      ((eq kfrom kto) expr)
+      ((app-p expr)
+       (let* ((head (first expr))
+              (new-head (if (and (operator-p head) (eq kfrom (operator-name head)))
+                            (op kto)
+                            head))
+              (new-args (mapcar (lambda (a) (rename-function-calls a kfrom kto))
+                                (rest expr))))
+         (if (and (eq new-head head) (every #'eq new-args (rest expr)))
+             expr
+             (apply #'app new-head new-args))))
+      ((and (lit-p expr) (code-type-p (ast-type expr)))
+       (let ((inner (rename-function-calls (ast-value expr) kfrom kto)))
+         (if (eq inner (ast-value expr))
+             expr
+             (lit (ast-type expr) inner))))
+      (t expr))))

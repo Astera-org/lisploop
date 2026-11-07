@@ -1,19 +1,31 @@
 (in-package #:lisploop)
 
 ;;; Conservative expression simplification; VM errors remain errors.
+(defun match-literal-equality (expr &key singleton-member-p)
+  "If EXPR equates a non-literal TERM to a literal value (or a singleton :member set when
+SINGLETON-MEMBER-P is true), return (VALUES term term-type lit-node)."
+  (when (and (app-p expr) (operator-p (first expr)))
+    (let ((op-name (operator-name (first expr)))
+          (lhs (second expr))
+          (rhs (third expr))
+          (type (operator-operand-type (first expr))))
+      (cond
+        ((eq := op-name)
+         (cond
+           ((and (not (lit-p lhs)) (lit-p rhs)) (values lhs type rhs))
+           ((and (lit-p lhs) (not (lit-p rhs))) (values rhs type lhs))))
+        ((and singleton-member-p (eq :member op-name)
+              (not (lit-p lhs)) (lit-p rhs))
+         (let ((vals (remove-duplicates (ast-value rhs) :test #'equal)))
+           (when (and vals (null (rest vals)))
+             (values lhs type (lit type (first vals))))))))))
+
 (defun extract-term-equality (expr)
   "If EXPR is `(= term 'val)` or `(= 'val term)` for a provably-total non-literal TERM,
 return (VALUES term term-type lit-node)."
-  (when (and (app-p expr) (eq := (operator-name (first expr))))
-    (let ((lhs (first (rest expr)))
-          (rhs (second (rest expr)))
-          (type (operator-operand-type (first expr))))
-      (cond
-        ((and (not (lit-p lhs)) (lit-p rhs) (provably-total-p lhs))
-         (values lhs type rhs))
-        ((and (lit-p lhs) (not (lit-p rhs)) (provably-total-p rhs))
-         (values rhs type lhs))
-        (t nil)))))
+  (multiple-value-bind (term type lit-node) (match-literal-equality expr)
+    (when (and term (provably-total-p term))
+      (values term type lit-node))))
 
 (defun extract-term-membership (expr)
   "If EXPR is `(member term '(v1 ... vk))` for a provably-total non-literal TERM,
@@ -59,20 +71,26 @@ return (VALUES term term-type values-list)."
         (when eq-term
           (setf result (replace-subexpression result eq-term eq-lit)))))))
 
+(defun tuple-slot-term (term)
+  "If TERM is `(at base 'idx)` on a tuple-typed BASE, return (VALUES base tuple-type idx)."
+  (when (and (app-p term) (operator-p (first term)) (eq :at (operator-name (first term))))
+    (let* ((base (second term))
+           (idx-node (third term))
+           (base-meta (ignore-errors (ensure-ast-meta base)))
+           (base-type (and base-meta (ast-meta-type base-meta))))
+      (when (and base-type (consp base-type) (eq :tuple (first base-type))
+                 (lit-p idx-node) (integerp (ast-value idx-node))
+                 (<= 0 (ast-value idx-node)) (< (ast-value idx-node) (length (rest base-type))))
+        (values base base-type (ast-value idx-node))))))
+
 (defun extract-at-coordinate-equality (expr)
   "If EXPR is `(= (at base 'idx) 'val)` on a tuple-typed BASE, return (VALUES base tuple-type idx val)."
   (multiple-value-bind (term term-type lit-node) (extract-term-equality expr)
     (declare (ignore term-type))
-    (when (and term (app-p term) (eq :at (operator-name (first term))))
-      (let* ((base (second term))
-             (idx-node (third term))
-             (base-meta (ignore-errors (ensure-ast-meta base)))
-             (base-type (and base-meta (ast-meta-type base-meta))))
-        (when (and base-type (consp base-type) (eq :tuple (first base-type))
-                   (provably-total-p base)
-                   (lit-p idx-node) (integerp (ast-value idx-node))
-                   (<= 0 (ast-value idx-node)) (< (ast-value idx-node) (length (rest base-type))))
-          (values base base-type (ast-value idx-node) (ast-value lit-node)))))))
+    (when term
+      (multiple-value-bind (base tuple-type idx) (tuple-slot-term term)
+        (when (and base (provably-total-p base))
+          (values base tuple-type idx (ast-value lit-node)))))))
 
 (defun try-reassemble-tuple-coordinates (conjuncts)
   "When CONJUNCTS pin every slot 0..k-1 of a tuple term V via `(= (at V 'i) 'v_i)`,
@@ -130,10 +148,9 @@ reassemble those conjuncts into `(= V '(v_0 ... v_{k-1}))`. Returns (VALUES expr
            (let ((head (first expr)) (args (rest expr)))
              (and (every #'unfoldable-seq-part-p args)
                   (or (hole-p head)
-                      (let ((name (operator-name head)))
-                        (or (member name '(:cons :tuple :length :+ :* :- :< := :member :concat :code-eval :code-subst))
-                            (and (defined-function-p name)
-                                 (function-definition-conditional-code-params (find-function-definition name)))))))))))
+                      (operator-step-total-p
+                       (operator-name head) args
+                       (lambda (c) (provably-total-code-arg-p c t)))))))))
 
 (defun non-total-args-preserved-p (inputs call-args target-template)
   "Verify that every argument in CALL-ARGS that is not strictly `provably-total-p`
@@ -183,7 +200,7 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                      ((and (eq :at op-name) (app-p (first args))
                            (operator-p (first (first args)))
                            (eq :tuple (operator-name (first (first args))))
-                           (lit-p (second args)) (every #'provably-total-p (rest (first args))))
+                           (lit-p (second args)) (every #'unfoldable-seq-part-p (rest (first args))))
                       (let ((i (ast-value (second args))) (parts (rest (first args))))
                         (if (and (integerp i) (<= 0 i) (< i (length parts))) (nth i parts) rebuilt)))
                      ((and (eq :at op-name) (app-p (first args))
@@ -225,39 +242,37 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                                           (lit (ast-type (first args)) (first values)))))
                               (t rebuilt))))
                      ((eq := op-name)
-                      (let* ((lhs (first args)) (rhs (second args))
-                             (compound (cond ((and (app-p lhs) (lit-p rhs)) lhs)
-                                             ((and (app-p rhs) (lit-p lhs)) rhs)))
-                             (literal (if (eq compound lhs) rhs lhs))
-                             (comp-op (and compound (operator-p (first compound))
-                                           (operator-name (first compound)))))
-                        (cond
-                          ((and (eq :tuple comp-op)
-                                (every #'provably-total-p (rest compound)))
-                           (walk (reduce #'bool-and
-                                         (loop for part in (rest compound)
-                                               for value in (ast-value literal)
-                                               collect (app (op := (ast-type part)) part
-                                                            (lit (ast-type part) value)))
-                                         :from-end t :initial-value (lit :bool t))))
-                          ((and (eq :cons comp-op)
-                                (every #'unfoldable-seq-part-p (rest compound)))
-                           (let ((head (second compound))
-                                 (tail (third compound))
-                                 (vals (ast-value literal)))
-                             (if (null vals)
-                                 (lit :bool nil)
-                                 (if (zerop remaining)
-                                     rebuilt
-                                     (let* ((elem-type (ast-type head))
-                                            (seq-type (ast-type compound))
-                                            (split (bool-and (app (op := elem-type) head
-                                                                  (lit elem-type (first vals)))
-                                                             (app (op := seq-type) tail
-                                                                  (lit seq-type (rest vals)))))
-                                            (res (walk split)))
-                                       (if (zerop remaining) rebuilt res))))))
-                          (t rebuilt))))
+                      (multiple-value-bind (compound comp-type literal) (match-literal-equality rebuilt)
+                        (declare (ignore comp-type))
+                        (let ((comp-op (and (app-p compound) (operator-p (first compound))
+                                            (operator-name (first compound)))))
+                          (cond
+                            ((and (eq :tuple comp-op)
+                                  (every #'unfoldable-seq-part-p (rest compound)))
+                             (walk (reduce #'bool-and
+                                           (loop for part in (rest compound)
+                                                 for value in (ast-value literal)
+                                                 collect (app (op := (ast-type part)) part
+                                                              (lit (ast-type part) value)))
+                                           :from-end t :initial-value (lit :bool t))))
+                            ((and (eq :cons comp-op)
+                                  (every #'unfoldable-seq-part-p (rest compound)))
+                             (let ((head (second compound))
+                                   (tail (third compound))
+                                   (vals (ast-value literal)))
+                               (if (null vals)
+                                   (lit :bool nil)
+                                   (if (zerop remaining)
+                                       rebuilt
+                                       (let* ((elem-type (ast-type head))
+                                              (seq-type (ast-type compound))
+                                              (split (bool-and (app (op := elem-type) head
+                                                                    (lit elem-type (first vals)))
+                                                               (app (op := seq-type) tail
+                                                                    (lit seq-type (rest vals)))))
+                                              (res (walk split)))
+                                         (if (zerop remaining) rebuilt res))))))
+                            (t rebuilt)))))
                      (t (try-unfold-call rebuilt op-name args)))))))
          (try-unfold-call (rebuilt op-name args)
            (when (zerop remaining) (return-from try-unfold-call rebuilt))
@@ -281,24 +296,22 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                             (every #'provably-total-p eval-args))
                        (let* ((a-inputs (code-inputs (ast-type (second code-arg))))
                               (c-type (ast-type code-arg))
-                              (eval-bindings (mapcar #'cons (mapcar #'car (code-inputs c-type)) eval-args))
+                              (eval-bindings (bind-inputs (code-inputs c-type) eval-args))
                               (parts (rest (third code-arg))))
                          (when (every (lambda (b spec)
-                                        (if (and (same-code-scope-p (ast-type b) c-type)
-                                                 (equal (code-sort (ast-type b)) (cdr spec)))
+                                        (if (code-subst-code-binding-p (ast-type b) c-type (cdr spec))
                                             (lit-p b)
                                             (unfoldable-seq-part-p b)))
                                       parts a-inputs)
                            (values a-inputs (ast-value (second code-arg))
                                    (mapcar (lambda (b spec)
-                                             (if (and (same-code-scope-p (ast-type b) c-type)
-                                                      (equal (code-sort (ast-type b)) (cdr spec)))
+                                             (if (code-subst-code-binding-p (ast-type b) c-type (cdr spec))
                                                  (instantiate (ast-value b) eval-bindings :var)
                                                  b))
                                            parts a-inputs)
                                    nil))))))))
              (when body
-               (let ((bindings (mapcar #'cons (mapcar #'car inputs) call-args)))
+               (let ((bindings (bind-inputs inputs call-args)))
                  (cond
                    ((and (app-p body) (operator-p (first body)) (eq :if (operator-name (first body))))
                     (let ((folded-cond (walk (instantiate (second body) bindings :var))))

@@ -192,8 +192,7 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
                     (loop for (id . input-type) in inputs
                           for b-type in binding-types
                           for value in (second values)
-                          collect (cons id (if (and (same-code-scope-p b-type out-type)
-                                                    (equal (code-sort b-type) input-type))
+                          collect (cons id (if (code-subst-code-binding-p b-type out-type input-type)
                                                value
                                                (lit input-type value))))
                     :var)))))
@@ -264,10 +263,11 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
     ((:validate :validate-inputs)
      (let ((inputs (evaluation-inputs state)) (values (evaluation-values state)))
        (assert (= (length inputs) (length values)))
-       (assert (every (lambda (spec value) (value-p value (cdr spec))) inputs values))
+       (assert (every (lambda (spec value) (or (eq value :unresolved) (value-p value (cdr spec))))
+                      inputs values))
        (when (eq :validate (first task)) (expression-type (second task) inputs))
        (setf (evaluation-environment state)
-             (mapcar (lambda (spec value) (cons (car spec) (copy-tree value))) inputs values))))
+             (bind-inputs inputs (mapcar #'copy-tree values)))))
     (:eval
      (let* ((expression (second task))
             (meta (ensure-ast-meta expression)))
@@ -279,6 +279,8 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
          (:var
           (let ((binding (assoc (ast-meta-id meta) (evaluation-environment state))))
             (unless binding (error "Unavailable variable ~S" (ast-meta-id meta)))
+            (when (eq :unresolved (cdr binding))
+              (error 'unresolved-evaluation :name :var :arguments (list (ast-meta-id meta))))
             (push (cdr binding) (evaluation-stack state))))
          (:app
           (let ((operator (first expression))
@@ -303,32 +305,28 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
             (type (operator-operand-type operator))
             (raw-values (loop repeat (third task) collect (pop (evaluation-stack state))))
             (ordered-values (reverse raw-values)))
-       (cond
-         ((eq name :code-eval)
-          (let ((code-expr (first ordered-values)))
-            (assert (value-p code-expr type))
-            (push (list :restore-env (evaluation-environment state)) (evaluation-tasks state))
-            (setf (evaluation-environment state)
-                  (mapcar (lambda (spec value) (cons (car spec) value))
-                          (code-inputs type) (rest ordered-values)))
-            (push (list :eval code-expr) (evaluation-tasks state))))
-         ((defined-function-p name)
-          (let ((def (find-function-definition name)))
-            (cond
-              ((function-definition-oracle-table def)
-               (let ((entry (assoc ordered-values (function-definition-oracle-table def) :test #'equal)))
-                 (if entry
-                     (push (copy-tree (cdr entry)) (evaluation-stack state))
-                     (error 'unresolved-evaluation :name name :arguments ordered-values))))
-              ((function-definition-body def)
-               (push (list :restore-env (evaluation-environment state)) (evaluation-tasks state))
-               (setf (evaluation-environment state)
-                     (mapcar (lambda (spec value) (cons (car spec) value))
-                             (function-definition-inputs def) ordered-values))
-               (push (list :eval (function-definition-body def)) (evaluation-tasks state)))
-              (t (error "Undefined body for function ~S" name)))))
-         (t
-          (push (execute-primitive operator ordered-values) (evaluation-stack state))))))))
+       (flet ((call-body (inputs args body)
+                (push (list :restore-env (evaluation-environment state)) (evaluation-tasks state))
+                (setf (evaluation-environment state) (bind-inputs inputs args))
+                (push (list :eval body) (evaluation-tasks state))))
+         (cond
+           ((eq name :code-eval)
+            (let ((code-expr (first ordered-values)))
+              (assert (value-p code-expr type))
+              (call-body (code-inputs type) (rest ordered-values) code-expr)))
+           ((defined-function-p name)
+            (let ((def (find-function-definition name)))
+              (cond
+                ((function-definition-oracle-table def)
+                 (let ((entry (assoc ordered-values (function-definition-oracle-table def) :test #'equal)))
+                   (if entry
+                       (push (copy-tree (cdr entry)) (evaluation-stack state))
+                       (error 'unresolved-evaluation :name name :arguments ordered-values))))
+                ((function-definition-body def)
+                 (call-body (function-definition-inputs def) ordered-values (function-definition-body def)))
+                (t (error "Undefined body for function ~S" name)))))
+           (t
+            (push (execute-primitive operator ordered-values) (evaluation-stack state)))))))))
 
 (defun advance-evaluation (state budget &optional ledger (category :simulation))
   "Spend at most BUDGET units, retaining unpaid instructions on interruption."

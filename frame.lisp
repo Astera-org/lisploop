@@ -32,32 +32,21 @@
 (defun extract-slot-constraint (conjunct)
   "If CONJUNCT is `(= (at x0 'idx) 'v)` or `(member (at x0 'idx) '(v1 ... vm))` on tuple var 0,
 return (VALUES tuple-type idx allowed-values)."
-  (labels ((at-var0-slot (term)
-             (when (and (app-p term) (eq :at (operator-name (first term))))
-               (let ((base (second term))
-                     (idx-node (third term)))
-                 (when (and (var-p base) (zerop (ast-id base))
-                            (consp (ast-type base)) (eq :tuple (first (ast-type base)))
-                            (lit-p idx-node) (integerp (ast-value idx-node))
-                            (<= 0 (ast-value idx-node)) (< (ast-value idx-node) (length (rest (ast-type base)))))
-                   (values (ast-type base) (ast-value idx-node)))))))
-    (cond
-      ((and (app-p conjunct) (eq := (operator-name (first conjunct))))
-       (let ((lhs (second conjunct))
-             (rhs (third conjunct)))
-         (multiple-value-bind (ttype idx) (at-var0-slot lhs)
-           (if (and ttype (lit-p rhs))
-               (values ttype idx (list (ast-value rhs)))
-               (multiple-value-bind (ttype2 idx2) (at-var0-slot rhs)
-                 (when (and ttype2 (lit-p lhs))
-                   (values ttype2 idx2 (list (ast-value lhs)))))))))
-      ((and (app-p conjunct) (eq :member (operator-name (first conjunct))))
-       (let ((lhs (second conjunct))
-             (rhs (third conjunct)))
-         (multiple-value-bind (ttype idx) (at-var0-slot lhs)
-           (when (and ttype (lit-p rhs))
-             (values ttype idx (copy-tree (ast-value rhs)))))))
-      (t nil))))
+  (labels ((var0-slot (term)
+             (multiple-value-bind (base tuple-type idx) (tuple-slot-term term)
+               (when (and base (var-p base) (zerop (ast-id base)))
+                 (values tuple-type idx)))))
+    (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct)
+      (declare (ignore term-type))
+      (if term
+          (multiple-value-bind (ttype idx) (var0-slot term)
+            (when ttype
+              (values ttype idx (list (ast-value lit-node)))))
+          (when (and (app-p conjunct) (eq :member (operator-name (first conjunct)))
+                     (lit-p (third conjunct)))
+            (multiple-value-bind (ttype idx) (var0-slot (second conjunct))
+              (when ttype
+                (values ttype idx (copy-tree (ast-value (third conjunct)))))))))))
 
 (defun cartesian-product-lists (lists)
   (if (null lists)
@@ -69,45 +58,40 @@ return (VALUES tuple-type idx allowed-values)."
 (defun extract-allowed-values (expression)
   "Extract explicit finite values from `(= x0 'v)`, `(member x0 '(v1 ...))`, `'nil`,
 or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise return :UNKNOWN."
-  (cond
-    ((and (lit-p expression) (eq :bool (ast-type expression)) (null (ast-value expression)))
-     nil)
-    ((and (app-p expression) (eq := (operator-name (first expression))))
-     (let ((lhs (first (rest expression)))
-           (rhs (second (rest expression))))
-       (cond
-         ((and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
-          (list (ast-value rhs)))
-         ((and (lit-p lhs) (var-p rhs) (zerop (ast-id rhs)))
-          (list (ast-value lhs)))
-         (t :unknown))))
-    ((and (app-p expression) (eq :member (operator-name (first expression))))
-     (let ((lhs (first (rest expression)))
-           (rhs (second (rest expression))))
-       (if (and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
-           (copy-tree (ast-value rhs))
-           :unknown)))
-    ((and (app-p expression) (eq :if (operator-name (first expression))))
-     (let ((conjuncts (extract-conjuncts expression))
-           (tuple-type nil)
-           (slots nil))
-       (dolist (c conjuncts)
-         (multiple-value-bind (ttype idx vals) (extract-slot-constraint c)
-           (unless ttype
-             (return-from extract-allowed-values :unknown))
-           (unless tuple-type
-             (setf tuple-type ttype
-                   slots (make-array (length (rest ttype)) :initial-element :unbound)))
-           (unless (equal tuple-type ttype)
-             (return-from extract-allowed-values :unknown))
-           (setf (aref slots idx)
-                 (if (eq :unbound (aref slots idx))
-                     vals
-                     (intersection (aref slots idx) vals :test #'equal)))))
-       (if (and slots (loop for s across slots never (eq s :unbound)))
-           (cartesian-product-lists (coerce slots 'list))
-           :unknown)))
-    (t :unknown)))
+  (multiple-value-bind (term term-type lit-node) (match-literal-equality expression)
+    (declare (ignore term-type))
+    (cond
+      ((and (lit-p expression) (eq :bool (ast-type expression)) (null (ast-value expression)))
+       nil)
+      ((and term (var-p term) (zerop (ast-id term)))
+       (list (ast-value lit-node)))
+      ((and (app-p expression) (eq :member (operator-name (first expression))))
+       (let ((lhs (second expression))
+             (rhs (third expression)))
+         (if (and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
+             (copy-tree (ast-value rhs))
+             :unknown)))
+      ((and (app-p expression) (eq :if (operator-name (first expression))))
+       (let ((conjuncts (extract-conjuncts expression))
+             (tuple-type nil)
+             (slots nil))
+         (dolist (c conjuncts)
+           (multiple-value-bind (ttype idx vals) (extract-slot-constraint c)
+             (unless ttype
+               (return-from extract-allowed-values :unknown))
+             (unless tuple-type
+               (setf tuple-type ttype
+                     slots (make-array (length (rest ttype)) :initial-element :unbound)))
+             (unless (equal tuple-type ttype)
+               (return-from extract-allowed-values :unknown))
+             (setf (aref slots idx)
+                   (if (eq :unbound (aref slots idx))
+                       vals
+                       (intersection (aref slots idx) vals :test #'equal)))))
+         (if (and slots (loop for s across slots never (eq s :unbound)))
+             (cartesian-product-lists (coerce slots 'list))
+             :unknown)))
+      (t :unknown))))
 
 (defun singleton-requirement (type value)
   (assert (value-p value type))
@@ -128,7 +112,7 @@ or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise r
   (assert (= (length rows) (length (remove-duplicates rows :key #'row-key :test #'equal))))
   (dolist (row rows)
     (assert (= (length (row-known row)) (length (schema-inputs schema))))
-    (assert (every (lambda (value spec) (value-p value (cdr spec)))
+    (assert (every (lambda (value spec) (or (eq value :unresolved) (value-p value (cdr spec))))
                    (row-known row) (schema-inputs schema)))
     (assert (eq :bool (expression-type (row-requirement row)
                                        (list (cons 0 (schema-target schema)))))))
@@ -167,6 +151,29 @@ or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise r
 (defun unsatisfiable-requirement-p (expr)
   (and (lit-p expr) (eq :bool (ast-type expr)) (null (ast-value expr))))
 
+(defun unconstrained-requirement-p (expr)
+  (and (lit-p expr) (eq :bool (ast-type expr)) (eq t (ast-value expr))))
+
+(defun frame-constrained-row-count (frame)
+  "Count rows in FRAME whose requirement is not trivially `'t`."
+  (count-if-not (lambda (row) (unconstrained-requirement-p (row-requirement row)))
+                (frame-rows frame)))
+
+(defun frame-min-resolved-rows (frame)
+  "Minimum number of constrained rows that must resolve (not be :unresolved) for a candidate to be accepted."
+  (min 2 (frame-constrained-row-count frame)))
+
+(defun unconstrained-frame (frame target-type &key domain)
+  "Clone FRAME's rows and inputs with target TARGET-TYPE and unconstrained `'t` requirements."
+  (let ((schema (frame-schema frame)))
+    (make-frame (make-schema :domain (or domain (schema-domain schema))
+                             :inputs (copy-tree (schema-inputs schema))
+                             :target target-type)
+                (loop for row in (frame-rows frame)
+                      collect (make-row :key (copy-tree (row-key row))
+                                        :known (copy-tree (row-known row))
+                                        :requirement (lit :bool t))))))
+
 (defun frame-conflict-p (frame &key ledger (budget 10000))
   "Detect whether any row requirement in FRAME folds to `nil` or whether rows
 sharing identical known inputs have mutually incompatible requirements.
@@ -191,23 +198,24 @@ carrying the folded row requirements when no conflict is detected."
                         :known (row-known row)
                         :requirement folded)
               folded-rows)
-        (let ((existing (gethash (row-known row) by-known)))
-          (if existing
-              (let* ((prev-keys (first existing))
-                     (prev-req (second existing))
-                     (joint (conjoin-requirements prev-req folded target-type
-                                                  :ledger ledger :budget budget)))
-                (when (unsatisfiable-requirement-p joint)
-                  (return-from frame-conflict-p
-                    (values (make-frame-conflict :kind :incompatible-rows
-                                                 :keys (append (reverse prev-keys) (list (row-key row)))
-                                                 :known (row-known row)
-                                                 :expression joint)
-                            nil)))
+        (unless (member :unresolved (row-known row))
+          (let ((existing (gethash (row-known row) by-known)))
+            (if existing
+                (let* ((prev-keys (first existing))
+                       (prev-req (second existing))
+                       (joint (conjoin-requirements prev-req folded target-type
+                                                    :ledger ledger :budget budget)))
+                  (when (unsatisfiable-requirement-p joint)
+                    (return-from frame-conflict-p
+                      (values (make-frame-conflict :kind :incompatible-rows
+                                                   :keys (append (reverse prev-keys) (list (row-key row)))
+                                                   :known (row-known row)
+                                                   :expression joint)
+                              nil)))
+                  (setf (gethash (row-known row) by-known)
+                        (list (cons (row-key row) prev-keys) joint)))
                 (setf (gethash (row-known row) by-known)
-                      (list (cons (row-key row) prev-keys) joint)))
-              (setf (gethash (row-known row) by-known)
-                    (list (list (row-key row)) folded))))))
+                      (list (list (row-key row)) folded)))))))
     (values nil
             (make-frame (copy-schema schema)
                         (nreverse folded-rows)
@@ -288,17 +296,37 @@ The original frame remains available; this conversion executes no transition."
       (charge ledger :baseline (syntax-work model))
       model)))
 
-(defun evaluate-row-bindings (bindings inputs known &key ledger (error-p t))
+(defun frame-oracle-table (frame &optional ledger)
+  "Extract an input-output alist ((known-args . target-val) ...) from singleton rows of FRAME."
+  (let ((target-type (schema-target (frame-schema frame)))
+        (table nil))
+    (dolist (row (frame-rows frame) (nreverse table))
+      (unless (member :unresolved (row-known row))
+        (let ((allowed (extract-allowed-values (row-requirement row))))
+          (when (and (consp allowed) (= 1 (length allowed))
+                     (not (assoc (row-known row) table :test #'equal)))
+            (charge ledger :orientation (1+ (value-work (first allowed) target-type)))
+            (push (cons (copy-tree (row-known row)) (copy-tree (first allowed))) table)))))))
+
+(defun evaluate-row-bindings (bindings inputs known &key ledger (error-p t)
+                                                         allow-unresolved-p default-on-failure-p)
   "Evaluate BINDINGS ((id . expr) ...) on KNOWN under INPUTS.
-When ERROR-P is true, signal an error if any binding does not produce :value;
-otherwise return :error."
+When ALLOW-UNRESOLVED-P is true, an :unresolved evaluation binds :unresolved.
+When DEFAULT-ON-FAILURE-P is true, a non-:value evaluation substitutes (default-value-for-type type).
+Otherwise, when ERROR-P is true, signal an error if any binding does not produce :value, or return :error."
   (mapcar (lambda (binding)
             (let ((run (evaluate (cdr binding) inputs known :ledger ledger)))
-              (unless (eq (evaluation-status run) :value)
-                (if error-p
-                    (error "Context binding did not finish: ~S" run)
-                    (return-from evaluate-row-bindings :error)))
-              (evaluation-value run)))
+              (cond
+                ((eq (evaluation-status run) :value)
+                 (evaluation-value run))
+                (default-on-failure-p
+                 (default-value-for-type (expression-type (cdr binding) inputs)))
+                ((and allow-unresolved-p (eq (evaluation-status run) :unresolved))
+                 :unresolved)
+                (error-p
+                 (error "Context binding did not finish: ~S" run))
+                (t
+                 (return-from evaluate-row-bindings :error)))))
           bindings))
 
 (defun pullback-frame (parent decoder child-id child-type bindings &optional ledger)
@@ -309,19 +337,38 @@ bindings. No inverse values are enumerated."
          (inputs (schema-inputs schema))
          (decoder-inputs (acons child-id child-type inputs))
          (child-inputs (mapcar (lambda (b) (cons (car b) (expression-type (cdr b) inputs)))
-                               bindings)))
+                               bindings))
+         (partial-bindings-p (some (lambda (b) (not (provably-total-p (cdr b)))) bindings))
+         (multi-row-p (> (length (frame-rows parent)) 1))
+         (decoder-free-vars (ast-meta-free-vars (ensure-ast-meta decoder)))
+         (checker-schema (make-schema :inputs (list (cons 0 child-type)) :target :bool)))
     (assert (not (assoc child-id inputs)))
     (assert (equal (schema-target schema) (expression-type decoder decoder-inputs)))
     (make-frame
      (make-schema :inputs child-inputs :target child-type)
      (loop for row in (frame-rows parent) collect
-       (let* ((constants (loop for spec in inputs for value in (row-known row)
-                               collect (cons (car spec) (lit (cdr spec) value))))
-              (closed-decoder (instantiate decoder
-                                           (acons child-id (var 0 child-type) constants) :var))
-              (predicate (instantiate (row-requirement row)
-                                      (list (cons 0 closed-decoder)) :var))
-              (known (evaluate-row-bindings bindings inputs (row-known row) :ledger ledger)))
+       (let* ((unresolved-decoder-p
+                (loop for (id . nil) in inputs
+                      for val in (row-known row)
+                      thereis (and (eq val :unresolved)
+                                   (member id decoder-free-vars :test #'eql))))
+              (constants (literal-bindings inputs (row-known row)))
+              (closed-decoder (unless unresolved-decoder-p
+                                (instantiate decoder
+                                             (acons child-id (var 0 child-type) constants) :var)))
+              (predicate (if unresolved-decoder-p
+                             (lit :bool t)
+                             (instantiate (row-requirement row)
+                                          (list (cons 0 closed-decoder)) :var)))
+              (dead-row-p (and multi-row-p
+                               (or (unconstrained-requirement-p (row-requirement row))
+                                   (and partial-bindings-p
+                                        (unconstrained-requirement-p
+                                         (fold-constants predicate checker-schema))))))
+              (known (evaluate-row-bindings bindings inputs (row-known row)
+                                            :ledger ledger
+                                            :allow-unresolved-p t
+                                            :default-on-failure-p dead-row-p)))
          (charge ledger :pullback (syntax-work predicate))
          (make-row :key (row-key row) :known known
                    :requirement predicate)))
@@ -367,14 +414,11 @@ bindings. No inverse values are enumerated."
   "If CONJUNCT is ready to lift with a single ground call G = (:code-eval CODE-VAR 'a0 ... 'ak-1)
 and equates G with a literal 'val, return (VALUES G 'val)."
   (multiple-value-bind (ground non-ground-p) (collect-code-eval-calls conjunct code-var)
-    (when (and (not non-ground-p) (null (rest ground)) (first ground)
-               (app-p conjunct) (operator-p (first conjunct))
-               (eq := (operator-name (first conjunct))))
-      (let ((call (first ground))
-            (lhs (second conjunct))
-            (rhs (third conjunct)))
-        (cond ((and (equal lhs call) (lit-p rhs)) (values call rhs))
-              ((and (equal rhs call) (lit-p lhs)) (values call lhs)))))))
+    (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct)
+      (declare (ignore term-type))
+      (when (and (not non-ground-p) (null (rest ground)) (first ground)
+                 (equal term (first ground)))
+        (values (first ground) lit-node)))))
 
 (defun congruence-close-code-evals (row-reqs extra-knowns code-var checker-schema
                                     &key ledger (budget 10000))
@@ -422,6 +466,22 @@ non-decoupled conjuncts sharing identical EXTRA-KNOWNS, folding after each subst
                                   req))))
         (unless changed (return reqs))))))
 
+(defun extract-outermost-code-eval (expr code-var)
+  "Find a unique outermost (:code-eval CODE-VAR ...) subterm in EXPR, or NIL if zero or multiple exist."
+  (let ((outer nil)
+        (multiple-p nil))
+    (labels ((walk (node)
+               (when (and (not multiple-p) (app-p node))
+                 (if (and (operator-p (first node))
+                          (eq :code-eval (operator-name (first node)))
+                          (equal (second node) code-var))
+                     (if (and outer (not (equal outer node)))
+                         (setf multiple-p t)
+                         (setf outer node))
+                     (mapc #'walk (rest node))))))
+      (walk expr)
+      (unless multiple-p outer))))
+
 (defun lift-frame (parent decoder child-id child-type &optional bindings ledger (budget 10000))
   "Lift a parent frame through a higher-order DECODER parameterized by CHILD-ID of (:code inputs ret)
 into a 1-to-many child frame over the code parameter's inputs (plus any extra parent BINDINGS).
@@ -447,7 +507,8 @@ Returns (VALUES lifted-frame coupled-conjuncts)."
                                                    :ledger ledger :budget budget))
          (seen-known-req (make-hash-table :test #'equal))
          (lifted-rows nil)
-         (coupled nil))
+         (coupled nil)
+         (coupled-details nil))
     (assert (null (intersection (mapcar #'car code-in) (mapcar #'car extra-in))))
     (loop for parent-row in (frame-rows raw)
           for req in closed-reqs
@@ -478,13 +539,36 @@ Returns (VALUES lifted-frame coupled-conjuncts)."
                                                    :requirement lifted-req)
                                          lifted-rows))))
                               ((or non-ground-p (> (length ground) 1))
-                               (push (cons (row-key parent-row) c) coupled))
+                               (push (cons (row-key parent-row) c) coupled)
+                               (push (list (row-key parent-row) occ-idx extra c) coupled-details))
                               ((unsatisfiable-requirement-p c)
                                (push (make-row :key (list (row-key parent-row) occ-idx)
                                                :known (append (mapcar (lambda (s) (default-value-for-type (cdr s))) code-in)
                                                               (copy-tree extra))
                                                :requirement (lit :bool nil))
                                      lifted-rows)))))))
+    (when (and coupled (< (length lifted-rows) 2))
+      (dolist (detail (nreverse coupled-details))
+        (destructuring-bind (p-key occ-idx extra c) detail
+          (let* ((outer (extract-outermost-code-eval c code-var))
+                 (replaced (when outer (replace-subexpression c outer ret-var)))
+                 (clean-p (and replaced
+                               (multiple-value-bind (g ng) (collect-code-eval-calls replaced code-var)
+                                 (and (null g) (not ng)))))
+                 (known (if clean-p
+                            (append (mapcar (lambda (a) (if (lit-p a) (ast-value a) :unresolved))
+                                            (cddr outer))
+                                    (copy-tree extra))
+                            (mapcar (lambda (s) (declare (ignore s)) :unresolved) child-inputs)))
+                 (lifted-req (if clean-p
+                                 (fold-constants replaced ret-checker-schema
+                                                 :ledger ledger :budget budget)
+                                 (app (op := ret) ret-var (lit ret (default-value-for-type ret))))))
+            (charge ledger :pullback (syntax-work lifted-req))
+            (push (make-row :key (list p-key :coupled occ-idx)
+                            :known known
+                            :requirement lifted-req)
+                  lifted-rows)))))
     (unless lifted-rows
       (push (make-row :key :vacuous
                       :known (mapcar (lambda (s) (default-value-for-type (cdr s))) child-inputs)
@@ -544,9 +628,81 @@ Returns (VALUES pulled-back-frame const-frame)."
                        :pairs (frame-pairs obs-frame)
                        :anchors (frame-anchors obs-frame))))
     (values (pullback-frame const-frame conserved-expr target-id target-type
-                            (mapcar (lambda (s) (cons (car s) (var (car s) (cdr s)))) u-inputs)
-                            ledger)
+                            (identity-bindings u-inputs) ledger)
             const-frame)))
+
+(defun context-label-frame (parent labels &key bindings (label-type :int) (lookup-p t) ledger)
+  "Project PARENT rows through BINDINGS (an alist of (child-input-id . parent-expr),
+defaulting to all parent inputs) onto singleton requirements for LABELS of type LABEL-TYPE.
+Charges evaluation of each context binding expression on LEDGER."
+  (let* ((parent-schema (frame-schema parent))
+         (parent-inputs (schema-inputs parent-schema))
+         (parent-rows (frame-rows parent))
+         (effective-bindings (or bindings (identity-bindings parent-inputs)))
+         (child-inputs (mapcar (lambda (b)
+                                 (cons (car b) (expression-type (cdr b) parent-inputs)))
+                               effective-bindings)))
+    (assert (= (length labels) (length parent-rows)) ()
+            "Label count (~D) must match parent row count (~D)"
+            (length labels) (length parent-rows))
+    (make-frame
+     (make-schema :domain (if (eq label-type :bool) (schema-domain parent-schema) label-type)
+                  :inputs child-inputs
+                  :target label-type
+                  :lookup-p lookup-p)
+     (loop for row in parent-rows
+           for label in labels
+           collect (let* ((known (evaluate-row-bindings effective-bindings parent-inputs
+                                                        (row-known row) :ledger ledger))
+                          (req (singleton-requirement label-type label)))
+                     (charge ledger :context-frame (syntax-work req))
+                     (make-row :key (copy-tree (row-key row))
+                               :known known
+                               :requirement req)))
+     :pairs (frame-pairs parent)
+     :anchors (frame-anchors parent))))
+
+(defun project-frame-rows (frame bindings &optional ledger)
+  "Project FRAME's `row-known` values through BINDINGS (an alist of (child-id . parent-expr))."
+  (if (null bindings)
+      frame
+      (let* ((schema (frame-schema frame))
+             (parent-inputs (schema-inputs schema))
+             (child-inputs (mapcar (lambda (b)
+                                     (cons (car b) (expression-type (cdr b) parent-inputs)))
+                                   bindings)))
+        (make-frame
+         (make-schema :domain (schema-domain schema)
+                      :inputs child-inputs
+                      :target (schema-target schema)
+                      :lookup-p (schema-lookup-p schema))
+         (loop for row in (frame-rows frame)
+               collect (let ((known (evaluate-row-bindings bindings parent-inputs
+                                                           (row-known row) :ledger ledger)))
+                         (charge ledger :orientation (length known))
+                         (make-row :key (copy-tree (row-key row))
+                                   :known known
+                                   :requirement (copy-tree (row-requirement row)))))
+         :pairs (frame-pairs frame)
+         :anchors (frame-anchors frame)))))
+
+(defun shuffle-frame-rows (frame permutation &optional ledger)
+  "Permute the physical storage order of FRAME's rows according to PERMUTATION
+(a bijection of 0..N-1) while preserving declared coordinates and occurrence keys."
+  (let* ((rows-vec (coerce (frame-rows frame) 'vector))
+         (n (length rows-vec)))
+    (assert (= n (length permutation)))
+    (assert (= n (length (remove-duplicates permutation :test #'eql))))
+    (assert (every (lambda (idx) (and (integerp idx) (<= 0 idx) (< idx n))) permutation))
+    (charge ledger :orientation n)
+    (make-frame (copy-schema (frame-schema frame))
+                (loop for idx in permutation
+                      for row = (aref rows-vec idx)
+                      collect (make-row :key (copy-tree (row-key row))
+                                        :known (copy-tree (row-known row))
+                                        :requirement (copy-tree (row-requirement row))))
+                :pairs (frame-pairs frame)
+                :anchors (frame-anchors frame))))
 
 (defun support-frame (scope-or-frame support &optional ledger)
   "Turn an observed membership residual into an ordinary Boolean synthesis frame.

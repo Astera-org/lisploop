@@ -93,6 +93,114 @@ Operator holes are quoted operator values, not callable host functions."
         (charge ledger :construction (syntax-work model))
         (values model (nreverse inputs))))))
 
+(defun term-references-bound-or-self-p (term bound-vars self-name)
+  "True when TERM references any variable ID in BOUND-VARS or calls SELF-NAME."
+  (cond
+    ((var-p term) (not (null (member (ast-id term) bound-vars :test #'eql))))
+    ((app-p term)
+     (or (and self-name (operator-p (first term))
+              (eq (canonical-op-name self-name) (operator-name (first term))))
+         (some (lambda (arg) (term-references-bound-or-self-p arg bound-vars self-name))
+               (rest term))))
+    (t nil)))
+
+(defun shared-subterm-cover (terms inputs &key bound-vars self-name)
+  "Extract an ordered list of subterms A_0, ..., A_{m-1} from TERMS that cover all
+references to BOUND-VARS (defaulting to all IDs in INPUTS) and SELF-NAME so each term
+in TERMS can be abstracted into a closed :code literal over positional variables X0..X_{m-1}."
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (eff-vars (or bound-vars (mapcar #'car norm-inputs)))
+         (eff-self (when self-name (canonical-op-name self-name)))
+         (common-set (make-hash-table :test #'equal))
+         (cover nil))
+    (labels ((collect-subterms (node table)
+               (when (term-references-bound-or-self-p node eff-vars eff-self)
+                 (setf (gethash node table) t)
+                 (when (app-p node)
+                   (dolist (arg (rest node))
+                     (collect-subterms arg table)))))
+             (atomic-bound-unit-p (node)
+               (or (and (var-p node) (member (ast-id node) eff-vars :test #'eql))
+                   (and (app-p node) (operator-p (first node))
+                        (let ((op-name (operator-name (first node))))
+                          (or (and eff-self (eq op-name eff-self))
+                              (and (member op-name '(:at :tail))
+                                   (var-p (second node))
+                                   (member (ast-id (second node)) eff-vars :test #'eql))))))))
+      (when terms
+        (let ((tables (mapcar (lambda (term)
+                                (let ((tbl (make-hash-table :test #'equal)))
+                                  (collect-subterms term tbl)
+                                  tbl))
+                              terms)))
+          (maphash (lambda (sub present)
+                     (declare (ignore present))
+                     (when (every (lambda (tbl) (gethash sub tbl)) (rest tables))
+                       (setf (gethash sub common-set) t)))
+                   (first tables))))
+      (labels ((extract-from (node)
+                 (when (term-references-bound-or-self-p node eff-vars eff-self)
+                   (cond
+                     ((and (gethash node common-set)
+                           ;; Do not collapse the entire root term if all terms were supposed to diverge
+                           (not (every (lambda (term) (equal node term)) terms))
+                           ;; Keepcommon subterm only if no other term references bound vars inside it separately
+                           (every (lambda (term)
+                                    (not (term-references-bound-or-self-p
+                                          (replace-subexpression term node (lit (expression-type node norm-inputs)
+                                                                                (default-value-for-type (expression-type node norm-inputs))))
+                                          (ast-meta-free-vars (ensure-ast-meta node))
+                                          nil)))
+                                  terms))
+                      (pushnew node cover :test #'equal))
+                     ((atomic-bound-unit-p node)
+                      (pushnew node cover :test #'equal))
+                     ((app-p node)
+                      (dolist (arg (rest node))
+                        (extract-from arg)))))))
+        (dolist (term terms)
+          (extract-from term))
+        (nreverse cover)))))
+
+(defun abstract-over-subterms (expr subterms inputs &optional ledger)
+  "Replace each subterm A_j in SUBTERMS within EXPR by positional variable `(var j type_j)`
+and package the resulting closed body as `(lit (:code ((0 . type_0) ...) ret-type) body)`.
+Returns (VALUES code-literal code-type body) or (VALUES nil nil nil) if EXPR still contains
+unbound variables or self-calls outside SUBTERMS."
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (ret-type (expression-type expr norm-inputs))
+         (code-in (loop for sub in subterms
+                        for j from 0
+                        collect (cons j (expression-type sub norm-inputs))))
+         ;; Replace larger subterms first so nested occurrences don't shadow outer cover items
+         (ordered-pairs (stable-sort (loop for sub in subterms
+                                           for j from 0
+                                           collect (cons sub (var j (cdr (nth j code-in)))))
+                                     #'> :key (lambda (p) (syntax-work (car p)))))
+         (placeholder-alist (loop for (sub . v) in ordered-pairs
+                                  for k from 0
+                                  collect (list sub (hole k (ast-type v)) v)))
+         (staged expr))
+    (dolist (entry placeholder-alist)
+      (setf staged (replace-subexpression staged (first entry) (second entry))))
+    (let ((allowed-ids (mapcar #'car code-in)))
+      ;; Ensure no original input variables remain unabstracted in STAGED
+      (labels ((has-unabstracted-var-p (node)
+                 (cond
+                   ((var-p node) t)
+                   ((app-p node) (some #'has-unabstracted-var-p (rest node)))
+                   (t nil))))
+        (when (has-unabstracted-var-p staged)
+          (return-from abstract-over-subterms (values nil nil nil))))
+      (let ((body (instantiate staged
+                               (mapcar (lambda (entry) (cons (ast-id (second entry)) (third entry)))
+                                       placeholder-alist)
+                               :hole))
+            (c-type (code-type code-in ret-type)))
+        (declare (ignore allowed-ids))
+        (charge ledger :construction (syntax-work body))
+        (values (lit c-type body) c-type body)))))
+
 ;;; Operation 2.4: Optional Fiber Partition Proposals (infer-fibers)
 
 (defstruct fiber-class
@@ -100,9 +208,6 @@ Operator holes are quoted operator values, not callable host functions."
   requirement
   rows
   keys)
-
-(defun unconstrained-requirement-p (expr)
-  (and (lit-p expr) (eq :bool (ast-type expr)) (eq t (ast-value expr))))
 
 (defun tighten-same-input-requirements (frame &optional ledger (budget 10000))
   "Intersect only identical COMPLETE input tuples, including zero-input problems.
@@ -113,7 +218,9 @@ Projection onto fewer inputs is a separate synthesis hypothesis."
                                      (fold-constants (row-requirement row) nil
                                                      :ledger ledger :budget budget)) rows))
          (groups (make-hash-table :test #'equal)))
-    (loop for row in rows for i from 0 do (push i (gethash (row-known row) groups)))
+    (loop for row in rows for i from 0
+          unless (member :unresolved (row-known row))
+            do (push i (gethash (row-known row) groups)))
     (maphash (lambda (known indices)
                (declare (ignore known))
                (let ((joint (aref requirements (first indices))))
@@ -298,61 +405,37 @@ via `infer-fibers`. Returns (VALUES pairs anchors refined-frame classes labels p
             labels
             part)))
 
-(defun context-label-frame (parent labels &key bindings (label-type :int) (lookup-p t) ledger)
-  "Project PARENT rows through BINDINGS (an alist of (child-input-id . parent-expr),
-defaulting to all parent inputs) onto singleton requirements for LABELS of type LABEL-TYPE.
-Charges evaluation of each context binding expression on LEDGER."
-  (let* ((parent-schema (frame-schema parent))
-         (parent-inputs (schema-inputs parent-schema))
-         (parent-rows (frame-rows parent))
-         (effective-bindings
-           (or bindings
-               (loop for spec in parent-inputs
-                     collect (cons (car spec) (var (car spec) (cdr spec))))))
-         (child-inputs
-           (mapcar (lambda (b)
-                     (cons (car b) (expression-type (cdr b) parent-inputs)))
-                   effective-bindings)))
-    (assert (= (length labels) (length parent-rows)) ()
-            "Label count (~D) must match parent row count (~D)"
-            (length labels) (length parent-rows))
-    (make-frame
-     (make-schema :domain (if (eq label-type :bool) (schema-domain parent-schema) label-type)
-                  :inputs child-inputs
-                  :target label-type
-                  :lookup-p lookup-p)
-     (loop for row in parent-rows
-           for label in labels
-           collect (let* ((known (evaluate-row-bindings effective-bindings parent-inputs
-                                                        (row-known row) :ledger ledger))
-                          (req (singleton-requirement label-type label)))
-                     (charge ledger :context-frame (syntax-work req))
-                     (make-row :key (copy-tree (row-key row))
-                               :known known
-                               :requirement req)))
-     :pairs (frame-pairs parent)
-     :anchors (frame-anchors parent))))
-
 ;;; Operation 4: Heuristic Condensation (condense-heuristic)
 
 (defstruct (heuristic-model (:conc-name heuristic-))
   program
   residual
+  (unresolved-keys nil)
   (exact-p nil :type boolean)
   (total-p t :type boolean)
   (program-bits 0 :type fixnum)
   (residual-bits 0 :type fixnum)
   (run-work 0 :type fixnum)
-  (score 0))
+  (score 0)
+  (alternatives nil))
 
 (defun condense-heuristic (frame language &key description-limit (work-limit 100000) (run-weight 0) ledger)
   "Budgeted selector approximation on ORIGINAL requirements; residuals are training costs.
 Return the best completed model and an informative completion/cutoff message."
   (let* ((job (start-heuristic-search frame language :description-limit description-limit
                                      :run-weight run-weight))
-         (message (resume-heuristic-search job (remaining-work ledger work-limit))))
+         (message (resume-heuristic-search job (remaining-work ledger work-limit)))
+         (best (heuristic-search-best job)))
     (charge ledger :heuristic-search (ledger-total (heuristic-search-ledger job)))
-    (values (heuristic-search-best job) message)))
+    (when (and best (heuristic-search-models job))
+      (let ((ordered (stable-sort (copy-list (reverse (heuristic-search-models job)))
+                                  (lambda (a b)
+                                    (or (< (heuristic-score a) (heuristic-score b))
+                                        (and (= (heuristic-score a) (heuristic-score b))
+                                             (< (heuristic-program-bits a) (heuristic-program-bits b))))))))
+        (setf (heuristic-alternatives best)
+              (remove best ordered :test #'eq))))
+    (values best message)))
 
 ;;; Law Corpus Compression (M3B)
 
@@ -376,6 +459,14 @@ Return the best completed model and an informative completion/cutoff message."
 (defun law-corpus-type (domain)
   (tuple-type domain (sequence-type (sequence-type :bool))))
 
+(defun encode-corpus-packet (trees inputs domain &optional ledger)
+  (let* ((packets (mapcar (lambda (tree)
+                            (charge ledger :corpus-encoding (syntax-work tree))
+                            (collect-code-values (lambda (emit) (emit-bit-model tree inputs emit)) ledger))
+                          trees))
+         (literal (lit (law-corpus-type domain) (list 0 packets))))
+    (collect-code-values (lambda (emit) (emit-bit-model literal nil emit)) ledger)))
+
 (defun make-law-corpus (laws &optional ledger)
   "Snapshot one domain/schema's ordered statements, including duplicate occurrences.
 Evidence/provenance are not part of this syntax-compression task."
@@ -383,41 +474,29 @@ Evidence/provenance are not part of this syntax-compression task."
   (let ((domain (law-domain (first laws))) (inputs (law-inputs (first laws))))
     (assert (every (lambda (law) (and (equal domain (law-domain law))
                                       (equal inputs (law-inputs law)))) laws))
-    (let* ((copies (mapcar (lambda (law)
-                             (let ((eq-args (rest (law-equation law))))
-                               (make-law domain inputs (first eq-args) (second eq-args)
-                                         :guard (law-guard law))))
-                           laws))
-           (packets (mapcar (lambda (law)
-                              (let ((statement (law-statement law)))
-                                (charge ledger :corpus-encoding (syntax-work statement))
-                                (collect-code-values (lambda (emit) (emit-bit-model statement inputs emit)) ledger)))
-                            copies))
-           (literal (lit (law-corpus-type domain) (list 0 packets))))
+    (let ((copies (mapcar (lambda (law)
+                            (let ((eq-args (rest (law-equation law))))
+                              (make-law domain inputs (first eq-args) (second eq-args)
+                                        :guard (law-guard law))))
+                          laws)))
       (%make-law-corpus :domain (copy-tree domain) :inputs (copy-tree inputs) :laws copies
-                        :packet (collect-code-values (lambda (emit) (emit-bit-model literal nil emit)) ledger)))))
+                        :packet (encode-corpus-packet (mapcar #'law-statement copies)
+                                                      inputs domain ledger)))))
 
 (defun decode-law-corpus (packet)
   "Decode a standalone reconstructed corpus into fresh law proposals, never certificates."
-  (multiple-value-bind (literal inputs) (decode-model (values-as-bits packet))
-    (assert (and (null inputs) (lit-p literal)))
-    (let* ((type (ast-type literal)) (domain (second type)) (value (ast-value literal)))
-      (assert (equal type (law-corpus-type domain)))
-      (assert (eql 0 (first value)))
-      (let ((laws
-              (loop for bits in (second value) collect
-                (multiple-value-bind (statement schema) (decode-model (values-as-bits bits))
-                  (assert (and (app-p statement)
-                               (equal (op :if :bool) (first statement))
-                               (equal (lit :bool t) (third (rest statement)))))
-                  (let ((guard (first (rest statement)))
-                        (equation (second (rest statement))))
-                    (assert (and (app-p equation) (eq := (operator-name (first equation)))))
-                    (make-law domain schema (first (rest equation)) (second (rest equation))
-                              :guard guard :origin '(:decoded-syntax)))))))
-        (assert laws)
-        (assert (every (lambda (law) (equal (law-inputs (first laws)) (law-inputs law))) laws))
-        laws))))
+  (multiple-value-bind (statements schema sort domain) (decode-tree-corpus packet)
+    (assert (eq :bool sort))
+    (loop for statement in statements collect
+      (progn
+        (assert (and (app-p statement)
+                     (equal (op :if :bool) (first statement))
+                     (equal (lit :bool t) (fourth statement))))
+        (let ((guard (second statement))
+              (equation (third statement)))
+          (assert (and (app-p equation) (eq := (operator-name (first equation)))))
+          (make-law domain schema (second equation) (third equation)
+                    :guard guard :origin '(:decoded-syntax)))))))
 
 (defun corpus-prefix (domain count &optional ledger)
   (collect-code-values
@@ -705,19 +784,14 @@ When KNOWN is omitted, defaults each row's known input to its occurrence coordin
                                                           (and (consp (cdr spec)) (eq :gf (first (cdr spec)))))
                                                         norm-inputs)))
                                     (if gf-in (cdr gf-in) :int)))))
-         (copies (mapcar #'copy-tree trees))
-         (packets
-           (mapcar (lambda (tree)
-                     (assert (equal inferred-sort (expression-type tree norm-inputs)))
-                     (charge ledger :corpus-encoding (syntax-work tree))
-                     (collect-code-values (lambda (emit) (emit-bit-model tree norm-inputs emit)) ledger))
-                   copies))
-         (literal (lit (law-corpus-type inferred-domain) (list 0 packets))))
+         (copies (mapcar #'copy-tree trees)))
+    (dolist (tree copies)
+      (assert (equal inferred-sort (expression-type tree norm-inputs))))
     (%make-tree-corpus :domain (copy-tree inferred-domain)
                        :inputs (copy-tree norm-inputs)
                        :sort (copy-tree inferred-sort)
                        :trees copies
-                       :packet (collect-code-values (lambda (emit) (emit-bit-model literal nil emit)) ledger))))
+                       :packet (encode-corpus-packet copies norm-inputs inferred-domain ledger))))
 
 (defun decode-tree-corpus (packet)
   "Decode a standalone tree-corpus packet back into fresh ASTs and verify schema consistency."
@@ -1341,24 +1415,6 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
 
 ;;; Partitioning, Autonomous View Discovery, and Locality (M7 & M8C)
 
-(defun shuffle-frame-rows (frame permutation &optional ledger)
-  "Permute the physical storage order of FRAME's rows according to PERMUTATION
-(a bijection of 0..N-1) while preserving declared coordinates and occurrence keys."
-  (let* ((rows-vec (coerce (frame-rows frame) 'vector))
-         (n (length rows-vec)))
-    (assert (= n (length permutation)))
-    (assert (= n (length (remove-duplicates permutation :test #'eql))))
-    (assert (every (lambda (idx) (and (integerp idx) (<= 0 idx) (< idx n))) permutation))
-    (charge ledger :orientation n)
-    (make-frame (copy-schema (frame-schema frame))
-                (loop for idx in permutation
-                      for row = (aref rows-vec idx)
-                      collect (make-row :key (copy-tree (row-key row))
-                                        :known (copy-tree (row-known row))
-                                        :requirement (copy-tree (row-requirement row))))
-                :pairs (frame-pairs frame)
-                :anchors (frame-anchors frame))))
-
 (defstruct partition-view-proposal
   (kind :separate-parts)
   guard
@@ -1369,30 +1425,6 @@ Returns (VALUES best-compression best-structural proposals corpus normalized-tre
   conflict
   (bits 0 :type fixnum)
   (run-work 0 :type fixnum))
-
-(defun project-frame-rows (frame bindings &optional ledger)
-  "Project FRAME's `row-known` values through BINDINGS (an alist of (child-id . parent-expr))."
-  (if (null bindings)
-      frame
-      (let* ((schema (frame-schema frame))
-             (parent-inputs (schema-inputs schema))
-             (child-inputs (mapcar (lambda (b)
-                                     (cons (car b) (expression-type (cdr b) parent-inputs)))
-                                   bindings)))
-        (make-frame
-         (make-schema :domain (schema-domain schema)
-                      :inputs child-inputs
-                      :target (schema-target schema)
-                      :lookup-p (schema-lookup-p schema))
-         (loop for row in (frame-rows frame)
-               collect (let ((known (evaluate-row-bindings bindings parent-inputs
-                                                           (row-known row) :ledger ledger)))
-                         (charge ledger :orientation (length known))
-                         (make-row :key (copy-tree (row-key row))
-                                   :known known
-                                   :requirement (copy-tree (row-requirement row)))))
-         :pairs (frame-pairs frame)
-         :anchors (frame-anchors frame)))))
 
 (defun evaluate-guard-partition (frame guard-expr &key child-bindings ledger (budget 100000))
   "Evaluate Boolean GUARD-EXPR on every row of FRAME in the metered VM, split into
@@ -1537,13 +1569,7 @@ Returns (VALUES true-frame false-frame labels partition)."
 Returns (VALUES best-proposal proposals conflicts)."
   (let* ((schema (frame-schema frame))
          (parent-inputs (schema-inputs schema))
-         (bool-frame (make-frame (make-schema :domain (language-domain guard-language)
-                                              :inputs parent-inputs
-                                              :target :bool)
-                                 (loop for row in (frame-rows frame)
-                                       collect (make-row :key (copy-tree (row-key row))
-                                                         :known (copy-tree (row-known row))
-                                                         :requirement (lit :bool t)))))
+         (bool-frame (unconstrained-frame frame :bool :domain (language-domain guard-language)))
          (eff-guard-bound (or guard-bound (+ (header-size parent-inputs :bool) 48)))
          (scope (make-observation-scope bool-frame guard-language))
          (obs-job (start-observation-search scope))

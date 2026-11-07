@@ -1,0 +1,24 @@
+// Phase 3 of plan7-recursion.md: the two dual lifting paths.
+// Built to PDF by the Makefile (dot -Tpdf) and included by pandoc.
+digraph phase3 {
+	graph [rankdir=TB, nodesep=0.35, ranksep=0.3, fontname="Helvetica"];
+	node [shape=box, style="rounded,filled", fillcolor="#f4f4f4", fontname="Helvetica", fontsize=10, margin="0.12,0.06"];
+	edge [arrowsize=0.7];
+
+	Omega [label="Parent frame  Omega(X) -> Y", fillcolor="#dde8f5"];
+
+	PathA [label="Path A: Output / Index Conservation Lift\n(bottom-up)", fillcolor="#e6f2e0"];
+	A1 [label="1. Lift output elements / positions\lPull back Y_j = (at X I) via fold-constants\lto get index/value fibers over (X, j, I, Y_j)\l"];
+	A2 [label="2. Observe conserved quantities (Op 1)\lcollect-observation-buckets finds constant / pair-invariant\lrelations C(X, j, I, Y_j) = c0\l"];
+	A3 [label="3. Algebraic inversion to generative model (Op 3 + M4)\lReorient (= C(...) 'c0) as requirement on I or Y_j;\lM4 witness solvers invert C to forward expression g(X, j)\l"];
+
+	PathB [label="Path B: Inductive / Template Call Lift\n(1-to-many pullback)", fillcolor="#f7ead8"];
+	B1 [label="1. Guarded unfold & sequence split (K3)\lUnfold recursive/library decoder d(X, F) on concrete X_omega;\l(= (cons h t) '(v0 v1 ...)) splits into per-call equations\l"];
+	B2 [label="2. 1-to-many lift-frame & congruence closure (K4)\lCollect F(a) occurrences across rows into Omega_lift((omega, path));\lintersect identical args & propagate prefix equations\l"];
+	B3 [label="3. Symmetry / conflict check & step synthesis\lframe-conflict-p refutes invalid lifts;\lconserved relation C(H, Z, Y) = c0 inverts to step body\l"];
+
+	Omega -> PathA;
+	Omega -> PathB;
+	PathA -> A1 -> A2 -> A3;
+	PathB -> B1 -> B2 -> B3;
+}

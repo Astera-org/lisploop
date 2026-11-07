@@ -957,3 +957,548 @@
              (check-codec-roundtrip best-expr parent-inputs)
              (check (= 24 (result best-expr parent-inputs '((2 3 1))))))))
     (clear-function-definitions)))
+
+(deftest recursion-r4-de-novo-unary-functions
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (seq-ops (list (op :cons :int) (op :at seq-type) (op :tail :int)
+                             (op := seq-type) (op :if seq-type)
+                             (op :+ :int) (op :* :int)))
+              (int-ops (list (op :at seq-type) (op :tail :int)
+                             (op := seq-type) (op :if :int)
+                             (op :+ :int) (op :* :int))))
+         ;; 1. copy: (:seq :int) -> (:seq :int)
+         (clear-function-definitions)
+         (let* ((frame (simple-frame seq-type inputs
+                                     '(((() ) ())
+                                       (((3)) (3))
+                                       (((1 3)) (1 3))
+                                       (((4 1 3)) (4 1 3)))))
+                (lang (make-language :int inputs
+                                     :operators seq-ops
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 80 :self-name :fa)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (function-definition-total-p (find-function-definition :fa)))
+             (check (provably-total-p expr))
+             (check-codec-roundtrip expr inputs)
+             (check (equal '(9 8 7 6) (result expr inputs '((9 8 7 6)))))))
+
+         ;; 2. inc-all: (:seq :int) -> (:seq :int)
+         (clear-function-definitions)
+         (let* ((frame (simple-frame seq-type inputs
+                                     '(((() ) ())
+                                       (((2)) (3))
+                                       (((5 2)) (6 3))
+                                       (((0 5 2)) (1 6 3)))))
+                (lang (make-language :int inputs
+                                     :operators seq-ops
+                                     :literals '(1)
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 90 :self-name :fa)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (function-definition-total-p (find-function-definition :fa)))
+             (check (provably-total-p expr))
+             (check-codec-roundtrip expr inputs)
+             (check (equal '(11 21 31) (result expr inputs '((10 20 30)))))))
+
+         ;; 3. double-all: (:seq :int) -> (:seq :int)
+         (clear-function-definitions)
+         (let* ((frame (simple-frame seq-type inputs
+                                     '(((() ) ())
+                                       (((3)) (6))
+                                       (((4 3)) (8 6))
+                                       (((1 4 3)) (2 8 6)))))
+                (lang (make-language :int inputs
+                                     :operators seq-ops
+                                     :literals '(2)
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 90 :self-name :fa)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (function-definition-total-p (find-function-definition :fa)))
+             (check (provably-total-p expr))
+             (check-codec-roundtrip expr inputs)
+             (check (equal '(10 -4 14) (result expr inputs '((5 -2 7)))))))
+
+         ;; 4. sum: (:seq :int) -> :int
+         (clear-function-definitions)
+         (let* ((frame (simple-frame :int inputs
+                                     '(((() ) 0)
+                                       (((4)) 4)
+                                       (((3 4)) 7)
+                                       (((2 3 4)) 9))))
+                (lang (make-language :int inputs
+                                     :operators int-ops
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 80 :self-name :fa)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (function-definition-total-p (find-function-definition :fa)))
+             (check (provably-total-p expr))
+             (check-codec-roundtrip expr inputs)
+             (check (= 100 (result expr inputs '((10 20 30 40)))))))
+
+         ;; 5. length: (:seq :int) -> :int
+         (clear-function-definitions)
+         (let* ((frame (simple-frame :int inputs
+                                     '(((() ) 0)
+                                       (((7)) 1)
+                                       (((5 7)) 2)
+                                       (((9 5 7)) 3))))
+                (lang (make-language :int inputs
+                                     :operators (list (op :at seq-type) (op :tail :int)
+                                                      (op := seq-type) (op :if :int)
+                                                      (op :+ :int))
+                                     :literals '(1)
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 80 :self-name :fa)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (function-definition-total-p (find-function-definition :fa)))
+             (check (provably-total-p expr))
+             (check-codec-roundtrip expr inputs)
+             (check (= 6 (result expr inputs '((1 2 3 4 5 6)))))))
+
+         ;; 6. product: (:seq :int) -> :int
+         (clear-function-definitions)
+         (let* ((frame (simple-frame :int inputs
+                                     '(((() ) 1)
+                                       (((3)) 3)
+                                       (((2 3)) 6)
+                                       (((4 2 3)) 24))))
+                (lang (make-language :int inputs
+                                     :operators int-ops
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 80 :self-name :fa)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (function-definition-total-p (find-function-definition :fa)))
+             (check (provably-total-p expr))
+             (check-codec-roundtrip expr inputs)
+             (check (= 70 (result expr inputs '((2 5 7))))))))
+    (clear-function-definitions)))
+
+(deftest recursion-r4-insert-and-sort-synthesis
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (insert-inputs (list (cons 0 :int) (cons 1 seq-type)))
+              (sort-inputs (list (cons 0 seq-type))))
+         ;; 1. Synthesize insert(x, sorted) de novo (2-level conditional split: (= X1 '()) then (< X0 (at X1 '0)))
+         ;; Note that (2 (3 5)) -> (2 3 5) does not have (2 (5)) in the training set, exercising lazy :unresolved.
+         (let* ((insert-frame (simple-frame seq-type insert-inputs
+                                            '(((2 ()) (2))
+                                              ((1 (3)) (1 3))
+                                              ((2 (3 5)) (2 3 5))
+                                              ((4 (5)) (4 5))
+                                              ((4 (2 5)) (2 4 5))
+                                              ((3 (4)) (3 4))
+                                              ((3 (1 4)) (1 3 4)))))
+                (insert-lang (make-language :int insert-inputs
+                                            :operators (list (op :cons :int) (op :at seq-type)
+                                                             (op :tail :int) (op :< :int)
+                                                             (op := seq-type) (op :if seq-type))
+                                            :literals nil
+                                            :constants (list (lit seq-type '()))))
+                (insert-job (start-recursive-synthesis insert-frame insert-lang 110 :self-name :fa)))
+           (resume-synthesis insert-job 100000 :stop-on-first t)
+           (check (synthesis-job-best insert-job))
+           (let ((insert-expr (candidate-expression (synthesis-job-best insert-job))))
+             (check (function-definition-total-p (find-function-definition :fa)))
+             (check (provably-total-p insert-expr))
+             (check-codec-roundtrip insert-expr insert-inputs)
+             (check (equal '(0 1 2 3) (result insert-expr insert-inputs '(0 (1 2 3)))))
+             (check (equal '(1 2 3 4 5) (result insert-expr insert-inputs '(3 (1 2 4 5)))))
+             (check (equal '(1 2 4 5 9) (result insert-expr insert-inputs '(9 (1 2 4 5)))))))
+
+         ;; 2. Synthesize sort(xs) de novo using the synthesized :fa (insert)
+         (let* ((sort-frame (simple-frame seq-type sort-inputs
+                                          '(((() ) ())
+                                            (((2)) (2))
+                                            (((3 2)) (2 3))
+                                            (((1 3 2)) (1 2 3))
+                                            (((4 1 3 2)) (1 2 3 4)))))
+                (sort-lang (make-language :int sort-inputs
+                                          :operators (list (op :fa) (op :at seq-type)
+                                                           (op :tail :int) (op := seq-type)
+                                                           (op :if seq-type))
+                                          :literals nil
+                                          :constants (list (lit seq-type '()))))
+                (sort-job (start-recursive-synthesis sort-frame sort-lang 90 :self-name :fb)))
+           (resume-synthesis sort-job 50000 :stop-on-first t)
+           (check (synthesis-job-best sort-job))
+           (let ((sort-expr (candidate-expression (synthesis-job-best sort-job))))
+             (check (function-definition-total-p (find-function-definition :fb)))
+             (check (provably-total-p sort-expr))
+             (check-codec-roundtrip sort-expr sort-inputs)
+             (check (equal '(1 2 3 4 5) (result sort-expr sort-inputs '((5 3 1 4 2)))))
+             (check (equal '(-1 0 2 4 4 9) (result sort-expr sort-inputs '((9 -1 4 0 4 2))))))))
+    (clear-function-definitions)))
+
+(deftest recursion-r4-oracle-controls-and-resume-parity
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (xs (var 0 seq-type))
+              (int-ops (list (op :at seq-type) (op :tail :int)
+                             (op := seq-type) (op :if :int) (op :+ :int))))
+         ;; 1. Positive control: trace-incomplete dataset where (1 4 2) -> 7 has no (4 2) row in the oracle.
+         ;; Child search returns (+ H R) with R=:unresolved on (1 4 2), and root VM verification executes
+         ;; the full recursion (1 4 2) -> (4 2) -> (2) -> () to confirm 7.
+         (clear-function-definitions)
+         (let* ((frame (simple-frame :int inputs
+                                     '(((() ) 0)
+                                       (((2)) 2)
+                                       (((3 2)) 5)
+                                       (((1 4 2)) 7))))
+                (lang (make-language :int inputs
+                                     :operators int-ops
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 80 :self-name :fa)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (provably-total-p expr))
+             (check (= 7 (result expr inputs '((1 4 2)))))
+             (check (= 15 (result expr inputs '((1 2 3 4 5)))))))
+
+         ;; 2. Negative control A: corrupted target on the trace-incomplete row ((1 4 2) -> 99).
+         ;; Child search still proposes (+ H R), but root VM verification executes the concrete
+         ;; recursive body on (1 4 2), computes 7 /= 99, and rejects it!
+         (clear-function-definitions)
+         (let* ((bad-frame (simple-frame :int inputs
+                                         '(((() ) 0)
+                                           (((2)) 2)
+                                           (((3 2)) 5)
+                                           (((1 4 2)) 99))))
+                (lang (make-language :int inputs
+                                     :operators int-ops
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis bad-frame lang 60 :self-name :fa)))
+           (resume-synthesis job 30000 :stop-on-first t)
+           (check (null (synthesis-job-best job)))
+           (check (find-if (lambda (m)
+                             (and (eq :rejected (message-claim m))
+                                  (eq :original-root (getf (message-evidence m) :scope))))
+                           (synthesis-job-messages job))))
+
+         ;; 3. Negative control B: circular oracle-only fits (:fa X0) and (if (= X0 '()) '0 (:fa X0))
+         ;; match the oracle table directly, but root verification binds :fa to the candidate body,
+         ;; hits the per-row evaluation cutoff in the VM, and rejects them cleanly.
+         (clear-function-definitions)
+         (let* ((frame (simple-frame :int inputs
+                                     '(((() ) 0)
+                                       (((2)) 2)
+                                       (((3 2)) 5))))
+                (oracle (frame-oracle-table frame))
+                ( dummy (define-function :fa inputs :int nil :oracle-table oracle))
+                (circular-direct (app (op :fa) xs))
+                (circular-guarded (app (op :if :int)
+                                       (app (op := seq-type) xs (lit seq-type '()))
+                                       (lit :int 0)
+                                       (app (op :fa) xs)))
+                (root-lang (make-language :int inputs
+                                          :operators (cons (op :fa) int-ops)
+                                          :literals '(0)
+                                          :constants (list (lit seq-type '()))))
+                (decomp (make-decomposition :name :bogus-circular
+                                            :decoder circular-guarded
+                                            :child-id 1
+                                            :child-type :int
+                                            :bindings nil
+                                            :language (make-language :int nil :literals '(0))
+                                            :bound 40))
+                (job (start-synthesis frame root-lang 70
+                                      :decompositions (list decomp)
+                                      :self-name :fa
+                                      :oracle-table oracle
+                                      :verification-row-budget 300)))
+           (declare (ignore dummy))
+           ;; Under the oracle alone, both circular expressions evaluate to :value on all rows of frame:
+           (check (= 2 (result circular-direct inputs '((2)))))
+           (check (= 5 (result circular-guarded inputs '((3 2)))))
+           ;; Enqueue circular-direct directly to root verification as well:
+           (enqueue-node-candidate job (synthesis-job-root job) circular-direct nil)
+           (resume-synthesis job 10000)
+           (check (null (synthesis-job-best job)))
+           (check (find-if (lambda (m)
+                             (and (eq :rejected (message-claim m))
+                                  (eq :original-root (getf (message-evidence m) :scope))))
+                           (synthesis-job-messages job))))
+
+         ;; 4. 1-unit vs. batch resume-synthesis parity on recursive synthesis
+         (clear-function-definitions)
+         (let* ((frame (simple-frame :int inputs
+                                     '(((() ) 0)
+                                       (((4)) 4)
+                                       (((3 4)) 7)
+                                       (((2 3 4)) 9))))
+                (lang (make-language :int inputs
+                                     :operators int-ops
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (probe (start-recursive-synthesis frame lang 80 :self-name :fa))
+                (probe-msg (resume-synthesis probe 50000 :stop-on-first t))
+                (total (ledger-total (synthesis-job-ledger probe))))
+           (declare (ignore probe-msg))
+           (check (synthesis-job-best probe))
+           (clear-function-definitions)
+           (let ((unit (start-recursive-synthesis frame lang 80 :self-name :fa))
+                 (batch (start-recursive-synthesis frame lang 80 :self-name :fa)))
+             (dolist (limit (list 0 1 5 (floor total 3) (floor (* 2 total) 3) (1- total) total))
+               (loop while (< (ledger-total (synthesis-job-ledger unit)) limit)
+                     do (resume-synthesis unit (1+ (ledger-total (synthesis-job-ledger unit)))
+                                          :stop-on-first t))
+               (resume-synthesis batch limit :stop-on-first t)
+               (check (= limit (ledger-total (synthesis-job-ledger unit))))
+               (check (= limit (ledger-total (synthesis-job-ledger batch))))
+               (check (equalp (synthesis-job-ledger unit) (synthesis-job-ledger batch)))
+               (check (equalp (synthesis-job-best unit) (synthesis-job-best batch)))))))
+    (clear-function-definitions)))
+
+(deftest recursion-r4-audit-edge-cases-debug-and-pre-r5-r6
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (xs (var 0 seq-type)))
+         ;; 1. Constrained-only resolved-rows: dead `'t` rows from base cases must not inflate resolved-rows
+         (clear-function-definitions)
+         (let* ((bin-inputs (list (cons 0 :int) (cons 1 seq-type)))
+                (parent (simple-frame seq-type bin-inputs
+                                      '(((2 ()) (2))
+                                        ((4 ()) (4))
+                                        ((2 (1 3)) (1 2 3))
+                                        ((4 (1 5)) (1 4 5)))))
+                (oracle (frame-oracle-table parent))
+                (dummy (define-function :fa bin-inputs seq-type nil :oracle-table oracle))
+                (guard (app (op := seq-type) (var 1 seq-type) (lit seq-type '())))
+                (base (app (op :cons :int) (var 0 :int) (lit seq-type '())))
+                (decoder (app (op :if seq-type) guard base (var 9 seq-type)))
+                (bindings (list (cons 0 (var 0 :int))
+                                (cons 1 (app (op :at seq-type) (var 1 seq-type) (lit :int 0)))
+                                (cons 2 (app (op :fa) (var 0 :int) (app (op :tail :int) (var 1 seq-type))))))
+                (pulled (pullback-frame parent decoder 9 seq-type bindings)))
+           (declare (ignore dummy))
+           (multiple-value-bind (conflict folded) (frame-conflict-p pulled)
+             (check (null conflict))
+             ;; 2 base rows folded to `'t`, 2 non-empty rows remain constrained (and both have :unresolved in X2)
+             (check (= 4 (length (frame-rows folded))))
+             (check (= 2 (frame-constrained-row-count folded)))
+             (check (= 2 (frame-min-resolved-rows folded)))
+             ;; Dead rows (rows 0 and 1) substituted default values instead of :unresolved
+             (check (not (member :unresolved (row-known (first (frame-rows folded))))))
+             (check (not (member :unresolved (row-known (second (frame-rows folded))))))
+             ;; Constrained rows (rows 2 and 3) have :unresolved in slot 2
+             (check (eq :unresolved (third (row-known (third (frame-rows folded))))))
+             (check (eq :unresolved (third (row-known (fourth (frame-rows folded))))))
+             ;; Candidate `(var 2 seq-type)` evaluates to :value on the 2 dead rows, and :unresolved on both
+             ;; constrained rows -> must be REJECTED because 0 < 2 constrained rows resolved!
+             (let* ((child-inputs (schema-inputs (frame-schema folded)))
+                    (child-lang (make-language :int child-inputs :operators nil :literals nil))
+                    (sjob (start-search folded child-lang :expressions (list (var 2 seq-type)))))
+               (resume-search sjob 100 5000)
+               (check (null (search-job-best sjob)))
+               (check (null (search-job-results sjob))))
+             ;; And `infer-fibers` / `tighten-same-input-requirements` does not conjoin rows sharing :unresolved
+             (multiple-value-bind (classes msg refined) (infer-fibers folded)
+               (declare (ignore classes msg))
+               (check (frame-p refined)))))
+
+         ;; 2. Transitive totality recomputation when an underlying dependency is redefined
+         (clear-function-definitions)
+         (define-function :fa inputs :int
+           (lambda (self)
+             (app (op :if :int)
+                  (app (op := seq-type) xs (lit seq-type '()))
+                  (lit :int 0)
+                  (app (op :+ :int)
+                       (app (op :at seq-type) xs (lit :int 0))
+                       (app self (app (op :tail :int) xs))))))
+         (define-function :fb inputs :int
+           (lambda (self)
+             (declare (ignore self))
+             (app (op :+ :int) (app (op :fa) xs) (lit :int 1))))
+         (let ((call-fb (app (op :fb) xs)))
+           (check (function-definition-total-p (find-function-definition :fa)))
+           (check (function-definition-total-p (find-function-definition :fb)))
+           (check (provably-total-p call-fb))
+           ;; Redefining :fa as an oracle invalidates :fb's totality transitively
+           (define-function :fa inputs :int nil :oracle-table '((((2)) . 2)))
+           (check (not (function-definition-total-p (find-function-definition :fa))))
+           (check (not (function-definition-total-p (find-function-definition :fb))))
+           (check (not (provably-total-p call-fb)))
+           ;; Redefining :fa with a total body restores :fb's totality transitively
+           (define-function :fa inputs :int
+             (lambda (self)
+               (app (op :if :int)
+                    (app (op := seq-type) xs (lit seq-type '()))
+                    (lit :int 0)
+                    (app (op :+ :int)
+                         (app (op :/ :int) (app (op :at seq-type) xs (lit :int 0)) (lit :int 2))
+                         (app self (app (op :tail :int) xs))))))
+           (check (function-definition-total-p (find-function-definition :fa)))
+           (check (function-definition-total-p (find-function-definition :fb)))
+           (check (provably-total-p call-fb)))
+
+         ;; 3. Oracle state restoration when recursive synthesis fails or stops without a verified candidate
+         (clear-function-definitions)
+         (let* ((bad-frame (simple-frame :int inputs
+                                         '(((() ) 0)
+                                           (((2)) 2)
+                                           (((3 2)) 5)
+                                           (((1 4 2)) 99))))
+                (lang (make-language :int inputs
+                                     :operators (list (op :at seq-type) (op :tail :int)
+                                                      (op := seq-type) (op :if :int) (op :+ :int))
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis bad-frame lang 60 :self-name :fa)))
+           (resume-synthesis job 30000 :stop-on-first t)
+           (check (null (synthesis-job-best job)))
+           ;; :fa must be restored to its oracle table, not left bound to the rejected (+ H R) body!
+           (let ((def (find-function-definition :fa)))
+             (check def)
+             (check (null (function-definition-body def)))
+             (check (function-definition-oracle-table def))))
+
+         ;; 4. Coupled non-prefix-closed fold in `lift-frame` does not pass constants on a vacuous row
+         (clear-function-definitions)
+         (let* ((binary-code (code-type '((0 . :int) (1 . :int)) :int))
+                (acc-var (var 1 :int))
+                (fold-f-var (var 2 binary-code)))
+           (define-function :fc (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
+             (lambda (self)
+               (app (op :if :int)
+                    (app (op := seq-type) xs (lit seq-type '()))
+                    acc-var
+                    (app self
+                         (app (op :tail :int) xs)
+                         (app (op :code-eval binary-code)
+                              fold-f-var acc-var (app (op :at seq-type) xs (lit :int 0)))
+                         fold-f-var))))
+           (let* ((coupled-parent (simple-frame :int inputs
+                                                '((((3 4)) 25)
+                                                  (((2 5)) 29))))
+                  (decoder (app (op :fc) xs (lit :int 0) (var 9 binary-code))))
+             (multiple-value-bind (lifted coupled) (lift-frame coupled-parent decoder 9 binary-code)
+               (check (= 2 (length coupled)))
+               (check (= 2 (frame-constrained-row-count lifted)))
+               ;; Constant '0 is rejected on the coupled lifted frame
+               (let* ((child-lang (make-language :int '((0 . :int) (1 . :int)) :operators nil :literals '(0)))
+                      (sjob (start-search lifted child-lang :expressions (list (lit :int 0)))))
+                 (resume-search sjob 50 5000)
+                 (check (null (search-job-best sjob)))))))
+
+         ;; 5. Explicit Debug Mode (`:debug-p t`, `explain-synthesis-node`, `explain-synthesis-job`)
+         ;;    and homoiconic S-expression `nogood-clause`
+         (clear-function-definitions)
+         (let* ((frame (simple-frame :int inputs
+                                     '(((() ) 0)
+                                       (((4)) 4)
+                                       (((3 4)) 7)
+                                       (((2 3 4)) 9))))
+                (lang (make-language :int inputs
+                                     :operators (list (op :at seq-type) (op :tail :int)
+                                                      (op := seq-type) (op :if :int) (op :+ :int))
+                                     :literals nil
+                                     :constants (list (lit seq-type '()))))
+                (job (start-recursive-synthesis frame lang 80 :self-name :fa :debug-p t)))
+           (resume-synthesis job 50000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           (check (synthesis-job-debug-p job))
+           (let* ((out (make-string-output-stream))
+                  (summary (explain-synthesis-job job :stream out))
+                  (text (get-output-stream-string out)))
+             (check (getf summary :best))
+             (check (plusp (length text)))
+             (check (some (lambda (n-rep)
+                            (and (getf n-rep :proposal-provenance)
+                                 (eq :inductive-sequence-lift
+                                     (getf (getf n-rep :proposal-provenance) :origin))))
+                          (getf summary :nodes)))))
+
+         ;; 6. Pre-R5 helpers: `rename-function-calls`, `shared-subterm-cover`, `abstract-over-subterms`
+         (clear-function-definitions)
+         (define-function :fa inputs :int nil :oracle-table '(((() ) . 0)))
+         (define-function :fb inputs :int nil :oracle-table '(((() ) . 0)))
+         (let* ((head-x0 (app (op :at seq-type) xs (lit :int 0)))
+                (tail-x0 (app (op :tail :int) xs))
+                (rec-fa (app (op :fa) tail-x0))
+                (rec-fb (app (op :fb) tail-x0))
+                (sum-step (app (op :+ :int) head-x0 rec-fa))
+                (len-step-raw (app (op :+ :int) (lit :int 1) rec-fb))
+                (len-step (rename-function-calls len-step-raw :fb :fa))
+                (cover (shared-subterm-cover (list sum-step len-step) inputs :self-name :fa)))
+           (check (equal (list head-x0 rec-fa) cover))
+           (multiple-value-bind (sum-code sum-code-type sum-body)
+               (abstract-over-subterms sum-step cover inputs)
+             (multiple-value-bind (len-code len-code-type len-body)
+                 (abstract-over-subterms len-step cover inputs)
+               (check (equal sum-code-type len-code-type))
+               (check (equal (code-type '((0 . :int) (1 . :int)) :int) sum-code-type))
+               (check (equal (app (op :+ :int) (var 0 :int) (var 1 :int)) sum-body))
+               (check (equal (app (op :+ :int) (lit :int 1) (var 1 :int)) len-body))
+               (check (lit-p sum-code))
+               (check (lit-p len-code))))
+           (let* ((inc-step (app (op :+ :int) head-x0 (lit :int 1)))
+                  (dbl-step (app (op :* :int) head-x0 (lit :int 2)))
+                  (map-cover (shared-subterm-cover (list inc-step dbl-step) inputs)))
+             (check (equal (list head-x0) map-cover))
+             (multiple-value-bind (inc-code inc-type inc-body)
+                 (abstract-over-subterms inc-step map-cover inputs)
+               (declare (ignore inc-code))
+               (check (equal (code-type '((0 . :int)) :int) inc-type))
+               (check (equal (app (op :+ :int) (var 0 :int) (lit :int 1)) inc-body)))))
+
+         ;; 7. Pre-R6 / Phase 5.2 homoiconic S-expression `nogood-clause` on 1-to-many lift conflict
+         (clear-function-definitions)
+         (let* ((unary-code (code-type '((0 . :int)) :int))
+                (f-var (var 1 unary-code)))
+           (define-function :fb (list (cons 0 seq-type) (cons 1 unary-code)) seq-type
+             (lambda (self)
+               (app (op :if seq-type)
+                    (app (op := seq-type) xs (lit seq-type '()))
+                    (lit seq-type '())
+                    (app (op :cons :int)
+                         (app (op :code-eval unary-code) f-var (app (op :at seq-type) xs (lit :int 0)))
+                         (app self (app (op :tail :int) xs) f-var)))))
+           (let* ((rev-parent (simple-frame seq-type inputs
+                                            '((((1 2)) (2 1))
+                                              (((1 3)) (3 1)))))
+                  (elem-decoder (app (op :fb) xs (var 9 unary-code)))
+                  (elem-lang (make-language :int '((0 . :int)) :operators (list (op :+ :int)) :literals '(1)))
+                  (bad-decomp (make-decomposition :name :bad-elem-map
+                                                  :decoder elem-decoder
+                                                  :child-id 9
+                                                  :child-type unary-code
+                                                  :language elem-lang
+                                                  :bound 24
+                                                  :lift-p t))
+                  (root-lang (make-language :int inputs :operators nil :literals nil))
+                  (job (start-synthesis rev-parent root-lang 40
+                                        :decompositions (list bad-decomp)
+                                        :debug-p t)))
+             (resume-synthesis job 2000)
+             (check (= 1 (length (synthesis-job-nogoods job))))
+             (let ((ng (first (synthesis-job-nogoods job))))
+               (check (nogood-clause-p ng))
+               (check (eq :lift-incompatible-rows (nogood-clause-kind ng)))
+               (check (equal '((0 0) (1 0)) (nogood-clause-keys ng)))
+               (check (equal '(1) (nogood-clause-known ng)))
+               (check (equal (app (op := :int) (var 0 :int) (lit :int 1))
+                             (nogood-clause-clause-expr ng)))))))
+    (clear-function-definitions)))

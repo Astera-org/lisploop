@@ -215,24 +215,26 @@ CONSTANTS supplies additional typed literal ASTs. The default operators stay +/*
   call-id frame language enumerator (ledger (make-ledger))
   (mode :enumeration) proposals queue (requested-bound 0)
   (phase :enumerate) expression (construction-debt 0) rows (resolved-rows 0) evaluation predicted
-  (run-work 0) (completed-bound 0) (results nil) best (run-weight 0)
+  (run-work 0) (completed-bound 0) (results nil) best (run-weight 0) row-budget
   (rejected 0) (messages nil) diagnostics library rewriting normal-form
   (reused-rejections 0) (rejection-cache (make-hash-table :test #'equal)))
 
 (defvar *next-call-id* 0)
 
-(defun start-search (frame language &key (call-id (incf *next-call-id*)) (run-weight 0) laws diagnostics
+(defun start-search (frame language &key (call-id (incf *next-call-id*)) (run-weight 0) row-budget laws diagnostics
                                         (expressions nil supplied-p))
   "Use the canonical enumerator, or check a declared list of complete proposals.
 Listed proposals use the SAME construction, VM, checker and objective."
   (assert (equal (schema-inputs (frame-schema frame)) (language-inputs language)))
   (assert (and (realp run-weight) (>= run-weight 0)))
+  (assert (or (null row-budget) (and (integerp row-budget) (plusp row-budget))))
   (setf frame (snapshot-frame frame) language (snapshot-language language))
   (let* ((library (when laws (prepare-rewrite-library laws (language-domain language))))
          (job (%make-search-job :call-id call-id :frame frame :language language
                                 :mode (if supplied-p :replay :enumeration)
                                 :enumerator (unless supplied-p (make-enumerator language))
-                                :run-weight run-weight :library library :diagnostics diagnostics
+                                :run-weight run-weight :row-budget row-budget
+                                :library library :diagnostics diagnostics
                                 :completed-bound (language-header-size language (schema-target (frame-schema frame))))))
     (when supplied-p
       (let ((queue (remove-duplicates (copy-tree expressions) :test #'equal)))
@@ -359,7 +361,7 @@ Listed proposals use the SAME construction, VM, checker and objective."
        (charge ledger :scheduling)
        (if (null (search-job-rows job))
            (if (>= (search-job-resolved-rows job)
-                   (min 2 (length (frame-rows (search-job-frame job)))))
+                   (frame-min-resolved-rows (search-job-frame job)))
                (accept-candidate job)
                (reject-candidate job))
            (setf (search-job-evaluation job)
@@ -367,7 +369,10 @@ Listed proposals use the SAME construction, VM, checker and objective."
                                    (row-known (first (search-job-rows job))))
                  (search-job-phase job) :evaluate)))
       (:evaluate
-       (let ((state (advance-search-evaluation job budget :evaluation)))
+       (let* ((row-limit (search-job-row-budget job))
+              (rem-row (when row-limit
+                         (max 1 (- row-limit (evaluation-work (search-job-evaluation job))))))
+              (state (advance-search-evaluation job (if rem-row (min budget rem-row) budget) :evaluation)))
          (case (evaluation-status state)
            (:error (reject-candidate job))
            (:unresolved
@@ -377,7 +382,10 @@ Listed proposals use the SAME construction, VM, checker and objective."
            (:value
             (incf (search-job-run-work job) (evaluation-work state))
             (setf (search-job-predicted job) (evaluation-value state)
-                  (search-job-phase job) :requirement)))))
+                  (search-job-phase job) :requirement))
+           (:unknown
+            (when (and row-limit (>= (evaluation-work state) row-limit))
+              (reject-candidate job))))))
       (:requirement
        (charge ledger :scheduling)
        (setf (search-job-evaluation job)
@@ -395,7 +403,8 @@ Listed proposals use the SAME construction, VM, checker and objective."
            (:value
             (if (eq t (evaluation-value state))
                 (progn
-                  (incf (search-job-resolved-rows job))
+                  (unless (unconstrained-requirement-p (row-requirement (first (search-job-rows job))))
+                    (incf (search-job-resolved-rows job)))
                   (pop (search-job-rows job))
                   (setf (search-job-phase job) :row))
                 (reject-candidate job t)))))))))
