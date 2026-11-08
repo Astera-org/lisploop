@@ -471,19 +471,27 @@ or element type `tau` (normalized to `(:seq tau)`)."
          (norm-type (normalize-operator-type kname type))
          (sig (compute-operator-signature kname norm-type))
          (key (list :op kname norm-type)))
-    (or (gethash key *typed-symbol-pool*)
-        (let ((sym (make-symbol (symbol-name kname))))
-          (setf (gethash sym *node-meta*)
-                (make-ast-meta :kind :op :id kname :type (copy-tree norm-type) :value sig
-                               :non-var-bits (+ 2 (operator-bit-size kname norm-type))
-                               :var-count 0
-                               :syntax-work (1+ (if (or (defined-function-p kname)
-                                                        (member kname *registered-function-names*))
-                                                    1
-                                                    (type-work norm-type)))
-                               :total-p t :free-vars nil)
-                (gethash key *typed-symbol-pool*) sym)
-          sym))))
+    (let ((existing (gethash key *typed-symbol-pool*)))
+      (if existing
+          (progn
+            (when (member kname *registered-function-names*)
+              (let ((meta (gethash existing *node-meta*)))
+                (when meta
+                  (setf (ast-meta-non-var-bits meta) (+ 2 (operator-bit-size kname norm-type))
+                        (ast-meta-value meta) sig))))
+            existing)
+          (let ((sym (make-symbol (symbol-name kname))))
+            (setf (gethash sym *node-meta*)
+                  (make-ast-meta :kind :op :id kname :type (copy-tree norm-type) :value sig
+                                 :non-var-bits (+ 2 (operator-bit-size kname norm-type))
+                                 :var-count 0
+                                 :syntax-work (1+ (if (or (defined-function-p kname)
+                                                          (member kname *registered-function-names*))
+                                                      1
+                                                      (type-work norm-type)))
+                                 :total-p t :free-vars nil)
+                  (gethash key *typed-symbol-pool*) sym)
+            sym)))))
 
 (defun operator-p (term)
   (let ((meta (and (symbolp term) (gethash term *node-meta*))))
@@ -805,15 +813,10 @@ Returns (values total-p conditional-code-params)."
            *node-meta*))
 
 (defun evict-operator-symbol-pool (kname)
-  "Remove all pooled `:op` symbols for KNAME from `*typed-symbol-pool*`."
-  (let ((keys-to-remove nil))
-    (maphash (lambda (key sym)
-               (declare (ignore sym))
-               (when (and (consp key) (eq :op (first key)) (eq kname (second key)))
-                 (push key keys-to-remove)))
-             *typed-symbol-pool*)
-    (dolist (key keys-to-remove)
-      (remhash key *typed-symbol-pool*))))
+  "Retain pooled `:op` symbols for KNAME in `*typed-symbol-pool*` so ASTs stored in
+`knowledge-library` entries preserve `eq` operator symbol identity across library switches."
+  (declare (ignore kname))
+  nil)
 
 (defun recompute-registered-functions-totality ()
   "Recompute totality and conditional-code-params across all registered functions until fixed point."
@@ -1227,7 +1230,8 @@ running each kind's `:install` hook in priority order."
             (append (gethash (knowledge-entry-kind entry) (knowledge-library-by-kind library))
                     (list entry)))
       (index-knowledge-entry-edges entry library))
-    (let ((*syncing-knowledge-library-p* t))
+    (let ((*knowledge-library* library)
+          (*syncing-knowledge-library-p* t))
       (dolist (entry ordered-entries)
         (let ((spec (find-knowledge-kind-spec (knowledge-entry-kind entry))))
           (when (and spec (knowledge-kind-spec-install-fn spec))
@@ -1241,7 +1245,8 @@ running each kind's `:install` hook in priority order."
          (id (knowledge-entry-id entry))
          (spec (find-knowledge-kind-spec kind)))
     (when (and spec (knowledge-kind-spec-validate-fn spec))
-      (funcall (knowledge-kind-spec-validate-fn spec) entry library))
+      (let ((*knowledge-library* library))
+        (funcall (knowledge-kind-spec-validate-fn spec) entry library)))
     (let ((existing (gethash id (knowledge-library-by-id library))))
       (if existing
           (setf (knowledge-library-entries library)
@@ -1255,7 +1260,8 @@ running each kind's `:install` hook in priority order."
                 (substitute entry id kind-list :key #'knowledge-entry-id :test #'eq)
                 (append kind-list (list entry)))))
     (index-knowledge-entry-edges entry library)
-    (let ((*syncing-knowledge-library-p* t))
+    (let ((*knowledge-library* library)
+          (*syncing-knowledge-library-p* t))
       (when (and spec (knowledge-kind-spec-install-fn spec))
         (funcall (knowledge-kind-spec-install-fn spec) entry library ledger)))
     (incf (knowledge-library-version library))
@@ -1329,10 +1335,14 @@ running each kind's `:install` hook in priority order."
                      :expression body
                      :trigger (and existing (knowledge-entry-trigger existing))
                      :residual (and existing (knowledge-entry-residual existing))
+                     :auxiliary-code (and existing (knowledge-entry-auxiliary-code existing))
                      :status (if (or (function-definition-total-p def)
                                      (function-definition-conditional-code-params def))
                                  :validated
                                  :empirical)
+                     :certificate (or (and existing (knowledge-entry-certificate existing))
+                                      (when (function-definition-total-p def)
+                                        '(:kind :structural-totality)))
                      :bits bits
                      :gain (if existing (knowledge-entry-gain existing) 0)
                      :work (if existing (knowledge-entry-work existing) (syntax-work body))
@@ -1348,13 +1358,21 @@ running each kind's `:install` hook in priority order."
   "Install LIBRARY's `:function` definitions into the active VM function tables."
   (let ((*syncing-knowledge-library-p* t))
     (clear-function-definitions)
-    (dolist (entry (knowledge-entries-of-kind :function library))
-      (let* ((kname (knowledge-entry-id entry))
-             (inputs (knowledge-entry-inputs entry))
-             (ret (knowledge-entry-target entry))
-             (body (knowledge-entry-expression entry))
-             (oracle (getf (knowledge-entry-metadata entry) :oracle-table)))
-        (define-function kname inputs ret body :oracle-table oracle)))
+    (let ((fn-entries (knowledge-entries-of-kind :function library)))
+      (dolist (kname (knowledge-library-function-names library))
+        (unless (member kname *registered-function-names*)
+          (setf *registered-function-names* (append *registered-function-names* (list kname)))))
+      (dolist (entry fn-entries)
+        (let ((kname (knowledge-entry-id entry)))
+          (unless (member kname *registered-function-names*)
+            (setf *registered-function-names* (append *registered-function-names* (list kname))))))
+      (dolist (entry fn-entries)
+        (let* ((kname (knowledge-entry-id entry))
+               (inputs (knowledge-entry-inputs entry))
+               (ret (knowledge-entry-target entry))
+               (body (knowledge-entry-expression entry))
+               (oracle (getf (knowledge-entry-metadata entry) :oracle-table)))
+          (define-function kname inputs ret body :oracle-table oracle))))
     (setf *de-novo-function-counter*
           (max *de-novo-function-counter* (knowledge-library-de-novo-counter library)))))
 

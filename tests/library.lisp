@@ -361,53 +361,87 @@
   (unwind-protect
        (let* ((seq-type (sequence-type :int))
               (inputs (list (cons 0 seq-type)))
-              (xs (var 0 seq-type))
-              (empty-xs (app (op := seq-type) xs (lit seq-type '())))
-              (head-xs (app (op :at seq-type) xs (lit :int 0)))
-              (tail-xs (app (op :tail :int) xs))
-              ;; Downstream task: shift-by-4(xs) = [x + 4 for x in xs]
+              (inc-frame
+                (simple-frame seq-type inputs
+                              '(((()) ())
+                                (((2)) (3))
+                                (((5 2)) (6 3))
+                                (((0 5 2)) (1 6 3)))))
+              (add3-frame
+                (simple-frame seq-type inputs
+                              '(((()) ())
+                                (((2)) (5))
+                                (((5 2)) (8 5))
+                                (((0 5 2)) (3 8 5)))))
+              ;; Transfer task: shift-by-4(xs) = [x + 4 for x in xs]
               (shift4-frame
                 (simple-frame seq-type inputs
                               '(((()) ())
                                 (((2)) (6))
                                 (((5 2)) (9 6))
                                 (((0 5 2)) (4 9 6)))))
+              ;; Context-dependent task: add-len(xs) = [x + len(xs) for x in xs]
+              (add-len-frame
+                (simple-frame seq-type inputs
+                              '(((()) ())
+                                (((5)) (6))
+                                (((5 2)) (7 4))
+                                (((0 5 2)) (3 8 5)))))
               (base-ops (list (op :+ :int) (op :cons :int) (op :tail :int)
                               (op :at seq-type) (op := seq-type) (op :if seq-type)))
-              (cold-work 0)
-              (warm-work 0))
-         ;; 1. Cold synthesis of `shift-by-4` without library knowledge
+              (len-ops (append base-ops (list (op :length :int))))
+              (inc-lang (make-language :int inputs
+                                       :operators base-ops
+                                       :literals '(1)
+                                       :constants (list (lit seq-type '()))))
+              (add3-lang (make-language :int inputs
+                                        :operators base-ops
+                                        :literals '(3)
+                                        :constants (list (lit seq-type '()))))
+              (shift4-lang (make-language :int inputs
+                                          :operators base-ops
+                                          :literals '(4)
+                                          :constants (list (lit seq-type '()))))
+              (len-lang (make-language :int inputs
+                                       :operators len-ops
+                                       :literals '(0 1)
+                                       :constants (list (lit seq-type '()))))
+              (cold-inc-work 0)
+              (cold-inc-size 0)
+              (cold-inc-body 0)
+              (cold-shift4-work 0)
+              (cold-shift4-size 0)
+              (cold-shift4-body 0)
+              (cold-add-len-work 0)
+              (serialized nil))
+         ;; 1. Cold baseline of `shift-by-4` in an empty library
          (with-knowledge-library ((make-knowledge-library))
-           (let* ((cold-lang (make-language :int inputs
-                                            :operators base-ops
-                                            :literals '(4)
-                                            :constants (list (lit seq-type '()))))
-                  (cold-job (start-recursive-synthesis shift4-frame cold-lang 90
-                                                       :self-name :shift4-cold)))
+           (let ((cold-job (start-recursive-synthesis shift4-frame shift4-lang 90
+                                                      :self-name :shift4-cold
+                                                      :library *knowledge-library*)))
              (resume-synthesis cold-job 120000 :stop-on-first t)
              (check (synthesis-job-best cold-job))
-             (setf cold-work (ledger-total (synthesis-job-ledger cold-job)))))
-         ;; 2. Continual learning in a persistent library:
-         ;;    Learn `:inc-list` and `:add3-list`, consolidate into `:map`, induce functorial solvers
-         ;;    and priority heuristics, persist to S-expression, reload, and solve `shift-by-4` warm!
-         (let ((serialized nil))
-           (with-knowledge-library ((make-knowledge-library))
-             (define-function :inc-list inputs seq-type nil)
-             (define-function :inc-list inputs seq-type
-               (app (op :if seq-type)
-                    empty-xs
-                    (lit seq-type '())
-                    (app (op :cons :int)
-                         (app (op :+ :int) head-xs (lit :int 1))
-                         (app (op :inc-list) tail-xs))))
-             (define-function :add3-list inputs seq-type nil)
-             (define-function :add3-list inputs seq-type
-               (app (op :if seq-type)
-                    empty-xs
-                    (lit seq-type '())
-                    (app (op :cons :int)
-                         (app (op :+ :int) head-xs (lit :int 3))
-                         (app (op :add3-list) tail-xs))))
+             (setf cold-shift4-work (ledger-total (synthesis-job-ledger cold-job))
+                   cold-shift4-size (candidate-size (synthesis-job-best cold-job))
+                   cold-shift4-body (body-size (candidate-expression (synthesis-job-best cold-job)) inputs))))
+         ;; 2. Run 1 (Cold Discovery -> Consolidation -> Persistence):
+         ;;    Synthesize `:inc-list` and `:add3-list` de novo from examples, consolidate into `:map`,
+         ;;    induce functorial solvers/descriptors/heuristics, synthesize `:add-len` (committing its
+         ;;    UIP `:nogood-schema` and `:dip-feature`), and serialize the library.
+         (with-knowledge-library ((make-knowledge-library))
+           (let ((j-inc (start-recursive-synthesis inc-frame inc-lang 90
+                                                   :self-name :inc-list
+                                                   :library *knowledge-library*))
+                 (j-add3 (start-recursive-synthesis add3-frame add3-lang 90
+                                                    :self-name :add3-list
+                                                    :library *knowledge-library*)))
+             (resume-synthesis j-inc 120000 :stop-on-first t)
+             (resume-synthesis j-add3 120000 :stop-on-first t)
+             (check (synthesis-job-best j-inc))
+             (check (synthesis-job-best j-add3))
+             (setf cold-inc-work (ledger-total (synthesis-job-ledger j-inc))
+                   cold-inc-size (candidate-size (synthesis-job-best j-inc))
+                   cold-inc-body (body-size (candidate-expression (synthesis-job-best j-inc)) inputs))
              (register-knowledge-solver :+
                                         :id :int-add-solve-0
                                         :domain :int
@@ -418,34 +452,84 @@
                                         :guard (lit :bool t)
                                         :certified-p t
                                         :unique-p t)
-             ;; Consolidate library across functions and solvers
              (let ((report (consolidate-knowledge-library *knowledge-library*
+                                                          :synthesis-jobs (list j-inc j-add3)
                                                           :library-names '(:map))))
                (check (> (getf report :after-version) (getf report :before-version)))
                (check (find-knowledge-entry :map))
+               (check (find-knowledge-entry :map/descriptor))
                (check (find-knowledge-entry :map/functor))
-               (check (find-knowledge-entry :map/invert-+-0)))
-             (setf serialized (serialize-knowledge-library *knowledge-library*)))
-           ;; 3. Deserialize into a brand-new session and solve `shift-by-4` warm
-           (with-knowledge-library ((deserialize-knowledge-library serialized))
-             (let* ((warm-lang (make-language :int inputs
-                                              :operators (append base-ops (list (op :map)))
-                                              :literals '(4)
-                                              :constants (list (lit seq-type '()))))
-                    (warm-job (start-heuristic-synthesis shift4-frame warm-lang 60
-                                                         :library *knowledge-library*)))
-               (resume-synthesis warm-job 120000 :stop-on-first t)
-               (check (synthesis-job-best warm-job))
-               (setf warm-work (ledger-total (synthesis-job-ledger warm-job)))
-               ;; Commit `shift4-warm` back into the library and verify `:refactored-by` edge to `:map`
-               (commit-synthesis-job warm-job :name :shift4-warm :library *knowledge-library*)
+               (check (find-knowledge-entry :map/invert-+-0))
+               (check (find-knowledge-entry :default-priority-predictor)))
+             ;; Synthesize `add-len` before any `:nogood-schema` or `:dip-feature` is in the library,
+             ;; then commit the job to persist both into `*knowledge-library*`.
+             (let ((j-len (start-recursive-synthesis add-len-frame len-lang 90
+                                                     :self-name :add-len
+                                                     :library *knowledge-library*)))
+               (resume-synthesis j-len 120000 :stop-on-first t)
+               (check (synthesis-job-best j-len))
+               (setf cold-add-len-work (ledger-total (synthesis-job-ledger j-len)))
+               (commit-synthesis-job j-len :name :add-len :library *knowledge-library*)
+               (check (= 1 (length (knowledge-entries-of-kind :nogood-schema))))
+               (check (= 1 (length (knowledge-entries-of-kind :dip-feature))))
+               (let ((ng-entry (first (knowledge-entries-of-kind :nogood-schema)))
+                     (dip-entry (first (knowledge-entries-of-kind :dip-feature))))
+                 (check (member (list :repairs (knowledge-entry-id ng-entry))
+                                (knowledge-edges-from dip-entry :repairs)
+                                :test #'equal))))
+             (setf serialized (serialize-knowledge-library *knowledge-library*))))
+         ;; 3. Run 2 (Warm Synthesis after Deserialization):
+         ;;    Re-run with the EXACT same languages (`inc-lang`, `shift4-lang`, `len-lang`) and
+         ;;    `start-recursive-synthesis` calls, verifying strict reductions in BOTH discovery work (W)
+         ;;    and description length (S, both `candidate-size` and `body-size`).
+         (with-knowledge-library ((deserialize-knowledge-library serialized))
+           ;; 3a. Repeated task (`inc-list`) with identical `inc-lang` and `start-recursive-synthesis`:
+           (let ((warm-inc-job (start-recursive-synthesis inc-frame inc-lang 90
+                                                          :self-name :inc-warm
+                                                          :library *knowledge-library*)))
+             (resume-synthesis warm-inc-job 120000 :stop-on-first t)
+             (check (synthesis-job-best warm-inc-job))
+             (let ((warm-inc-work (ledger-total (synthesis-job-ledger warm-inc-job)))
+                   (warm-inc-size (candidate-size (synthesis-job-best warm-inc-job)))
+                   (warm-inc-body (body-size (candidate-expression (synthesis-job-best warm-inc-job)) inputs)))
+               (check (< warm-inc-work cold-inc-work))
+               (check (< warm-inc-size cold-inc-size))
+               (check (< warm-inc-body cold-inc-body))))
+           ;; 3b. Unseen transfer task (`shift-by-4`) with identical `shift4-lang` and `start-recursive-synthesis`:
+           (let ((warm-shift4-job (start-recursive-synthesis shift4-frame shift4-lang 90
+                                                             :self-name :shift4-warm
+                                                             :library *knowledge-library*)))
+             (resume-synthesis warm-shift4-job 120000 :stop-on-first t)
+             (check (synthesis-job-best warm-shift4-job))
+             (let ((warm-shift4-work (ledger-total (synthesis-job-ledger warm-shift4-job)))
+                   (warm-shift4-size (candidate-size (synthesis-job-best warm-shift4-job)))
+                   (warm-shift4-body (body-size (candidate-expression (synthesis-job-best warm-shift4-job)) inputs)))
+               ;; Strictly reduces both discovery work W and description length S (total & body bits)
+               (check (< warm-shift4-work cold-shift4-work))
+               (check (< warm-shift4-size cold-shift4-size))
+               (check (< warm-shift4-body cold-shift4-body))
+               ;; Commit `shift4-warm` back into the library and verify `:refactored-by` edge and descriptor
+               (commit-synthesis-job warm-shift4-job :name :shift4-warm :library *knowledge-library*)
                (let ((s4-entry (find-knowledge-entry :shift4-warm)))
                  (check s4-entry)
+                 (check (find-knowledge-entry :shift4-warm/descriptor))
                  (check (equal '(14 24 34)
                                (evaluation-value (consume-knowledge-entry s4-entry '((10 20 30))))))
                  (check (member '(:refactored-by :map)
                                 (knowledge-edges-from :shift4-warm :refactored-by)
-                                :test #'equal)))
-               ;; Warm synthesis with the persistent library takes strictly less work than cold synthesis
-               (check (< warm-work cold-work))))))
+                                :test #'equal)))))
+           ;; 3c. Context-dependent task (`add-len`) reusing persisted `:nogood-schema` + `:dip-feature`:
+           (let ((warm-len-job (start-recursive-synthesis add-len-frame len-lang 90
+                                                          :self-name :add-len-warm
+                                                          :library *knowledge-library*)))
+             (resume-synthesis warm-len-job 120000 :stop-on-first t)
+             (check (synthesis-job-best warm-len-job))
+             (let ((warm-add-len-work (ledger-total (synthesis-job-ledger warm-len-job))))
+               ;; Persisted `:nogood-schema` immediately refutes unary `:map` (`:reused-nogood t`)
+               ;; and persisted `:dip-feature` `(length X0)` repairs it with strictly less work.
+               (check (some (lambda (m)
+                              (and (eq :conflict (message-claim m))
+                                   (getf (message-evidence m) :reused-nogood)))
+                            (synthesis-job-messages warm-len-job)))
+               (check (< warm-add-len-work cold-add-len-work))))))
     (clear-function-definitions)))

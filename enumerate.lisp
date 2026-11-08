@@ -229,7 +229,7 @@ Listed proposals use the SAME construction, VM, checker and objective."
   (assert (and (realp run-weight) (>= run-weight 0)))
   (assert (or (null row-budget) (and (integerp row-budget) (plusp row-budget))))
   (setf frame (snapshot-frame frame) language (snapshot-language language))
-  (let* ((library (when laws (prepare-rewrite-library laws (language-domain language))))
+  (let* ((library (when laws (as-rewrite-library laws :domain (language-domain language))))
          (job (%make-search-job :call-id call-id :frame frame :language language
                                 :mode (if supplied-p :replay :enumeration)
                                 :enumerator (unless supplied-p (make-enumerator language))

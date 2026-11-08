@@ -4,7 +4,8 @@
 
 (defstruct (heuristic-search (:constructor %make-heuristic-search))
   observation bound (ledger (make-ledger)) (phase :prepare) (debt 0) record rows outcomes
-  (resolved-rows 0) evaluation (index 0) residual (unresolved nil) (residual-bits 0) best (models nil) (run-weight 0))
+  (resolved-rows 0) evaluation (index 0) residual (unresolved nil) (residual-bits 0) best (models nil) (run-weight 0)
+  (stop-on-exact-p nil))
 
 (defun frame-has-empty-sequence-row-p (frame)
   "True when FRAME has a sequence input Xi whose value is empty ('()) on some constrained row."
@@ -38,7 +39,7 @@ and unverified oracle functions from Stage A unconditional observation."
                        :literals lits
                        :constants (language-constants language)))))
 
-(defun start-heuristic-search (frame language &key description-limit (run-weight 0))
+(defun start-heuristic-search (frame language &key description-limit (run-weight 0) stop-on-exact-p)
   (assert (and (realp run-weight) (>= run-weight 0)))
   (let ((obs-language (stage-a-observation-language frame language)))
     (%make-heuristic-search
@@ -47,7 +48,8 @@ and unverified oracle functions from Stage A unconditional observation."
               (loop for row in (frame-rows frame) sum (syntax-work (row-requirement row))))
      :bound (or description-limit (+ (header-size (schema-inputs (frame-schema frame))
                                                   (schema-target (frame-schema frame))) 18))
-     :run-weight run-weight)))
+     :run-weight run-weight
+     :stop-on-exact-p stop-on-exact-p)))
 
 (defun heuristic-search-step (job)
   (let* ((observation (heuristic-search-observation job))
@@ -191,7 +193,14 @@ and unverified oracle functions from Stage A unconditional observation."
 
 (defun heuristic-search-complete-p (job)
   (and (eq :observe (heuristic-search-phase job))
-       (observation-bound-complete-p (heuristic-search-observation job) (heuristic-search-bound job))))
+       (or (observation-bound-complete-p (heuristic-search-observation job) (heuristic-search-bound job))
+           (and (heuristic-search-stop-on-exact-p job)
+                (zerop (heuristic-search-run-weight job))
+                (let ((best (heuristic-search-best job)))
+                  (and best
+                       (heuristic-exact-p best)
+                       (heuristic-total-p best)
+                       (null (heuristic-unresolved-keys best))))))))
 
 (defun resume-heuristic-search (job work-limit)
   "Absolute cumulative budget covers observation, checking, residuals, and ranking."
@@ -675,9 +684,80 @@ containing holes `?h`) holds on KNOWN under SCOPE-INPUTS in the VM."
               (nogood-clause-kind entry))
       (values (first entry) (rest entry) :incompatible-rows)))
 
+(defun check-library-nogood-schemas (parent proposal ledger)
+  "Check whether a unary higher-order `:lift-p t` PROPOSAL on PARENT is refuted by any
+persisted `:nogood-schema` entry in `*knowledge-library*`. When refuted, returns
+`(VALUES primary-conflict nogood-clauses)` without running full `lift-frame`."
+  (when (and *knowledge-library*
+             parent
+             proposal
+             (decomposition-lift-p proposal)
+             (null (decomposition-bindings proposal))
+             (code-type-p (decomposition-child-type proposal)))
+    (let* ((schemas (knowledge-entries-of-kind :nogood-schema *knowledge-library*))
+           (prop-ctype (decomposition-child-type proposal))
+           (code-in (code-inputs prop-ctype))
+           (prop-norm-dec (normalize-proposal-decoder (decomposition-decoder proposal)
+                                                      (decomposition-child-id proposal)
+                                                      prop-ctype)))
+      (when (and schemas (= 1 (length code-in)))
+        (let ((matching-schema
+                (find-if (lambda (entry)
+                           (let* ((meta (knowledge-entry-metadata entry))
+                                  (e-cid (getf meta :child-id))
+                                  (e-ctype (getf meta :child-type))
+                                  (e-dec (knowledge-entry-auxiliary-code entry)))
+                             (and e-dec e-cid e-ctype
+                                  (equal e-ctype prop-ctype)
+                                  (equal (normalize-proposal-decoder e-dec e-cid e-ctype)
+                                         prop-norm-dec))))
+                         schemas)))
+          (when matching-schema
+            (let* ((clause-expr (knowledge-entry-expression matching-schema))
+                   (parent-frame (synthesis-node-frame parent))
+                   (by-elem (make-hash-table :test #'equal))
+                   (conflicts nil))
+              (dolist (row (frame-rows parent-frame))
+                (when (and (not (unconstrained-requirement-p (row-requirement row)))
+                           (= 1 (length (row-known row)))
+                           (listp (first (row-known row))))
+                  (let ((seq-in (first (row-known row)))
+                        (allowed (extract-allowed-values (row-requirement row))))
+                    (when (and (consp allowed)
+                               (= 1 (length allowed))
+                               (listp (first allowed))
+                               (= (length seq-in) (length (first allowed))))
+                      (loop for elem-in in seq-in
+                            for elem-out in (first allowed)
+                            for idx from 0
+                            for occ-key = (list (row-key row) idx)
+                            do (charge ledger :nogood-check 1)
+                               (let ((prev (gethash elem-in by-elem)))
+                                 (if (null prev)
+                                     (setf (gethash elem-in by-elem)
+                                           (list (row-key row) occ-key elem-out))
+                                     (when (and (not (equal (first prev) (row-key row)))
+                                                (not (equal (third prev) elem-out))
+                                                (clause-expr-matches-known-p clause-expr
+                                                                             code-in
+                                                                             (list elem-in)
+                                                                             ledger))
+                                       (push (make-frame-conflict
+                                              :kind :incompatible-rows
+                                              :keys (list (second prev) occ-key)
+                                              :known (list elem-in)
+                                              :expression (lit :bool nil))
+                                             conflicts)))))))))
+              (when conflicts
+                (let* ((ordered (nreverse conflicts))
+                       (clauses (mapcar (lambda (c) (build-nogood-clause parent proposal c ledger))
+                                        ordered)))
+                  (values (first ordered) clauses))))))))))
+
 (defun check-parent-nogoods (job parent proposal ledger)
   "Deductively check whether PROPOSAL's context projection/lifting is refuted by any
-`nogood-clause` (including anti-unified UIP clauses) already discovered on PARENT."
+`nogood-clause` (including anti-unified UIP clauses) already discovered on PARENT or
+persisted in `*knowledge-library*`."
   (when (and job (synthesis-job-deductive-nogoods-p job) parent proposal
              (or (pure-projection-decomposition-p proposal)
                  (decomposition-lift-p proposal)))
@@ -770,7 +850,12 @@ containing holes `?h`) holds on KNOWN under SCOPE-INPUTS in the VM."
                         (make-frame-conflict :kind :incompatible-rows
                                              :keys (copy-list keys)
                                              :known (append code-known first-extra)
-                                             :expression (lit :bool nil)))))))))))))
+                                             :expression (lit :bool nil)))))))))))
+      ;; 3. Persisted library `:nogood-schema` check on unary higher-order lifts
+      (multiple-value-bind (lib-conflict lib-clauses)
+          (check-library-nogood-schemas parent proposal ledger)
+        (when lib-conflict
+          (return-from check-parent-nogoods (values lib-conflict lib-clauses))))))
   nil)
 
 (defun conflict-distinct-parent-row-pairs (parent-frame nogoods)
@@ -850,35 +935,40 @@ separate all distinct-row conflict pairs."
          (constrained-rows (remove-if (lambda (r) (unconstrained-requirement-p (row-requirement r)))
                                       (frame-rows parent-frame))))
     (when pairs
-      (let* ((library-dips
-               (when *knowledge-library*
-                 (loop for entry in (knowledge-entries-of-kind :dip-feature *knowledge-library*)
-                       for expr = (knowledge-entry-expression entry)
-                       when (and expr
-                                 (not (member expr existing-exprs :test #'equal))
-                                 (equal (ignore-errors (expression-type expr inputs))
-                                        (knowledge-entry-target entry)))
+      (flet ((separates-all-p (expr)
+               (and (every (lambda (pair)
+                             (multiple-value-bind (v1 ok1)
+                                 (eval-expr-value expr inputs (row-known (car pair)) ledger)
+                               (multiple-value-bind (v2 ok2)
+                                   (eval-expr-value expr inputs (row-known (cdr pair)) ledger)
+                                 (and ok1 ok2 (not (equal v1 v2))))))
+                           pairs)
+                    (every (lambda (row)
+                             (nth-value 1 (eval-expr-value expr inputs (row-known row) ledger)))
+                           constrained-rows))))
+        (let* ((library-dips
+                 (when *knowledge-library*
+                   (loop for entry in (knowledge-entries-of-kind :dip-feature *knowledge-library*)
+                         for expr = (knowledge-entry-expression entry)
+                         when (and expr
+                                   (not (member expr existing-exprs :test #'equal))
+                                   (equal (ignore-errors (expression-type expr inputs))
+                                          (knowledge-entry-target entry)))
+                           collect expr)))
+               (lib-separators
+                 (loop for expr in (remove-duplicates library-dips :test #'equal :from-end t)
+                       when (separates-all-p expr)
                          collect expr)))
-             (grammar-cands (candidate-dip-context-expressions parent-frame language
-                                                               :existing-bindings existing-bindings
-                                                               :allow-sequence-p allow-sequence-p))
-             (candidates (remove-duplicates (append library-dips grammar-cands)
-                                            :test #'equal :from-end t))
-             (separators nil))
-        (dolist (expr candidates)
-          (when (< (length separators) max-candidates)
-            (when (and (every (lambda (pair)
-                                (multiple-value-bind (v1 ok1)
-                                    (eval-expr-value expr inputs (row-known (car pair)) ledger)
-                                  (multiple-value-bind (v2 ok2)
-                                      (eval-expr-value expr inputs (row-known (cdr pair)) ledger)
-                                    (and ok1 ok2 (not (equal v1 v2))))))
-                              pairs)
-                       (every (lambda (row)
-                                (nth-value 1 (eval-expr-value expr inputs (row-known row) ledger)))
-                              constrained-rows))
-              (push expr separators))))
-        (nreverse separators)))))
+          (if lib-separators
+              (subseq lib-separators 0 (min max-candidates (length lib-separators)))
+              (let ((grammar-cands (candidate-dip-context-expressions parent-frame language
+                                                                      :existing-bindings existing-bindings
+                                                                      :allow-sequence-p allow-sequence-p))
+                    (separators nil))
+                (dolist (expr grammar-cands (nreverse separators))
+                  (when (< (length separators) max-candidates)
+                    (when (separates-all-p expr)
+                      (push expr separators)))))))))))
 
 (defun dip-repaired-decompositions (parent proposal nogoods
                                     &key (max-repairs 1) ledger (debug-p *synthesis-debug-mode*))
@@ -966,10 +1056,19 @@ an added intermediate context variable separating the conflicting parent rows."
            (some (lambda (arg) (expression-calls-operator-p arg op-name))
                  (rest expr)))))
 
+(defun node-in-lifted-library-branch-p (node)
+  "True when NODE or one of its ancestors lifts through a higher-order library combinator."
+  (loop for cur = node then (synthesis-node-parent cur)
+        while cur
+        thereis (let ((prop (synthesis-node-proposal cur)))
+                  (and prop (decomposition-lift-p prop)))))
+
 (defun valid-job-node-candidate-p (job node expr)
-  "When JOB is synthesizing a recursive definition for SELF-NAME, any candidate must call SELF-NAME."
+  "When JOB is synthesizing a recursive definition for SELF-NAME, any candidate must call SELF-NAME
+unless NODE is inside a lifted higher-order library combinator branch that encapsulates the recursion."
   (let ((self-name (and job (synthesis-job-self-name job))))
     (or (null self-name)
+        (node-in-lifted-library-branch-p node)
         (expression-calls-operator-p
          (reconstruct-synthesis-candidate node expr)
          self-name))))
@@ -993,6 +1092,7 @@ Its residual is priced in the node's representation, not the root's."
                                                                  (schema-target (frame-schema frame))) 18))
                           :work-limit budget
                           :run-weight (synthesis-job-run-weight job)
+                          :stop-on-exact-p (node-in-lifted-library-branch-p node)
                           :ledger ledger))))
 
 (defun node-trace-features (node frame h-model &optional ledger)
@@ -1060,15 +1160,27 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
   (let* ((ledger (make-ledger))
          (proposal (synthesis-node-proposal node))
          (parent (synthesis-node-parent node))
-         (language (if proposal (decomposition-language proposal) (synthesis-node-language node)))
-         (nogood-conflict (check-parent-nogoods job parent proposal ledger)))
-    (when nogood-conflict
-      (charge ledger :problem-snapshot 1)
-      (setf (synthesis-node-prepared node)
-            (make-node-preparation :language language :conflict nogood-conflict :reused-nogood-p t)
-            (synthesis-node-debt node) (max 1 (ledger-total ledger))
-            (synthesis-node-phase node) :preparation)
-      (return-from prepare-synthesis-node))
+         (language (if proposal (decomposition-language proposal) (synthesis-node-language node))))
+    (multiple-value-bind (nogood-conflict nogood-clauses)
+        (check-parent-nogoods job parent proposal ledger)
+      (when nogood-conflict
+        (charge ledger :problem-snapshot 1)
+        (let ((dip-repairs (when (and nogood-clauses
+                                      (decomposition-lift-p proposal)
+                                      (or (heuristic-routing-p job)
+                                          (node-may-expand-p job parent)))
+                             (dip-repaired-decompositions parent proposal nogood-clauses
+                                                          :ledger ledger
+                                                          :debug-p (synthesis-job-debug-p job)))))
+          (setf (synthesis-node-prepared node)
+                (make-node-preparation :language language
+                                       :conflict nogood-conflict
+                                       :reused-nogood-p t
+                                       :nogoods nogood-clauses
+                                       :dip-repairs dip-repairs)
+                (synthesis-node-debt node) (max 1 (ledger-total ledger))
+                (synthesis-node-phase node) :preparation)
+          (return-from prepare-synthesis-node))))
     (let ((frame (cond ((null parent)
                         (synthesis-node-frame node))
                        ((decomposition-lift-p proposal)
@@ -1202,7 +1314,7 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
         (add-synthesis-node job (synthesis-node-parent node) fb)))
     (if conflict
         (progn
-          (when (and (not reused-nogood-p) (node-preparation-nogoods prepared))
+          (when (node-preparation-nogoods prepared)
             (dolist (ng (reverse (node-preparation-nogoods prepared)))
               (pushnew ng (synthesis-job-nogoods job)
                        :test (lambda (a b)
@@ -2660,41 +2772,48 @@ Feature equivalence is scoped to the observed rows, never promoted to a law."
                     (add-knowledge-edge lib-fn :abstracts kname)))
                 (push fn-entry committed)))))))
     ;; 2. Commit UIP nogood schemas
-    (when register-nogoods-p
-      (dolist (ng (synthesis-job-nogoods job))
-        (when (and (nogood-clause-p ng)
-                   (eq :uip-clause (nogood-clause-kind ng))
-                   (nogood-clause-clause-expr ng))
-          (unless (some (lambda (existing)
-                          (equal (knowledge-entry-expression existing)
-                                 (nogood-clause-clause-expr ng)))
-                        (knowledge-entries-of-kind :nogood-schema library))
-            (push (register-knowledge-nogood-schema ng :library library :ledger ledger)
-                  committed)))))
-    ;; 3. Commit DIP context separators from `:dip-repair` nodes
-    (when register-dip-p
-      (dolist (node (synthesis-job-nodes job))
-        (let ((prop (synthesis-node-proposal node)))
-          (when (and prop
-                     (consp (decomposition-name prop))
-                     (eq :dip-repair (first (decomposition-name prop))))
-            (let* ((sep-expr (third (decomposition-name prop)))
-                   (parent (synthesis-node-parent node))
-                   (p-inputs (and parent (schema-inputs (frame-schema (synthesis-node-frame parent))))))
-              (when (and sep-expr p-inputs)
-                (unless (some (lambda (existing)
-                                (and (equal (knowledge-entry-inputs existing) p-inputs)
-                                     (equal (knowledge-entry-expression existing) sep-expr)))
-                              (knowledge-entries-of-kind :dip-feature library))
-                  (let ((dip-entry (register-knowledge-dip-feature
-                                    sep-expr
-                                    :library library
-                                    :inputs p-inputs
-                                    :target (expression-type sep-expr p-inputs)
-                                    :ledger ledger)))
-                    (when (or name self-name)
-                      (add-knowledge-edge dip-entry :repairs (canonical-op-name (or name self-name))))
-                    (push dip-entry committed)))))))))
+    (let ((job-nogood-entries nil))
+      (when register-nogoods-p
+        (dolist (ng (synthesis-job-nogoods job))
+          (when (and (nogood-clause-p ng)
+                     (eq :uip-clause (nogood-clause-kind ng))
+                     (nogood-clause-clause-expr ng))
+            (let ((existing (find-if (lambda (e)
+                                       (equal (knowledge-entry-expression e)
+                                              (nogood-clause-clause-expr ng)))
+                                     (knowledge-entries-of-kind :nogood-schema library))))
+              (if existing
+                  (push existing job-nogood-entries)
+                  (let ((ng-entry (register-knowledge-nogood-schema ng :library library :ledger ledger)))
+                    (push ng-entry job-nogood-entries)
+                    (push ng-entry committed)))))))
+      ;; 3. Commit DIP context separators from `:dip-repair` nodes
+      (when register-dip-p
+        (dolist (node (synthesis-job-nodes job))
+          (let ((prop (synthesis-node-proposal node)))
+            (when (and prop
+                       (consp (decomposition-name prop))
+                       (eq :dip-repair (first (decomposition-name prop))))
+              (let* ((sep-expr (third (decomposition-name prop)))
+                     (parent (synthesis-node-parent node))
+                     (p-inputs (and parent (schema-inputs (frame-schema (synthesis-node-frame parent))))))
+                (when (and sep-expr p-inputs)
+                  (unless (some (lambda (existing)
+                                  (and (equal (knowledge-entry-inputs existing) p-inputs)
+                                       (equal (knowledge-entry-expression existing) sep-expr)))
+                                (knowledge-entries-of-kind :dip-feature library))
+                    (let ((dip-entry (register-knowledge-dip-feature
+                                      sep-expr
+                                      :library library
+                                      :inputs p-inputs
+                                      :target (expression-type sep-expr p-inputs)
+                                      :ledger ledger)))
+                      (let ((*knowledge-library* library))
+                        (when (or name self-name)
+                          (add-knowledge-edge dip-entry :repairs (canonical-op-name (or name self-name))))
+                        (dolist (ng-entry (reverse job-nogood-entries))
+                          (add-knowledge-edge dip-entry :repairs (knowledge-entry-id ng-entry))))
+                      (push dip-entry committed))))))))))
     ;; 4. When no exact root candidate was found, optionally commit the best Stage A hybrid residual
     (when (and (null best) register-residual-p root)
       (let* ((root-frame (synthesis-node-frame root))
