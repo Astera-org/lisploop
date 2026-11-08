@@ -1983,3 +1983,652 @@ covers, and `:register-p nil` dry-run isolation."
                (check (not (contains-call-to-p unfolded :fb)))
                (check (contains-call-to-p unfolded :code-eval)))))
     (clear-function-definitions)))
+
+(deftest recursion-r6-library-expander-and-curriculum-sort
+  "End-to-end R6 curriculum: discover `:fa` (`:map`) and `:fb` (`:foldr`) from the R4/R5 corpus,
+use `library-decompositions` / `library-expander` / `combine-expanders` / `start-heuristic-synthesis`
+to solve held-out `:map` (including `:code-subst` outer-variable capture) and `:foldr` tasks,
+synthesize `insert` and `sort` de novo, abstract sequence-returning `:foldr`, and synthesize
+`sort` through the learned library expander while `:map` is automatically refuted by a leaf nogood."
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (xs (var 0 seq-type))
+              (seq-fold-code (code-type (list (cons 0 :int) (cons 1 seq-type)) seq-type))
+              (head-x0 (app (op :at seq-type) xs (lit :int 0)))
+              (tail-x0 (app (op :tail :int) xs)))
+         (clear-function-definitions)
+         ;; 1. Discover :fa (:map) and :fb (:foldr) from the 6-program R4/R5 corpus
+         (let* ((copy-body (call-with-temporary-function-names
+                            '(:fa)
+                            (lambda ()
+                              (app (op :if seq-type)
+                                   (app (op := seq-type) xs (lit seq-type '()))
+                                   (lit seq-type '())
+                                   (app (op :cons :int) head-x0 (app (op :fa (code-type inputs seq-type)) tail-x0))))))
+                (inc-body (call-with-temporary-function-names
+                           '(:fa)
+                           (lambda ()
+                             (app (op :if seq-type)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  xs
+                                  (app (op :cons :int)
+                                       (app (op :+ :int) head-x0 (lit :int 1))
+                                       (app (op :fa (code-type inputs seq-type)) tail-x0))))))
+                (dbl-body (call-with-temporary-function-names
+                           '(:fa)
+                           (lambda ()
+                             (app (op :if seq-type)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  xs
+                                  (app (op :cons :int)
+                                       (app (op :+ :int) head-x0 head-x0)
+                                       (app (op :fa (code-type inputs seq-type)) tail-x0))))))
+                (sum-body (call-with-temporary-function-names
+                           '(:fa)
+                           (lambda ()
+                             (app (op :if :int)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  (lit :int 0)
+                                  (app (op :+ :int) head-x0 (app (op :fa (code-type inputs :int)) tail-x0))))))
+                (len-body (call-with-temporary-function-names
+                           '(:fa)
+                           (lambda ()
+                             (app (op :if :int)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  (lit :int 0)
+                                  (app (op :+ :int) (app (op :fa (code-type inputs :int)) tail-x0) (lit :int 1))))))
+                (prd-body (call-with-temporary-function-names
+                           '(:fa)
+                           (lambda ()
+                             (app (op :if :int)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  (lit :int 1)
+                                  (app (op :* :int) head-x0 (app (op :fa (code-type inputs :int)) tail-x0))))))
+                (corpus (list (list :name :copy :inputs inputs :return-type seq-type :body copy-body :self-name :fa)
+                              (list :name :inc-all :inputs inputs :return-type seq-type :body inc-body :self-name :fa)
+                              (list :name :double-all :inputs inputs :return-type seq-type :body dbl-body :self-name :fa)
+                              (list :name :sum :inputs inputs :return-type :int :body sum-body :self-name :fa)
+                              (list :name :length :inputs inputs :return-type :int :body len-body :self-name :fa)
+                              (list :name :product :inputs inputs :return-type :int :body prd-body :self-name :fa))))
+           (multiple-value-bind (accepted refactored)
+               (discover-library-abstractions corpus :register-p t)
+             (declare (ignore refactored))
+             (check (= 2 (length accepted)))
+             (check (find-function-definition :fa))
+             (check (find-function-definition :fb)))
+
+           ;; 2a. Held-out :map task: triple-all(xs) synthesized via start-heuristic-synthesis + library-expander
+           (let* ((triple-frame (simple-frame seq-type inputs
+                                              '(((() ) ())
+                                                (((2)) (6))
+                                                (((4 2)) (12 6))
+                                                (((-1 3 5)) (-3 9 15)))))
+                  (triple-lang (make-language :int inputs
+                                              :operators (list (op :fa) (op :* :int) (op :+ :int))
+                                              :literals '(3)
+                                              :constants (list (lit seq-type '()))))
+                  (job (start-heuristic-synthesis triple-frame triple-lang 60)))
+             (resume-synthesis job 30000 :stop-on-first t)
+             (check (synthesis-job-best job))
+             (let ((expr (candidate-expression (synthesis-job-best job))))
+               (check (provably-total-p expr))
+               (check-codec-roundtrip expr inputs)
+               (check (expression-calls-operator-p expr :fa))
+               (check (equal '() (result expr inputs '(()))))
+               (check (equal '(30 0 -15 9) (result expr inputs '((10 0 -5 3)))))))
+
+           ;; 2b. Held-out :map task with outer-variable capture: add-k(xs, k) -> (:fa X0 (:code-subst '(+ X0 X1) (tuple 'X0 X1)))
+           (let* ((addk-inputs (list (cons 0 seq-type) (cons 1 :int)))
+                  (addk-frame (simple-frame seq-type addk-inputs
+                                            '(((() 5) ())
+                                              (((3 5) 2) (5 7))
+                                              (((1 4) 10) (11 14)))))
+                  (addk-lang (make-language :int addk-inputs
+                                            :operators (list (op :fa) (op :+ :int))
+                                            :literals nil
+                                            :constants (list (lit seq-type '()))))
+                  (job (start-heuristic-synthesis addk-frame addk-lang 80)))
+             (resume-synthesis job 30000 :stop-on-first t)
+             (check (synthesis-job-best job))
+             (let ((expr (candidate-expression (synthesis-job-best job))))
+               (check (provably-total-p expr))
+               (check-codec-roundtrip expr addk-inputs)
+               (check (expression-calls-operator-p expr :fa))
+               (check (contains-call-to-p expr :code-subst))
+               (check (equal '(17 27 37) (result expr addk-inputs '((10 20 30) 7))))))
+
+           ;; 3. Held-out :foldr task: sum-squares(xs) -> (:fb X0 '0 '(+ X1 (* X0 X0)))
+           (let* ((sumsq-frame (simple-frame :int inputs
+                                             '(((() ) 0)
+                                               (((3)) 9)
+                                               (((2 3)) 13)
+                                               (((4 2 3)) 29))))
+                  (sumsq-lang (make-language :int inputs
+                                             :operators (list (op :fb) (op :+ :int) (op :* :int))
+                                             :literals nil))
+                  (combined-exp (combine-expanders (library-expander)
+                                                   (heuristic-expander :library-proposals-p nil)))
+                  (job (start-synthesis sumsq-frame sumsq-lang 80
+                                        :policy :heuristic
+                                        :heuristic-budget 4000
+                                        :expand combined-exp
+                                        :max-depth 1)))
+             (resume-synthesis job 50000 :stop-on-first t)
+             (check (synthesis-job-best job))
+             (let ((expr (candidate-expression (synthesis-job-best job))))
+               (check (provably-total-p expr))
+               (check-codec-roundtrip expr inputs)
+               (check (expression-calls-operator-p expr :fb))
+               (check (= 0 (result expr inputs '(()))))
+               (check (= 54 (result expr inputs '((5 -2 4 3)))))))
+
+           ;; 4. Curriculum synthesis of `sort`:
+           ;;    4a. Synthesize `:fc` (`insert`) de novo, then synthesize `:fd` (`sort`) de novo using `:fc`.
+           ;;    4b. Run `discover-library-abstractions` on `(copy, inc-all, sort)` to discover sequence-`:foldr` (`:fe`).
+           ;;    4c. Synthesize `sort` from I/O examples via `start-heuristic-synthesis` where BOTH `:fa` (`:map`)
+           ;;        and `:fe` (sequence-`:foldr`) are proposed by `library-decompositions`: `:fa` is refuted by
+           ;;        a `:lift-incompatible-rows` nogood clause, while `:fe` cascades via congruence closure and
+           ;;        condenses `(:fe X0 '(:fc X0 X1))`.
+           (let* ((insert-inputs (list (cons 0 :int) (cons 1 seq-type)))
+                  (insert-frame (simple-frame seq-type insert-inputs
+                                              '(((2 ()) (2))
+                                                ((1 (3)) (1 3))
+                                                ((2 (3 5)) (2 3 5))
+                                                ((4 (5)) (4 5))
+                                                ((4 (2 5)) (2 4 5))
+                                                ((3 (4)) (3 4))
+                                                ((3 (1 4)) (1 3 4)))))
+                  (insert-lang (make-language :int insert-inputs
+                                              :operators (list (op :cons :int) (op :at seq-type)
+                                                               (op :tail :int) (op :< :int)
+                                                               (op := seq-type) (op :if seq-type))
+                                              :literals nil
+                                              :constants (list (lit seq-type '()))))
+                  (insert-job (start-recursive-synthesis insert-frame insert-lang 110 :self-name :fc)))
+             (resume-synthesis insert-job 100000 :stop-on-first t)
+             (check (synthesis-job-best insert-job))
+             (check (function-definition-total-p (find-function-definition :fc)))
+             (let* ((sort-frame (simple-frame seq-type inputs
+                                              '(((() ) ())
+                                                (((2)) (2))
+                                                (((3 2)) (2 3))
+                                                (((1 3 2)) (1 2 3))
+                                                (((4 1 3 2)) (1 2 3 4)))))
+                    (de-novo-sort-lang (make-language :int inputs
+                                                      :operators (list (op :fc) (op :at seq-type)
+                                                                       (op :tail :int) (op := seq-type)
+                                                                       (op :if seq-type))
+                                                      :literals nil
+                                                      :constants (list (lit seq-type '()))))
+                    (de-novo-sort-job (start-recursive-synthesis sort-frame de-novo-sort-lang 90 :self-name :fd)))
+               (resume-synthesis de-novo-sort-job 50000 :stop-on-first t)
+               (check (synthesis-job-best de-novo-sort-job))
+               (let ((de-novo-sort-expr (candidate-expression (synthesis-job-best de-novo-sort-job))))
+                 (check (provably-total-p de-novo-sort-expr))
+                 ;; Discover sequence-returning foldr `:fe` across `(copy, inc-all, sort)`
+                 (let ((seq-fold-abs
+                         (abstract-function-bodies
+                          (list copy-body inc-body de-novo-sort-expr)
+                          inputs seq-type
+                          :self-names '(:fa :fa :fd)
+                          :program-names '(:copy :inc-all :sort)
+                          :target-name :fe
+                          :register-p t)))
+                   (check (library-abstraction-p seq-fold-abs))
+                   (check (plusp (library-abstraction-gain seq-fold-abs)))
+                   (check (find-function-definition :fe))
+                   (check (equal (list (cons 0 seq-type) (cons 1 seq-fold-code))
+                                 (library-abstraction-inputs seq-fold-abs)))
+                   ;; Now synthesize `sort` directly from `sort-frame` with BOTH `:fa` (`:map`) and `:fe` (`:foldr`)
+                   ;; in the language and no de novo self-recursion:
+                   (let* ((lib-sort-lang (make-language :int inputs
+                                                        :operators (list (op :fa) (op :fe) (op :fc)
+                                                                         (op :+ :int))
+                                                        :literals '(1)
+                                                        :constants (list (lit seq-type '()))))
+                          (lib-sort-job (start-heuristic-synthesis sort-frame lib-sort-lang 70 :debug-p t)))
+                     (resume-synthesis lib-sort-job 30000 :stop-on-first t)
+                     (check (synthesis-job-best lib-sort-job))
+                     ;; Verify `:fa` (`:map`) was proposed and refuted with a `:lift-incompatible-rows` nogood clause
+                     (check (find-if (lambda (ng)
+                                       (and (nogood-clause-p ng)
+                                            (eq :lift-incompatible-rows (nogood-clause-kind ng))))
+                                     (synthesis-job-nogoods lib-sort-job)))
+                     (let ((lib-sort-expr (candidate-expression (synthesis-job-best lib-sort-job))))
+                       (check (provably-total-p lib-sort-expr))
+                       (check-codec-roundtrip lib-sort-expr inputs)
+                       (check (equal (app (op :fe) xs
+                                          (lit seq-fold-code
+                                               (app (op :fc) (var 0 :int) (var 1 seq-type))))
+                                     lib-sort-expr))
+                       (check (equal '() (result lib-sort-expr inputs '(()))))
+                       (check (equal '(1 2 3 4 5) (result lib-sort-expr inputs '((5 3 1 4 2)))))
+                       (check (equal '(-4 -1 0 2 2 8) (result lib-sort-expr inputs '((2 -1 8 -4 2 0)))))))))))))
+    (clear-function-definitions)))
+
+(deftest recursion-r6-deductive-nogoods-uip-dip-and-search-trace-condensation
+  "Verify Section 5.2 deductive leaf messages:
+1. S-expression conflict nogood clauses (`nogood-clause`, `check-parent-nogoods`) and search-work
+   reduction with `:deductive-nogoods-p t` vs `:deductive-nogoods-p nil`.
+2. UIP anti-unification of conflict S-expressions (`collect-frame-nogood-clauses`,
+   `anti-unify-nogood-clauses`, `clause-expr-matches-known-p`).
+3. DIP intermediate context variable introduction (`propose-dip-context-bindings`,
+   `dip-repaired-decompositions`) solving `add-len(xs)` via `:code-subst`.
+4. Lossy branch condensation (`make-search-trace-frame`, `condense-search-heuristic`) inducing an
+   S-expression priority predictor `\\hat{\\pi}` deployed via `:priority-predictor`."
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (xs (var 0 seq-type))
+              (unary-code (code-type '((0 . :int)) :int))
+              (binary-code (code-type '((0 . :int) (1 . :int)) :int))
+              (head-x0 (app (op :at seq-type) xs (lit :int 0)))
+              (tail-x0 (app (op :tail :int) xs)))
+         (clear-function-definitions)
+         ;; Register :fa = :map and :fb = :foldr
+         (define-function :fa (list (cons 0 seq-type) (cons 1 unary-code)) seq-type
+           (lambda (self)
+             (app (op :if seq-type)
+                  (app (op := seq-type) xs (lit seq-type '()))
+                  (lit seq-type '())
+                  (app (op :cons :int)
+                       (app (op :code-eval unary-code) (var 1 unary-code) head-x0)
+                       (app self tail-x0 (var 1 unary-code))))))
+         (define-function :fb (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
+           (lambda (self)
+             (app (op :if :int)
+                  (app (op := seq-type) xs (lit seq-type '()))
+                  (var 1 :int)
+                  (app (op :code-eval binary-code) (var 2 binary-code)
+                       head-x0
+                       (app self tail-x0 (var 1 :int) (var 2 binary-code))))))
+
+         ;; 1. Search-work comparison: `:deductive-nogoods-p t` vs `:deductive-nogoods-p nil`
+         ;;    On a frame with 3 inputs (X0:seq, X1:int, X2:int) where X1 is constant across colliding
+         ;;    rows ((1 2) 0 10) -> (2 1) and ((1 3) 0 20) -> (3 1), while the target is (+ (length X0) X2):
+         ;;    Several lifted `:map` proposals (with bindings nil, (X1), (+ X1 X1)) share the colliding
+         ;;    lifted decoder or uninformative bindings. With `:deductive-nogoods-p t`, the first `:map`
+         ;;    conflict records a `:lift-incompatible-rows` nogood and prunes all subsequent sibling `:map`
+         ;;    branches during preparation without running `lift-frame` or `fold-constants`!
+         (let* ((p-inputs (list (cons 0 seq-type) (cons 1 :int) (cons 2 :int)))
+                (p-frame (simple-frame seq-type p-inputs
+                                       '((((1 2) 0 10) (11 12))
+                                         (((1 3) 0 20) (21 23))
+                                         (((4) 0 30) (34)))))
+                (p-lang (make-language :int p-inputs
+                                       :operators (list (op :fa) (op :+ :int))
+                                       :literals nil))
+                (c-lang-0 (make-language :int '((0 . :int)) :operators (list (op :+ :int)) :literals '(1 2)))
+                (c-lang-1 (make-language :int '((0 . :int) (1 . :int)) :operators (list (op :+ :int)) :literals '(1 2)))
+                (map-dec (app (op :fa) xs (var 9 unary-code)))
+                (d-map-0 (make-decomposition :name :map-no-bind
+                                             :decoder map-dec :child-id 9 :child-type unary-code
+                                             :bindings nil :language c-lang-0 :bound 40 :lift-p t))
+                (d-map-x1 (make-decomposition :name :map-bind-x1
+                                              :decoder map-dec :child-id 9 :child-type unary-code
+                                              :bindings (list (cons 1 (var 1 :int)))
+                                              :language c-lang-1 :bound 40 :lift-p t))
+                (d-map-x1b (make-decomposition :name :map-bind-x1-plus-x1
+                                               :decoder map-dec :child-id 9 :child-type unary-code
+                                               :bindings (list (cons 1 (app (op :+ :int) (var 1 :int) (var 1 :int))))
+                                               :language c-lang-1 :bound 40 :lift-p t))
+                (d-map-x2 (make-decomposition :name :map-bind-x2
+                                              :decoder map-dec :child-id 9 :child-type unary-code
+                                              :bindings (list (cons 1 (var 2 :int)))
+                                              :language c-lang-1 :bound 40 :lift-p t))
+                (job-with (start-synthesis p-frame p-lang 80
+                                           :decompositions (list d-map-0 d-map-x1 d-map-x1b d-map-x2)
+                                           :deductive-nogoods-p t))
+                (job-without (start-synthesis p-frame p-lang 80
+                                              :decompositions (list d-map-0 d-map-x1 d-map-x1b d-map-x2)
+                                              :deductive-nogoods-p nil)))
+           (resume-synthesis job-with 50000 :stop-on-first t)
+           (resume-synthesis job-without 50000 :stop-on-first t)
+           (check (synthesis-job-best job-with))
+           (check (synthesis-job-best job-without))
+           (check (equal (candidate-expression (synthesis-job-best job-with))
+                         (candidate-expression (synthesis-job-best job-without))))
+           ;; Deductive leaf nogoods prune `:map-bind-x1` and `:map-bind-x1-plus-x1` before `lift-frame`,
+           ;; strictly reducing total ledger work while still allowing `:map-bind-x2` (which separates
+           ;; the conflicting rows via X2=10 vs X2=20) to succeed!
+           (check (< (ledger-total (synthesis-job-ledger job-with))
+                     (ledger-total (synthesis-job-ledger job-without))))
+           (check (= 2 (count-if (lambda (m)
+                                   (and (eq :conflict (message-claim m))
+                                        (getf (message-evidence m) :reused-nogood)))
+                                 (synthesis-job-messages job-with))))
+           (check (zerop (count-if (lambda (m)
+                                     (and (eq :conflict (message-claim m))
+                                          (getf (message-evidence m) :reused-nogood)))
+                                   (synthesis-job-messages job-without)))))
+
+         ;; 2. UIP Anti-Unification of Conflict Clauses (`collect-frame-nogood-clauses` & `anti-unify-nogood-clauses`)
+         ;;    On `reverse` with two colliding element pairs ((1 2)->(2 1), (1 3)->(3 1), (4 5)->(5 4), (4 6)->(6 4)),
+         ;;    `collect-frame-nogood-clauses` extracts both `(= X0 '1)` and `(= X0 '4)` nogoods, and
+         ;;    `anti-unify-nogood-clauses` generalizes them into the UIP pattern `(= X0 ?0)`.
+         (let* ((rev-frame (simple-frame seq-type inputs
+                                         '((((1 2)) (2 1))
+                                           (((1 3)) (3 1))
+                                           (((4 5)) (5 4))
+                                           (((4 6)) (6 4)))))
+                (rev-lang (make-language :int inputs :operators (list (op :fa) (op :+ :int)) :literals '(1)))
+                (elem-lang (make-language :int '((0 . :int)) :operators (list (op :+ :int)) :literals '(1)))
+                (bad-map (make-decomposition :name :bad-map
+                                             :decoder (app (op :fa) xs (var 9 unary-code))
+                                             :child-id 9 :child-type unary-code
+                                             :language elem-lang :bound 30 :lift-p t))
+                (job (start-synthesis rev-frame rev-lang 60 :decompositions (list bad-map))))
+           (resume-synthesis job 5000)
+           (let* ((nogoods (synthesis-job-nogoods job))
+                  (lift-ngs (remove-if-not (lambda (ng) (eq :lift-incompatible-rows (nogood-clause-kind ng)))
+                                           nogoods))
+                  (uip-ng (find-if (lambda (ng) (eq :uip-clause (nogood-clause-kind ng))) nogoods)))
+             (check (= 2 (length lift-ngs)))
+             (check (nogood-clause-p uip-ng))
+             (check (equal (app (op := :int) (var 0 :int) (hole 0 :int))
+                           (nogood-clause-clause-expr uip-ng)))
+             (check (clause-expr-matches-known-p (nogood-clause-clause-expr uip-ng)
+                                                 '((0 . :int)) '(99) nil)))
+           ;; Also verify UIP anti-unification on multi-conjunct projection nogoods:
+           ;; `(and (= X0 '0) (= X1 '2))` and `(and (= X0 '0) (= X1 '5))` -> `(and (= X0 '0) (= X1 ?0))`
+           (let* ((two-in '((0 . :int) (1 . :int)))
+                  (c1 (bool-and (app (op := :int) (var 0 :int) (lit :int 0))
+                                (app (op := :int) (var 1 :int) (lit :int 2))))
+                  (c2 (bool-and (app (op := :int) (var 0 :int) (lit :int 0))
+                                (app (op := :int) (var 1 :int) (lit :int 5))))
+                  (ng1 (make-nogood-clause :parent-id 0 :kind :incompatible-rows
+                                           :keys '(0 1) :known '(0 2) :child-type :int
+                                           :parent-incompatible-p t :clause-expr c1 :parent-clause-expr c1))
+                  (ng2 (make-nogood-clause :parent-id 0 :kind :incompatible-rows
+                                           :keys '(2 3) :known '(0 5) :child-type :int
+                                           :parent-incompatible-p t :clause-expr c2 :parent-clause-expr c2))
+                  (ledger (make-ledger)))
+             (multiple-value-bind (uip pattern substs)
+                 (anti-unify-nogood-clauses (list ng1 ng2) ledger)
+               (check (nogood-clause-p uip))
+               (check (plusp (ledger-total ledger)))
+               (check (= 2 (length substs)))
+               (check (equal (bool-and (app (op := :int) (var 0 :int) (lit :int 0))
+                                       (app (op := :int) (var 1 :int) (hole 0 :int)))
+                             pattern))
+               (check (clause-expr-matches-known-p pattern two-in '(0 99) nil))
+               (check (not (clause-expr-matches-known-p pattern two-in '(1 99) nil))))))
+
+         ;; 3. DIP Context Variable Introduction (`propose-dip-context-bindings` & `dip-repaired-decompositions`)
+         ;;    On `add-len(xs)` (`((10)) -> (11)`, `((10 20)) -> (12 22)`, `((5 10 20)) -> (8 13 23)`),
+         ;;    unary `:map` (`:fa`) conflicts on `10 -> 11` vs `10 -> 12` (and `20 -> 22` vs `20 -> 23`).
+         ;;    DIP automatically discovers that `(length X0)` separates all conflicting parent row pairs,
+         ;;    introduces `(1 . (length X0))` into `bindings`, and synthesizes:
+         ;;    `(:fa X0 (:code-subst '(+ X0 X1) (tuple 'X0 (length X0))))`!
+         (let* ((addlen-frame (simple-frame seq-type inputs
+                                            '(((() ) ())
+                                              (((10)) (11))
+                                              (((10 20)) (12 22))
+                                              (((5 10 20)) (8 13 23)))))
+                (addlen-lang (make-language :int inputs
+                                            :operators (list (op :fa) (op :length :int) (op :+ :int))
+                                            :literals nil
+                                            :constants (list (lit seq-type '()))))
+                (job (start-heuristic-synthesis addlen-frame addlen-lang 80 :debug-p t)))
+           (resume-synthesis job 40000 :stop-on-first t)
+           (check (synthesis-job-best job))
+           ;; Verify that a `:dip-repair` node introducing `(length X0)` was spawned and solved the task
+           (let ((dip-node (find-if (lambda (n)
+                                      (and (synthesis-node-proposal n)
+                                           (consp (decomposition-name (synthesis-node-proposal n)))
+                                           (eq :dip-repair (first (decomposition-name (synthesis-node-proposal n))))))
+                                    (synthesis-job-nodes job))))
+             (check dip-node)
+             (check (equal (list (cons 1 (app (op :length :int) xs)))
+                           (decomposition-bindings (synthesis-node-proposal dip-node)))))
+           (let ((expr (candidate-expression (synthesis-job-best job))))
+             (check (provably-total-p expr))
+             (check-codec-roundtrip expr inputs)
+             (check (expression-calls-operator-p expr :fa))
+             (check (contains-call-to-p expr :code-subst))
+             (check (contains-call-to-p expr :length))
+             (check (equal '() (result expr inputs '(()))))
+             (check (equal '(5 6 7 8) (result expr inputs '((1 2 3 4)))))))
+
+         ;; 4. Lossy Branch Condensations (`make-search-trace-frame` & `condense-search-heuristic`)
+         ;;    Package quantitative branch outcomes from explored synthesis jobs into a `trace-frame`,
+         ;;    induce an S-expression priority predictor `\\hat{\\pi}` + residual `\\varepsilon` via
+         ;;    `condense-search-heuristic`, and deploy both `predictor-fn` and `trace-h-model` (discarding
+         ;;    `\\varepsilon`) via `:priority-predictor` on a held-out synthesis task.
+         (let* ((t1-frame (simple-frame seq-type inputs
+                                        '(((() ) ()) (((1 2)) (2 3)) (((4 5 6)) (5 6 7)))))
+                (t2-frame (simple-frame :int inputs
+                                        '(((() ) 0) (((2)) 4) (((3 2)) 13) (((1 3 2)) 14))))
+                (t-lang (make-language :int inputs
+                                       :operators (list (op :fa) (op :fb) (op :+ :int) (op :* :int))
+                                       :literals '(0 1)
+                                       :constants (list (lit seq-type '()))))
+                (j1 (start-heuristic-synthesis t1-frame t-lang 70))
+                (j2 (start-heuristic-synthesis t2-frame t-lang 70)))
+           (resume-synthesis j1 25000 :stop-on-first t)
+           (resume-synthesis j2 25000 :stop-on-first t)
+           (let* ((trace-ledger (make-ledger))
+                  (trace-frame (make-search-trace-frame (list j1 j2) :ledger trace-ledger)))
+             (check (>= (length (frame-rows trace-frame)) 3))
+             (check (plusp (ledger-total trace-ledger)))
+             (multiple-value-bind (predictor-fn trace-h-model)
+                 (condense-search-heuristic trace-frame :ledger trace-ledger)
+               (check (functionp predictor-fn))
+               (check (heuristic-model-p trace-h-model))
+               (check (provably-total-p (heuristic-program trace-h-model)))
+               ;; Deploy the condensed predictor function AND the `heuristic-model` directly
+               ;; via `:priority-predictor` on a held-out synthesis problem:
+               (let* ((held-frame (simple-frame seq-type inputs
+                                                '(((() ) ()) (((3 4)) (5 6)) (((10 20)) (12 22)))))
+                      (held-lang (make-language :int inputs
+                                                :operators (list (op :fa) (op :+ :int))
+                                                :literals '(2)
+                                                :constants (list (lit seq-type '()))))
+                      (job-fn (start-heuristic-synthesis held-frame held-lang 70
+                                                         :priority-predictor predictor-fn))
+                      (job-ast (start-heuristic-synthesis held-frame held-lang 70
+                                                          :priority-predictor trace-h-model)))
+                 (resume-synthesis job-fn 25000 :stop-on-first t)
+                 (resume-synthesis job-ast 25000 :stop-on-first t)
+                 (check (synthesis-job-best job-fn))
+                 (check (synthesis-job-best job-ast))
+                 (check (equal '(12 22 32)
+                               (result (candidate-expression (synthesis-job-best job-fn))
+                                       inputs '((10 20 30)))))
+                 (check (equal '(12 22 32)
+                               (result (candidate-expression (synthesis-job-best job-ast))
+                                       inputs '((10 20 30))))))))))
+    (clear-function-definitions)))
+
+(deftest recursion-r6-all-elements-in-concert
+  "Exercise all novel elements of recursive synthesis, higher-order library discovery,
+1-to-many lifting (with step-pair linkage), algebraic requirement propagation, deductive
+leaf messaging (nogoods, UIP, DIP), search-trace heuristic condensation, and debug
+provenance working together in concert."
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (xs (var 0 seq-type))
+              (unary-code (code-type '((0 . :int)) :int))
+              (head-x0 (app (op :at seq-type) xs (lit :int 0)))
+              (tail-x0 (app (op :tail :int) xs)))
+         (clear-function-definitions)
+
+         ;; 1. Hygiene & retyping checks:
+         ;;    - `rename-function-calls` with an unregistered target symbol does not pollute `*registered-function-names*`.
+         ;;    - `retype-expr` retypes higher-order `:code` literals across domains (:int -> (:gf 5)).
+         (call-with-temporary-function-names
+          '(:fa)
+          (lambda ()
+            (let* ((ctype (code-type inputs seq-type))
+                   (expr (app (op :fa ctype) tail-x0))
+                   (renamed (rename-function-calls expr :fa :__temp_unregistered__)))
+              (check (app-p renamed))
+              (check (eq :__temp_unregistered__ (operator-name (first renamed))))
+              (check (equal '(:fa) *registered-function-names*)))))
+         (check (null *registered-function-names*))
+         (let* ((code-lit (lit unary-code (app (op :+ :int) (var 0 :int) (lit :int 7))))
+                (gf5 (gf 5))
+                (retyped (retype-expr code-lit :int gf5))
+                (gf5-code (code-type (list (cons 0 gf5)) gf5)))
+           (check (lit-p retyped))
+           (check (equal gf5-code (ast-type retyped)))
+           (check (equal (app (op :+ gf5) (var 0 gf5) (lit gf5 2))
+                         (ast-value retyped))))
+
+         ;; 2. Stage 1: Synthesize recursive base corpus de novo (`copy`, `inc-all`, `double-all`, `sum`, `length`, `product`)
+         ;;    and discover/register `:fa` (`:map`) and `:fb` (`:foldr`) via `discover-library-abstractions`.
+         (let ((seq-ops (list (op :cons :int) (op :at seq-type) (op :tail :int)
+                              (op := seq-type) (op :if seq-type) (op :+ :int)))
+               (int-ops (list (op :at seq-type) (op :tail :int)
+                              (op := seq-type) (op :if :int) (op :+ :int) (op :* :int)))
+               (corpus nil))
+           (flet ((synth (name target ops lits rows)
+                    (clear-function-definitions)
+                    (let* ((frame (simple-frame target inputs rows))
+                           (lang (make-language :int inputs
+                                                :operators ops
+                                                :literals lits
+                                                :constants (list (lit seq-type '()))))
+                           (job (start-recursive-synthesis frame lang 90 :self-name :fa)))
+                      (resume-synthesis job 50000 :stop-on-first t)
+                      (check (synthesis-job-best job))
+                      (push (list :name name
+                                  :inputs inputs
+                                  :return-type target
+                                  :body (candidate-expression (synthesis-job-best job))
+                                  :self-name :fa)
+                            corpus))))
+             (synth :copy seq-type seq-ops nil
+                    '(((() ) ()) (((3)) (3)) (((1 3)) (1 3)) (((4 1 3)) (4 1 3))))
+             (synth :inc-all seq-type seq-ops '(1)
+                    '(((() ) ()) (((2)) (3)) (((5 2)) (6 3)) (((0 5 2)) (1 6 3))))
+             (synth :double-all seq-type seq-ops nil
+                    '(((() ) ()) (((3)) (6)) (((4 3)) (8 6)) (((1 4 3)) (2 8 6))))
+             (synth :sum :int int-ops nil
+                    '(((() ) 0) (((4)) 4) (((3 4)) 7) (((2 3 4)) 9)))
+             (synth :length :int (list (op :at seq-type) (op :tail :int)
+                                       (op := seq-type) (op :if :int) (op :+ :int))
+                    '(1)
+                    '(((() ) 0) (((7)) 1) (((5 7)) 2) (((9 5 7)) 3)))
+             (synth :product :int int-ops nil
+                    '(((() ) 1) (((3)) 3) (((2 3)) 6) (((4 2 3)) 24))))
+           (setf corpus (nreverse corpus))
+           (clear-function-definitions)
+           (multiple-value-bind (accepted refactored)
+               (discover-library-abstractions corpus :register-p t)
+             (check (= 2 (length accepted)))
+             (check (= 6 (length refactored)))
+             (check (find-function-definition :fa))
+             (check (find-function-definition :fb)))
+
+           ;; Verify 1-to-many `lift-frame` call-site coordinates in `(row-key row)` along unrolled `:fa` call paths
+           (let* ((p-frame (simple-frame seq-type inputs
+                                         '((((3 5 8)) (4 6 9))
+                                           (((5 10)) (6 11)))))
+                  (decoder (app (op :fa) xs (var 9 unary-code)))
+                  (lifted (lift-frame p-frame decoder 9 unary-code)))
+             (check (= 4 (length (frame-rows lifted))))
+             ;; Row 0 unrolls ((0 0), (0 1), (0 2)); Row 1 deduplicates x=5 and emits (1 1) for x=10
+             (check (equal '((0 0) (0 1) (0 2) (1 1))
+                           (mapcar #'row-key (frame-rows lifted)))))
+
+           ;; 3. Stage 2: Build an algebraic propagator library for integer addition/subtraction
+           ;;    so Stage B additive residual pullbacks propagate exact child requirements.
+           (let* ((prop-lib (prepare-propagator-library (arithmetic-controls :int) (make-ledger)))
+                  ;; 4. Stage 3: Run concerted synthesis jobs combining:
+                  ;;    - `library-expander` + `heuristic-expander`
+                  ;;    - `prop-lib` requirement propagation
+                  ;;    - Deductive leaf nogoods, UIP anti-unification, and DIP context repair
+                  ;;    Job A: `add-len(xs)` where unary `:fa` (`:map`) hits multiple incompatible-row
+                  ;;           conflicts (`10->11` vs `10->12` and `20->22` vs `20->23`), emits nogood
+                  ;;           clauses + a UIP generalized clause `(= X0 ?0)`, and triggers DIP to
+                  ;;           introduce `(length X0)` and synthesize `(:fa X0 (:code-subst '(+ X0 X1) (tuple 'X0 (length X0))))`.
+                  (addlen-frame (simple-frame seq-type inputs
+                                              '(((() ) ())
+                                                (((10)) (11))
+                                                (((10 20)) (12 22))
+                                                (((5 10 20)) (8 13 23)))))
+                  (addlen-lang (make-language :int inputs
+                                              :operators (list (op :fa) (op :length :int) (op :+ :int))
+                                              :literals nil
+                                              :constants (list (lit seq-type '()))))
+                  (job-a (start-heuristic-synthesis addlen-frame addlen-lang 80
+                                                    :library prop-lib
+                                                    :deductive-nogoods-p t
+                                                    :debug-p t))
+                  ;;    Job B: `sum-plus-one(xs) = 1 + sum(xs)` where Stage A condenses constant `'1`,
+                  ;;           Stage B pulls back through `(+ '1 Z)` using `prop-lib` to propagate exact
+                  ;;           singleton requirements `(0, 4, 7, 9)` to the child frame, and the child
+                  ;;           lifts through learned `:fb` (`:foldr`) to synthesize `(+ '1 (:fb X0 '0 '(+ X0 X1)))`!
+                  (sump1-frame (simple-frame :int inputs
+                                             '(((() ) 1)
+                                               (((4)) 5)
+                                               (((3 4)) 8)
+                                               (((2 3 4)) 10))))
+                  (sump1-lang (make-language :int inputs
+                                             :operators (list (op :fb) (op :+ :int) (op :- :int))
+                                             :literals '(0 1)
+                                             :constants (list (lit seq-type '()))))
+                  (job-b (start-heuristic-synthesis sump1-frame sump1-lang 85
+                                                    :library prop-lib
+                                                    :deductive-nogoods-p t
+                                                    :debug-p t)))
+             (resume-synthesis job-a 45000 :stop-on-first t)
+             (resume-synthesis job-b 45000 :stop-on-first t)
+             (check (synthesis-job-best job-a))
+             (check (synthesis-job-best job-b))
+             ;; Verify Job A produced leaf nogoods, UIP clause, and DIP repair node
+             (check (find-if (lambda (ng) (eq :lift-incompatible-rows (nogood-clause-kind ng)))
+                             (synthesis-job-nogoods job-a)))
+             (check (find-if (lambda (ng) (eq :uip-clause (nogood-clause-kind ng)))
+                             (synthesis-job-nogoods job-a)))
+             (check (find-if (lambda (n)
+                               (and (synthesis-node-proposal n)
+                                    (consp (decomposition-name (synthesis-node-proposal n)))
+                                    (eq :dip-repair (first (decomposition-name (synthesis-node-proposal n))))))
+                             (synthesis-job-nodes job-a)))
+             ;; Verify Job B combined Stage B additive residual with learned `:fb` (`:foldr`)
+             (let ((expr-a (candidate-expression (synthesis-job-best job-a)))
+                   (expr-b (candidate-expression (synthesis-job-best job-b))))
+               (check (provably-total-p expr-a))
+               (check (provably-total-p expr-b))
+               (check-codec-roundtrip expr-a inputs)
+               (check-codec-roundtrip expr-b inputs)
+               (check (expression-calls-operator-p expr-a :fa))
+               (check (contains-call-to-p expr-a :code-subst))
+               (check (expression-calls-operator-p expr-b :fb))
+               (check (equal '(14 24 34 44) (result expr-a inputs '((10 20 30 40)))))
+               (check (= 101 (result expr-b inputs '((10 20 30 40))))))
+
+             ;; 5. Stage 4: Condense a search-trace heuristic predictor `\hat{\pi}` across `(job-a, job-b)`
+             ;;    and deploy it via `:priority-predictor` on a held-out concerted synthesis task,
+             ;;    verifying `explain-synthesis-job` debug introspection.
+             (let* ((trace-ledger (make-ledger))
+                    (trace-frame (make-search-trace-frame (list job-a job-b) :ledger trace-ledger)))
+               (multiple-value-bind (predictor-fn trace-h-model)
+                   (condense-search-heuristic trace-frame :ledger trace-ledger)
+                 (check (functionp predictor-fn))
+                 (check (heuristic-model-p trace-h-model))
+                 (let* ((held-frame (simple-frame seq-type inputs
+                                                  '(((() ) ())
+                                                    (((2)) (3))
+                                                    (((2 5)) (4 7))
+                                                    (((1 2 5)) (4 5 8)))))
+                        (held-job (start-heuristic-synthesis held-frame addlen-lang 80
+                                                             :library prop-lib
+                                                             :priority-predictor trace-h-model
+                                                             :deductive-nogoods-p t
+                                                             :debug-p t)))
+                   (resume-synthesis held-job 45000 :stop-on-first t)
+                   (check (synthesis-job-best held-job))
+                   (let ((held-expr (candidate-expression (synthesis-job-best held-job)))
+                         (report (with-output-to-string (s)
+                                   (explain-synthesis-job held-job :stream s))))
+                     (check (provably-total-p held-expr))
+                     (check-codec-roundtrip held-expr inputs)
+                     (check (equal '(8 9 10) (result held-expr inputs '((5 6 7)))))
+                     (check (search "Synthesis Job" report))
+                     (check (search "DIP-REPAIR" report)))))))))
+    (clear-function-definitions)))

@@ -393,7 +393,10 @@ or element type `tau` (normalized to `(:seq tau)`)."
                 (make-ast-meta :kind :op :id kname :type (copy-tree norm-type) :value sig
                                :non-var-bits (+ 2 (operator-bit-size kname norm-type))
                                :var-count 0
-                               :syntax-work (1+ (if (defined-function-p kname) 1 (type-work norm-type)))
+                               :syntax-work (1+ (if (or (defined-function-p kname)
+                                                        (member kname *registered-function-names*))
+                                                    1
+                                                    (type-work norm-type)))
                                :total-p t :free-vars nil)
                 (gethash key *typed-symbol-pool*) sym)
           sym))))
@@ -768,7 +771,15 @@ Returns (values total-p conditional-code-params)."
                                            :inputs (copy-tree norm-inputs)
                                            :return-type (copy-tree return-type)))
            (self-op (progn (setf (gethash kname *function-definitions*) def)
-                           (op kname)))
+                           (let ((sym (op kname))
+                                 (ctype (function-definition-code-type def)))
+                             (setf (gethash sym *node-meta*)
+                                   (make-ast-meta :kind :op :id kname :type (copy-tree ctype)
+                                                  :value (compute-operator-signature kname ctype)
+                                                  :non-var-bits (+ 2 (operator-bit-size kname ctype))
+                                                  :var-count 0 :syntax-work 2
+                                                  :total-p t :free-vars nil))
+                             sym)))
            (resolved-body (if (functionp body) (funcall body self-op) body)))
       (when resolved-body
         (assert (equal return-type (expression-type resolved-body norm-inputs))))
@@ -958,29 +969,29 @@ optionally appending EXTRA-ARGS to each replaced call."
         (target-op (when (operator-p to-target) to-target))
         (kto (when (and to-target (not (operator-p to-target)))
                (canonical-op-name to-target))))
-    (cond
-      ((or (null kfrom) (and kto (eq kfrom kto) (null extra-args))) expr)
-      ((and (consp expr) (operator-p (first expr)))
-       (let* ((head (first expr))
-              (match-p (eq kfrom (operator-name head)))
-              (new-head (if match-p
-                            (or target-op
-                                (if (defined-function-p kto)
-                                    (op kto)
-                                    (progn
-                                      (unless (member kto *registered-function-names*)
-                                        (setf *registered-function-names*
-                                              (append *registered-function-names* (list kto))))
-                                      (op kto (operator-operand-type head)))))
-                            head))
-              (new-args (mapcar (lambda (a) (rename-function-calls a kfrom to-target extra-args))
-                                (rest expr))))
-         (if (and (not match-p) (every #'eq new-args (rest expr)))
-             expr
-             (apply #'app new-head (if match-p (append new-args extra-args) new-args)))))
-      ((and (lit-p expr) (code-type-p (ast-type expr)))
-       (let ((inner (rename-function-calls (ast-value expr) kfrom to-target extra-args)))
-         (if (eq inner (ast-value expr))
-             expr
-             (lit (ast-type expr) inner))))
-      (t expr))))
+    (labels ((walk (node)
+               (cond
+                 ((or (null kfrom) (and kto (eq kfrom kto) (null extra-args))) node)
+                 ((and (consp node) (operator-p (first node)))
+                  (let* ((head (first node))
+                         (match-p (eq kfrom (operator-name head)))
+                         (new-head (if match-p
+                                       (or target-op
+                                           (if (defined-function-p kto)
+                                               (op kto)
+                                               (op kto (operator-operand-type head))))
+                                       head))
+                         (new-args (mapcar #'walk (rest node))))
+                    (if (and (not match-p) (every #'eq new-args (rest node)))
+                        node
+                        (apply #'app new-head (if match-p (append new-args extra-args) new-args)))))
+                 ((and (lit-p node) (code-type-p (ast-type node)))
+                  (let ((inner (walk (ast-value node))))
+                    (if (eq inner (ast-value node))
+                        node
+                        (lit (ast-type node) inner))))
+                 (t node))))
+      (if (and kto (not (defined-function-p kto)) (not (member kto *registered-function-names*)))
+          (let ((*registered-function-names* (append *registered-function-names* (list kto))))
+            (walk expr))
+          (walk expr)))))

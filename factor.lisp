@@ -1899,126 +1899,126 @@ recursive combinator exists)."
                    collect (infer-self-operator-name b norm-inputs return-type decl)))
            (temp-names (remove-duplicates
                         (append '(:__au_self__ :__lib_cand__)
-                                (remove nil inferred-snames)
-                                (when (and target-name (keywordp target-name))
-                                  (list target-name))))))
-      (call-with-temporary-function-names
-       temp-names
-       (lambda ()
-         (let* ((active-bodies (if rewrite-library
-                                   (normalize-trees-with-library bodies norm-inputs rewrite-library :ledger ledger)
-                                   bodies))
-                (canon-self-op (op :__au_self__ (code-type norm-inputs return-type)))
-                (norm-bodies
-                  (loop for b in active-bodies
-                        for sname in inferred-snames
-                        collect (normalize-guarded-equalities
-                                 (rename-function-calls b sname canon-self-op)))))
-         ;; Every participating body in a recursive library abstraction must be recursive
-         (unless (every (lambda (nb) (term-references-bound-or-self-p nb nil :__au_self__))
-                        norm-bodies)
-           (return-from abstract-function-bodies nil))
-         (multiple-value-bind (pattern substitutions)
-             (anti-unify-for-library norm-bodies norm-inputs
-                                     :self-name :__au_self__
-                                     :ledger ledger)
-           (when (or (hole-p pattern) (not (pattern-has-holes-p pattern)))
-             (return-from abstract-function-bodies nil))
-           (let ((holes (pattern-holes pattern))
-                 (next-param-id (next-child-id norm-inputs))
-                 (new-params nil)
-                 (extra-param-vars nil)
-                 (hole-replacements nil)
-                 (per-param-call-args nil)
-                 (has-code-param-p nil))
-             (dolist (h holes)
-               (let* ((hid (car h))
-                      (hsort (cdr h))
-                      (fillers (mapcar (lambda (subst) (cdr (assoc hid subst))) substitutions)))
-                 (when (or (function-sort-p hsort) (some #'null fillers))
-                   (return-from abstract-function-bodies nil))
-                 (if (some (lambda (f) (term-references-bound-or-self-p f bound-vars :__au_self__))
-                           fillers)
-                     ;; Higher-order :code parameter
-                     (let ((cover (shared-subterm-cover fillers norm-inputs
-                                                        :bound-vars bound-vars
-                                                        :self-name :__au_self__)))
-                       (when (null cover)
-                         (return-from abstract-function-bodies nil))
-                       (let ((code-lits nil)
-                             (common-ctype nil))
-                         (dolist (f fillers)
-                           (multiple-value-bind (clit ctype)
-                               (abstract-over-subterms f cover norm-inputs ledger :self-name :__au_self__)
-                             (when (or (null clit)
-                                       (and common-ctype (not (equal common-ctype ctype))))
-                               (return-from abstract-function-bodies nil))
-                             (setf common-ctype ctype)
-                             (push clit code-lits)))
-                         (setf code-lits (nreverse code-lits)
-                               has-code-param-p t)
-                         (let* ((pid (prog1 next-param-id (incf next-param-id)))
-                                (pvar (var pid common-ctype))
-                                (eval-expr (apply #'app (op :code-eval common-ctype) pvar cover)))
-                           (push (cons pid common-ctype) new-params)
-                           (push pvar extra-param-vars)
-                           (push (cons hid eval-expr) hole-replacements)
-                           (push code-lits per-param-call-args))))
-                     ;; First-order value parameter
-                     (let* ((pid (prog1 next-param-id (incf next-param-id)))
-                            (pvar (var pid hsort)))
-                       (push (cons pid hsort) new-params)
-                       (push pvar extra-param-vars)
-                       (push (cons hid pvar) hole-replacements)
-                       (push fillers per-param-call-args)))))
-             (unless has-code-param-p
-               (return-from abstract-function-bodies nil))
-             (setf new-params (nreverse new-params)
-                   extra-param-vars (nreverse extra-param-vars)
-                   hole-replacements (nreverse hole-replacements)
-                   per-param-call-args (nreverse per-param-call-args))
-             (let* ((lib-inputs (append (copy-tree norm-inputs) new-params))
-                    (lib-ctype (code-type lib-inputs return-type))
-                    (cand-op (op :__lib_cand__ lib-ctype))
-                    (staged-body (instantiate pattern hole-replacements :hole))
-                    (cand-lib-body (rename-function-calls staged-body :__au_self__
-                                                          cand-op extra-param-vars)))
-               (charge ledger :construction (syntax-work cand-lib-body))
-               (unless (and (equal return-type (ignore-errors (expression-type cand-lib-body lib-inputs)))
-                            (term-references-bound-or-self-p cand-lib-body nil :__lib_cand__)
-                            (multiple-value-bind (tot-p cond-params)
-                                (analyze-function-body-totality :__lib_cand__ lib-inputs cand-lib-body)
-                              (or tot-p cond-params)))
-                 (return-from abstract-function-bodies nil))
-               (let* ((orig-vars (loop for (id . type) in norm-inputs collect (var id type)))
-                      (cand-ref-bodies
-                        (loop for i below k
-                              for prog-args = (mapcar (lambda (pargs) (nth i pargs)) per-param-call-args)
-                              for rb = (apply #'app cand-op (append orig-vars prog-args))
-                              do (charge ledger :construction (syntax-work rb))
-                              collect rb))
-                      (original-bits (loop for b in bodies sum (body-size b norm-inputs)))
-                      (library-bits (body-size cand-lib-body lib-inputs))
-                      (refactored-call-bits (loop for rb in cand-ref-bodies sum (body-size rb norm-inputs)))
-                      (refactored-bits (+ library-bits refactored-call-bits))
-                      (gain (- original-bits refactored-bits))
-                      (abs (make-library-abstraction
-                            :name :__lib_cand__
-                            :program-inputs (copy-tree norm-inputs)
-                            :inputs lib-inputs
-                            :return-type (copy-tree return-type)
-                            :body cand-lib-body
-                            :pattern pattern
-                            :programs (or (copy-list program-names)
-                                          (loop for i below k collect i))
-                            :refactored-bodies cand-ref-bodies
-                            :original-bits original-bits
-                            :library-bits library-bits
-                            :refactored-call-bits refactored-call-bits
-                            :refactored-bits refactored-bits
-                            :gain gain
-                            :work (- (ledger-total ledger) start-work))))
-                 (finalize-library-abstraction abs target-name :register-p register-p)))))))))))
+                                (remove nil inferred-snames))))
+           (raw-abs
+             (call-with-temporary-function-names
+              temp-names
+              (lambda ()
+                (let* ((active-bodies (if rewrite-library
+                                          (normalize-trees-with-library bodies norm-inputs rewrite-library :ledger ledger)
+                                          bodies))
+                       (canon-self-op (op :__au_self__ (code-type norm-inputs return-type)))
+                       (norm-bodies
+                         (loop for b in active-bodies
+                               for sname in inferred-snames
+                               collect (normalize-guarded-equalities
+                                        (rename-function-calls b sname canon-self-op)))))
+                  ;; Every participating body in a recursive library abstraction must be recursive
+                  (unless (every (lambda (nb) (term-references-bound-or-self-p nb nil :__au_self__))
+                                 norm-bodies)
+                    (return-from abstract-function-bodies nil))
+                  (multiple-value-bind (pattern substitutions)
+                      (anti-unify-for-library norm-bodies norm-inputs
+                                              :self-name :__au_self__
+                                              :ledger ledger)
+                    (when (or (hole-p pattern) (not (pattern-has-holes-p pattern)))
+                      (return-from abstract-function-bodies nil))
+                    (let ((holes (pattern-holes pattern))
+                          (next-param-id (next-child-id norm-inputs))
+                          (new-params nil)
+                          (extra-param-vars nil)
+                          (hole-replacements nil)
+                          (per-param-call-args nil)
+                          (has-code-param-p nil))
+                      (dolist (h holes)
+                        (let* ((hid (car h))
+                               (hsort (cdr h))
+                               (fillers (mapcar (lambda (subst) (cdr (assoc hid subst))) substitutions)))
+                          (when (or (function-sort-p hsort) (some #'null fillers))
+                            (return-from abstract-function-bodies nil))
+                          (if (some (lambda (f) (term-references-bound-or-self-p f bound-vars :__au_self__))
+                                    fillers)
+                              ;; Higher-order :code parameter
+                              (let ((cover (shared-subterm-cover fillers norm-inputs
+                                                                 :bound-vars bound-vars
+                                                                 :self-name :__au_self__)))
+                                (when (null cover)
+                                  (return-from abstract-function-bodies nil))
+                                (let ((code-lits nil)
+                                      (common-ctype nil))
+                                  (dolist (f fillers)
+                                    (multiple-value-bind (clit ctype)
+                                        (abstract-over-subterms f cover norm-inputs ledger :self-name :__au_self__)
+                                      (when (or (null clit)
+                                                (and common-ctype (not (equal common-ctype ctype))))
+                                        (return-from abstract-function-bodies nil))
+                                      (setf common-ctype ctype)
+                                      (push clit code-lits)))
+                                  (setf code-lits (nreverse code-lits)
+                                        has-code-param-p t)
+                                  (let* ((pid (prog1 next-param-id (incf next-param-id)))
+                                         (pvar (var pid common-ctype))
+                                         (eval-expr (apply #'app (op :code-eval common-ctype) pvar cover)))
+                                    (push (cons pid common-ctype) new-params)
+                                    (push pvar extra-param-vars)
+                                    (push (cons hid eval-expr) hole-replacements)
+                                    (push code-lits per-param-call-args))))
+                              ;; First-order value parameter
+                              (let* ((pid (prog1 next-param-id (incf next-param-id)))
+                                     (pvar (var pid hsort)))
+                                (push (cons pid hsort) new-params)
+                                (push pvar extra-param-vars)
+                                (push (cons hid pvar) hole-replacements)
+                                (push fillers per-param-call-args)))))
+                      (unless has-code-param-p
+                        (return-from abstract-function-bodies nil))
+                      (setf new-params (nreverse new-params)
+                            extra-param-vars (nreverse extra-param-vars)
+                            hole-replacements (nreverse hole-replacements)
+                            per-param-call-args (nreverse per-param-call-args))
+                      (let* ((lib-inputs (append (copy-tree norm-inputs) new-params))
+                             (lib-ctype (code-type lib-inputs return-type))
+                             (cand-op (op :__lib_cand__ lib-ctype))
+                             (staged-body (instantiate pattern hole-replacements :hole))
+                             (cand-lib-body (rename-function-calls staged-body :__au_self__
+                                                                   cand-op extra-param-vars)))
+                        (charge ledger :construction (syntax-work cand-lib-body))
+                        (unless (and (equal return-type (ignore-errors (expression-type cand-lib-body lib-inputs)))
+                                     (term-references-bound-or-self-p cand-lib-body nil :__lib_cand__)
+                                     (multiple-value-bind (tot-p cond-params)
+                                         (analyze-function-body-totality :__lib_cand__ lib-inputs cand-lib-body)
+                                       (or tot-p cond-params)))
+                          (return-from abstract-function-bodies nil))
+                        (let* ((orig-vars (loop for (id . type) in norm-inputs collect (var id type)))
+                               (cand-ref-bodies
+                                 (loop for i below k
+                                       for prog-args = (mapcar (lambda (pargs) (nth i pargs)) per-param-call-args)
+                                       for rb = (apply #'app cand-op (append orig-vars prog-args))
+                                       do (charge ledger :construction (syntax-work rb))
+                                       collect rb))
+                               (original-bits (loop for b in bodies sum (body-size b norm-inputs)))
+                               (library-bits (body-size cand-lib-body lib-inputs))
+                               (refactored-call-bits (loop for rb in cand-ref-bodies sum (body-size rb norm-inputs)))
+                               (refactored-bits (+ library-bits refactored-call-bits))
+                               (gain (- original-bits refactored-bits)))
+                          (make-library-abstraction
+                           :name :__lib_cand__
+                           :program-inputs (copy-tree norm-inputs)
+                           :inputs lib-inputs
+                           :return-type (copy-tree return-type)
+                           :body cand-lib-body
+                           :pattern pattern
+                           :programs (or (copy-list program-names)
+                                         (loop for i below k collect i))
+                           :refactored-bodies cand-ref-bodies
+                           :original-bits original-bits
+                           :library-bits library-bits
+                           :refactored-call-bits refactored-call-bits
+                           :refactored-bits refactored-bits
+                           :gain gain
+                           :work (- (ledger-total ledger) start-work)))))))))))
+      (when raw-abs
+        (finalize-library-abstraction raw-abs target-name :register-p register-p)))))
 
 (defun normalize-corpus-definition-entry (entry index)
   "Normalize a `function-definition`, function name symbol, or plist into a canonical

@@ -128,12 +128,17 @@
    #:decomposition #:make-decomposition #:decomposition-name #:decomposition-solver
    #:decomposition-lift-p #:decomposition-provenance
    #:nogood-clause #:nogood-clause-p #:nogood-clause-parent-id #:nogood-clause-kind
-   #:nogood-clause-keys #:nogood-clause-known #:nogood-clause-bindings #:nogood-clause-clause-expr
+   #:nogood-clause-keys #:nogood-clause-known #:nogood-clause-bindings
+   #:nogood-clause-decoder #:nogood-clause-child-id #:nogood-clause-child-type
+   #:nogood-clause-parent-incompatible-p #:nogood-clause-clause-expr #:nogood-clause-parent-clause-expr
+   #:anti-unify-nogood-clauses #:propose-dip-context-bindings #:dip-repaired-decompositions
+   #:make-search-trace-frame #:condense-search-heuristic
    #:start-synthesis #:resume-synthesis #:synthesis-job-best #:synthesis-job-results
    #:synthesis-job-ledger #:synthesis-job-messages #:synthesis-job-debug-p
    #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace
    #:synthesis-node-priority #:synthesis-node-heuristic #:synthesis-node-provenance
    #:lift-inductive-sequence-context #:explain-synthesis-node #:explain-synthesis-job
+   #:library-decompositions #:library-expander #:combine-expanders
    #:heuristic-decompositions #:heuristic-expander #:start-heuristic-synthesis
    #:start-recursive-synthesis
    #:synthesis-job-self-name #:synthesis-job-oracle-table #:synthesis-episode-returns

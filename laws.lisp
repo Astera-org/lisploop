@@ -192,7 +192,10 @@
   (ecase (ast-kind expr)
     (:var (var (ast-id expr) (retype-type (ast-type expr) old-domain new-domain)))
     (:lit (let ((new-type (retype-type (ast-type expr) old-domain new-domain)))
-            (lit new-type (retype-value (ast-value expr) new-type))))
+            (lit new-type
+                 (if (code-type-p new-type)
+                     (retype-expr (ast-value expr) old-domain new-domain)
+                     (retype-value (ast-value expr) new-type)))))
     (:op (op (operator-name expr) (retype-type (operator-operand-type expr) old-domain new-domain)))
     (:hole (hole (ast-id expr) (retype-type (ast-type expr) old-domain new-domain)))
     (:app (let ((new-op (retype-expr (first expr) old-domain new-domain)))

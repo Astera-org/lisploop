@@ -100,7 +100,7 @@ Host-side setup steps (such as child-node pullback and folding in `prepare-synth
 
 ### 1.5 Description, execution, and discovery costs
 
-Current versions are `+encoding-version+ = 7` in `codec.lisp`, and `+tariff-version+ = 9`, `+simulator-version+ = 5` in `vm.lisp`.
+Current versions are `+encoding-version+ = 7` in `codec.lisp`, and `+tariff-version+ = 10`, `+simulator-version+ = 6` in `vm.lisp`.
 
 Encoding v7 uses Elias delta positive integers, zigzag signed integers, typed headers, two-bit AST tags, and extended four-bit opcodes. The header includes input IDs as well as types; body references use input positions. Thus body cost can be invariant to renaming while header cost changes. `encode-model` and `decode-model` serialize ordinary expressions, including constructing lookup/partition/corpus expressions.
 

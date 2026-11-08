@@ -14,7 +14,7 @@ The kernel has **nine implementation modules**, plus `package.lisp` and the load
 
 Lisploop experiments with typed program synthesis, observational invariants, guarded algebraic laws, factorization, causal reorientation, and recursive decomposition of synthesis problems. Programs, predicates, and quoted syntax use the same S-expression representation. Frames, jobs, laws, certificates, and proposal records use host Lisp structs around those expressions.
 
-The implemented search is bounded and experimental. Supplied decoders, feature vocabularies, locality keys, and candidate lists are explicit inputs, not discoveries. Tests distinguish supplied controls from grammar-discovered artifacts. The kernel has no general recursive object-language functions, learned function registry, learned scheduler, or cross-branch child-problem cache.
+The implemented search is bounded and experimental. Supplied decoders, feature vocabularies, locality keys, and candidate lists remain explicit controls alongside autonomous recursive synthesis (`start-recursive-synthesis`), higher-order library discovery (`discover-library-abstractions`), 1-to-many higher-order lifting (`lift-frame`, `library-expander`), deductive leaf nogood clauses (`nogood-clause`, UIP anti-unification, DIP context variable introduction), and search-trace priority condensation (`condense-search-heuristic`). Tests distinguish supplied controls from grammar-discovered artifacts. The kernel has no cross-branch child-problem DAG cache.
 
 Three resource quantities remain distinct:
 
@@ -231,7 +231,7 @@ The order below is the order in `load.lisp`; `package.lisp` loads first.
 
 Rewrite preparation caches belong to each `rewrite-library`; there is no global prepared-rewrite cache. `*last-code-match*` is a separate single-entry host memo used by symbolic match/bind/substitution primitives. Neither mechanism shares arbitrary child synthesis problems.
 
-Fixtures now live in `tests/support.lisp` and the relevant suites. The former standalone experiment runners have been removed. `tests/run.lisp` loads fourteen suites and accepts module names or `m1`–`m7` aliases; `tests/visualizer.lisp` is separate. `benchmark.lisp` measures bounded GF(5) search scaling and VM dispatch. The visualizer exports observation data to static reports.
+Fixtures now live in `tests/support.lisp` and the relevant suites. The former standalone experiment runners have been removed. `tests/run.lisp` loads fifteen suites and accepts module names or `m1`–`m9` and `r1`–`r6` aliases; `tests/visualizer.lisp` is separate. `benchmark.lisp` measures bounded GF(5) search scaling and VM dispatch. The visualizer exports observation data to static reports.
 
 ## 6. Status, evidence, and objectives
 
@@ -258,10 +258,10 @@ A law certificate stores `snapshot`, `evidence`, `assignments`, `active`, and `w
 | M5 | Supplied lifting, bounded fiber proposals, selector/dependency search | No general latent-model identification guarantee |
 | M6 | Typed AU, occurrence proposals, reconstructing corpus models | Bounded/greedy correspondence search |
 | M7 | Boolean views, reassembly controls, supplied locality schedules | General learned ordering and residual geometry |
-| M8A/B | Nested supplied decompositions, resumable work accounting, root reconstruction | Autonomous decoder generation and cross-branch DAG sharing |
-| M8C | Local checked conflicts and tentative fallback preservation | Reusable learned nogoods and generalized explanations |
-| M8D | Resumable residual-priced condensation | Trace acquisition, learned node ordering, end-to-end policy evaluation |
-| M9 | Prerequisite syntax/condensation machinery | Callable learned library entries and descriptor-guided retrieval |
+| M8A/B | Nested supplied and heuristic decompositions, 1-to-many higher-order lifting (`lift-frame`), resumable work accounting, root reconstruction | Cross-branch child-problem DAG sharing |
+| M8C | Local checked conflicts, tentative fallback preservation, reusable S-expression nogood clauses (`nogood-clause`), UIP anti-unification, and DIP context introduction | Arbitrary non-conjunctive SMT theory solvers |
+| M8D | Resumable Stage A/B residual-priced condensation, search-trace heuristic condensation (`condense-search-heuristic`), and `:priority-predictor` node ordering | Online continual meta-learning across unbounded task streams |
+| M9 / R1–R6 | Recursive object-language functions (`define-function`, `start-recursive-synthesis`), higher-order AU library learning (`discover-library-abstractions`), and `library-expander` | Mutual recursion and unbounded higher-order type synthesis |
 
 ## 7. Verification commands
 
