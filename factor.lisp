@@ -983,15 +983,22 @@ within each occurrence."
           (- total-saved fixed-bits)))))
 
 (defun normalize-trees-with-library (trees inputs rewrite-library &key (budget 100000) ledger)
-  "Normalize each tree in TREES using validated REWRITE-LIBRARY in the metered VM."
-  (mapcar (lambda (tree)
-            (let ((state (start-rewriting tree inputs rewrite-library)))
-              (advance-rewriting state budget)
-              (charge ledger :rewriting (rewriting-work state))
-              (if (eq :complete (rewriting-status state))
-                  (rewriting-value state)
-                  tree)))
-          trees))
+  "Normalize each tree in TREES using validated REWRITE-LIBRARY (or a `knowledge-library`) in the metered VM."
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (domain (infer-domain-from-types (mapcar #'cdr norm-inputs)))
+         (eff-lib (if (and (knowledge-library-p rewrite-library) (fboundp 'as-rewrite-library))
+                      (funcall 'as-rewrite-library rewrite-library :domain domain)
+                      rewrite-library)))
+    (if (null eff-lib)
+        trees
+        (mapcar (lambda (tree)
+                  (let ((state (start-rewriting tree norm-inputs eff-lib)))
+                    (advance-rewriting state budget)
+                    (charge ledger :rewriting (rewriting-work state))
+                    (if (eq :complete (rewriting-status state))
+                        (rewriting-value state)
+                        tree)))
+                trees))))
 
 (defun integer-coordinate-vector-p (value)
   "True when VALUE is a non-empty list of integers (a tuple or sequence in Z^d)."
@@ -2221,3 +2228,461 @@ Returns `(VALUES accepted-abstractions refactored-definitions all-candidates led
               (coerce refactored-vec 'list)
               all-candidates
               ledger))))
+
+;;; ============================================================
+;;; Persistent Knowledge Library: Descriptors, Functions, Relations
+;;; ============================================================
+
+(defun function-body-length-preserving-p (name body)
+  "True when BODY is a structural list recursion on X0 that maps '() to '() and
+constructs one output element via :CONS per (:TAIL X0) step."
+  (and (app-p body)
+       (eq :if (ast-id body))
+       (let ((cond-ast (second body))
+             (then-ast (third body))
+             (else-ast (fourth body))
+             (kname (canonical-op-name name)))
+         (and (eql 0 (empty-sequence-guard-var-id cond-ast '(0)))
+              (lit-p then-ast)
+              (null (ast-value then-ast))
+              (app-p else-ast)
+              (eq :cons (ast-id else-ast))
+              (let ((rec-call (third else-ast)))
+                (and (app-p rec-call)
+                     (eq kname (ast-id rec-call))
+                     (plusp (length (rest rec-call)))
+                     (let ((arg0 (second rec-call)))
+                       (and (app-p arg0)
+                            (eq :tail (ast-id arg0))
+                            (var-p (second arg0))
+                            (eql 0 (ast-id (second arg0)))))))))))
+
+(defun compute-function-descriptor (fdef)
+  "Synthesize a closed VM-executable Boolean descriptor AST over (X0=seq-input, X1=output)
+summarizing invariant I/O behavior of FDEF (such as empty-list base behavior and
+length preservation)."
+  (when (and (function-definition-p fdef)
+             (function-definition-body fdef)
+             (plusp (length (function-definition-inputs fdef))))
+    (let* ((param0-spec (first (function-definition-inputs fdef)))
+           (param0-id (car param0-spec))
+           (param0-type (cdr param0-spec))
+           (ret-type (function-definition-return-type fdef))
+           (body (function-definition-body fdef)))
+      (when (and (eql 0 param0-id)
+                 (consp param0-type)
+                 (eq :seq (first param0-type)))
+        (let* ((x0 (var 0 param0-type))
+               (x1 (var 1 ret-type))
+               (empty-seq (lit param0-type nil))
+               (base-branch
+                 (when (and (app-p body) (eq :if (ast-id body)))
+                   (let ((cond-ast (second body))
+                         (then-ast (third body)))
+                     (when (and (eql 0 (empty-sequence-guard-var-id cond-ast '(0)))
+                                (lit-p then-ast))
+                       then-ast))))
+               (base-check
+                 (when base-branch
+                   (app (op :if :bool)
+                        (app (op := param0-type) x0 empty-seq)
+                        (app (op := ret-type) x1 base-branch)
+                        (lit :bool t))))
+               (len-check
+                 (when (and (consp ret-type)
+                            (eq :seq (first ret-type))
+                            (function-body-length-preserving-p (function-definition-name fdef) body))
+                   (app (op := :int)
+                        (app (op :length (second param0-type)) x0)
+                        (app (op :length (second ret-type)) x1)))))
+          (cond ((and base-check len-check) (bool-and base-check len-check))
+                (len-check len-check)
+                (base-check base-check)
+                (t nil)))))))
+
+(define-knowledge-kind :descriptor
+  (:priority 15)
+  (:validate (entry library)
+    (declare (ignore library))
+    (assert (and (knowledge-entry-expression entry)
+                 (eq :bool (expression-type (knowledge-entry-expression entry)
+                                            (knowledge-entry-inputs entry))))))
+  (:install (entry library ledger)
+    (declare (ignore ledger))
+    (dolist (edge (knowledge-edges-from entry :describes library))
+      (dolist (target (rest edge))
+        (when (symbolp target)
+          (setf (gethash (canonical-op-name target) (knowledge-library-descriptors library))
+                (knowledge-entry-expression entry))))))
+  (:consume (entry context ledger)
+    (let ((expr (knowledge-entry-expression entry))
+          (inputs (knowledge-entry-inputs entry)))
+      (when (and expr (= (length context) (length inputs)))
+        (let ((run (evaluate expr inputs context :ledger ledger)))
+          (and (eq :value (evaluation-status run))
+               (evaluation-value run)))))))
+
+(defun compose-hybrid-residual-program (inputs target parametric-expr residual-table &key default)
+  "Compose a single VM-executable AST from PARAMETRIC-EXPR (or DEFAULT) and RESIDUAL-TABLE.
+When RESIDUAL-TABLE is non-empty, guards `:lookup` with `:member` so keys outside the residual
+table fall back cleanly to PARAMETRIC-EXPR (or DEFAULT) without raising an unresolved lookup."
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (single-input-p (= 1 (length norm-inputs)))
+         (key-type (if single-input-p
+                       (cdar norm-inputs)
+                       (apply #'tuple-type (mapcar #'cdr norm-inputs))))
+         (key-expr (if single-input-p
+                       (var (caar norm-inputs) (cdar norm-inputs))
+                       (apply #'app (op :tuple key-type)
+                              (mapcar (lambda (spec) (var (car spec) (cdr spec))) norm-inputs))))
+         (fallback-expr (cond (parametric-expr parametric-expr)
+                              ((and default (ignore-errors (ensure-ast-meta default))) default)
+                              (default (lit target default))
+                              (t nil))))
+    (cond
+      ((null residual-table)
+       fallback-expr)
+      ((and (eq target :bool)
+            (null fallback-expr)
+            (every (lambda (item) (not (and (consp item) (= 2 (length item)) (value-p (first item) key-type) (typep (second item) 'boolean))))
+                   residual-table))
+       (let ((keys (mapcar (lambda (item)
+                             (if (and (consp item) (eq (cdr item) t))
+                                 (car item)
+                                 item))
+                           residual-table)))
+         (app (op :member key-type)
+              key-expr
+              (lit (sequence-type key-type) keys))))
+      (t
+       (let* ((entry-type (tuple-type key-type target))
+              (norm-pairs (mapcar (lambda (pair)
+                                    (if (and (consp pair) (not (listp (cdr pair))))
+                                        (list (car pair) (cdr pair))
+                                        (list (first pair) (second pair))))
+                                  residual-table))
+              (keys (mapcar #'first norm-pairs))
+              (lookup-ast (app (op :lookup entry-type)
+                               key-expr
+                               (lit (sequence-type entry-type) norm-pairs))))
+         (if fallback-expr
+             (app (op :if target)
+                  (app (op :member key-type) key-expr (lit (sequence-type key-type) keys))
+                  lookup-ast
+                  fallback-expr)
+             lookup-ast))))))
+
+(defun register-knowledge-relation (id table &key
+                                               (library *knowledge-library*)
+                                               domain
+                                               inputs
+                                               (target :int)
+                                               relation-kind
+                                               parametric
+                                               default
+                                               guard
+                                               (status :empirical)
+                                               edges
+                                               metadata
+                                               ledger)
+  "Register an irreducible table (:LOOKUP map or :MEMBER set, first-order or second-order over :CODE)
+or a hybrid (PARAMETRIC + TABLE) residual program as a :RELATION entry in LIBRARY."
+  (declare (ignore relation-kind))
+  (let* ((norm-id (if (symbolp id) (canonical-op-name id) id))
+         (norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (rel-ast (compose-hybrid-residual-program norm-inputs target parametric table :default default))
+         (entry (make-knowledge-entry
+                 :id norm-id
+                 :kind :relation
+                 :domain domain
+                 :inputs norm-inputs
+                 :target target
+                 :expression parametric
+                 :guard guard
+                 :residual table
+                 :auxiliary-code rel-ast
+                 :status status
+                 :certificate (list :kind :empirical-table :rows (length table))
+                 :bits (if rel-ast
+                           (or (ignore-errors (body-size rel-ast norm-inputs))
+                               (syntax-work rel-ast))
+                           0)
+                 :edges edges
+                 :metadata (append (list :table (copy-tree table) :default default)
+                                   (copy-tree metadata))
+                 :library library)))
+    (register-knowledge-entry entry :library library :ledger ledger)))
+
+(defun consolidate-residual-relations (entries library ledger)
+  "Delayed structure discovery across empirical :RELATION entries in LIBRARY.
+1. Within a single relation entry whose residual table has >= 2 first-order rows, check if an
+   algebraic expression compresses the residual table with positive MDL gain (delta-S > 0).
+2. Across multiple relation entries sharing (inputs, target) that are individually too small
+   to justify a parametric rule, pool their residual tables and test whether a shared expression
+   jointly compresses the pooled residuals with positive total MDL gain."
+  (let ((condensed nil)
+        (by-sig (make-hash-table :test #'equal)))
+    (labels ((first-order-table-p (inputs target table)
+               (and (consp table)
+                    (every (lambda (spec) (not (code-type-p (cdr spec)))) inputs)
+                    (not (code-type-p target))))
+             (normalize-table-rows (inputs table)
+               (let ((single-p (= 1 (length inputs))))
+                 (loop for item in table
+                       for idx from 0
+                       for raw-key = (if (and (consp item) (not (listp (cdr item))))
+                                         (car item)
+                                         (first item))
+                       for val = (if (and (consp item) (not (listp (cdr item))))
+                                     (cdr item)
+                                     (second item))
+                       for known = (if single-p (list raw-key) raw-key)
+                       collect (list idx known val))))
+             (find-compressing-expr (inputs target domain rows-data)
+               (let* ((eff-domain (or domain :int))
+                      (schema (make-schema :domain eff-domain :inputs inputs :target target))
+                      (frame (make-frame schema
+                                         (loop for (idx known val) in rows-data
+                                               collect (make-row :key idx
+                                                                 :known known
+                                                                 :requirement (singleton-requirement target val)))))
+                      (ops (when (or (eq eff-domain :int)
+                                     (and (consp eff-domain) (eq :gf (first eff-domain))))
+                             (list (op :+ eff-domain) (op :* eff-domain))))
+                      (lang (make-language eff-domain inputs :operators ops :literals '(0 1 2 3)))
+                      (bound (+ (header-size inputs target) 36))
+                      (search (start-search frame lang)))
+                 (loop for step from 1 to 20
+                       until (search-job-best search)
+                       do (resume-search search bound (* step 5000)))
+                 (when ledger
+                   (charge ledger :child-search (ledger-total (search-job-ledger search))))
+                 (and (search-job-best search)
+                      (candidate-expression (search-job-best search))))))
+      ;; Pass 1: Individual relation entries and grouping by signature
+      (dolist (entry entries)
+        (let ((inputs (knowledge-entry-inputs entry))
+              (target (knowledge-entry-target entry))
+              (table (knowledge-entry-residual entry)))
+          (when (and (null (knowledge-entry-expression entry))
+                     (first-order-table-p inputs target table))
+            (push entry (gethash (list (knowledge-entry-domain entry) inputs target) by-sig))
+            (when (>= (length table) 4)
+              (let* ((rows-data (normalize-table-rows inputs table))
+                     (best (find-compressing-expr inputs target (knowledge-entry-domain entry) rows-data)))
+                (when best
+                  (let* ((old-bits (knowledge-entry-bits entry))
+                         (new-bits (body-size best inputs))
+                         (gain (- old-bits new-bits)))
+                    (when (plusp gain)
+                      (setf (knowledge-entry-expression entry) best
+                            (knowledge-entry-residual entry) nil
+                            (knowledge-entry-auxiliary-code entry) best
+                            (knowledge-entry-status entry) :empirical
+                            (knowledge-entry-bits entry) new-bits
+                            (knowledge-entry-gain entry) gain)
+                      (push entry condensed)))))))))
+      ;; Pass 2: Joint pooling across multiple relations with the same (domain, inputs, target)
+      (maphash
+       (lambda (sig group)
+         (let ((remaining (remove-if #'knowledge-entry-expression (reverse group))))
+           (when (>= (length remaining) 2)
+             (destructuring-bind (domain inputs target) sig
+               (let* ((pooled-rows
+                        (loop for e in remaining
+                              for e-idx from 0
+                              append (loop for (r-idx known val) in (normalize-table-rows inputs (knowledge-entry-residual e))
+                                           collect (list (list e-idx r-idx) known val))))
+                      (best (when (>= (length pooled-rows) 4)
+                              (find-compressing-expr inputs target domain pooled-rows))))
+                 (when best
+                   (let* ((old-total-bits (reduce #'+ remaining :key #'knowledge-entry-bits))
+                          (expr-bits (body-size best inputs))
+                          ;; Shared helper function + call overhead across remaining entries
+                          (total-gain (- old-total-bits expr-bits)))
+                     (when (plusp total-gain)
+                       (dolist (e remaining)
+                         (setf (knowledge-entry-expression e) best
+                               (knowledge-entry-residual e) nil
+                               (knowledge-entry-auxiliary-code e) best
+                               (knowledge-entry-status e) :empirical
+                               (knowledge-entry-bits e) expr-bits
+                               (knowledge-entry-gain e) total-gain)
+                         (pushnew e condensed :test #'eq))))))))))
+       by-sig)
+      (when condensed
+        (incf (knowledge-library-version library)))
+      (nreverse condensed))))
+
+(define-knowledge-kind :relation
+  (:priority 25)
+  (:validate (entry library)
+    (declare (ignore library))
+    (let ((aux (knowledge-entry-auxiliary-code entry))
+          (expr (knowledge-entry-expression entry))
+          (res (knowledge-entry-residual entry))
+          (inputs (knowledge-entry-inputs entry))
+          (target (knowledge-entry-target entry)))
+      (when (and (null aux) (or expr res))
+        (setf aux (compose-hybrid-residual-program inputs target expr res
+                                                   :default (getf (knowledge-entry-metadata entry) :default))
+              (knowledge-entry-auxiliary-code entry) aux))
+      (when aux
+        (assert (equal target (expression-type aux inputs))))))
+  (:install (entry library ledger)
+    (declare (ignore library ledger))
+    (when (and (null (knowledge-entry-auxiliary-code entry))
+               (or (knowledge-entry-expression entry) (knowledge-entry-residual entry)))
+      (setf (knowledge-entry-auxiliary-code entry)
+            (compose-hybrid-residual-program (knowledge-entry-inputs entry)
+                                             (knowledge-entry-target entry)
+                                             (knowledge-entry-expression entry)
+                                             (knowledge-entry-residual entry)
+                                             :default (getf (knowledge-entry-metadata entry) :default)))))
+  (:consume (entry context ledger)
+    (let ((prog (or (knowledge-entry-auxiliary-code entry)
+                    (knowledge-entry-expression entry)))
+          (inputs (knowledge-entry-inputs entry)))
+      (when (and prog (= (length context) (length inputs)))
+        (evaluate prog inputs context :ledger ledger))))
+  (:consolidate (entries library ledger)
+    (consolidate-residual-relations entries library ledger)))
+
+(defun knowledge-graph-locality-key (fn-name &optional (library *knowledge-library*))
+  "Compute a structural neighborhood signature for FN-NAME in LIBRARY so functions
+that share algebraic laws, descriptors, or solver edges cluster together during
+higher-order library consolidation."
+  (when (knowledge-library-p library)
+    (let ((entry (find-knowledge-entry (canonical-op-name fn-name) library)))
+      (when entry
+        (let ((desc-expr (and (knowledge-entry-trigger entry)
+                              (ast->sexp (knowledge-entry-trigger entry))))
+              (rel-kinds (sort (loop for edge in (knowledge-edges-from fn-name nil library)
+                                     when (consp edge) collect (first edge))
+                               #'string< :key #'symbol-name)))
+          (list :trigger desc-expr :relations rel-kinds))))))
+
+(defun consolidate-library-functions (library &key
+                                                entries
+                                                (ledger (make-ledger))
+                                                (min-gain 0)
+                                                (register-p t)
+                                                library-names
+                                                rewrite-library)
+  "Discover MDL-positive higher-order combinators across :FUNCTION entries in LIBRARY,
+recording :REFACTORED-BY and :ABSTRACTS relational edges and refreshing descriptors."
+  (let* ((fn-entries (or entries (knowledge-entries-of-kind :function library)))
+         (fdefs (loop for e in fn-entries
+                      for fdef = (or (gethash (knowledge-entry-id e) (knowledge-library-functions library))
+                                     (find-function-definition (knowledge-entry-id e)))
+                      when (and fdef
+                                (function-definition-body fdef)
+                                (null (function-definition-oracle-table fdef))
+                                ;; Exclude already-abstracted higher-order combinators and functions already refactored
+                                (not (some (lambda (spec) (code-type-p (cdr spec)))
+                                           (function-definition-inputs fdef)))
+                                (null (knowledge-edges-from e :refactored-by library)))
+                        collect fdef)))
+    (when (>= (length fdefs) 2)
+      (multiple-value-bind (accepted refactored-defs all-candidates updated-ledger)
+          (discover-library-abstractions fdefs
+                                         :ledger ledger
+                                         :min-gain min-gain
+                                         :register-p register-p
+                                         :library-names library-names
+                                         :rewrite-library (or rewrite-library library))
+        (declare (ignore all-candidates))
+        (when (and register-p accepted)
+          (loop for orig-def in fdefs
+                for ref-def in refactored-defs
+                for fname = (function-definition-name orig-def)
+                unless (equal (function-definition-body orig-def)
+                              (function-definition-body ref-def))
+                  do (define-function fname
+                                      (function-definition-inputs ref-def)
+                                      (function-definition-return-type ref-def)
+                                      (function-definition-body ref-def)))
+          (dolist (cand accepted)
+            (let* ((lib-name (library-abstraction-name cand))
+                   (lib-entry (find-knowledge-entry lib-name library)))
+              (when lib-entry
+                (setf (knowledge-entry-gain lib-entry) (library-abstraction-gain cand)
+                      (knowledge-entry-work lib-entry) (library-abstraction-work cand)))
+              (loop for src-name in (library-abstraction-programs cand)
+                    for rbody in (library-abstraction-refactored-bodies cand)
+                    do (add-knowledge-edge src-name :refactored-by lib-name)
+                       (add-knowledge-edge lib-name :abstracts src-name)
+                       (let ((src-entry (find-knowledge-entry src-name library)))
+                         (when (and src-entry (app-p rbody))
+                           (let ((code-args (loop for arg in (rest rbody)
+                                                  when (and (lit-p arg) (code-type-p (ast-type arg)))
+                                                    collect (ast-value arg))))
+                             (when (= 1 (length code-args))
+                               (setf (knowledge-entry-auxiliary-code src-entry) (first code-args))))))))))
+        (values accepted refactored-defs updated-ledger)))))
+
+(define-knowledge-kind :function
+  (:priority 10)
+  (:validate (entry library)
+    (declare (ignore library))
+    (let ((expr (knowledge-entry-expression entry))
+          (inputs (knowledge-entry-inputs entry))
+          (target (knowledge-entry-target entry)))
+      (when expr
+        (let ((kname (knowledge-entry-id entry)))
+          (if (or (defined-function-p kname) (member kname *registered-function-names*))
+              (assert (equal target (expression-type expr inputs)))
+              (let ((*registered-function-names* (append *registered-function-names* (list kname))))
+                (assert (equal target (expression-type expr inputs)))))))))
+  (:install (entry library ledger)
+    (declare (ignore ledger))
+    (let* ((kname (knowledge-entry-id entry))
+           (inputs (knowledge-entry-inputs entry))
+           (target (knowledge-entry-target entry))
+           (body (knowledge-entry-expression entry))
+           (oracle (getf (knowledge-entry-metadata entry) :oracle-table))
+           (def (if *syncing-knowledge-library-p*
+                    (or (find-function-definition kname)
+                        (define-function kname inputs target body :oracle-table oracle))
+                    (let ((*syncing-knowledge-library-p* t))
+                      (define-function kname inputs target body :oracle-table oracle)))))
+      (setf (gethash kname (knowledge-library-functions library)) def)
+      (unless (member kname (knowledge-library-function-names library))
+        (setf (knowledge-library-function-names library)
+              (append (knowledge-library-function-names library) (list kname))))
+      (when (null (knowledge-entry-trigger entry))
+        (let ((desc (compute-function-descriptor def)))
+          (when desc
+            (setf (knowledge-entry-trigger entry) desc)
+            (setf (gethash kname (knowledge-library-descriptors library)) desc)
+            (let ((desc-id (intern (format nil "~A/DESCRIPTOR" (symbol-name kname)) :keyword)))
+              (unless (find-knowledge-entry desc-id library)
+                (register-knowledge-entry
+                 (make-knowledge-entry
+                  :id desc-id
+                  :kind :descriptor
+                  :domain (knowledge-entry-domain entry)
+                  :inputs (list (cons 0 (cdar inputs))
+                                (cons 1 target))
+                  :target :bool
+                  :expression desc
+                  :status :validated
+                  :certificate '(:kind :structural-descriptor)
+                  :edges (list (list :describes kname))
+                  :library library)
+                 :library library))
+              (add-knowledge-edge entry :described-by desc-id)))))
+      (when (knowledge-entry-trigger entry)
+        (setf (gethash kname (knowledge-library-descriptors library))
+              (knowledge-entry-trigger entry)))))
+  (:consume (entry context ledger)
+    (let ((kname (knowledge-entry-id entry))
+          (inputs (knowledge-entry-inputs entry)))
+      (when (= (length context) (length inputs))
+        (evaluate (apply #'app (op kname)
+                         (loop for (id . type) in inputs
+                               collect (var id type)))
+                  inputs context :ledger ledger))))
+  (:consolidate (entries library ledger)
+    (consolidate-library-functions library :entries entries :ledger ledger)))
+

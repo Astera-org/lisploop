@@ -336,10 +336,14 @@ MAX-DEPTH nil the tree grows for as long as the budget lasts (an anytime search)
                                    :provenance (when debug-p (list :origin :root))))
          (eff-oracle (when self-name
                        (copy-tree (or oracle-table (frame-oracle-table frame)))))
+         (eff-predictor (or priority-predictor
+                            (when (and (eq policy :heuristic)
+                                       (knowledge-library-p library))
+                              (knowledge-library-priority-predictor library))))
          (job (%make-synthesis-job :root root :nodes (list root) :run-weight run-weight :quantum quantum
                                    :policy policy :heuristic-bound heuristic-bound
                                    :heuristic-budget heuristic-budget
-                                   :priority-predictor priority-predictor
+                                   :priority-predictor eff-predictor
                                    :expand expand :max-depth max-depth
                                    :self-name self-name :oracle-table eff-oracle
                                    :verification-row-budget verification-row-budget
@@ -842,13 +846,25 @@ in NOGOODS and return up to MAX-CANDIDATES minimal total parent-scope expression
 separate all distinct-row conflict pairs."
   (let* ((pairs (conflict-distinct-parent-row-pairs parent-frame nogoods))
          (inputs (schema-inputs (frame-schema parent-frame)))
+         (existing-exprs (mapcar #'cdr existing-bindings))
          (constrained-rows (remove-if (lambda (r) (unconstrained-requirement-p (row-requirement r)))
                                       (frame-rows parent-frame))))
     (when pairs
-      (let ((candidates (candidate-dip-context-expressions parent-frame language
-                                                           :existing-bindings existing-bindings
-                                                           :allow-sequence-p allow-sequence-p))
-            (separators nil))
+      (let* ((library-dips
+               (when *knowledge-library*
+                 (loop for entry in (knowledge-entries-of-kind :dip-feature *knowledge-library*)
+                       for expr = (knowledge-entry-expression entry)
+                       when (and expr
+                                 (not (member expr existing-exprs :test #'equal))
+                                 (equal (ignore-errors (expression-type expr inputs))
+                                        (knowledge-entry-target entry)))
+                         collect expr)))
+             (grammar-cands (candidate-dip-context-expressions parent-frame language
+                                                               :existing-bindings existing-bindings
+                                                               :allow-sequence-p allow-sequence-p))
+             (candidates (remove-duplicates (append library-dips grammar-cands)
+                                            :test #'equal :from-end t))
+             (separators nil))
         (dolist (expr candidates)
           (when (< (length separators) max-candidates)
             (when (and (every (lambda (pair)
@@ -1993,8 +2009,41 @@ parameter (such as a fold base-case accumulator) of a higher-order library combi
       (add-expr (lit param-type (default-value-for-type param-type)))
       (nreverse exprs))))
 
-(defun library-decoder-compatible-with-empty-rows-p (frame seq-input-id decoder child-id child-type bindings ledger)
-  "Check that DECODER does not immediately contradict any empty-sequence row of FRAME."
+(defun library-function-descriptor-compatible-p (frame seq-input-id fn-name ledger)
+  "Evaluate FN-NAME's behavioral descriptor (`trigger` AST in `*knowledge-library*`) on
+singleton rows of FRAME in the VM. Returns NIL if any row contradicts the descriptor."
+  (let* ((desc (and *knowledge-library*
+                    (gethash (canonical-op-name fn-name)
+                             (knowledge-library-descriptors *knowledge-library*))))
+         (inputs (schema-inputs (frame-schema frame)))
+         (target (schema-target (frame-schema frame)))
+         (seq-pos (and seq-input-id (position seq-input-id inputs :key #'car :test #'eql)))
+         (seq-type (and seq-pos (cdr (nth seq-pos inputs)))))
+    (if (or (null desc) (null seq-pos))
+        t
+        (let ((desc-inputs (list (cons 0 seq-type) (cons 1 target))))
+          (every (lambda (row)
+                   (if (unconstrained-requirement-p (row-requirement row))
+                       t
+                       (let ((seq-val (nth seq-pos (row-known row)))
+                             (allowed (extract-allowed-values (row-requirement row))))
+                         (if (or (eq seq-val :unresolved)
+                                 (not (and (consp allowed) (= 1 (length allowed)))))
+                             t
+                             (let ((run (evaluate desc desc-inputs
+                                                  (list seq-val (first allowed))
+                                                  :ledger ledger)))
+                               (or (not (eq :value (evaluation-status run)))
+                                   (evaluation-value run)))))))
+                 (frame-rows frame))))))
+
+(defun library-decoder-compatible-with-empty-rows-p (frame seq-input-id decoder child-id child-type bindings ledger
+                                                     &key fn-name extra-fo-specs)
+  "Check that DECODER satisfies any behavioral descriptor (`trigger`) for FN-NAME and does not
+immediately contradict any empty-sequence row of FRAME."
+  (when (and fn-name (null extra-fo-specs))
+    (unless (library-function-descriptor-compatible-p frame seq-input-id fn-name ledger)
+      (return-from library-decoder-compatible-with-empty-rows-p nil)))
   (let* ((inputs (schema-inputs (frame-schema frame)))
          (seq-pos (and seq-input-id (position seq-input-id inputs :key #'car :test #'eql)))
          (seq-type (and seq-pos (cdr (nth seq-pos inputs))))
@@ -2096,7 +2145,8 @@ through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closur
                                                  collect (prog1 (cons next-cid (var in-id in-type))
                                                            (incf next-cid)))))
                           (when (library-decoder-compatible-with-empty-rows-p
-                                 frame p-id decoder child-id code-param-type bindings ledger)
+                                 frame p-id decoder child-id code-param-type bindings ledger
+                                 :fn-name fn-name :extra-fo-specs extra-fo-specs)
                             (let* ((extra-in (mapcar (lambda (b) (cons (car b) (ast-type (cdr b)))) bindings))
                                    (child-inputs (append (copy-tree code-in) extra-in))
                                    (has-seq-in-p (some (lambda (s)
@@ -2302,8 +2352,8 @@ pulled-back child frame."
                                        (condense-budget 20000) (heuristic-budget 5000) (max-depth 2)
                                        (fibers nil) (dependencies nil)
                                        (additive-p t) (conditional-p t)
-                                       (library-proposals-p nil) library-functions
-                                       library (run-weight 0) (quantum 32)
+                                       library (library-proposals-p (not (null library))) library-functions
+                                       (run-weight 0) (quantum 32)
                                        (verification-row-budget 2000)
                                        priority-predictor (deductive-nogoods-p t)
                                        (debug-p *synthesis-debug-mode*))
@@ -2409,3 +2459,429 @@ Feature equivalence is scoped to the observed rows, never promoted to a law."
                   :evidence (list :phase (dependency-search-phase job) :work (ledger-total ledger)
                                   :features (dependency-search-features job)
                                   :synthesis (dependency-search-synthesis job)))))
+
+;;; ============================================================
+;;; Persistent Knowledge Library: Nogoods, DIP Features, Heuristics,
+;;; Consolidation, and Inspection
+;;; ============================================================
+
+(defun register-knowledge-nogood-schema (nogood-or-expr &key
+                                                          id
+                                                          (library *knowledge-library*)
+                                                          domain
+                                                          inputs
+                                                          parent-clause-expr
+                                                          decoder
+                                                          child-id
+                                                          child-type
+                                                          parent-incompatible-p
+                                                          edges
+                                                          metadata
+                                                          ledger)
+  "Register a reusable UIP nogood schema (`nogood-clause` or Boolean pattern AST) in LIBRARY."
+  (let* ((ng-p (nogood-clause-p nogood-or-expr))
+         (clause-expr (if ng-p (nogood-clause-clause-expr nogood-or-expr) nogood-or-expr))
+         (eff-parent-clause (if ng-p (nogood-clause-parent-clause-expr nogood-or-expr) parent-clause-expr))
+         (eff-decoder (if ng-p (nogood-clause-decoder nogood-or-expr) decoder))
+         (eff-cid (if ng-p (nogood-clause-child-id nogood-or-expr) child-id))
+         (eff-ctype (if ng-p (nogood-clause-child-type nogood-or-expr) child-type))
+         (eff-pincompat (if ng-p (nogood-clause-parent-incompatible-p nogood-or-expr) parent-incompatible-p))
+         (eff-inputs (or inputs (infer-exprs-inputs (list clause-expr))))
+         (entry (make-knowledge-entry
+                 :id id
+                 :kind :nogood-schema
+                 :domain (or domain :int)
+                 :inputs eff-inputs
+                 :target :bool
+                 :expression clause-expr
+                 :guard eff-parent-clause
+                 :auxiliary-code eff-decoder
+                 :status :validated
+                 :certificate '(:kind :uip-anti-unification)
+                 :bits (syntax-work clause-expr)
+                 :edges (copy-tree edges)
+                 :metadata (append (list :child-id eff-cid
+                                         :child-type (copy-tree eff-ctype)
+                                         :parent-incompatible-p eff-pincompat)
+                                   (copy-tree metadata))
+                 :library library)))
+    (register-knowledge-entry entry :library library :ledger ledger)))
+
+(define-knowledge-kind :nogood-schema
+  (:priority 45)
+  (:validate (entry library)
+    (declare (ignore library))
+    (assert (knowledge-entry-expression entry)))
+  (:install (entry library ledger)
+    (declare (ignore entry library ledger))
+    nil)
+  (:consume (entry context ledger)
+    (let ((expr (knowledge-entry-expression entry))
+          (inputs (knowledge-entry-inputs entry)))
+      (if (contains-hole-p expr)
+          (evaluate (lit :bool (clause-expr-matches-known-p expr inputs context ledger))
+                    nil nil :ledger ledger)
+          (evaluate expr inputs context :ledger ledger)))))
+
+(defun register-knowledge-dip-feature (expr &key
+                                              id
+                                              (library *knowledge-library*)
+                                              domain
+                                              inputs
+                                              target
+                                              trigger
+                                              edges
+                                              metadata
+                                              ledger)
+  "Register a reusable Dual Implication Point (DIP) context separator expression in LIBRARY."
+  (let* ((eff-inputs (or inputs (infer-exprs-inputs (list expr))))
+         (eff-target (or target (expression-type expr eff-inputs)))
+         (entry (make-knowledge-entry
+                 :id id
+                 :kind :dip-feature
+                 :domain (or domain (infer-domain-from-types (cons eff-target (mapcar #'cdr eff-inputs))))
+                 :inputs eff-inputs
+                 :target eff-target
+                 :expression expr
+                 :trigger trigger
+                 :status :empirical
+                 :certificate '(:kind :dip-row-separator)
+                 :bits (body-size expr eff-inputs)
+                 :edges (copy-tree edges)
+                 :metadata (copy-tree metadata)
+                 :library library)))
+    (register-knowledge-entry entry :library library :ledger ledger)))
+
+(define-knowledge-kind :dip-feature
+  (:priority 50)
+  (:validate (entry library)
+    (declare (ignore library))
+    (assert (equal (knowledge-entry-target entry)
+                   (expression-type (knowledge-entry-expression entry)
+                                    (knowledge-entry-inputs entry)))))
+  (:install (entry library ledger)
+    (declare (ignore entry library ledger))
+    nil)
+  (:consume (entry context ledger)
+    (evaluate (knowledge-entry-expression entry)
+              (knowledge-entry-inputs entry)
+              context
+              :ledger ledger)))
+
+(defun register-knowledge-heuristic (heuristic-or-program &key
+                                                            id
+                                                            (library *knowledge-library*)
+                                                            (inputs '((0 . :int) (1 . :int) (2 . :int) (3 . :int)))
+                                                            (target :int)
+                                                            residual
+                                                            edges
+                                                            metadata
+                                                            ledger)
+  "Register a Stage A/M8D search priority predictor program (`heuristic-model` or AST) into LIBRARY."
+  (let* ((hm-p (heuristic-model-p heuristic-or-program))
+         (prog (if hm-p (heuristic-program heuristic-or-program) heuristic-or-program))
+         (res (if hm-p (heuristic-residual heuristic-or-program) residual))
+         (bits (if hm-p (heuristic-program-bits heuristic-or-program) (body-size prog inputs)))
+         (entry (make-knowledge-entry
+                 :id id
+                 :kind :heuristic
+                 :domain :int
+                 :inputs inputs
+                 :target target
+                 :expression prog
+                 :residual res
+                 :status (if (null res) :validated :empirical)
+                 :certificate '(:kind :trace-priority-predictor)
+                 :bits bits
+                 :edges (copy-tree edges)
+                 :metadata (append (when hm-p
+                                     (list :residual-bits (heuristic-residual-bits heuristic-or-program)
+                                           :score (heuristic-score heuristic-or-program)))
+                                   (copy-tree metadata))
+                 :library library)))
+    (register-knowledge-entry entry :library library :ledger ledger)))
+
+(define-knowledge-kind :heuristic
+  (:priority 60)
+  (:validate (entry library)
+    (declare (ignore library))
+    (assert (equal (knowledge-entry-target entry)
+                   (expression-type (knowledge-entry-expression entry)
+                                    (knowledge-entry-inputs entry)))))
+  (:install (entry library ledger)
+    (declare (ignore ledger))
+    (setf (knowledge-library-priority-predictor library)
+          (knowledge-entry-expression entry)))
+  (:consume (entry context ledger)
+    (evaluate (knowledge-entry-expression entry)
+              (knowledge-entry-inputs entry)
+              context
+              :ledger ledger)))
+
+(defun commit-synthesis-job (job &key
+                                   (library *knowledge-library*)
+                                   name
+                                   (register-residual-p t)
+                                   (register-nogoods-p t)
+                                   (register-dip-p t)
+                                   ledger)
+  "Commit learned artifacts from completed `synthesis-job` JOB into LIBRARY:
+1. Finalized recursive or named function definition (with discovery work and edges).
+2. UIP nogood schemas (`:nogood-schema`) discovered during search.
+3. DIP context separator expressions (`:dip-feature`) that repaired lifted conflicts.
+4. Hybrid `(expression + residual)` `:relation` entry when JOB terminated with a non-exact
+   Stage A heuristic model and no exact root candidate."
+  (let ((committed nil)
+        (root (synthesis-job-root job))
+        (best (synthesis-job-best job))
+        (self-name (synthesis-job-self-name job)))
+    ;; 1. Commit verified root candidate as a :function entry when named or self-recursive
+    (when best
+      (let* ((fn-name (or name self-name))
+             (root-schema (frame-schema (synthesis-node-frame root)))
+             (inputs (schema-inputs root-schema))
+             (target (schema-target root-schema))
+             (expr (candidate-expression best)))
+        (when fn-name
+          (let ((kname (canonical-op-name fn-name)))
+            (if (eq library *knowledge-library*)
+                (define-function kname inputs target expr)
+                (with-knowledge-library (library)
+                  (define-function kname inputs target expr)))
+            (let ((fn-entry (find-knowledge-entry kname library)))
+              (when fn-entry
+                (setf (knowledge-entry-work fn-entry)
+                      (ledger-total (synthesis-job-ledger job)))
+                ;; Record if the winning candidate lifted a library combinator
+                (dolist (lib-fn (knowledge-library-function-names library))
+                  (when (and (not (eq lib-fn kname))
+                             (expression-calls-operator-p expr lib-fn))
+                    (add-knowledge-edge fn-entry :refactored-by lib-fn)
+                    (add-knowledge-edge lib-fn :abstracts kname)))
+                (push fn-entry committed)))))))
+    ;; 2. Commit UIP nogood schemas
+    (when register-nogoods-p
+      (dolist (ng (synthesis-job-nogoods job))
+        (when (and (nogood-clause-p ng)
+                   (eq :uip-clause (nogood-clause-kind ng))
+                   (nogood-clause-clause-expr ng))
+          (unless (some (lambda (existing)
+                          (equal (knowledge-entry-expression existing)
+                                 (nogood-clause-clause-expr ng)))
+                        (knowledge-entries-of-kind :nogood-schema library))
+            (push (register-knowledge-nogood-schema ng :library library :ledger ledger)
+                  committed)))))
+    ;; 3. Commit DIP context separators from `:dip-repair` nodes
+    (when register-dip-p
+      (dolist (node (synthesis-job-nodes job))
+        (let ((prop (synthesis-node-proposal node)))
+          (when (and prop
+                     (consp (decomposition-name prop))
+                     (eq :dip-repair (first (decomposition-name prop))))
+            (let* ((sep-expr (third (decomposition-name prop)))
+                   (parent (synthesis-node-parent node))
+                   (p-inputs (and parent (schema-inputs (frame-schema (synthesis-node-frame parent))))))
+              (when (and sep-expr p-inputs)
+                (unless (some (lambda (existing)
+                                (and (equal (knowledge-entry-inputs existing) p-inputs)
+                                     (equal (knowledge-entry-expression existing) sep-expr)))
+                              (knowledge-entries-of-kind :dip-feature library))
+                  (let ((dip-entry (register-knowledge-dip-feature
+                                    sep-expr
+                                    :library library
+                                    :inputs p-inputs
+                                    :target (expression-type sep-expr p-inputs)
+                                    :ledger ledger)))
+                    (when (or name self-name)
+                      (add-knowledge-edge dip-entry :repairs (canonical-op-name (or name self-name))))
+                    (push dip-entry committed)))))))))
+    ;; 4. When no exact root candidate was found, optionally commit the best Stage A hybrid residual
+    (when (and (null best) register-residual-p root)
+      (let* ((root-frame (synthesis-node-frame root))
+             (root-schema (frame-schema root-frame))
+             (inputs (schema-inputs root-schema))
+             (target (schema-target root-schema))
+             (h-model (or (synthesis-node-heuristic root)
+                          (node-stage-a-model job root root-frame (synthesis-node-language root) ledger))))
+        (when (and h-model (heuristic-residual h-model))
+          (let* ((single-p (= 1 (length inputs)))
+                 (res-table
+                   (loop for (rkey . witness) in (heuristic-residual h-model)
+                         for row = (find rkey (frame-rows root-frame) :key #'row-key :test #'equal)
+                         when row
+                           collect (list (if single-p (first (row-known row)) (copy-list (row-known row)))
+                                         witness)))
+                 (rel-entry (register-knowledge-relation
+                             (or name self-name (next-knowledge-entry-id library :relation))
+                             res-table
+                             :library library
+                             :domain (schema-domain root-schema)
+                             :inputs inputs
+                             :target target
+                             :parametric (heuristic-program h-model)
+                             :status :empirical
+                             :ledger ledger)))
+            (push rel-entry committed)))))
+    (nreverse committed)))
+
+(defun consolidate-knowledge-library (&rest args)
+  "Consolidate LIBRARY across accumulated synthesis jobs, law validations, solver discoveries,
+and registered entries:
+1. Ingest SYNTHESIS-JOBS, LAW-VALIDATIONS, SOLVE-DISCOVERIES, and OBSERVATION-JOBS.
+2. Run each registered `define-knowledge-kind` `:consolidate` hook in priority order:
+   - `:function`: discover higher-order combinators (`:map`, `:fold`, ...) with MDL gain > MIN-GAIN.
+   - `:relation`: compress empirical/pooled residual lookup tables into algebraic expressions.
+   - `:law`: cross-domain law retyping and validation across RETYPE-DOMAINS.
+   - `:functor`: induce second-order functorial `:solver` propagators across `:refactored-by` edges.
+   - `:heuristic`: condense a priority predictor AST from SYNTHESIS-JOBS search traces.
+Returns a structured consolidation report plist."
+  (let ((leading-lib (when (and args (not (keywordp (first args))))
+                       (pop args))))
+    (destructuring-bind (&key (library (or leading-lib *knowledge-library*))
+                              synthesis-jobs
+                              observation-jobs
+                              law-validations
+                              solve-discoveries
+                              retype-domains
+                              library-names
+                              (min-gain 0)
+                              (condense-heuristic-p t)
+                              (ledger (make-ledger)))
+        args
+      (let ((before-version (knowledge-library-version library))
+            (ingested nil)
+            (consolidated-by-kind nil))
+        (flet ((run-in-lib (thunk)
+                 (if (eq library *knowledge-library*)
+                     (funcall thunk)
+                     (with-knowledge-library (library)
+                       (funcall thunk)))))
+          (run-in-lib
+           (lambda ()
+             ;; 1. Ingest explicit synthesis jobs, law validations, solve discoveries, and observations
+             (dolist (job synthesis-jobs)
+               (setf ingested (append ingested (commit-synthesis-job job :library library :ledger ledger))))
+             (dolist (val law-validations)
+               (push (register-knowledge-law val :library library :ledger ledger) ingested))
+             (dolist (disc solve-discoveries)
+               (push (register-knowledge-solver disc :library library :ledger ledger) ingested))
+             (dolist (obs observation-jobs)
+               (dolist (law (propose-observed-laws obs :ledger ledger))
+                 (when (finite-type-p (law-domain law))
+                   (let ((v (resume-law-validation (start-law-validation law) 100000)))
+                     (when (eq :validated (law-validation-status v))
+                       (push (register-knowledge-law v :library library :ledger ledger) ingested))))))
+             ;; 2. Run declarative kind consolidators in priority order
+             (dolist (spec *knowledge-kind-specs*)
+               (let ((kname (knowledge-kind-spec-name spec))
+                     (cfn (knowledge-kind-spec-consolidate-fn spec)))
+                 (cond
+                   ((eq kname :function)
+                    (multiple-value-bind (accepted _ref _led)
+                        (consolidate-library-functions library
+                                                       :entries (knowledge-entries-of-kind :function library)
+                                                       :ledger ledger
+                                                       :min-gain min-gain
+                                                       :library-names library-names)
+                      (declare (ignore _ref _led))
+                      (when accepted
+                        (push (cons :function (mapcar #'library-abstraction-name accepted))
+                              consolidated-by-kind))))
+                   (cfn
+                    (let ((res (funcall cfn (knowledge-entries-of-kind kname library) library ledger)))
+                      (when res
+                        (push (cons kname res) consolidated-by-kind)))))))
+             ;; 3. Optional cross-domain law retyping
+             (dolist (dom retype-domains)
+               (let ((retyped (retype-knowledge-laws library dom :validate-p t :ledger ledger)))
+                 (when retyped
+                   (push (cons :retyped-laws retyped) consolidated-by-kind))))
+             ;; 4. Optional search heuristic condensation from synthesis-jobs traces
+             (when (and condense-heuristic-p synthesis-jobs)
+               (let ((trace-frame (make-search-trace-frame synthesis-jobs :ledger ledger)))
+                 (when (plusp (length (frame-rows trace-frame)))
+                   (multiple-value-bind (_pred-fn h-model)
+                       (condense-search-heuristic trace-frame :ledger ledger)
+                     (declare (ignore _pred-fn))
+                     (when (and h-model (heuristic-program h-model))
+                       (let ((h-entry (register-knowledge-heuristic
+                                       h-model
+                                       :id :DEFAULT-PRIORITY-PREDICTOR
+                                       :library library
+                                       :ledger ledger)))
+                         (push (cons :heuristic (list h-entry)) consolidated-by-kind))))))))))
+        (list :library library
+              :before-version before-version
+              :after-version (knowledge-library-version library)
+              :ingested (nreverse ingested)
+              :consolidated (nreverse consolidated-by-kind)
+              :work (ledger-total ledger))))))
+
+(defun explain-knowledge-library (&rest args)
+  "Return a structured summary plist of LIBRARY (optionally filtered by KIND or ID),
+and print a readable report to STREAM when non-NIL."
+  (let ((leading-lib (when (and args (not (keywordp (first args))))
+                       (pop args))))
+    (destructuring-bind (&key (library (or leading-lib *knowledge-library*))
+                              kind id stream)
+        args
+      (let* ((entries (cond (id (let ((e (find-knowledge-entry id library)))
+                                  (when e (list e))))
+                            (kind (knowledge-entries-of-kind kind library))
+                            (t (knowledge-library-entries library))))
+             (counts-by-kind
+               (loop for spec in *knowledge-kind-specs*
+                     for k = (knowledge-kind-spec-name spec)
+                     for k-entries = (knowledge-entries-of-kind k library)
+                     when k-entries
+                       collect (cons k (length k-entries))))
+             (total-bits (reduce #'+ entries :key #'knowledge-entry-bits :initial-value 0))
+             (total-gain (reduce #'+ entries :key #'knowledge-entry-gain :initial-value 0))
+             (entry-summaries
+               (loop for e in entries
+                     collect (list :id (knowledge-entry-id e)
+                                   :kind (knowledge-entry-kind e)
+                                   :domain (knowledge-entry-domain e)
+                                   :inputs (knowledge-entry-inputs e)
+                                   :target (knowledge-entry-target e)
+                                   :expression (knowledge-entry-expression e)
+                                   :guard (knowledge-entry-guard e)
+                                   :trigger (knowledge-entry-trigger e)
+                                   :residual (knowledge-entry-residual e)
+                                   :auxiliary-code (knowledge-entry-auxiliary-code e)
+                                   :status (knowledge-entry-status e)
+                                   :bits (knowledge-entry-bits e)
+                                   :gain (knowledge-entry-gain e)
+                                   :outgoing-edges (knowledge-edges-from e nil library)
+                                   :incoming-edges (knowledge-edges-to (knowledge-entry-id e) nil library))))
+             (report (list :version (knowledge-library-version library)
+                           :total-entries (length entries)
+                           :counts-by-kind counts-by-kind
+                           :total-bits total-bits
+                           :total-gain total-gain
+                           :priority-predictor (knowledge-library-priority-predictor library)
+                           :entries entry-summaries)))
+        (when stream
+          (format stream "~&=== Knowledge Library (v~D, ~D entries, ~D bits, gain ~D) ===~%"
+                  (getf report :version) (getf report :total-entries) total-bits total-gain)
+          (format stream "  Counts by kind: ~S~%" counts-by-kind)
+          (when (getf report :priority-predictor)
+            (format stream "  Active Priority Predictor: ~S~%" (getf report :priority-predictor)))
+          (dolist (es entry-summaries)
+            (format stream "  [~S ~S] (~S -> ~S) status=~S bits=~D gain=~D~%"
+                    (getf es :kind) (getf es :id) (getf es :inputs) (getf es :target)
+                    (getf es :status) (getf es :bits) (getf es :gain))
+            (when (getf es :expression)
+              (format stream "    expression: ~S~%" (getf es :expression)))
+            (when (and (getf es :guard) (not (equal (getf es :guard) (lit :bool t))))
+              (format stream "    guard:      ~S~%" (getf es :guard)))
+            (when (getf es :trigger)
+              (format stream "    trigger:    ~S~%" (getf es :trigger)))
+            (when (getf es :residual)
+              (format stream "    residual:   ~S~%" (getf es :residual)))
+            (when (getf es :outgoing-edges)
+              (format stream "    edges ->:   ~S~%" (getf es :outgoing-edges)))
+            (when (getf es :incoming-edges)
+              (format stream "    edges <-:   ~S~%" (getf es :incoming-edges)))))
+        report))))
+

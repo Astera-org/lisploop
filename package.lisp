@@ -15,9 +15,27 @@
    #:function-definition-total-p #:function-definition-conditional-code-params
    #:define-function #:find-function-definition #:defined-function-p
    #:clear-function-definitions #:de-novo-function-name #:next-function-name #:rename-function-calls
+   #:knowledge-kind-spec #:knowledge-kind-spec-p #:knowledge-kind-spec-name #:knowledge-kind-spec-priority
+   #:find-knowledge-kind-spec #:define-knowledge-kind
+   #:knowledge-entry #:knowledge-entry-p #:make-knowledge-entry
+   #:knowledge-entry-id #:knowledge-entry-kind #:knowledge-entry-domain #:knowledge-entry-inputs
+   #:knowledge-entry-target #:knowledge-entry-expression #:knowledge-entry-guard #:knowledge-entry-trigger
+   #:knowledge-entry-residual #:knowledge-entry-auxiliary-code #:knowledge-entry-status
+   #:knowledge-entry-certificate #:knowledge-entry-bits #:knowledge-entry-gain #:knowledge-entry-work
+   #:knowledge-entry-edges #:knowledge-entry-metadata
+   #:knowledge-library #:knowledge-library-p #:make-knowledge-library #:*knowledge-library*
+   #:knowledge-library-version #:knowledge-library-entries #:knowledge-library-function-names
+   #:knowledge-library-priority-predictor
+   #:next-knowledge-entry-id #:find-knowledge-entry #:knowledge-entries-of-kind
+   #:knowledge-edges-from #:knowledge-edges-to #:add-knowledge-edge
+   #:rebuild-knowledge-library-indexes #:register-knowledge-entry #:remove-knowledge-entry
+   #:consume-knowledge-entry #:clear-knowledge-library #:with-knowledge-library #:ast->sexp #:sexp->ast
    ;; 2. codec.lisp — Prefix-coded binary serialization & O(1) sizes
    #:+encoding-version+ #:header-size #:body-size #:description-size
    #:encode-model #:decode-model
+   #:knowledge-entry->sexp #:sexp->knowledge-entry
+   #:serialize-knowledge-library #:deserialize-knowledge-library
+   #:save-knowledge-library #:load-knowledge-library
    ;; 3. vm.lisp — Structural tariff, resumable evaluator, constant folding
    #:+tariff-version+ #:+simulator-version+ #:vm-versions
    #:unresolved-evaluation
@@ -75,6 +93,9 @@
    #:library-abstraction-refactored-call-bits #:library-abstraction-refactored-bits
    #:library-abstraction-gain #:library-abstraction-work
    #:abstract-function-bodies #:discover-library-abstractions
+   #:function-body-length-preserving-p #:compute-function-descriptor
+   #:compose-hybrid-residual-program #:register-knowledge-relation #:consolidate-residual-relations
+   #:knowledge-graph-locality-key #:consolidate-library-functions
    #:patterns-isomorphic-p #:pattern-holes #:pattern-hole-counts
    #:subtree-at-path #:replace-at-path #:tree-occurrence #:tree-occurrence-p
    #:tree-occurrence-tree-index #:tree-occurrence-path #:tree-occurrence-term
@@ -121,6 +142,8 @@
    #:propagation #:propagation-frame #:propagation-original #:propagation-fallback
    #:propagation-narrowed #:propagation-suggested #:propagation-retained #:propagation-rejected
    #:prepare-propagator-library #:as-propagator-library #:propagate-requirements #:propagation-ambiguous
+   #:as-rewrite-library #:register-knowledge-law #:retype-knowledge-laws
+   #:register-knowledge-solver #:induce-functorial-solvers
    #:start-propagation-search #:resume-propagation-search #:propagation-search-results
    #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work
    ;; Recursive orchestration and explicit dependency/selector targets.
@@ -145,5 +168,7 @@
    #:dependency-proposals #:start-selector-search
    #:start-dependency-search #:resume-dependency-search #:dependency-search-synthesis
    #:dependency-search-features #:dependency-search-ledger
-   #:start-heuristic-search #:resume-heuristic-search #:heuristic-search-best #:heuristic-search-ledger))
+   #:start-heuristic-search #:resume-heuristic-search #:heuristic-search-best #:heuristic-search-ledger
+   #:register-knowledge-nogood-schema #:register-knowledge-dip-feature #:register-knowledge-heuristic
+   #:commit-synthesis-job #:consolidate-knowledge-library #:explain-knowledge-library))
 (in-package #:lisploop)

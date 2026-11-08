@@ -88,6 +88,90 @@
 (defvar *registered-function-names* nil)
 (defvar *function-library-version* 0)
 (defvar *de-novo-function-counter* 0)
+(defvar *syncing-knowledge-library-p* nil)
+
+(defstruct knowledge-kind-spec
+  name
+  (priority 50 :type fixnum)
+  validate-fn
+  install-fn
+  consume-fn
+  consolidate-fn)
+
+(defvar *knowledge-kind-specs* nil
+  "Priority-ordered list of declarative `knowledge-kind-spec` definitions.")
+
+(defun find-knowledge-kind-spec (kind)
+  (find (if (keywordp kind) kind (intern (symbol-name kind) :keyword))
+        *knowledge-kind-specs*
+        :key #'knowledge-kind-spec-name :test #'eq))
+
+(defmacro define-knowledge-kind (name &body clauses)
+  "Declaratively register a knowledge kind in `*knowledge-kind-specs*`.
+Supported clauses:
+  (:priority fixnum)
+  (:validate (entry library) &body body)
+  (:install (entry library ledger) &body body)
+  (:consume (entry context ledger) &body body)
+  (:consolidate (entries library ledger) &body body)"
+  (let ((kname (if (keywordp name) name (intern (symbol-name name) :keyword)))
+        (prio (or (second (assoc :priority clauses)) 50))
+        (val-clause (assoc :validate clauses))
+        (ins-clause (assoc :install clauses))
+        (con-clause (assoc :consume clauses))
+        (cns-clause (assoc :consolidate clauses)))
+    `(let ((spec (make-knowledge-kind-spec
+                  :name ,kname
+                  :priority ,prio
+                  :validate-fn ,(when val-clause `(lambda ,(second val-clause) ,@(cddr val-clause)))
+                  :install-fn ,(when ins-clause `(lambda ,(second ins-clause) ,@(cddr ins-clause)))
+                  :consume-fn ,(when con-clause `(lambda ,(second con-clause) ,@(cddr con-clause)))
+                  :consolidate-fn ,(when cns-clause `(lambda ,(second cns-clause) ,@(cddr cns-clause))))))
+       (setf *knowledge-kind-specs*
+             (stable-sort (cons spec (remove ,kname *knowledge-kind-specs*
+                                             :key #'knowledge-kind-spec-name :test #'eq))
+                          #'< :key #'knowledge-kind-spec-priority))
+       ',kname)))
+
+(defstruct (knowledge-entry (:constructor %make-knowledge-entry))
+  id
+  kind
+  (domain :int)
+  inputs
+  target
+  expression
+  guard
+  trigger
+  residual
+  auxiliary-code
+  (status :empirical)
+  certificate
+  (bits 0 :type fixnum)
+  (gain 0 :type fixnum)
+  (work 0 :type fixnum)
+  edges
+  metadata)
+
+(defstruct (knowledge-library (:constructor %make-knowledge-library))
+  (version 0 :type fixnum)
+  entries
+  (by-id (make-hash-table :test #'eq))
+  (by-kind (make-hash-table :test #'eq))
+  (incoming-edges (make-hash-table :test #'eq))
+  (functions (make-hash-table :test #'eq))
+  function-names
+  (rewrite-libraries (make-hash-table :test #'equal))
+  (propagator-libraries (make-hash-table :test #'equal))
+  (descriptors (make-hash-table :test #'eq))
+  priority-predictor
+  (de-novo-counter 0 :type fixnum)
+  (entry-counter 0 :type fixnum))
+
+(defun make-knowledge-library ()
+  (%make-knowledge-library))
+
+(defvar *knowledge-library* (make-knowledge-library)
+  "Active persistent store of synthesized functions, laws, algebras, solvers, descriptors, relations, and heuristics.")
 
 (defun canonical-op-name (name)
   (if (keywordp name) name (intern (symbol-name name) :keyword)))
@@ -796,6 +880,8 @@ Returns (values total-p conditional-code-params)."
               (function-definition-conditional-code-params def) nil)
         (recompute-registered-functions-totality)
         (incf *function-library-version*)
+        (when (and *knowledge-library* (not *syncing-knowledge-library-p*))
+          (sync-function-to-knowledge-library *knowledge-library* def))
         def))))
 
 (defun set-function-active-implementation (name inputs return-type &key body oracle-table)
@@ -827,6 +913,16 @@ and an unverified candidate BODY during synthesis verification, without global c
       (evict-operator-symbol-pool kname))
     (invalidate-app-meta)
     (incf *function-library-version*)
+    (when (and *knowledge-library* (not *syncing-knowledge-library-p*))
+      (let ((*syncing-knowledge-library-p* t))
+        (clrhash (knowledge-library-functions *knowledge-library*))
+        (clrhash (knowledge-library-descriptors *knowledge-library*))
+        (setf (knowledge-library-function-names *knowledge-library*) nil
+              (knowledge-library-de-novo-counter *knowledge-library*) 0
+              (knowledge-library-entries *knowledge-library*)
+              (remove-if (lambda (e) (member (knowledge-entry-kind e) '(:function :descriptor)))
+                         (knowledge-library-entries *knowledge-library*)))
+        (rebuild-knowledge-library-indexes *knowledge-library*)))
     nil))
 
 (defun app (operator &rest arguments)
@@ -995,3 +1091,345 @@ optionally appending EXTRA-ARGS to each replaced call."
           (let ((*registered-function-names* (append *registered-function-names* (list kto))))
             (walk expr))
           (walk expr)))))
+
+;;; Generic Persistent Knowledge Library Lifecycle & Homoiconic AST Serialization
+
+(defun next-knowledge-entry-id (&optional (library *knowledge-library*) (kind :entry))
+  "Allocate a fresh canonical keyword ID (e.g. :LAW-0, :SOLVER-1, :REL-2) in LIBRARY."
+  (let ((prefix (symbol-name (canonical-op-name kind))))
+    (loop
+      (let* ((idx (knowledge-library-entry-counter library))
+             (cand (intern (format nil "~A-~D" prefix idx) :keyword)))
+        (incf (knowledge-library-entry-counter library))
+        (unless (gethash cand (knowledge-library-by-id library))
+          (return cand))))))
+
+(defun make-knowledge-entry (&key id kind domain inputs target expression guard trigger
+                                  residual auxiliary-code (status :empirical) certificate
+                                  (bits 0) (gain 0) (work 0) edges metadata
+                                  (library *knowledge-library*))
+  "Construct a canonical `knowledge-entry` with normalized schema and edge links."
+  (let* ((kkind (canonical-op-name kind))
+         (norm-inputs (copy-tree (if (schema-p inputs) (schema-inputs inputs) inputs)))
+         (norm-target (copy-tree (or target (and (schema-p inputs) (schema-target inputs)) :int)))
+         (inferred-domain (or domain
+                              (and (schema-p inputs) (schema-domain inputs))
+                              (infer-domain-from-types (cons norm-target (mapcar #'cdr norm-inputs)))))
+         (kid (if id
+                  (canonical-op-name id)
+                  (if library
+                      (next-knowledge-entry-id library kkind)
+                      (intern (format nil "~A-0" (symbol-name kkind)) :keyword))))
+         (eff-guard (or guard (lit :bool t)))
+         (eff-bits (if (and (zerop bits) expression)
+                       (or (ignore-errors (body-size expression norm-inputs))
+                           (syntax-work expression))
+                       bits)))
+    (%make-knowledge-entry
+     :id kid
+     :kind kkind
+     :domain (copy-tree inferred-domain)
+     :inputs norm-inputs
+     :target norm-target
+     :expression expression
+     :guard eff-guard
+     :trigger trigger
+     :residual residual
+     :auxiliary-code auxiliary-code
+     :status status
+     :certificate certificate
+     :bits eff-bits
+     :gain gain
+     :work work
+     :edges (copy-tree edges)
+     :metadata (copy-tree metadata))))
+
+(defun find-knowledge-entry (id &optional (library *knowledge-library*))
+  "Look up a `knowledge-entry` by ID in LIBRARY in O(1) time."
+  (when (and id library)
+    (gethash (canonical-op-name id) (knowledge-library-by-id library))))
+
+(defun knowledge-entries-of-kind (kind &optional (library *knowledge-library*))
+  "Return the chronological list of `knowledge-entry` items of KIND in LIBRARY."
+  (when library
+    (copy-list (gethash (canonical-op-name kind) (knowledge-library-by-kind library)))))
+
+(defun knowledge-edges-from (id &optional edge-key (library *knowledge-library*))
+  "Return outgoing edges from entry ID (optionally filtered by EDGE-KEY)."
+  (let ((entry (if (knowledge-entry-p id) id (find-knowledge-entry id library))))
+    (when entry
+      (if edge-key
+          (let ((kkey (canonical-op-name edge-key)))
+            (remove-if-not (lambda (e) (and (consp e) (eq kkey (first e))))
+                           (knowledge-entry-edges entry)))
+          (copy-tree (knowledge-entry-edges entry))))))
+
+(defun knowledge-edges-to (target-id &optional edge-key (library *knowledge-library*))
+  "Return incoming `(edge-key source-id ...)` links pointing to TARGET-ID."
+  (when library
+    (let* ((ktarg (canonical-op-name target-id))
+           (incoming (gethash ktarg (knowledge-library-incoming-edges library))))
+      (if edge-key
+          (let ((kkey (canonical-op-name edge-key)))
+            (remove-if-not (lambda (e) (eq kkey (first e))) incoming))
+          (copy-list incoming)))))
+
+(defun add-knowledge-edge (source edge-key &rest targets)
+  "Attach a relational edge `(EDGE-KEY . TARGETS)` to `knowledge-entry` SOURCE (or ID in `*knowledge-library*`)."
+  (let* ((entry (if (knowledge-entry-p source)
+                    source
+                    (find-knowledge-entry source *knowledge-library*)))
+         (kkey (canonical-op-name edge-key))
+         (ktargets (mapcar (lambda (x) (if (symbolp x) (canonical-op-name x) x)) targets))
+         (edge (cons kkey ktargets)))
+    (assert entry () "Unknown knowledge-entry ~S" source)
+    (unless (member edge (knowledge-entry-edges entry) :test #'equal)
+      (setf (knowledge-entry-edges entry)
+            (append (knowledge-entry-edges entry) (list edge)))
+      (when *knowledge-library*
+        (dolist (tgt ktargets)
+          (when (symbolp tgt)
+            (pushnew (list kkey (knowledge-entry-id entry))
+                     (gethash tgt (knowledge-library-incoming-edges *knowledge-library*))
+                     :test #'equal)))))
+    entry))
+
+(defun index-knowledge-entry-edges (entry library)
+  (dolist (edge (knowledge-entry-edges entry))
+    (when (consp edge)
+      (let ((ekey (first edge)))
+        (dolist (tgt (rest edge))
+          (when (symbolp tgt)
+            (let ((ktgt (canonical-op-name tgt)))
+              (pushnew (list ekey (knowledge-entry-id entry))
+                       (gethash ktgt (knowledge-library-incoming-edges library))
+                       :test #'equal))))))))
+
+(defun rebuild-knowledge-library-indexes (&optional (library *knowledge-library*) ledger)
+  "Rebuild all derived O(1) lookup tables in LIBRARY from its flat `entries` list,
+running each kind's `:install` hook in priority order."
+  (clrhash (knowledge-library-by-id library))
+  (clrhash (knowledge-library-by-kind library))
+  (clrhash (knowledge-library-incoming-edges library))
+  (clrhash (knowledge-library-rewrite-libraries library))
+  (clrhash (knowledge-library-propagator-libraries library))
+  (clrhash (knowledge-library-descriptors library))
+  (setf (knowledge-library-priority-predictor library) nil)
+  (let ((ordered-entries
+          (stable-sort (copy-list (knowledge-library-entries library))
+                       #'<
+                       :key (lambda (e)
+                              (let ((spec (find-knowledge-kind-spec (knowledge-entry-kind e))))
+                                (if spec (knowledge-kind-spec-priority spec) 50))))))
+    (dolist (entry (knowledge-library-entries library))
+      (setf (gethash (knowledge-entry-id entry) (knowledge-library-by-id library)) entry)
+      (setf (gethash (knowledge-entry-kind entry) (knowledge-library-by-kind library))
+            (append (gethash (knowledge-entry-kind entry) (knowledge-library-by-kind library))
+                    (list entry)))
+      (index-knowledge-entry-edges entry library))
+    (let ((*syncing-knowledge-library-p* t))
+      (dolist (entry ordered-entries)
+        (let ((spec (find-knowledge-kind-spec (knowledge-entry-kind entry))))
+          (when (and spec (knowledge-kind-spec-install-fn spec))
+            (funcall (knowledge-kind-spec-install-fn spec) entry library ledger))))))
+  (incf (knowledge-library-version library))
+  library)
+
+(defun register-knowledge-entry (entry &key (library *knowledge-library*) ledger)
+  "Validate, install, and index `knowledge-entry` ENTRY into LIBRARY via its declarative kind spec."
+  (let* ((kind (knowledge-entry-kind entry))
+         (id (knowledge-entry-id entry))
+         (spec (find-knowledge-kind-spec kind)))
+    (when (and spec (knowledge-kind-spec-validate-fn spec))
+      (funcall (knowledge-kind-spec-validate-fn spec) entry library))
+    (let ((existing (gethash id (knowledge-library-by-id library))))
+      (if existing
+          (setf (knowledge-library-entries library)
+                (substitute entry existing (knowledge-library-entries library) :test #'eq))
+          (setf (knowledge-library-entries library)
+                (append (knowledge-library-entries library) (list entry)))))
+    (setf (gethash id (knowledge-library-by-id library)) entry)
+    (let ((kind-list (gethash kind (knowledge-library-by-kind library))))
+      (setf (gethash kind (knowledge-library-by-kind library))
+            (if (find id kind-list :key #'knowledge-entry-id :test #'eq)
+                (substitute entry id kind-list :key #'knowledge-entry-id :test #'eq)
+                (append kind-list (list entry)))))
+    (index-knowledge-entry-edges entry library)
+    (let ((*syncing-knowledge-library-p* t))
+      (when (and spec (knowledge-kind-spec-install-fn spec))
+        (funcall (knowledge-kind-spec-install-fn spec) entry library ledger)))
+    (incf (knowledge-library-version library))
+    entry))
+
+(defun remove-knowledge-entry (id &optional (library *knowledge-library*) ledger)
+  "Remove entry ID from LIBRARY and rebuild its derived indexes."
+  (let* ((kid (canonical-op-name id))
+          (existing (gethash kid (knowledge-library-by-id library))))
+    (when existing
+      (setf (knowledge-library-entries library)
+            (remove existing (knowledge-library-entries library) :test #'eq))
+      (rebuild-knowledge-library-indexes library ledger)
+      t)))
+
+(defun consume-knowledge-entry (entry-or-id context &key (library *knowledge-library*) ledger)
+  "Evaluate or consume ENTRY-OR-ID on CONTEXT using its `define-knowledge-kind` `:consume` hook."
+  (let ((entry (if (knowledge-entry-p entry-or-id)
+                   entry-or-id
+                   (find-knowledge-entry entry-or-id library))))
+    (when entry
+      (let ((spec (find-knowledge-kind-spec (knowledge-entry-kind entry))))
+        (if (and spec (knowledge-kind-spec-consume-fn spec))
+            (funcall (knowledge-kind-spec-consume-fn spec) entry context ledger)
+            (when (and (knowledge-entry-expression entry)
+                       (fboundp 'evaluate))
+              (funcall 'evaluate
+                       (knowledge-entry-expression entry)
+                       (knowledge-entry-inputs entry)
+                       context
+                       :ledger ledger)))))))
+
+(defun clear-knowledge-library (&optional (library *knowledge-library*))
+  "Reset LIBRARY to an empty knowledge store."
+  (setf (knowledge-library-entries library) nil
+        (knowledge-library-function-names library) nil
+        (knowledge-library-priority-predictor library) nil
+        (knowledge-library-de-novo-counter library) 0
+        (knowledge-library-entry-counter library) 0)
+  (clrhash (knowledge-library-by-id library))
+  (clrhash (knowledge-library-by-kind library))
+  (clrhash (knowledge-library-incoming-edges library))
+  (clrhash (knowledge-library-functions library))
+  (clrhash (knowledge-library-rewrite-libraries library))
+  (clrhash (knowledge-library-propagator-libraries library))
+  (clrhash (knowledge-library-descriptors library))
+  (incf (knowledge-library-version library))
+  (when (eq library *knowledge-library*)
+    (let ((*syncing-knowledge-library-p* t))
+      (clear-function-definitions)))
+  library)
+
+(defun sync-function-to-knowledge-library (library def)
+  "Synchronize a `function-definition` DEF registered via `define-function` into LIBRARY."
+  (let ((kname (function-definition-name def))
+        (body (function-definition-body def))
+        (oracle (function-definition-oracle-table def)))
+    (setf (gethash kname (knowledge-library-functions library)) def
+          (knowledge-library-function-names library) (copy-list *registered-function-names*)
+          (knowledge-library-de-novo-counter library) *de-novo-function-counter*)
+    (when (and body (null oracle))
+      (let* ((existing (find-knowledge-entry kname library))
+             (inputs (function-definition-inputs def))
+             (ret (function-definition-return-type def))
+             (bits (or (ignore-errors (body-size body inputs)) (syntax-work body)))
+             (entry (make-knowledge-entry
+                     :id kname
+                     :kind :function
+                     :inputs inputs
+                     :target ret
+                     :expression body
+                     :trigger (and existing (knowledge-entry-trigger existing))
+                     :residual (and existing (knowledge-entry-residual existing))
+                     :status (if (or (function-definition-total-p def)
+                                     (function-definition-conditional-code-params def))
+                                 :validated
+                                 :empirical)
+                     :bits bits
+                     :gain (if existing (knowledge-entry-gain existing) 0)
+                     :work (if existing (knowledge-entry-work existing) (syntax-work body))
+                     :edges (and existing (knowledge-entry-edges existing))
+                     :metadata (list :total-p (function-definition-total-p def)
+                                     :conditional-code-params
+                                     (copy-list (function-definition-conditional-code-params def)))
+                     :library library)))
+        (let ((*syncing-knowledge-library-p* t))
+          (register-knowledge-entry entry :library library))))))
+
+(defun activate-knowledge-library-functions (library)
+  "Install LIBRARY's `:function` definitions into the active VM function tables."
+  (let ((*syncing-knowledge-library-p* t))
+    (clear-function-definitions)
+    (dolist (entry (knowledge-entries-of-kind :function library))
+      (let* ((kname (knowledge-entry-id entry))
+             (inputs (knowledge-entry-inputs entry))
+             (ret (knowledge-entry-target entry))
+             (body (knowledge-entry-expression entry))
+             (oracle (getf (knowledge-entry-metadata entry) :oracle-table)))
+        (define-function kname inputs ret body :oracle-table oracle)))
+    (setf *de-novo-function-counter*
+          (max *de-novo-function-counter* (knowledge-library-de-novo-counter library)))))
+
+(defmacro with-knowledge-library ((library) &body body)
+  "Execute BODY with LIBRARY bound as the active `*knowledge-library*` and its functions
+installed in the VM, restoring the outer library's state upon exit."
+  (let ((lib-var (gensym "LIB"))
+        (outer-lib (gensym "OUTER-LIB"))
+        (saved-defs (gensym "SAVED-DEFS"))
+        (saved-names (gensym "SAVED-NAMES"))
+        (saved-counter (gensym "SAVED-COUNTER")))
+    `(let* ((,lib-var ,library)
+            (,outer-lib *knowledge-library*)
+            (,saved-defs (let (( pairs nil))
+                           (maphash (lambda (k v) (push (cons k v) pairs)) *function-definitions*)
+                           (nreverse pairs)))
+            (,saved-names (copy-list *registered-function-names*))
+            (,saved-counter *de-novo-function-counter*))
+       (unwind-protect
+            (let ((*knowledge-library* ,lib-var))
+              (activate-knowledge-library-functions ,lib-var)
+              ,@body)
+         (let ((*syncing-knowledge-library-p* t))
+           (clear-function-definitions)
+           (dolist (kname ,saved-names)
+             (unless (member kname *registered-function-names*)
+               (setf *registered-function-names* (append *registered-function-names* (list kname)))))
+           (dolist (pair ,saved-defs)
+             (let ((def (cdr pair)))
+               (define-function (car pair)
+                                (function-definition-inputs def)
+                                (function-definition-return-type def)
+                                (function-definition-body def)
+                                :oracle-table (function-definition-oracle-table def))))
+           (setf *de-novo-function-counter* ,saved-counter
+                 *knowledge-library* ,outer-lib))))))
+
+(defun ast->sexp (expr)
+  "Convert an in-memory AST (including variables, holes, literals, `:code` values, and operators)
+into a canonical, portable, self-typed S-expression without uninterned symbols."
+  (when expr
+    (let ((meta (ensure-ast-meta expr)))
+      (ecase (ast-meta-kind meta)
+        (:var (list :var (ast-meta-id meta) (copy-tree (ast-meta-type meta))))
+        (:hole (list :hole (ast-meta-id meta) (copy-tree (ast-meta-type meta))))
+        (:op (list :op (ast-meta-id meta) (copy-tree (ast-meta-type meta))))
+        (:lit (let ((type (ast-meta-type meta))
+                    (val (ast-meta-value meta)))
+                (list :lit (copy-tree type)
+                      (if (code-type-p type)
+                          (ast->sexp val)
+                          (copy-tree val)))))
+        (:app (list* :app (ast->sexp (first expr)) (mapcar #'ast->sexp (rest expr))))))))
+
+(defun sexp->ast (sexp)
+  "Reconstruct an in-memory pooled, metadata-cached AST from a portable `ast->sexp` form."
+  (when sexp
+    (assert (and (consp sexp) (keywordp (first sexp))))
+    (ecase (first sexp)
+      (:var (var (second sexp) (third sexp)))
+      (:hole (hole (second sexp) (third sexp)))
+      (:op (let ((kname (canonical-op-name (second sexp)))
+                 (otype (third sexp)))
+             (if (defined-function-p kname)
+                 (op kname)
+                 (if (and (code-type-p otype) (not (member kname +operator-names+)))
+                     (let ((*registered-function-names*
+                             (if (member kname *registered-function-names*)
+                                 *registered-function-names*
+                                 (append *registered-function-names* (list kname)))))
+                       (op kname otype))
+                     (op kname otype)))))
+      (:lit (let ((type (second sexp))
+                  (raw-val (third sexp)))
+              (lit type (if (code-type-p type)
+                            (sexp->ast raw-val)
+                            raw-val))))
+      (:app (apply #'app (sexp->ast (second sexp)) (mapcar #'sexp->ast (cddr sexp)))))))
