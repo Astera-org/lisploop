@@ -292,24 +292,29 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                        (values (code-inputs (ast-type code-arg)) (ast-value code-arg) eval-args nil))
                       ((and (app-p code-arg) (eq :code-subst (ast-id code-arg))
                             (lit-p (second code-arg))
-                            (app-p (third code-arg)) (eq :tuple (ast-id (third code-arg)))
-                            (every #'provably-total-p eval-args))
+                            (app-p (third code-arg)) (eq :tuple (ast-id (third code-arg))))
                        (let* ((a-inputs (code-inputs (ast-type (second code-arg))))
                               (c-type (ast-type code-arg))
-                              (eval-bindings (bind-inputs (code-inputs c-type) eval-args))
-                              (parts (rest (third code-arg))))
-                         (when (every (lambda (b spec)
-                                        (if (code-subst-code-binding-p (ast-type b) c-type (cdr spec))
-                                            (lit-p b)
-                                            (unfoldable-seq-part-p b)))
-                                      parts a-inputs)
-                           (values a-inputs (ast-value (second code-arg))
-                                   (mapcar (lambda (b spec)
-                                             (if (code-subst-code-binding-p (ast-type b) c-type (cdr spec))
-                                                 (instantiate (ast-value b) eval-bindings :var)
-                                                 b))
-                                           parts a-inputs)
-                                   nil))))))))
+                              (c-inputs (code-inputs c-type))
+                              (eval-bindings (bind-inputs c-inputs eval-args))
+                              (parts (rest (third code-arg)))
+                              (sub-args (loop for b in parts
+                                              for (nil . in-type) in a-inputs
+                                              collect (if (code-subst-code-binding-p (ast-type b) c-type in-type)
+                                                          (if (lit-p b)
+                                                              (instantiate (ast-value b) eval-bindings :var)
+                                                              (apply #'app (op :code-eval (ast-type b)) b eval-args))
+                                                          b))))
+                         (when (and (every #'unfoldable-seq-part-p sub-args)
+                                    (loop for (cid . nil) in c-inputs
+                                          for earg in eval-args
+                                          always (or (provably-total-p earg)
+                                                     (loop for b in parts
+                                                           for (nil . in-type) in a-inputs
+                                                           thereis (and (code-subst-code-binding-p (ast-type b) c-type in-type)
+                                                                        (or (not (lit-p b))
+                                                                            (member cid (free-vars (ast-value b)) :test #'eql)))))))
+                           (values a-inputs (ast-value (second code-arg)) sub-args nil))))))))
              (when body
                (let ((bindings (bind-inputs inputs call-args)))
                  (cond

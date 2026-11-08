@@ -1669,6 +1669,7 @@ covers, and `:register-p nil` dry-run isolation."
        (let* ((seq-type (sequence-type :int))
               (inputs (list (cons 0 seq-type)))
               (xs (var 0 seq-type))
+              (unary-code (code-type '((0 . :int)) :int))
               (binary-code (code-type '((0 . :int) (1 . :int)) :int))
               (head-x0 (app (op :at seq-type) xs (lit :int 0)))
               (tail-x0 (app (op :tail :int) xs)))
@@ -1872,5 +1873,113 @@ covers, and `:register-p nil` dry-run isolation."
                   (check (equal (app (op :fa) gf5-xs
                                      (lit (code-type (list (cons 0 gf5)) gf5)
                                           (app (op :+ gf5) (var 0 gf5) (lit gf5 1))))
-                                (function-definition-body (second refactored))))))))))
+                                (function-definition-body (second refactored)))))))))
+
+           ;; 6. Tail-recursive `foldl` higher-order library discovery (`sum-acc`, `prod-acc`, `diff-acc`)
+           ;;    plus inverted guard orientation `(= '() X0)` and `:register-p nil` state hygiene
+           (clear-function-definitions)
+           (let* ((acc-inputs (list (cons 0 seq-type) (cons 1 :int)))
+                  (acc-var (var 1 :int))
+                  (sum-acc (define-function :fa acc-inputs :int
+                             (lambda (self)
+                               (app (op :if :int)
+                                    (app (op := seq-type) xs (lit seq-type '()))
+                                    acc-var
+                                    (app self tail-x0 (app (op :+ :int) acc-var head-x0))))))
+                  (prod-acc (define-function :fb acc-inputs :int
+                              (lambda (self)
+                                ;; Inverted guard `(= '() X0)` canonicalizes to `(= X0 '())`
+                                (app (op :if :int)
+                                     (app (op := seq-type) (lit seq-type '()) xs)
+                                     acc-var
+                                     (app self tail-x0 (app (op :* :int) acc-var head-x0))))))
+                  (diff-acc (define-function :fc acc-inputs :int
+                              (lambda (self)
+                                (app (op :if :int)
+                                     (app (op := seq-type) xs (lit seq-type '()))
+                                     acc-var
+                                     (app self tail-x0 (app (op :- :int) acc-var head-x0)))))))
+             (clear-function-definitions)
+             ;; `:register-p nil` must not leak `:fa` into `*registered-function-names*`
+             (multiple-value-bind (dry-accepted)
+                 (discover-library-abstractions (list sum-acc prod-acc diff-acc) :register-p nil)
+               (check (= 1 (length dry-accepted)))
+               (check (null *registered-function-names*))
+               (check (null (find-function-definition :fa))))
+             ;; `:register-p t` registers `:fa` as tail-recursive `:foldl`
+             (multiple-value-bind (accepted refactored)
+                 (discover-library-abstractions (list sum-acc prod-acc diff-acc) :register-p t)
+               (check (= 1 (length accepted)))
+               (let ((foldl-abs (first accepted))
+                     (foldl-def (find-function-definition :fa))
+                     (f-var (var 2 binary-code)))
+                 (check (eq :fa (library-abstraction-name foldl-abs)))
+                 (check (plusp (library-abstraction-gain foldl-abs)))
+                 (check (equal '(2) (function-definition-conditional-code-params foldl-def)))
+                 (check (equal (app (op :if :int)
+                                    (app (op := seq-type) xs (lit seq-type '()))
+                                    acc-var
+                                    (app (op :fa) tail-x0
+                                         (app (op :code-eval binary-code) f-var acc-var head-x0)
+                                         f-var))
+                               (library-abstraction-body foldl-abs)))
+                 ;; Verify left-fold semantics on non-commutative subtraction:
+                 ;; (((10 - 1) - 2) - 3) = 4
+                 (let ((ref-diff (function-definition-body (third refactored))))
+                   (check (provably-total-p ref-diff))
+                   (check-codec-roundtrip ref-diff acc-inputs)
+                   (check (= 4 (result ref-diff acc-inputs '((1 2 3) 10))))))))
+
+           ;; 7. Compound shared subterm cover & recursive `:code` totality soundness
+           (clear-function-definitions)
+           (define-function :fa inputs :int nil :oracle-table '(((() ) . 0)))
+           (let* ((inc-head (app (op :+ :int) head-x0 (lit :int 1)))
+                  (rec-fa (app (op :fa) tail-x0))
+                  (t1 (app (op :+ :int) inc-head rec-fa))
+                  (t2 (app (op :* :int) inc-head rec-fa))
+                  (cover (shared-subterm-cover (list t1 t2) inputs :self-name :fa)))
+             ;; `(+ (at X0 '0) '1)` is kept as a single shared cover unit alongside `(:fa (tail X0))`
+             (check (equal (list inc-head rec-fa) cover)))
+           ;; A recursive function that substitutes a non-total `:code` literal in its recursive step
+           ;; must NOT be marked conditionally total
+           (clear-function-definitions)
+           (let* ((f-var (var 1 unary-code))
+                  (bad-code (lit unary-code (app (op :/ :int) (var 0 :int) (lit :int 0))))
+                  (bad-def (define-function :fa (list (cons 0 seq-type) (cons 1 unary-code)) :int
+                             (lambda (self)
+                               (app (op :if :int)
+                                    (app (op := seq-type) xs (lit seq-type '()))
+                                    (lit :int 0)
+                                    (app (op :+ :int)
+                                         (app (op :code-eval unary-code) f-var head-x0)
+                                         (app self tail-x0 bad-code)))))))
+             (check (null (function-definition-total-p bad-def)))
+             (check (null (function-definition-conditional-code-params bad-def))))
+
+           ;; 8. Multi-step `:code-subst` unfolding in `fold-constants` with a `:code` variable binding
+           (clear-function-definitions)
+           (let* ((f-var (var 2 binary-code))
+                  (acc-var (var 1 :int)))
+             (define-function :fb (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
+               (lambda (self)
+                 (app (op :if :int)
+                      (app (op := seq-type) xs (lit seq-type '()))
+                      acc-var
+                      (app (op :code-eval binary-code) f-var
+                           head-x0
+                           (app self tail-x0 acc-var f-var)))))
+             ;; Adapt 2-arg `:fb` (`foldr`) to a 1-arg `:code` variable `X9` via `:code-subst`:
+             ;; `(:code-subst '(+ X0 X1) (tuple X9 'X1))` where `X9 : (:code ((0 . :int) (1 . :int)) :int)`
+             (let* ((x9 (var 9 binary-code))
+                    (x1-code (lit binary-code (var 1 :int)))
+                    (subst-tup-type (tuple-type binary-code binary-code))
+                    (adapter (app (op :code-subst (tuple-type binary-code subst-tup-type binary-code))
+                                  (lit binary-code (app (op :+ :int) (var 0 :int) (var 1 :int)))
+                                  (app (op :tuple subst-tup-type) x9 x1-code)))
+                    (call-expr (app (op :fb) (lit seq-type '(2 3)) (lit :int 0) adapter))
+                    (checker-schema (make-schema :inputs (list (cons 9 binary-code)) :target :int))
+                    (unfolded (fold-constants call-expr checker-schema)))
+               ;; Unfolds across both elements '(2 3), exposing (:code-eval X9 ...) on each step
+               (check (not (contains-call-to-p unfolded :fb)))
+               (check (contains-call-to-p unfolded :code-eval)))))
     (clear-function-definitions)))

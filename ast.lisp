@@ -648,6 +648,7 @@ Returns (values total-p conditional-code-params)."
   (let ((seq-param-ids (loop for (id . type) in inputs
                              when (and (consp type) (eq :seq (first type))) collect id))
         (decreasing-param-id nil)
+        (self-call-arg-lists nil)
         (code-params nil))
     (labels ((code-arg-safe-p (arg)
                (or (provably-total-code-arg-p arg)
@@ -687,16 +688,27 @@ Returns (values total-p conditional-code-params)."
                                           return id)))
                               (and matched-id
                                    (or (null decreasing-param-id) (eql decreasing-param-id matched-id))
-                                   (progn (setf decreasing-param-id matched-id) t)))))
+                                   (progn
+                                     (setf decreasing-param-id matched-id)
+                                     (push args self-call-arg-lists)
+                                     t)))))
                       (t
                        (and (every (lambda (a) (walk a non-empty-vars)) args)
-                            (or (provably-total-p expr)
-                                (expr-total-under-non-empty-p expr non-empty-vars)
-                                (operator-step-total-p op-name args #'code-arg-safe-p non-empty-vars))))))))))
-      (if (walk body nil)
-          (let ((sorted-params (sort (copy-list code-params) #'<)))
-            (values (null sorted-params) sorted-params))
-          (values nil nil)))))
+                            (operator-step-total-p op-name args #'code-arg-safe-p non-empty-vars)))))))))
+      (when (walk body nil)
+        (loop
+          (let ((prev-count (length code-params)))
+            (dolist (pos (copy-list code-params))
+              (dolist (call-args self-call-arg-lists)
+                (unless (and (< pos (length call-args))
+                             (code-arg-safe-p (nth pos call-args)))
+                  (return-from analyze-function-body-totality (values nil nil)))))
+            (when (= (length code-params) prev-count)
+              (return))))
+        (let ((sorted-params (sort (copy-list code-params) #'<)))
+          (return-from analyze-function-body-totality
+            (values (null sorted-params) sorted-params))))
+      (values nil nil))))
 
 (defun invalidate-app-meta ()
   "Evict cached :app metadata so redefined functions recompute totality on demand."
@@ -705,8 +717,20 @@ Returns (values total-p conditional-code-params)."
                (remhash node *node-meta*)))
            *node-meta*))
 
+(defun evict-operator-symbol-pool (kname)
+  "Remove all pooled `:op` symbols for KNAME from `*typed-symbol-pool*`."
+  (let ((keys-to-remove nil))
+    (maphash (lambda (key sym)
+               (declare (ignore sym))
+               (when (and (consp key) (eq :op (first key)) (eq kname (second key)))
+                 (push key keys-to-remove)))
+             *typed-symbol-pool*)
+    (dolist (key keys-to-remove)
+      (remhash key *typed-symbol-pool*))))
+
 (defun recompute-registered-functions-totality ()
   "Recompute totality and conditional-code-params across all registered functions until fixed point."
+  (invalidate-app-meta)
   (loop
     (let ((changed-p nil))
       (dolist (fname *registered-function-names*)
@@ -759,11 +783,7 @@ Returns (values total-p conditional-code-params)."
               (function-definition-oracle-table def) (copy-tree oracle-table)
               (function-definition-total-p def) nil
               (function-definition-conditional-code-params def) nil)
-        (invalidate-app-meta)
-        (when copied-body (ensure-ast-meta copied-body))
         (recompute-registered-functions-totality)
-        (invalidate-app-meta)
-        (when copied-body (ensure-ast-meta copied-body))
         (incf *function-library-version*)
         def))))
 
@@ -793,14 +813,7 @@ and an unverified candidate BODY during synthesis verification, without global c
     (setf *registered-function-names* nil
           *de-novo-function-counter* 0)
     (dolist (kname names)
-      (let ((keys-to-remove nil))
-        (maphash (lambda (key sym)
-                   (declare (ignore sym))
-                   (when (and (consp key) (eq :op (first key)) (eq kname (second key)))
-                     (push key keys-to-remove)))
-                 *typed-symbol-pool*)
-        (dolist (key keys-to-remove)
-          (remhash key *typed-symbol-pool*))))
+      (evict-operator-symbol-pool kname))
     (invalidate-app-meta)
     (incf *function-library-version*)
     nil))
@@ -938,30 +951,35 @@ and an unverified candidate BODY during synthesis verification, without global c
   (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
     (if norm-inputs (1+ (reduce #'max norm-inputs :key #'car)) 0)))
 
-(defun rename-function-calls (expr from-name to-name)
-  "Replace applications of defined function operator FROM-NAME in EXPR with TO-NAME."
-  (let ((kfrom (canonical-op-name from-name))
-        (kto (canonical-op-name to-name)))
+(defun rename-function-calls (expr from-name to-target &optional extra-args)
+  "Replace applications of operator FROM-NAME in EXPR with TO-TARGET (an operator symbol or function name),
+optionally appending EXTRA-ARGS to each replaced call."
+  (let ((kfrom (and from-name (canonical-op-name from-name)))
+        (target-op (when (operator-p to-target) to-target))
+        (kto (when (and to-target (not (operator-p to-target)))
+               (canonical-op-name to-target))))
     (cond
-      ((eq kfrom kto) expr)
-      ((app-p expr)
+      ((or (null kfrom) (and kto (eq kfrom kto) (null extra-args))) expr)
+      ((and (consp expr) (operator-p (first expr)))
        (let* ((head (first expr))
-              (new-head (if (and (operator-p head) (eq kfrom (operator-name head)))
-                            (if (defined-function-p kto)
-                                (op kto)
-                                (progn
-                                  (unless (member kto *registered-function-names*)
-                                    (setf *registered-function-names*
-                                          (append *registered-function-names* (list kto))))
-                                  (op kto (operator-operand-type head))))
+              (match-p (eq kfrom (operator-name head)))
+              (new-head (if match-p
+                            (or target-op
+                                (if (defined-function-p kto)
+                                    (op kto)
+                                    (progn
+                                      (unless (member kto *registered-function-names*)
+                                        (setf *registered-function-names*
+                                              (append *registered-function-names* (list kto))))
+                                      (op kto (operator-operand-type head)))))
                             head))
-              (new-args (mapcar (lambda (a) (rename-function-calls a kfrom kto))
+              (new-args (mapcar (lambda (a) (rename-function-calls a kfrom to-target extra-args))
                                 (rest expr))))
-         (if (and (eq new-head head) (every #'eq new-args (rest expr)))
+         (if (and (not match-p) (every #'eq new-args (rest expr)))
              expr
-             (apply #'app new-head new-args))))
+             (apply #'app new-head (if match-p (append new-args extra-args) new-args)))))
       ((and (lit-p expr) (code-type-p (ast-type expr)))
-       (let ((inner (rename-function-calls (ast-value expr) kfrom kto)))
+       (let ((inner (rename-function-calls (ast-value expr) kfrom to-target extra-args)))
          (if (eq inner (ast-value expr))
              expr
              (lit (ast-type expr) inner))))

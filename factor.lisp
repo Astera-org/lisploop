@@ -123,10 +123,25 @@ in TERMS can be abstracted into a closed :code literal over positional variables
                (or (and (var-p node) (member (ast-id node) eff-vars :test #'eql))
                    (and (app-p node) (operator-p (first node))
                         (let ((op-name (operator-name (first node))))
-                          (or (and eff-self (eq op-name eff-self))
-                              (and (member op-name '(:at :tail))
+                          (or (and eff-self (eq op-name eff-self) (gethash node common-set))
+                              (and (eq op-name :tail)
                                    (var-p (second node))
-                                   (member (ast-id (second node)) eff-vars :test #'eql))))))))
+                                   (member (ast-id (second node)) eff-vars :test #'eql))
+                              (and (eq op-name :at)
+                                   (var-p (second node))
+                                   (member (ast-id (second node)) eff-vars :test #'eql)
+                                   (not (term-references-bound-or-self-p (third node) eff-vars eff-self))))))))
+             (atomic-units (expr)
+               (let ((acc nil))
+                 (labels ((walk (n)
+                            (when (term-references-bound-or-self-p n eff-vars eff-self)
+                              (if (atomic-bound-unit-p n)
+                                  (pushnew n acc :test #'equal)
+                                  (when (app-p n)
+                                    (dolist (arg (rest n))
+                                      (walk arg)))))))
+                   (walk expr)
+                   (nreverse acc)))))
       (when terms
         (let ((tables (mapcar (lambda (term)
                                 (let ((tbl (make-hash-table :test #'equal)))
@@ -144,14 +159,15 @@ in TERMS can be abstracted into a closed :code literal over positional variables
                      ((and (gethash node common-set)
                            ;; Do not collapse the entire root term if all terms were supposed to diverge
                            (not (every (lambda (term) (equal node term)) terms))
-                           ;; Keepcommon subterm only if no other term references bound vars inside it separately
-                           (every (lambda (term)
-                                    (not (term-references-bound-or-self-p
-                                          (replace-subexpression term node (lit (expression-type node norm-inputs)
-                                                                                (default-value-for-type (expression-type node norm-inputs))))
-                                          (ast-meta-free-vars (ensure-ast-meta node))
-                                          nil)))
-                                  terms))
+                           ;; Keep shared subterm only if none of its atomic bound units appear outside it
+                           (let ((node-units (atomic-units node))
+                                 (dummy (let ((ntype (expression-type node norm-inputs)))
+                                          (lit ntype (default-value-for-type ntype)))))
+                             (and node-units
+                                  (every (lambda (term)
+                                           (let ((rem (replace-subexpression term node dummy)))
+                                             (null (intersection node-units (atomic-units rem) :test #'equal))))
+                                         terms))))
                       (pushnew node cover :test #'equal))
                      ((atomic-bound-unit-p node)
                       (pushnew node cover :test #'equal))
@@ -165,44 +181,40 @@ in TERMS can be abstracted into a closed :code literal over positional variables
                        (and (not (term-references-bound-or-self-p a nil eff-self))
                             (term-references-bound-or-self-p b nil eff-self))))))))
 
-(defun abstract-over-subterms (expr subterms inputs &optional ledger)
+(defun abstract-over-subterms (expr subterms inputs &optional ledger &key self-name)
   "Replace each subterm A_j in SUBTERMS within EXPR by positional variable `(var j type_j)`
 and package the resulting closed body as `(lit (:code ((0 . type_0) ...) ret-type) body)`.
 Returns (VALUES code-literal code-type body) or (VALUES nil nil nil) if EXPR still contains
 unbound variables or self-calls outside SUBTERMS."
   (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
          (ret-type (expression-type expr norm-inputs))
+         (eff-self (when self-name (canonical-op-name self-name)))
          (code-in (loop for sub in subterms
                         for j from 0
                         collect (cons j (expression-type sub norm-inputs))))
-         ;; Replace larger subterms first so nested occurrences don't shadow outer cover items
-         (ordered-pairs (stable-sort (loop for sub in subterms
-                                           for j from 0
-                                           collect (cons sub (var j (cdr (nth j code-in)))))
-                                     #'> :key (lambda (p) (syntax-work (car p)))))
-         (placeholder-alist (loop for (sub . v) in ordered-pairs
-                                  for k from 0
-                                  collect (list sub (hole k (ast-type v)) v)))
-         (staged expr))
-    (dolist (entry placeholder-alist)
-      (setf staged (replace-subexpression staged (first entry) (second entry))))
-    (let ((allowed-ids (mapcar #'car code-in)))
-      ;; Ensure no original input variables remain unabstracted in STAGED
-      (labels ((has-unabstracted-var-p (node)
+         (pairs (loop for sub in subterms
+                      for (j . stype) in code-in
+                      collect (cons sub (var j stype))))
+         (unabstracted-p nil))
+    (labels ((rewrite (node)
+               (let ((match (assoc node pairs :test #'equal)))
                  (cond
-                   ((var-p node) t)
-                   ((app-p node) (some #'has-unabstracted-var-p (rest node)))
-                   (t nil))))
-        (when (has-unabstracted-var-p staged)
-          (return-from abstract-over-subterms (values nil nil nil))))
-      (let ((body (instantiate staged
-                               (mapcar (lambda (entry) (cons (ast-id (second entry)) (third entry)))
-                                       placeholder-alist)
-                               :hole))
-            (c-type (code-type code-in ret-type)))
-        (declare (ignore allowed-ids))
-        (charge ledger :construction (syntax-work body))
-        (values (lit c-type body) c-type body)))))
+                   (match (cdr match))
+                   ((var-p node)
+                    (setf unabstracted-p t)
+                    node)
+                   ((app-p node)
+                    (when (and eff-self (operator-p (first node))
+                               (eq eff-self (operator-name (first node))))
+                      (setf unabstracted-p t))
+                    (apply #'app (first node) (mapcar #'rewrite (rest node))))
+                   (t node)))))
+      (let ((body (rewrite expr)))
+        (if unabstracted-p
+            (values nil nil nil)
+            (let ((c-type (code-type code-in ret-type)))
+              (charge ledger :construction (syntax-work body))
+              (values (lit c-type body) c-type body)))))))
 
 ;;; Operation 2.4: Optional Fiber Partition Proposals (infer-fibers)
 
@@ -1696,17 +1708,19 @@ Returns proposals, conflict, and a status message; synchronous cutoffs retain no
         (t (values nil nil))))))
 
 (defun normalize-guarded-equalities (expr)
-  "In `(if (= Xi 'c) then else)`, replace occurrences of `Xi` inside `then` with `'c`."
+  "In `(if (= Xi 'c) then else)` (or `(= 'c Xi)`), canonicalize the guard to `(= Xi 'c)`
+and replace occurrences of `Xi` inside `then` with `'c`."
   (if (not (app-p expr))
       expr
       (let* ((op-node (first expr))
              (args (mapcar #'normalize-guarded-equalities (rest expr))))
         (if (and (operator-p op-node) (eq :if (operator-name op-node)))
             (multiple-value-bind (v l) (extract-var-literal-equality (first args))
-              (let ((then-branch (if v
+              (let ((canon-guard (if v (app (first (first args)) v l) (first args)))
+                    (then-branch (if v
                                      (replace-subexpression (second args) v l)
                                      (second args))))
-                (app op-node (first args) then-branch (third args))))
+                (app op-node canon-guard then-branch (third args))))
             (apply #'app op-node args)))))
 
 (defun infer-self-operator-name (expr inputs return-type &optional declared-name)
@@ -1726,31 +1740,10 @@ Returns proposals, conflict, and a status message; synchronous cutoffs retain no
                            (some #'find-self (rest node)))))))
           (or (find-self expr) kdecl)))))
 
-(defun replace-operator-calls (expr from-name target-op &optional extra-args)
-  "Replace applications of operator FROM-NAME in EXPR with TARGET-OP, appending EXTRA-ARGS."
-  (let ((kfrom (and from-name (canonical-op-name from-name))))
-    (cond
-      ((null kfrom) expr)
-      ((and (consp expr) (operator-p (first expr)))
-       (let ((head (first expr))
-             (new-args (mapcar (lambda (a) (replace-operator-calls a kfrom target-op extra-args))
-                               (rest expr))))
-         (if (eq kfrom (operator-name head))
-             (apply #'app target-op (append new-args extra-args))
-             (if (every #'eq new-args (rest expr))
-                 expr
-                 (apply #'app head new-args)))))
-      ((and (lit-p expr) (code-type-p (ast-type expr)))
-       (let ((inner (replace-operator-calls (ast-value expr) kfrom target-op extra-args)))
-         (if (eq inner (ast-value expr))
-             expr
-             (lit (ast-type expr) inner))))
-      (t expr))))
-
 (defun anti-unify-for-library (sources inputs &key self-name ledger)
   "Top-down typed anti-unification for higher-order :code library learning.
-Preserves shared recursive control spines (:if guards and constructors wrapping
-self-calls) while collapsing diverging element/step computations into expression
+Preserves shared recursive control spines (:if guards, self-calls, and constructors
+wrapping self-calls) while collapsing diverging element/step computations into expression
 holes suitable for positional :code abstraction."
   (assert sources)
   (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
@@ -1779,6 +1772,8 @@ holes suitable for positional :code abstraction."
                                                                        terms)))))
                       (if (or (and (eq op-name :if)
                                    (not (hole-p (first children))))
+                              (and eff-self (eq op-name eff-self)
+                                   (some (lambda (child) (not (hole-p child))) children))
                               (some (lambda (child)
                                       (and (not (hole-p child))
                                            (term-references-bound-or-self-p child nil eff-self)))
@@ -1814,37 +1809,21 @@ holes suitable for positional :code abstraction."
       (dolist (kname added)
         (setf *registered-function-names*
               (remove kname *registered-function-names* :test #'eq))
-        (let ((keys-to-remove nil))
-          (maphash (lambda (key sym)
-                     (declare (ignore sym))
-                     (when (and (consp key) (eq :op (first key)) (eq kname (second key)))
-                       (push key keys-to-remove)))
-                   *typed-symbol-pool*)
-          (dolist (key keys-to-remove)
-            (remhash key *typed-symbol-pool*)))))))
+        (evict-operator-symbol-pool kname)))))
 
 (defun finalize-library-abstraction (abs target-name &key register-p)
   "Rename the candidate combinator operator in ABS to TARGET-NAME, optionally
 registering it in `*function-definitions*` via `define-function`."
-  (let ((ktarget (canonical-op-name target-name)))
-    (when (and (null register-p) (eq ktarget :__lib_cand__))
+  (let ((ktarget (canonical-op-name target-name))
+        (cand-op-name (library-abstraction-name abs)))
+    (when (and (null register-p) (eq ktarget cand-op-name))
       (return-from finalize-library-abstraction abs))
     (let* ((prog-inputs (library-abstraction-program-inputs abs))
            (lib-inputs (library-abstraction-inputs abs))
            (return-type (library-abstraction-return-type abs))
            (lib-ctype (code-type lib-inputs return-type))
            (cand-body (library-abstraction-body abs))
-           (cand-refs (library-abstraction-refactored-bodies abs))
-           (cand-op-name (let ((found nil))
-                           (labels ((scan (node)
-                                      (when (and (consp node) (operator-p (first node)))
-                                        (let ((h (first node)))
-                                          (if (and (not (member (operator-name h) +operator-names+))
-                                                   (equal (operator-operand-type h) lib-ctype))
-                                              (setf found (operator-name h))
-                                              (mapc #'scan (rest node)))))))
-                             (scan cand-body)
-                             (or found :__lib_cand__)))))
+           (cand-refs (library-abstraction-refactored-bodies abs)))
       (flet ((update-slots (final-body final-refs def)
                (let* ((lib-bits (body-size final-body lib-inputs))
                       (call-bits (loop for rb in final-refs sum (body-size rb prog-inputs)))
@@ -1861,32 +1840,36 @@ registering it in `*function-definitions*` via `define-function`."
         (if register-p
             (let* ((def (define-function ktarget lib-inputs return-type
                           (lambda (self)
-                            (replace-operator-calls cand-body cand-op-name self))))
+                            (rename-function-calls cand-body cand-op-name self))))
                    (target-op (op ktarget))
                    (final-body (function-definition-body def))
                    (final-refs (mapcar (lambda (rb)
-                                         (let ((rewritten (replace-operator-calls rb cand-op-name target-op)))
+                                         (let ((rewritten (rename-function-calls rb cand-op-name target-op)))
                                            (ensure-ast-meta rewritten)
                                            rewritten))
                                        cand-refs)))
               (update-slots final-body final-refs def))
-            (let ((saved-def (gethash ktarget *function-definitions*))
-                  (was-registered-p (member ktarget *registered-function-names*))
-                  (pool-key (list :op ktarget lib-ctype)))
+            (let* ((saved-def (gethash ktarget *function-definitions*))
+                   (saved-names *registered-function-names*)
+                   (pool-key (list :op ktarget lib-ctype))
+                   (had-pool-key-p (nth-value 1 (gethash pool-key *typed-symbol-pool*))))
               (unwind-protect
                    (progn
                      (remhash ktarget *function-definitions*)
-                     (unless was-registered-p
+                     (unless (member ktarget *registered-function-names*)
                        (setf *registered-function-names*
                              (append *registered-function-names* (list ktarget))))
                      (let* ((target-op (op ktarget lib-ctype))
-                            (final-body (replace-operator-calls cand-body cand-op-name target-op))
+                            (final-body (rename-function-calls cand-body cand-op-name target-op))
                             (final-refs (mapcar (lambda (rb)
-                                                  (replace-operator-calls rb cand-op-name target-op))
+                                                  (rename-function-calls rb cand-op-name target-op))
                                                 cand-refs)))
                        (update-slots final-body final-refs nil)))
-                (when saved-def
-                  (setf (gethash ktarget *function-definitions*) saved-def)
+                (setf *registered-function-names* saved-names)
+                (if saved-def
+                    (setf (gethash ktarget *function-definitions*) saved-def)
+                    (remhash ktarget *function-definitions*))
+                (unless had-pool-key-p
                   (remhash pool-key *typed-symbol-pool*)))))))))
 
 (defun abstract-function-bodies (bodies inputs return-type
@@ -1930,7 +1913,7 @@ recursive combinator exists)."
                   (loop for b in active-bodies
                         for sname in inferred-snames
                         collect (normalize-guarded-equalities
-                                 (replace-operator-calls b sname canon-self-op)))))
+                                 (rename-function-calls b sname canon-self-op)))))
          ;; Every participating body in a recursive library abstraction must be recursive
          (unless (every (lambda (nb) (term-references-bound-or-self-p nb nil :__au_self__))
                         norm-bodies)
@@ -1965,10 +1948,9 @@ recursive combinator exists)."
                        (let ((code-lits nil)
                              (common-ctype nil))
                          (dolist (f fillers)
-                           (multiple-value-bind (clit ctype cbody)
-                               (abstract-over-subterms f cover norm-inputs ledger)
+                           (multiple-value-bind (clit ctype)
+                               (abstract-over-subterms f cover norm-inputs ledger :self-name :__au_self__)
                              (when (or (null clit)
-                                       (term-references-bound-or-self-p cbody nil :__au_self__)
                                        (and common-ctype (not (equal common-ctype ctype))))
                                (return-from abstract-function-bodies nil))
                              (setf common-ctype ctype)
@@ -1999,8 +1981,8 @@ recursive combinator exists)."
                     (lib-ctype (code-type lib-inputs return-type))
                     (cand-op (op :__lib_cand__ lib-ctype))
                     (staged-body (instantiate pattern hole-replacements :hole))
-                    (cand-lib-body (replace-operator-calls staged-body :__au_self__
-                                                           cand-op extra-param-vars)))
+                    (cand-lib-body (rename-function-calls staged-body :__au_self__
+                                                          cand-op extra-param-vars)))
                (charge ledger :construction (syntax-work cand-lib-body))
                (unless (and (equal return-type (ignore-errors (expression-type cand-lib-body lib-inputs)))
                             (term-references-bound-or-self-p cand-lib-body nil :__lib_cand__)
@@ -2021,7 +2003,7 @@ recursive combinator exists)."
                       (refactored-bits (+ library-bits refactored-call-bits))
                       (gain (- original-bits refactored-bits))
                       (abs (make-library-abstraction
-                            :name (canonical-op-name target-name)
+                            :name :__lib_cand__
                             :program-inputs (copy-tree norm-inputs)
                             :inputs lib-inputs
                             :return-type (copy-tree return-type)
