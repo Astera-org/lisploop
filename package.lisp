@@ -66,6 +66,15 @@
    ;; 6. factor.lisp — Matching, AU, fiber proposals, corpus compression, heuristic condensation, M6 subgraph search
    #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p #:term-sort
    #:shared-subterm-cover #:abstract-over-subterms
+   #:library-abstraction #:library-abstraction-p #:library-abstraction-name
+   #:library-abstraction-program-inputs #:library-abstraction-inputs
+   #:library-abstraction-return-type #:library-abstraction-body
+   #:library-abstraction-definition #:library-abstraction-pattern #:library-abstraction-programs
+   #:library-abstraction-refactored-bodies #:library-abstraction-refactored-definitions
+   #:library-abstraction-original-bits #:library-abstraction-library-bits
+   #:library-abstraction-refactored-call-bits #:library-abstraction-refactored-bits
+   #:library-abstraction-gain #:library-abstraction-work
+   #:abstract-function-bodies #:discover-library-abstractions
    #:patterns-isomorphic-p #:pattern-holes #:pattern-hole-counts
    #:subtree-at-path #:replace-at-path #:tree-occurrence #:tree-occurrence-p
    #:tree-occurrence-tree-index #:tree-occurrence-path #:tree-occurrence-term

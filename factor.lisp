@@ -160,7 +160,10 @@ in TERMS can be abstracted into a closed :code literal over positional variables
                         (extract-from arg)))))))
         (dolist (term terms)
           (extract-from term))
-        (nreverse cover)))))
+        (stable-sort (nreverse cover)
+                     (lambda (a b)
+                       (and (not (term-references-bound-or-self-p a nil eff-self))
+                            (term-references-bound-or-self-p b nil eff-self))))))))
 
 (defun abstract-over-subterms (expr subterms inputs &optional ledger)
   "Replace each subterm A_j in SUBTERMS within EXPR by positional variable `(var j type_j)`
@@ -1659,3 +1662,580 @@ Returns proposals, conflict, and a status message; synchronous cutoffs retain no
         (values best proposals conflicts
                 (make-message :claim (if (zerop (remaining-work ledger 1)) :cutoff :proposal-results)
                               :evidence (list :work (ledger-total ledger) :scope :view-proposals)))))))
+
+
+;;; Homoiconic Higher-Order Library Learning via Top-Down Anti-Unification (Phase 4 / R5)
+
+(defstruct library-abstraction
+  name
+  program-inputs
+  inputs
+  return-type
+  body
+  definition
+  pattern
+  programs
+  refactored-bodies
+  refactored-definitions
+  (original-bits 0 :type fixnum)
+  (library-bits 0 :type fixnum)
+  (refactored-call-bits 0 :type fixnum)
+  (refactored-bits 0 :type fixnum)
+  (gain 0 :type fixnum)
+  (work 0 :type fixnum))
+
+(defun extract-var-literal-equality (guard)
+  "When GUARD is `(= Xi 'c)` or `(= 'c Xi)`, return `(VALUES var-node lit-node)`."
+  (when (and (app-p guard) (operator-p (first guard))
+             (eq := (operator-name (first guard))))
+    (let ((lhs (second guard))
+          (rhs (third guard)))
+      (cond
+        ((and (var-p lhs) (lit-p rhs)) (values lhs rhs))
+        ((and (lit-p lhs) (var-p rhs)) (values rhs lhs))
+        (t (values nil nil))))))
+
+(defun normalize-guarded-equalities (expr)
+  "In `(if (= Xi 'c) then else)`, replace occurrences of `Xi` inside `then` with `'c`."
+  (if (not (app-p expr))
+      expr
+      (let* ((op-node (first expr))
+             (args (mapcar #'normalize-guarded-equalities (rest expr))))
+        (if (and (operator-p op-node) (eq :if (operator-name op-node)))
+            (multiple-value-bind (v l) (extract-var-literal-equality (first args))
+              (let ((then-branch (if v
+                                     (replace-subexpression (second args) v l)
+                                     (second args))))
+                (app op-node (first args) then-branch (third args))))
+            (apply #'app op-node args)))))
+
+(defun infer-self-operator-name (expr inputs return-type &optional declared-name)
+  "Determine the recursive self-call operator name in EXPR matching `(inputs -> return-type)`."
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (kdecl (when declared-name (canonical-op-name declared-name)))
+         (expected-sig (list :fn (mapcar #'cdr norm-inputs) return-type)))
+    (if (and kdecl (term-references-bound-or-self-p expr nil kdecl))
+        kdecl
+        (labels ((find-self (node)
+                   (when (app-p node)
+                     (let ((head (first node)))
+                       (or (and (operator-p head)
+                                (not (member (operator-name head) +operator-names+))
+                                (equal (operator-type head) expected-sig)
+                                (operator-name head))
+                           (some #'find-self (rest node)))))))
+          (or (find-self expr) kdecl)))))
+
+(defun replace-operator-calls (expr from-name target-op &optional extra-args)
+  "Replace applications of operator FROM-NAME in EXPR with TARGET-OP, appending EXTRA-ARGS."
+  (let ((kfrom (and from-name (canonical-op-name from-name))))
+    (cond
+      ((null kfrom) expr)
+      ((and (consp expr) (operator-p (first expr)))
+       (let ((head (first expr))
+             (new-args (mapcar (lambda (a) (replace-operator-calls a kfrom target-op extra-args))
+                               (rest expr))))
+         (if (eq kfrom (operator-name head))
+             (apply #'app target-op (append new-args extra-args))
+             (if (every #'eq new-args (rest expr))
+                 expr
+                 (apply #'app head new-args)))))
+      ((and (lit-p expr) (code-type-p (ast-type expr)))
+       (let ((inner (replace-operator-calls (ast-value expr) kfrom target-op extra-args)))
+         (if (eq inner (ast-value expr))
+             expr
+             (lit (ast-type expr) inner))))
+      (t expr))))
+
+(defun anti-unify-for-library (sources inputs &key self-name ledger)
+  "Top-down typed anti-unification for higher-order :code library learning.
+Preserves shared recursive control spines (:if guards and constructors wrapping
+self-calls) while collapsing diverging element/step computations into expression
+holes suitable for positional :code abstraction."
+  (assert sources)
+  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (bound-vars (mapcar #'car norm-inputs))
+         (eff-self (when self-name (canonical-op-name self-name)))
+         (disagreements (make-hash-table :test #'equal))
+         (next-id 0))
+    (labels ((make-hole-for (terms sort)
+               (or (gethash terms disagreements)
+                   (setf (gethash terms disagreements)
+                         (hole (prog1 next-id (incf next-id)) sort))))
+             (generalize (terms)
+               (charge ledger :anti-unification (length terms))
+               (let ((sorts (mapcar (lambda (term) (term-sort term norm-inputs)) terms)))
+                 (assert (every (lambda (sort) (equal sort (first sorts))) sorts))
+                 (cond
+                   ((every (lambda (term) (equal term (first terms))) terms)
+                    (first terms))
+                   ((and (every #'app-p terms)
+                         (every (lambda (term) (equal (first term) (first (first terms))))
+                                (rest terms)))
+                    (let* ((op-node (first (first terms)))
+                           (op-name (and (operator-p op-node) (operator-name op-node)))
+                           (children (loop for i below (length (rest (first terms)))
+                                           collect (generalize (mapcar (lambda (term) (nth i (rest term)))
+                                                                       terms)))))
+                      (if (or (and (eq op-name :if)
+                                   (not (hole-p (first children))))
+                              (some (lambda (child)
+                                      (and (not (hole-p child))
+                                           (term-references-bound-or-self-p child nil eff-self)))
+                                    children)
+                              (and (some (lambda (child) (not (hole-p child))) children)
+                                   (not (some (lambda (term)
+                                                (term-references-bound-or-self-p term bound-vars eff-self))
+                                              terms))))
+                          (apply #'app op-node children)
+                          (make-hole-for terms (first sorts)))))
+                   (t
+                    (make-hole-for terms (first sorts)))))))
+      (let ((pattern (generalize sources)))
+        (values pattern
+                (mapcar (lambda (source)
+                          (multiple-value-bind (substitution matched)
+                              (match-pattern pattern source norm-inputs ledger)
+                            (assert matched)
+                            substitution))
+                        sources))))))
+
+(defun call-with-temporary-function-names (temp-names thunk)
+  "Ensure TEMP-NAMES are registered at the front of `*registered-function-names*` during THUNK
+(matching `:fa`/`:fb` opcode bit width) and remove any newly added temporary names afterward."
+  (let ((added nil))
+    (dolist (name (reverse temp-names))
+      (let ((kname (canonical-op-name name)))
+        (unless (member kname *registered-function-names*)
+          (push kname added)
+          (push kname *registered-function-names*))))
+    (unwind-protect
+         (funcall thunk)
+      (dolist (kname added)
+        (setf *registered-function-names*
+              (remove kname *registered-function-names* :test #'eq))
+        (let ((keys-to-remove nil))
+          (maphash (lambda (key sym)
+                     (declare (ignore sym))
+                     (when (and (consp key) (eq :op (first key)) (eq kname (second key)))
+                       (push key keys-to-remove)))
+                   *typed-symbol-pool*)
+          (dolist (key keys-to-remove)
+            (remhash key *typed-symbol-pool*)))))))
+
+(defun finalize-library-abstraction (abs target-name &key register-p)
+  "Rename the candidate combinator operator in ABS to TARGET-NAME, optionally
+registering it in `*function-definitions*` via `define-function`."
+  (let ((ktarget (canonical-op-name target-name)))
+    (when (and (null register-p) (eq ktarget :__lib_cand__))
+      (return-from finalize-library-abstraction abs))
+    (let* ((prog-inputs (library-abstraction-program-inputs abs))
+           (lib-inputs (library-abstraction-inputs abs))
+           (return-type (library-abstraction-return-type abs))
+           (lib-ctype (code-type lib-inputs return-type))
+           (cand-body (library-abstraction-body abs))
+           (cand-refs (library-abstraction-refactored-bodies abs))
+           (cand-op-name (let ((found nil))
+                           (labels ((scan (node)
+                                      (when (and (consp node) (operator-p (first node)))
+                                        (let ((h (first node)))
+                                          (if (and (not (member (operator-name h) +operator-names+))
+                                                   (equal (operator-operand-type h) lib-ctype))
+                                              (setf found (operator-name h))
+                                              (mapc #'scan (rest node)))))))
+                             (scan cand-body)
+                             (or found :__lib_cand__)))))
+      (flet ((update-slots (final-body final-refs def)
+               (let* ((lib-bits (body-size final-body lib-inputs))
+                      (call-bits (loop for rb in final-refs sum (body-size rb prog-inputs)))
+                      (ref-bits (+ lib-bits call-bits)))
+                 (setf (library-abstraction-name abs) ktarget
+                       (library-abstraction-body abs) final-body
+                       (library-abstraction-definition abs) def
+                       (library-abstraction-refactored-bodies abs) final-refs
+                       (library-abstraction-library-bits abs) lib-bits
+                       (library-abstraction-refactored-call-bits abs) call-bits
+                       (library-abstraction-refactored-bits abs) ref-bits
+                       (library-abstraction-gain abs) (- (library-abstraction-original-bits abs) ref-bits))
+                 abs)))
+        (if register-p
+            (let* ((def (define-function ktarget lib-inputs return-type
+                          (lambda (self)
+                            (replace-operator-calls cand-body cand-op-name self))))
+                   (target-op (op ktarget))
+                   (final-body (function-definition-body def))
+                   (final-refs (mapcar (lambda (rb)
+                                         (let ((rewritten (replace-operator-calls rb cand-op-name target-op)))
+                                           (ensure-ast-meta rewritten)
+                                           rewritten))
+                                       cand-refs)))
+              (update-slots final-body final-refs def))
+            (let ((saved-def (gethash ktarget *function-definitions*))
+                  (was-registered-p (member ktarget *registered-function-names*))
+                  (pool-key (list :op ktarget lib-ctype)))
+              (unwind-protect
+                   (progn
+                     (remhash ktarget *function-definitions*)
+                     (unless was-registered-p
+                       (setf *registered-function-names*
+                             (append *registered-function-names* (list ktarget))))
+                     (let* ((target-op (op ktarget lib-ctype))
+                            (final-body (replace-operator-calls cand-body cand-op-name target-op))
+                            (final-refs (mapcar (lambda (rb)
+                                                  (replace-operator-calls rb cand-op-name target-op))
+                                                cand-refs)))
+                       (update-slots final-body final-refs nil)))
+                (when saved-def
+                  (setf (gethash ktarget *function-definitions*) saved-def)
+                  (remhash pool-key *typed-symbol-pool*)))))))))
+
+(defun abstract-function-bodies (bodies inputs return-type
+                                 &key self-names program-names (target-name :fa)
+                                      rewrite-library register-p ledger)
+  "Anti-unify recursive BODIES of signature `(inputs -> return-type)` after normalizing
+self-calls (and optional REWRITE-LIBRARY), factor diverging subexpressions into first-order
+value parameters or closed positional `:code` literals via `shared-subterm-cover` +
+`abstract-over-subterms`, and return a `library-abstraction` (or NIL when no valid
+recursive combinator exists)."
+  (let* ((ledger (or ledger (make-ledger)))
+         (start-work (ledger-total ledger))
+         (norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+         (bound-vars (mapcar #'car norm-inputs))
+         (k (length bodies)))
+    (when (< k 2)
+      (return-from abstract-function-bodies nil))
+    (dolist (b bodies)
+      (unless (equal return-type (ignore-errors (expression-type b norm-inputs)))
+        (return-from abstract-function-bodies nil)))
+    (let* ((inferred-snames
+             (loop for b in bodies
+                   for i from 0
+                   for decl = (cond ((consp self-names) (nth i self-names))
+                                    ((symbolp self-names) self-names)
+                                    (t nil))
+                   collect (infer-self-operator-name b norm-inputs return-type decl)))
+           (temp-names (remove-duplicates
+                        (append '(:__au_self__ :__lib_cand__)
+                                (remove nil inferred-snames)
+                                (when (and target-name (keywordp target-name))
+                                  (list target-name))))))
+      (call-with-temporary-function-names
+       temp-names
+       (lambda ()
+         (let* ((active-bodies (if rewrite-library
+                                   (normalize-trees-with-library bodies norm-inputs rewrite-library :ledger ledger)
+                                   bodies))
+                (canon-self-op (op :__au_self__ (code-type norm-inputs return-type)))
+                (norm-bodies
+                  (loop for b in active-bodies
+                        for sname in inferred-snames
+                        collect (normalize-guarded-equalities
+                                 (replace-operator-calls b sname canon-self-op)))))
+         ;; Every participating body in a recursive library abstraction must be recursive
+         (unless (every (lambda (nb) (term-references-bound-or-self-p nb nil :__au_self__))
+                        norm-bodies)
+           (return-from abstract-function-bodies nil))
+         (multiple-value-bind (pattern substitutions)
+             (anti-unify-for-library norm-bodies norm-inputs
+                                     :self-name :__au_self__
+                                     :ledger ledger)
+           (when (or (hole-p pattern) (not (pattern-has-holes-p pattern)))
+             (return-from abstract-function-bodies nil))
+           (let ((holes (pattern-holes pattern))
+                 (next-param-id (next-child-id norm-inputs))
+                 (new-params nil)
+                 (extra-param-vars nil)
+                 (hole-replacements nil)
+                 (per-param-call-args nil)
+                 (has-code-param-p nil))
+             (dolist (h holes)
+               (let* ((hid (car h))
+                      (hsort (cdr h))
+                      (fillers (mapcar (lambda (subst) (cdr (assoc hid subst))) substitutions)))
+                 (when (or (function-sort-p hsort) (some #'null fillers))
+                   (return-from abstract-function-bodies nil))
+                 (if (some (lambda (f) (term-references-bound-or-self-p f bound-vars :__au_self__))
+                           fillers)
+                     ;; Higher-order :code parameter
+                     (let ((cover (shared-subterm-cover fillers norm-inputs
+                                                        :bound-vars bound-vars
+                                                        :self-name :__au_self__)))
+                       (when (null cover)
+                         (return-from abstract-function-bodies nil))
+                       (let ((code-lits nil)
+                             (common-ctype nil))
+                         (dolist (f fillers)
+                           (multiple-value-bind (clit ctype cbody)
+                               (abstract-over-subterms f cover norm-inputs ledger)
+                             (when (or (null clit)
+                                       (term-references-bound-or-self-p cbody nil :__au_self__)
+                                       (and common-ctype (not (equal common-ctype ctype))))
+                               (return-from abstract-function-bodies nil))
+                             (setf common-ctype ctype)
+                             (push clit code-lits)))
+                         (setf code-lits (nreverse code-lits)
+                               has-code-param-p t)
+                         (let* ((pid (prog1 next-param-id (incf next-param-id)))
+                                (pvar (var pid common-ctype))
+                                (eval-expr (apply #'app (op :code-eval common-ctype) pvar cover)))
+                           (push (cons pid common-ctype) new-params)
+                           (push pvar extra-param-vars)
+                           (push (cons hid eval-expr) hole-replacements)
+                           (push code-lits per-param-call-args))))
+                     ;; First-order value parameter
+                     (let* ((pid (prog1 next-param-id (incf next-param-id)))
+                            (pvar (var pid hsort)))
+                       (push (cons pid hsort) new-params)
+                       (push pvar extra-param-vars)
+                       (push (cons hid pvar) hole-replacements)
+                       (push fillers per-param-call-args)))))
+             (unless has-code-param-p
+               (return-from abstract-function-bodies nil))
+             (setf new-params (nreverse new-params)
+                   extra-param-vars (nreverse extra-param-vars)
+                   hole-replacements (nreverse hole-replacements)
+                   per-param-call-args (nreverse per-param-call-args))
+             (let* ((lib-inputs (append (copy-tree norm-inputs) new-params))
+                    (lib-ctype (code-type lib-inputs return-type))
+                    (cand-op (op :__lib_cand__ lib-ctype))
+                    (staged-body (instantiate pattern hole-replacements :hole))
+                    (cand-lib-body (replace-operator-calls staged-body :__au_self__
+                                                           cand-op extra-param-vars)))
+               (charge ledger :construction (syntax-work cand-lib-body))
+               (unless (and (equal return-type (ignore-errors (expression-type cand-lib-body lib-inputs)))
+                            (term-references-bound-or-self-p cand-lib-body nil :__lib_cand__)
+                            (multiple-value-bind (tot-p cond-params)
+                                (analyze-function-body-totality :__lib_cand__ lib-inputs cand-lib-body)
+                              (or tot-p cond-params)))
+                 (return-from abstract-function-bodies nil))
+               (let* ((orig-vars (loop for (id . type) in norm-inputs collect (var id type)))
+                      (cand-ref-bodies
+                        (loop for i below k
+                              for prog-args = (mapcar (lambda (pargs) (nth i pargs)) per-param-call-args)
+                              for rb = (apply #'app cand-op (append orig-vars prog-args))
+                              do (charge ledger :construction (syntax-work rb))
+                              collect rb))
+                      (original-bits (loop for b in bodies sum (body-size b norm-inputs)))
+                      (library-bits (body-size cand-lib-body lib-inputs))
+                      (refactored-call-bits (loop for rb in cand-ref-bodies sum (body-size rb norm-inputs)))
+                      (refactored-bits (+ library-bits refactored-call-bits))
+                      (gain (- original-bits refactored-bits))
+                      (abs (make-library-abstraction
+                            :name (canonical-op-name target-name)
+                            :program-inputs (copy-tree norm-inputs)
+                            :inputs lib-inputs
+                            :return-type (copy-tree return-type)
+                            :body cand-lib-body
+                            :pattern pattern
+                            :programs (or (copy-list program-names)
+                                          (loop for i below k collect i))
+                            :refactored-bodies cand-ref-bodies
+                            :original-bits original-bits
+                            :library-bits library-bits
+                            :refactored-call-bits refactored-call-bits
+                            :refactored-bits refactored-bits
+                            :gain gain
+                            :work (- (ledger-total ledger) start-work))))
+                 (finalize-library-abstraction abs target-name :register-p register-p)))))))))))
+
+(defun normalize-corpus-definition-entry (entry index)
+  "Normalize a `function-definition`, function name symbol, or plist into a canonical
+plist `(:index idx :name name :inputs inputs :return-type return-type :body body :self-name sname :def def)`."
+  (cond
+    ((function-definition-p entry)
+     (let ((inputs (copy-tree (function-definition-inputs entry)))
+           (ret (copy-tree (function-definition-return-type entry)))
+           (body (function-definition-body entry))
+           (name (function-definition-name entry)))
+       (list :index index
+             :name name
+             :inputs inputs
+             :return-type ret
+             :body body
+             :self-name (infer-self-operator-name body inputs ret name)
+             :def entry)))
+    ((and (symbolp entry) (not (null entry)))
+     (let ((def (find-function-definition entry)))
+       (assert def () "Unknown function definition ~S" entry)
+       (normalize-corpus-definition-entry def index)))
+    ((consp entry)
+     (let* ((name (or (getf entry :name) (de-novo-function-name index)))
+            (raw-inputs (getf entry :inputs))
+            (inputs (copy-tree (if (schema-p raw-inputs) (schema-inputs raw-inputs) raw-inputs)))
+            (body (getf entry :body))
+            (ret (copy-tree (or (getf entry :return-type)
+                                (expression-type body inputs))))
+            (sname (infer-self-operator-name body inputs ret (or (getf entry :self-name) name)))
+            (def (%make-function-definition :name (canonical-op-name name)
+                                            :inputs inputs
+                                            :return-type ret
+                                            :body body
+                                            :total-p (provably-total-p body))))
+       (list :index index
+             :name (canonical-op-name name)
+             :inputs inputs
+             :return-type ret
+             :body body
+             :self-name sname
+             :def def)))
+    (t (error "Invalid corpus definition entry: ~S" entry))))
+
+(defun discover-library-abstractions (definitions &key (register-p t) (min-gain 0)
+                                                       library-names rewrite-library ledger)
+  "Discover higher-order recursive library combinators (:map, :foldr, ...) across DEFINITIONS
+using top-down homoiconic anti-unification (`anti-unify-for-library`) and positional `:code`
+extraction (`shared-subterm-cover` + `abstract-over-subterms`).
+Accepts a candidate combinator only when it strictly improves description length above MIN-GAIN:
+  gain = sum_i S(p_i) - (S(L) + sum_i S(p_i | L)) > min-gain.
+Returns `(VALUES accepted-abstractions refactored-definitions all-candidates ledger)`."
+  (let* ((ledger (or ledger (make-ledger)))
+         (entries (loop for d in definitions
+                        for idx from 0
+                        collect (normalize-corpus-definition-entry d idx)))
+         (sig-groups (make-hash-table :test #'equal))
+         (group-keys nil)
+         (all-candidates nil)
+         (raw-accepted nil))
+    ;; 1. Optionally normalize corpus bodies once upfront with REWRITE-LIBRARY
+    (when rewrite-library
+      (let ((temp-snames (remove-duplicates
+                          (loop for entry in entries
+                                for sname = (getf entry :self-name)
+                                when sname collect (canonical-op-name sname)))))
+        (call-with-temporary-function-names
+         temp-snames
+         (lambda ()
+           (dolist (entry entries)
+             (let ((norm-body (first (normalize-trees-with-library
+                                      (list (getf entry :body))
+                                      (getf entry :inputs)
+                                      rewrite-library
+                                      :ledger ledger))))
+               (setf (getf entry :body) norm-body)))))))
+    ;; 2. Group corpus definitions by (inputs . return-type) preserving corpus order
+    (dolist (entry entries)
+      (let ((key (cons (getf entry :inputs) (getf entry :return-type))))
+        (unless (gethash key sig-groups)
+          (push key group-keys))
+        (push entry (gethash key sig-groups))))
+    (setf group-keys (nreverse group-keys))
+    ;; 3. Within each signature group, explore full-group and pair-seeded subsets
+    (dolist (key group-keys)
+      (let ((remaining (nreverse (gethash key sig-groups)))
+            (inputs (car key))
+            (ret-type (cdr key)))
+        (labels ((eval-subset (subset)
+                   (let* ((ordered (sort (copy-list subset) #'< :key (lambda (e) (getf e :index))))
+                          (bodies (mapcar (lambda (e) (getf e :body)) ordered))
+                          (snames (mapcar (lambda (e) (getf e :self-name)) ordered))
+                          (pnames (mapcar (lambda (e) (getf e :name)) ordered)))
+                     (abstract-function-bodies bodies inputs ret-type
+                                               :self-names snames
+                                               :program-names pnames
+                                               :target-name :__lib_cand__
+                                               :rewrite-library nil
+                                               :register-p nil
+                                               :ledger ledger)))
+                 (better-candidate-p (a b)
+                   (or (> (library-abstraction-gain a) (library-abstraction-gain b))
+                       (and (= (library-abstraction-gain a) (library-abstraction-gain b))
+                            (> (length (library-abstraction-programs a))
+                               (length (library-abstraction-programs b))))
+                       (and (= (library-abstraction-gain a) (library-abstraction-gain b))
+                            (= (length (library-abstraction-programs a))
+                               (length (library-abstraction-programs b)))
+                            (< (library-abstraction-library-bits a)
+                               (library-abstraction-library-bits b))))))
+          (loop while (>= (length remaining) 2) do
+            (let ((seen-subsets (make-hash-table :test #'equal))
+                  (group-candidates nil))
+              (flet ((try-subset (subset)
+                       (let* ((ordered (sort (copy-list subset) #'< :key (lambda (e) (getf e :index))))
+                              (indices (mapcar (lambda (e) (getf e :index)) ordered)))
+                         (multiple-value-bind (cached present-p) (gethash indices seen-subsets)
+                           (if present-p
+                               (unless (eq cached :none) cached)
+                               (let ((cand (eval-subset ordered)))
+                                 (setf (gethash indices seen-subsets) (or cand :none))
+                                 (when cand
+                                   (push (cons ordered cand) group-candidates)
+                                   (push cand all-candidates))
+                                 cand))))))
+                ;; 2a. Full remaining signature group
+                (try-subset remaining)
+                ;; 2b. Pairwise seeds + greedy subset extension
+                (loop for tail on remaining
+                      for ea = (first tail)
+                      do (dolist (eb (rest tail))
+                           (let* ((cur-set (list ea eb))
+                                  (cur-cand (try-subset cur-set)))
+                             (when cur-cand
+                               (loop
+                                 (let ((best-ext-set nil)
+                                       (best-ext-cand nil))
+                                   (dolist (ec remaining)
+                                     (unless (member ec cur-set :test #'eq)
+                                       (let* ((ext-set (cons ec cur-set))
+                                              (ext-cand (try-subset ext-set)))
+                                         (when (and ext-cand
+                                                    (> (library-abstraction-gain ext-cand)
+                                                       (library-abstraction-gain cur-cand))
+                                                    (or (null best-ext-cand)
+                                                        (better-candidate-p ext-cand best-ext-cand)))
+                                           (setf best-ext-set ext-set
+                                                 best-ext-cand ext-cand)))))
+                                   (if best-ext-cand
+                                       (setf cur-set best-ext-set
+                                             cur-cand best-ext-cand)
+                                       (return)))))))))
+              (if (null group-candidates)
+                  (return)
+                  (let* ((best-pair (first (stable-sort (copy-list group-candidates)
+                                                        (lambda (a b)
+                                                          (better-candidate-p (cdr a) (cdr b))))))
+                         (best-subset (car best-pair))
+                         (best-cand (cdr best-pair)))
+                    (if (> (library-abstraction-gain best-cand) min-gain)
+                        (progn
+                          (push (cons best-subset best-cand) raw-accepted)
+                          (setf remaining (set-difference remaining best-subset :test #'eq)))
+                        (return)))))))))
+    (setf raw-accepted (nreverse raw-accepted)
+          all-candidates (nreverse all-candidates))
+    ;; 3. Assign library names (:fa, :fb, ... or LIBRARY-NAMES), register when REGISTER-P,
+    ;;    and construct the refactored definitions corpus.
+    (let ((refactored-vec (map 'vector
+                               (lambda (e)
+                                 (let ((orig (getf e :def)))
+                                   (%make-function-definition
+                                    :name (function-definition-name orig)
+                                    :inputs (copy-tree (function-definition-inputs orig))
+                                    :return-type (copy-tree (function-definition-return-type orig))
+                                    :body (copy-tree (function-definition-body orig))
+                                    :oracle-table (copy-tree (function-definition-oracle-table orig))
+                                    :total-p (function-definition-total-p orig)
+                                    :conditional-code-params
+                                    (copy-tree (function-definition-conditional-code-params orig)))))
+                               entries))
+          (accepted nil))
+      (loop for (subset . cand) in raw-accepted
+            for lib-idx from 0
+            for lib-name = (canonical-op-name (or (nth lib-idx library-names)
+                                                  (de-novo-function-name lib-idx)))
+            do (finalize-library-abstraction cand lib-name :register-p register-p)
+               (let ((ref-defs nil))
+                 (loop for entry in subset
+                       for rbody in (library-abstraction-refactored-bodies cand)
+                       for idx = (getf entry :index)
+                       for rdef = (aref refactored-vec idx)
+                       do (setf (function-definition-body rdef) rbody
+                                (function-definition-oracle-table rdef) nil
+                                (function-definition-total-p rdef) (provably-total-p rbody)
+                                (function-definition-conditional-code-params rdef) nil)
+                          (push rdef ref-defs))
+                 (setf (library-abstraction-refactored-definitions cand) (nreverse ref-defs))
+                 (push cand accepted)))
+      (values (nreverse accepted)
+              (coerce refactored-vec 'list)
+              all-candidates
+              ledger))))

@@ -401,10 +401,19 @@
   inputs library programs pending-programs cache-key evaluation attempt tasks stack (setup-work 0)
   (debt 0) (work 0) (steps 0) (status :unknown) value)
 
+(defun rewrite-scope-type-p (type domain)
+  "True when TYPE is a valid input type in a rewrite scope over DOMAIN."
+  (and (valid-type-p type)
+       (or (law-type-p type domain)
+           (and (consp type) (eq :seq (first type))
+                (rewrite-scope-type-p (second type) domain))
+           (and (consp type) (eq :tuple (first type))
+                (every (lambda (part) (rewrite-scope-type-p part domain)) (rest type))))))
+
 (defun start-rewriting (expression inputs library)
   (assert (equal (rewrite-library-versions library) (vm-versions)) () "Stale rewrite library")
   (expression-type expression inputs)
-  (assert (every (lambda (input) (law-type-p (cdr input) (rewrite-library-domain library))) inputs))
+  (assert (every (lambda (input) (rewrite-scope-type-p (cdr input) (rewrite-library-domain library))) inputs))
   (let* ((scope (copy-tree inputs)) (key (list (vm-versions) scope))
          (lookup-work (+ 1 (length (first key))
                          (loop for input in scope sum (+ (integer-width (car input)) (type-work (cdr input)))))))

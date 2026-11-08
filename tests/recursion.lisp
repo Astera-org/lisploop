@@ -1502,3 +1502,375 @@
                (check (equal (app (op := :int) (var 0 :int) (lit :int 1))
                              (nogood-clause-clause-expr ng)))))))
     (clear-function-definitions)))
+
+
+;;; ===========================================================================
+;;; Milestone R5: Phase 4 (Homoiconic Higher-Order AU & Library Learning)
+;;; ===========================================================================
+
+(deftest recursion-r5-higher-order-au-and-library-discovery
+  "Synthesize the R4 unary recursive corpus (`copy`, `inc-all`, `double-all`, `sum`, `length`, `product`)
+de novo, then run `discover-library-abstractions` to automatically discover and register
+`:fa` (`:map`) and `:fb` (`:foldr`), refactor the corpus, and verify DL compression and VM equivalence."
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (xs (var 0 seq-type))
+              (unary-code (code-type '((0 . :int)) :int))
+              (binary-code (code-type '((0 . :int) (1 . :int)) :int))
+              (seq-ops (list (op :cons :int) (op :at seq-type) (op :tail :int)
+                             (op := seq-type) (op :if seq-type)
+                             (op :+ :int) (op :* :int)))
+              (int-ops (list (op :at seq-type) (op :tail :int)
+                             (op := seq-type) (op :if :int)
+                             (op :+ :int) (op :* :int)))
+              (corpus nil))
+         (flet ((synth (name target ops lits rows)
+                  (clear-function-definitions)
+                  (let* ((frame (simple-frame target inputs rows))
+                         (lang (make-language :int inputs
+                                              :operators ops
+                                              :literals lits
+                                              :constants (list (lit seq-type '()))))
+                         (job (start-recursive-synthesis frame lang 90 :self-name :fa)))
+                    (resume-synthesis job 50000 :stop-on-first t)
+                    (check (synthesis-job-best job))
+                    (let ((expr (candidate-expression (synthesis-job-best job))))
+                      (push (list :name name
+                                  :inputs inputs
+                                  :return-type target
+                                  :body expr
+                                  :self-name :fa)
+                            corpus)))))
+           (synth :copy seq-type seq-ops nil
+                  '(((() ) ()) (((3)) (3)) (((1 3)) (1 3)) (((4 1 3)) (4 1 3))))
+           (synth :inc-all seq-type seq-ops '(1)
+                  '(((() ) ()) (((2)) (3)) (((5 2)) (6 3)) (((0 5 2)) (1 6 3))))
+           (synth :double-all seq-type seq-ops '(2)
+                  '(((() ) ()) (((3)) (6)) (((4 3)) (8 6)) (((1 4 3)) (2 8 6))))
+           (synth :sum :int int-ops nil
+                  '(((() ) 0) (((4)) 4) (((3 4)) 7) (((2 3 4)) 9)))
+           (synth :length :int (list (op :at seq-type) (op :tail :int)
+                                     (op := seq-type) (op :if :int) (op :+ :int))
+                  '(1)
+                  '(((() ) 0) (((7)) 1) (((5 7)) 2) (((9 5 7)) 3)))
+           (synth :product :int int-ops nil
+                  '(((() ) 1) (((3)) 3) (((2 3)) 6) (((4 2 3)) 24))))
+         (setf corpus (nreverse corpus))
+         (clear-function-definitions)
+         (let ((ledger (make-ledger)))
+           (multiple-value-bind (accepted refactored all-candidates out-ledger)
+               (discover-library-abstractions corpus :register-p t :ledger ledger)
+             (check (eq ledger out-ledger))
+             (check (plusp (ledger-total ledger)))
+             (check (= 2 (length accepted)))
+             (check (= 6 (length refactored)))
+             (check (>= (length all-candidates) 2))
+
+             ;; 1. Verify discovered :FA is :MAP
+             (let ((map-abs (first accepted))
+                   (map-def (find-function-definition :fa))
+                   (f-var (var 1 unary-code)))
+               (check (library-abstraction-p map-abs))
+               (check (eq :fa (library-abstraction-name map-abs)))
+               (check (eq map-def (library-abstraction-definition map-abs)))
+               (check (equal (list (cons 0 seq-type) (cons 1 unary-code))
+                             (library-abstraction-inputs map-abs)))
+               (check (equal seq-type (library-abstraction-return-type map-abs)))
+               (check (equal '(:copy :inc-all :double-all)
+                             (library-abstraction-programs map-abs)))
+               (check (equal '(1) (function-definition-conditional-code-params map-def)))
+               (check (equal (app (op :if seq-type)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  (lit seq-type '())
+                                  (app (op :cons :int)
+                                       (app (op :code-eval unary-code) f-var
+                                            (app (op :at seq-type) xs (lit :int 0)))
+                                       (app (op :fa) (app (op :tail :int) xs) f-var)))
+                             (library-abstraction-body map-abs)))
+               (check-codec-roundtrip (library-abstraction-body map-abs)
+                                      (library-abstraction-inputs map-abs))
+               (check (< (library-abstraction-refactored-bits map-abs)
+                         (library-abstraction-original-bits map-abs)))
+               (check (= 98 (library-abstraction-gain map-abs)))
+               (check (plusp (library-abstraction-work map-abs))))
+
+             ;; 2. Verify discovered :FB is :FOLDR
+             (let ((fold-abs (second accepted))
+                   (fold-def (find-function-definition :fb))
+                   (init-var (var 1 :int))
+                   (step-var (var 2 binary-code)))
+               (check (library-abstraction-p fold-abs))
+               (check (eq :fb (library-abstraction-name fold-abs)))
+               (check (eq fold-def (library-abstraction-definition fold-abs)))
+               (check (equal (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code))
+                             (library-abstraction-inputs fold-abs)))
+               (check (eq :int (library-abstraction-return-type fold-abs)))
+               (check (equal '(:sum :length :product)
+                             (library-abstraction-programs fold-abs)))
+               (check (equal '(2) (function-definition-conditional-code-params fold-def)))
+               (check (equal (app (op :if :int)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  init-var
+                                  (app (op :code-eval binary-code) step-var
+                                       (app (op :at seq-type) xs (lit :int 0))
+                                       (app (op :fb) (app (op :tail :int) xs) init-var step-var)))
+                             (library-abstraction-body fold-abs)))
+               (check-codec-roundtrip (library-abstraction-body fold-abs)
+                                      (library-abstraction-inputs fold-abs))
+               (check (< (library-abstraction-refactored-bits fold-abs)
+                         (library-abstraction-original-bits fold-abs)))
+               (check (= 1 (library-abstraction-gain fold-abs)))
+               (check (plusp (library-abstraction-work fold-abs))))
+
+             ;; 3. Verify all 6 refactored definitions: totality, codec roundtrip, and VM execution
+             (destructuring-bind (copy-def inc-def dbl-def sum-def len-def prd-def) refactored
+               (dolist (rdef refactored)
+                 (check (function-definition-total-p rdef))
+                 (check (provably-total-p (function-definition-body rdef)))
+                 (check-codec-roundtrip (function-definition-body rdef)
+                                        (function-definition-inputs rdef)))
+               ;; Exact refactored AST bodies
+               (check (equal (app (op :fa) xs (lit unary-code (var 0 :int)))
+                             (function-definition-body copy-def)))
+               (check (equal (app (op :fa) xs
+                                  (lit unary-code (app (op :+ :int) (var 0 :int) (lit :int 1))))
+                             (function-definition-body inc-def)))
+               (check (equal (app (op :fa) xs
+                                  (lit unary-code (app (op :+ :int) (var 0 :int) (var 0 :int))))
+                             (function-definition-body dbl-def)))
+               (check (equal (app (op :fb) xs (lit :int 0)
+                                  (lit binary-code (app (op :+ :int) (var 0 :int) (var 1 :int))))
+                             (function-definition-body sum-def)))
+               (check (equal (app (op :fb) xs (lit :int 0)
+                                  (lit binary-code (app (op :+ :int) (var 1 :int) (lit :int 1))))
+                             (function-definition-body len-def)))
+               (check (equal (app (op :fb) xs (lit :int 1)
+                                  (lit binary-code (app (op :* :int) (var 0 :int) (var 1 :int))))
+                             (function-definition-body prd-def)))
+               ;; Held-out VM evaluation
+               (check (equal '() (result (function-definition-body copy-def) inputs '(()))))
+               (check (equal '(9 -3 4 12) (result (function-definition-body copy-def) inputs '((9 -3 4 12)))))
+               (check (equal '(10 -2 5 13) (result (function-definition-body inc-def) inputs '((9 -3 4 12)))))
+               (check (equal '(18 -6 8 24) (result (function-definition-body dbl-def) inputs '((9 -3 4 12)))))
+               (check (= 0 (result (function-definition-body sum-def) inputs '(()))))
+               (check (= 22 (result (function-definition-body sum-def) inputs '((9 -3 4 12)))))
+               (check (= 0 (result (function-definition-body len-def) inputs '(()))))
+               (check (= 4 (result (function-definition-body len-def) inputs '((9 -3 4 12)))))
+               (check (= 1 (result (function-definition-body prd-def) inputs '(()))))
+               (check (= -1296 (result (function-definition-body prd-def) inputs '((9 -3 4 12)))))))))
+    (clear-function-definitions)))
+
+(deftest recursion-r5-controls-outliers-and-ledger-accounting
+  "Verify negative DL gain rejection, resilience to unrelated outlier definitions in the same
+signature group, multi-function fold extension (`sum-squares`), order-independence of subterm
+covers, and `:register-p nil` dry-run isolation."
+  (unwind-protect
+       (let* ((seq-type (sequence-type :int))
+              (inputs (list (cons 0 seq-type)))
+              (xs (var 0 seq-type))
+              (binary-code (code-type '((0 . :int) (1 . :int)) :int))
+              (head-x0 (app (op :at seq-type) xs (lit :int 0)))
+              (tail-x0 (app (op :tail :int) xs)))
+         ;; Register distinct recursive functions :fa..:fg
+         (let ((copy-def
+                 (define-function :fa inputs seq-type
+                   (lambda (self)
+                     (app (op :if seq-type)
+                          (app (op := seq-type) xs (lit seq-type '()))
+                          (lit seq-type '())
+                          (app (op :cons :int) head-x0 (app self tail-x0))))))
+               (inc-def
+                 (define-function :fb inputs seq-type
+                   (lambda (self)
+                     (app (op :if seq-type)
+                          (app (op := seq-type) xs (lit seq-type '()))
+                          xs
+                          (app (op :cons :int)
+                               (app (op :+ :int) head-x0 (lit :int 1))
+                               (app self tail-x0))))))
+               (dbl-def
+                 (define-function :fc inputs seq-type
+                   (lambda (self)
+                     (app (op :if seq-type)
+                          (app (op := seq-type) xs (lit seq-type '()))
+                          xs
+                          (app (op :cons :int)
+                               (app (op :+ :int) head-x0 head-x0)
+                               (app self tail-x0))))))
+               (sum-def
+                 (define-function :fd inputs :int
+                   (lambda (self)
+                     (app (op :if :int)
+                          (app (op := seq-type) xs (lit seq-type '()))
+                          (lit :int 0)
+                          (app (op :+ :int) head-x0 (app self tail-x0))))))
+               (len-def
+                 (define-function :fe inputs :int
+                   (lambda (self)
+                     (app (op :if :int)
+                          (app (op := seq-type) xs (lit seq-type '()))
+                          (lit :int 0)
+                          (app (op :+ :int) (app self tail-x0) (lit :int 1))))))
+               (prd-def
+                 (define-function :ff inputs :int
+                   (lambda (self)
+                     (app (op :if :int)
+                          (app (op := seq-type) xs (lit seq-type '()))
+                          (lit :int 1)
+                          (app (op :* :int) head-x0 (app self tail-x0))))))
+               (sumsq-def
+                 (define-function :fg inputs :int
+                   (lambda (self)
+                     (app (op :if :int)
+                          (app (op := seq-type) xs (lit seq-type '()))
+                          (lit :int 0)
+                          (app (op :+ :int)
+                               (app (op :* :int) head-x0 head-x0)
+                               (app self tail-x0))))))
+               ;; Non-recursive outlier of the same signature ((0 . (:seq :int))) -> (:seq :int)
+               (tail-outlier
+                 (list :name :tail-or-empty
+                       :inputs inputs
+                       :return-type seq-type
+                       :body (app (op :if seq-type)
+                                  (app (op := seq-type) xs (lit seq-type '()))
+                                  (lit seq-type '())
+                                  tail-x0))))
+
+           ;; 1. Negative control: a single definition cannot form a library abstraction
+           (multiple-value-bind (accepted refactored all-cands ledger)
+               (discover-library-abstractions (list sum-def) :register-p nil)
+             (declare (ignore ledger))
+             (check (null accepted))
+             (check (null all-cands))
+             (check (= 1 (length refactored))))
+
+           ;; 2. Negative control: 2 small fold functions (`sum` + `product`) have negative net gain (-30 bits)
+           ;;    so `discover-library-abstractions` rejects the candidate under `:min-gain 0`.
+           (let ((ledger (make-ledger)))
+             (multiple-value-bind (accepted refactored all-cands)
+                 (discover-library-abstractions (list sum-def prd-def)
+                                                :register-p nil
+                                                :min-gain 0
+                                                :ledger ledger)
+               (check (null accepted))
+               (check (= 1 (length all-cands)))
+               (check (< (library-abstraction-gain (first all-cands)) 0))
+               (check (= -30 (library-abstraction-gain (first all-cands))))
+               (check (equal (function-definition-body sum-def)
+                             (function-definition-body (first refactored))))
+               (check (plusp (cdr (assoc :anti-unification (ledger-counts ledger)))))
+               (check (plusp (cdr (assoc :matching (ledger-counts ledger)))))
+               (check (plusp (cdr (assoc :construction (ledger-counts ledger)))))))
+
+           ;; 3. Order-independence: placing `len-def` (which omits `(at X0 '0)`) before `sum-def`
+           ;;    still orders `(at X0 '0)` as X0 and `(:self (tail X0))` as X1 in the `:code` parameter.
+           (let ((reordered-abs
+                   (abstract-function-bodies
+                    (list (function-definition-body len-def)
+                          (function-definition-body sum-def)
+                          (function-definition-body prd-def))
+                    inputs :int
+                    :self-names '(:fe :fd :ff)
+                    :program-names '(:len :sum :prd)
+                    :target-name :fb
+                    :register-p nil)))
+             (check (library-abstraction-p reordered-abs))
+             (check (plusp (library-abstraction-gain reordered-abs)))
+             (check (equal (list (lit binary-code (app (op :+ :int) (var 1 :int) (lit :int 1)))
+                                 (lit binary-code (app (op :+ :int) (var 0 :int) (var 1 :int)))
+                                 (lit binary-code (app (op :* :int) (var 0 :int) (var 1 :int))))
+                           (mapcar #'fourth (library-abstraction-refactored-bodies reordered-abs))))
+             ;; `:register-p nil` must not clobber the existing `:fb` (`inc-def`) in `*function-definitions*`
+             (check (eq inc-def (find-function-definition :fb))))
+
+           ;; 4. Outlier resilience & 4-function fold corpus (`sum`, `len`, `prd`, `sumsq`)
+           (clear-function-definitions)
+           (multiple-value-bind (accepted refactored all-cands ledger)
+               (discover-library-abstractions
+                (list copy-def tail-outlier inc-def dbl-def sum-def len-def prd-def sumsq-def)
+                :register-p t)
+             (declare (ignore all-cands))
+             (check (plusp (ledger-total ledger)))
+             (check (= 2 (length accepted)))
+             (let ((map-abs (first accepted))
+                   (fold-abs (second accepted)))
+               ;; `tail-outlier` is excluded from `:map`, leaving (:fa :fb :fc)
+               (check (equal '(:fa :fb :fc) (library-abstraction-programs map-abs)))
+               (check (= 98 (library-abstraction-gain map-abs)))
+               ;; `tail-outlier` (index 1 in refactored) retains its original unfactored body
+               (check (equal (getf tail-outlier :body)
+                             (function-definition-body (nth 1 refactored))))
+               ;; All 4 fold functions (:fd :fe :ff :fg) are factored into `:fb` (`:foldr`) with positive gain
+               (check (equal '(:fd :fe :ff :fg) (library-abstraction-programs fold-abs)))
+               (check (> (library-abstraction-gain fold-abs) 50))
+               (let ((ref-sumsq (function-definition-body (nth 7 refactored))))
+                 (check (provably-total-p ref-sumsq))
+                 (check-codec-roundtrip ref-sumsq inputs)
+                 (check (equal (app (op :fb) xs (lit :int 0)
+                                    (lit binary-code
+                                         (app (op :+ :int)
+                                              (app (op :* :int) (var 0 :int) (var 0 :int))
+                                              (var 1 :int))))
+                               ref-sumsq))
+                 (check (= 30 (result ref-sumsq inputs '((1 2 3 4))))))))
+
+           ;; 5. `:rewrite-library` normalization before anti-unification (over finite field GF(5))
+           (clear-function-definitions)
+           (call-with-temporary-function-names
+            '(:fa)
+            (lambda ()
+              (let* ((gf5 (gf 5))
+                     (gf5-seq (sequence-type gf5))
+                     (gf5-inputs (list (cons 0 gf5-seq)))
+                     (gf5-xs (var 0 gf5-seq))
+                     (gf5-head (app (op :at gf5) gf5-xs (lit :int 0)))
+                     (gf5-tail (app (op :tail gf5) gf5-xs))
+                     (gf5-self (op :fa (code-type gf5-inputs gf5-seq)))
+                     (v-add-zero (start-law-validation
+                                  (make-law gf5 (list (cons 0 gf5))
+                                            (app (op :+ gf5) (var 0 gf5) (lit gf5 0))
+                                            (var 0 gf5))))
+                     (_ (resume-law-validation v-add-zero 100000))
+                     (rw-lib (prepare-rewrite-library (list v-add-zero) gf5))
+                     (gf5-copy
+                       (list :name :gf5-copy :inputs gf5-inputs :return-type gf5-seq :self-name :fa
+                             :body (app (op :if gf5-seq)
+                                        (app (op := gf5-seq) gf5-xs (lit gf5-seq '()))
+                                        (lit gf5-seq '())
+                                        (app (op :cons gf5) gf5-head (app gf5-self gf5-tail)))))
+                     (gf5-inc-unsimplified
+                       (list :name :gf5-inc :inputs gf5-inputs :return-type gf5-seq :self-name :fa
+                             :body (app (op :if gf5-seq)
+                                        (app (op := gf5-seq) gf5-xs (lit gf5-seq '()))
+                                        gf5-xs
+                                        (app (op :cons gf5)
+                                             (app (op :+ gf5) gf5-head
+                                                  (app (op :+ gf5) (lit gf5 1) (lit gf5 0)))
+                                             (app gf5-self gf5-tail)))))
+                     (gf5-dbl
+                       (list :name :gf5-dbl :inputs gf5-inputs :return-type gf5-seq :self-name :fa
+                             :body (app (op :if gf5-seq)
+                                        (app (op := gf5-seq) gf5-xs (lit gf5-seq '()))
+                                        gf5-xs
+                                        (app (op :cons gf5)
+                                             (app (op :+ gf5) gf5-head gf5-head)
+                                             (app gf5-self gf5-tail)))))
+                     (ledger (make-ledger)))
+                (declare (ignore _))
+                (check (eq :validated (law-validation-status v-add-zero)))
+                (multiple-value-bind (accepted refactored)
+                    (discover-library-abstractions (list gf5-copy gf5-inc-unsimplified gf5-dbl)
+                                                   :rewrite-library rw-lib
+                                                   :register-p t
+                                                   :ledger ledger)
+                  (check (= 1 (length accepted)))
+                  (check (plusp (cdr (assoc :rewriting (ledger-counts ledger)))))
+                  ;; `(+ '1 '0)` in `gf5-inc-unsimplified` was rewritten to `'1`, so its refactored
+                  ;; `:code` argument is `'(+ X0 '1)` instead of `'(+ X0 (+ '1 '0))`
+                  (check (equal (app (op :fa) gf5-xs
+                                     (lit (code-type (list (cons 0 gf5)) gf5)
+                                          (app (op :+ gf5) (var 0 gf5) (lit gf5 1))))
+                                (function-definition-body (second refactored))))))))))
+    (clear-function-definitions)))

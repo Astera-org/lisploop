@@ -1,6 +1,6 @@
 # `lisploop` --- Plan 7R: Loops, Recursion, Callable Functions, and Conserved-Quantity Inversion
 
-> **Status**: Active implementation plan (`plan7-recursion.md`). R1, R2, R3, and R4 completed and audited.
+> **Status**: Active implementation plan (`plan7-recursion.md`). R1, R2, R3, R4, and R5 completed and audited.
 > Cross-checked against `plan7.md`, `prompt4.md`, `architecture.md`, `plan7-recursion2.md`, and the authoritative Lisp source (`package.lisp`, `ast.lisp`, `codec.lisp`, `vm.lisp`, `requirements.lisp`, `frame.lisp`, `enumerate.lisp`, `factor.lisp`, `laws.lisp`, `synthesize.lisp`).
 
 ---
@@ -152,19 +152,34 @@ Complementing bottom-up conservation discovery, pulling back a parent frame $\Om
 ---
 
 ### Phase 4: Top-Down Homoiconic Library Learning (`map`, `fold` via Stitch-Style AU)
-**Files**: `factor.lisp`
+**Files**: `factor.lisp`, `ast.lisp`, `laws.lisp`, `package.lisp`
 
 #### 4.1. Compatibility with Zero-Copy Positional Binding & Stitch-Style Top-Down Abstraction
 In DreamCoder, abstracting lambda-calculus terms required expensive bottom-up version spaces because de Bruijn indices shifted under every lambda binder. In `lisploop`, **Phase 2.2's positional binding (`0, 1, ...`) makes higher-order anti-unification zero-copy and native**:
-1. **Self-Reference Normalization (`rename-function-calls` in `ast.lisp`)**: When comparing two recursive definitions `:fa` and `:fb` of matching signature, `rename-function-calls` normalizes self-calls `(:fb ...)` to `(:fa ...)` so their recursive skeletons align as valid typed ASTs.
+1. **Self-Reference Normalization (`rename-function-calls` in `ast.lisp`, `infer-self-operator-name` & `replace-operator-calls` in `factor.lisp`)**: When comparing recursive definitions `:fa`, `:fb`, ... of matching signature, `infer-self-operator-name` and `replace-operator-calls` normalize self-calls onto a shared temporary self-operator `:__au_self__` (and rewrite self-calls in the extracted combinator body to the new library combinator `(op target-name ...)`, appending any newly abstracted value or `:code` parameters).
 2. **Common-Subterm Factoring into Positional `:code` Arguments (`shared-subterm-cover`, `abstract-over-subterms` in `factor.lisp`)**:
-   - When `anti-unify` encounters a mismatch $(L, R)$ whose fillers reference bound parameters or self-calls (e.g. $L = \texttt{(+ (at X0 '0) '1)}$ and $R = \texttt{(* (at X0 '0) '2)}$ in `map_inc` vs `map_double`, or $L = \texttt{(+ (at X0 '0) (:fa (tail X0)))}$ and $R = \texttt{(* (at X0 '0) (:fb (tail X0)))}$ in `fold_sum` vs `fold_prod`):
-   - `shared-subterm-cover` extracts the ordered subterms $A_0, \dots, A_{m-1}$ covering all outer variable / self-call references.
-   - `abstract-over-subterms` replaces each $A_j$ in $L$ and $R$ with canonical positional variable `(var j tau_j)` (`X0`, `X1`, ...) and packages the closed body as a typed `:code` literal.
-   - Because `X0, X1, ...` are *already* the exact positional environment expected by `:code-eval` in Phase 2.2, $L'$ and $R'$ become closed `:code` literals (`'(+ X0 '1)` and `'(* X0 '2)`) with **zero variable shifting**, and the shared template replaces the mismatch site with `(:code-eval X_f A_0 ... A_{m-1})`!
+   - When `anti-unify-for-library` encounters a mismatch $(T_1, \dots, T_k)$ whose fillers reference bound parameters or self-calls (e.g. `copy`'s `(at X0 '0)`, `inc-all`'s `(+ (at X0 '0) '1)`, and `double-all`'s `(+ (at X0 '0) (at X0 '0))`, or `sum`'s `(+ (at X0 '0) (:fa (tail X0)))`, `length`'s `(+ (:fa (tail X0)) '1)`, and `product`'s `(* (at X0 '0) (:fa (tail X0)))`):
+   - `shared-subterm-cover` extracts the maximal shared subterms $A_0, \dots, A_{m-1}$ covering all outer variable / self-call references.
+   - `abstract-over-subterms` replaces each $A_j$ in every $T_i$ with canonical positional variable `(var j tau_j)` (`X0`, `X1`, ...) and packages the closed body as a typed `:code` literal.
+   - Because `X0, X1, ...` are *already* the exact positional environment expected by `:code-eval` in Phase 2.2, each abstracted filler becomes a closed `:code` literal (`'X0`, `'(+ X0 '1)`, `'(+ X0 X0)` for `:map`; `'(+ X0 X1)`, `'(+ X1 '1)`, `'(* X0 X1)` for `:foldr`) with **zero variable shifting**, and the shared combinator template replaces the hole with `(:code-eval X_f A_0 ... A_{m-1})`!
 3. **Stitch / e-Stitch Efficiency Roadmap**:
-   - `discover-subexpression-abstractions` operates top-down over the solved corpus using native `anti-unify`, accepting a new library definition (`:fa`, `:fb`, ... for `map`, `foldr`, `foldl`) only when it strictly reduces total description length $S(L) + \sum_i S(p_i \mid L)$.
-   - Because `laws.lisp` already maintains certified equivalence rewrite rules, normalizing corpus expressions (or maintaining e-graph equivalence classes a la e-stitch / babble) plugs directly into top-down anti-unification without changing the representation.
+   - `discover-library-abstractions` (and `abstract-function-bodies`) operates top-down over the solved recursive corpus using `anti-unify-for-library`, accepting a new library definition (`:fa`, `:fb`, ... for `map`, `foldr`, `foldl`) only when it strictly reduces total description length $S(L) + \sum_i S(p_i \mid L) < \sum_i S(p_i)$.
+   - Because `laws.lisp` already maintains certified equivalence rewrite rules, normalizing corpus expressions via `:rewrite-library` (`normalize-trees-with-library`) and guarded-equality normalization (`normalize-guarded-equalities`, rewriting `Xi -> 'c` inside the `then` branch of `(if (= Xi 'c) then else)`) plugs directly into top-down anti-unification without changing the representation.
+4. **R5 Implementation Notes (`ast.lisp`, `factor.lisp`, `laws.lisp`, `package.lisp`, `tests/recursion.lisp`)** (see [Appendix A.4](#sec-appendix-r5-library) for worked AST and bit-accounting trace):
+   - *Guarded-equality base-case canonicalization (`extract-var-literal-equality`, `normalize-guarded-equalities` in `factor.lisp`)*: De novo R4 synthesis produces `(if (= X0 '()) X0 ...)` for `inc-all` and `double-all` (`X0` is 6 bits vs `'()` at 9 bits) and `(if (= X0 '()) '() ...)` for `copy`. `normalize-guarded-equalities` substitutes `Xi -> 'c` inside the `then` branch of `(if (= Xi 'c) then else)` prior to anti-unification so all three map functions share the identical `'()` base case without opening a redundant base-case hole.
+   - *Control-spine anti-unification (`anti-unify-for-library` in `factor.lisp`)*: Recurses into applications only along the shared recursive control spine (`:if` with non-hole guards, and constructors/tuples whose arguments contain recursive self-calls while at least one argument does not immediately mismatch into a bare hole). When an application directly wraps a recursive call alongside a diverging operand (as in `sum`'s `(+ (at X0 '0) (:self (tail X0)))` vs `length`'s `(+ (:self (tail X0)) '1)` vs `product`'s `(* (at X0 '0) (:self (tail X0)))`), `anti-unify-for-library` opens a single expression hole `?1` for the entire step expression rather than recursing into `:+` or introducing first-order operator holes.
+   - *Order-independent subterm covers (`shared-subterm-cover` in `factor.lisp`)*: Canonicalizes extracted cover order via `stable-sort` so non-recursive parameter subterms (e.g. `(at X0 '0)`) precede recursive self-call subterms (e.g. `(:self (tail X0))`). This guarantees that `:foldr` step `:code` literals always bind `(X0 = (at X0 '0), X1 = (:self (tail X0)))` even when a function like `length` omits `(at X0 '0)` and appears first in the subset.
+   - *First-order vs. higher-order hole classification (`abstract-function-bodies` in `factor.lisp`)*: For each hole in the LGG pattern:
+     - If no filler references outer parameters or `:__au_self__` (e.g. base-case identity `'0`, `'0`, `'1` in `:foldr`), the hole becomes a **first-order value parameter** `(var param-id hole-sort)` (`X1 : :int`) and each refactored caller passes its concrete expression (`'0`, `'0`, `'1`).
+     - If any filler references outer parameters or `:__au_self__`, `shared-subterm-cover` + `abstract-over-subterms` extracts the shared cover $A_0, \dots, A_{m-1}$, adds a **`:code` parameter** `(var param-id (:code ((0 . t0) ...) hole-sort))`, replaces the hole in the combinator body with `(:code-eval (var param-id ...) A_0 ... A_{m-1})`, and wraps each abstracted filler as a `:code` literal `(lit code-param-type ab-body)` at the refactored call site.
+   - *Totality verification & exact MDL bit accounting (`finalize-library-abstraction` in `factor.lisp`)*: Requires every candidate combinator to contain at least one `:code` parameter and pass `analyze-function-body-totality` (`total-p` or non-empty `conditional-code-params`). Prices exact bit lengths via `description-size`:
+     - `original-bits` $= \sum_i S(\text{body}_i, \text{inputs})$
+     - `library-bits` $= S(\text{lib-body}, \text{lib-inputs})$
+     - `refactored-call-bits` $= \sum_i S(\text{call}_i, \text{inputs})$
+     - `gain` $= \text{original-bits} - (\text{library-bits} + \text{refactored-call-bits})$
+     Also ensures candidate evaluation uses temporary function names (`call-with-temporary-function-names` with `:__lib_cand__`) and replaces operator calls (`replace-operator-calls`) before recomputing `ast-meta` so existing definitions in `*function-definitions*` are never clobbered during subset search.
+   - *Signature-grouped subset search & rewrite integration (`discover-library-abstractions` in `factor.lisp`, `rewrite-scope-type-p` in `laws.lisp`)*: Normalizes corpus entries (`normalize-corpus-definition-entry`), optionally normalizes bodies once upfront with `:rewrite-library` (with `rewrite-scope-type-p` in `laws.lisp` permitting `:seq` inputs over the library's domain), explores both the full signature group and pair-seeded greedy subsets (isolating non-recursive or incompatible outliers), assigns fresh de novo names (`:fa`, `:fb`, ...), registers accepted combinators (`:gain > min-gain`), and returns `(values accepted-abstractions refactored-definitions all-candidates ledger)`.
+   - *AST metadata preservation across function resets (`clear-function-definitions`, `rename-function-calls` in `ast.lisp`)*: `clear-function-definitions` clears `*typed-symbol-pool*` without deleting uninterned operator symbols from `*node-meta*`, and `rename-function-calls` falls back to `(operator-operand-type head)` when `to-name` is not currently bound in `*function-definitions*`, ensuring ASTs synthesized in earlier runs remain valid across function table resets.
 
 ---
 
@@ -302,5 +317,52 @@ The "Oracle Self-Lift" in Phase 3.2 combines two mechanisms integrated directly 
    - When `Path B2` sees that the synthesized guard is `(= Xi '())` (`invert-p = nil`), `Xi` is statically guaranteed to be non-empty on the `else` branch (`child-var`), making the partial sequence destructors `(at Xi '0)` and `(tail Xi)` total on that branch. `Path B2` therefore lifts `H = (at Xi '0)` and `R = (:fa ... (tail Xi) ...)` into the child's `bindings`.
    - In the R1--R6 architecture, lifting `R = (:fa ... (tail Xi) ...)` on an emptiness guard serves as the **bootstrap** before a library exists:
      - In **R4**, it synthesizes the initial corpus of concrete recursive definitions (`copy`, `inc-all`, `double-all`, `sum`, `length`, `product`, `insert`, `sort`) through the standard `heuristic-expander`.
-     - In **R5 (Phase 4)**, top-down homoiconic anti-unification (`anti-unify`) across those solved ASTs factors out the shared `(if (= X0 '()) ... (at X0 '0) ... (:fa (tail X0)))` skeleton into reusable higher-order library combinators (`:map`, `:foldr`).
+     - In **R5 (Phase 4)**, top-down homoiconic anti-unification (`anti-unify-for-library`) across those solved ASTs factors out the shared `(if (= X0 '()) ... (at X0 '0) ... (:fa (tail X0)))` skeleton into reusable higher-order library combinators (`:map`, `:foldr`).
      - In **R6 (Phase 5)**, once `:map` and `:foldr` are in the library, new recursive tasks pull back directly through those learned library combinators via `lift-frame` (R3).
+
+---
+
+### A.4. R5 Worked Trace: Discovering `:map` (`:fa`) and `:foldr` (`:fb`) from the R4 Corpus {#sec-appendix-r5-library}
+
+Given the 6 de novo recursive definitions synthesized in R4, `discover-library-abstractions` groups them by signature `(inputs . return-type)` and runs `abstract-function-bodies`:
+
+1. **Group 1 (`((0 . (:seq :int))) -> (:seq :int)`): `copy`, `inc-all`, `double-all` $\longrightarrow$ `:fa` (`:map`)**
+   - **R4 Synthesized Bodies (`original-bits = 89 + 100 + 116 = 305` bits)**:
+     - `copy` (`89` bits): `(if (= X0 '()) '() (cons (at X0 '0) (:fa (tail X0))))`
+     - `inc-all` (`100` bits): `(if (= X0 '()) X0 (cons (+ (at X0 '0) '1) (:fa (tail X0))))`
+     - `double-all` (`116` bits): `(if (= X0 '()) X0 (cons (+ (at X0 '0) (at X0 '0)) (:fa (tail X0))))`
+   - **Normalization & Control-Spine Anti-Unification**:
+     - `normalize-guarded-equalities` rewrites `X0 -> '()` inside the `then` branch of `(if (= X0 '()) X0 ...)`, aligning all three base cases to `'()`.
+     - `anti-unify-for-library` produces LGG pattern `(if (= X0 '()) '() (cons ?0 (:__au_self__ (tail X0))))` with hole `?0 : :int` and fillers `((at X0 '0), (+ (at X0 '0) '1), (+ (at X0 '0) (at X0 '0)))`.
+   - **Positional `:code` Extraction & Combinator Synthesis**:
+     - `shared-subterm-cover` extracts the single shared subterm `A_0 = (at X0 '0)` (`:int`).
+     - `abstract-over-subterms` replaces `(at X0 '0)` with `(var 0 :int)` (`X0`), yielding closed `:code` literals `'X0`, `'(+ X0 '1)`, and `'(+ X0 X0)` of type `(:code ((0 . :int)) :int)`.
+     - Discovered combinator `:fa` (`library-bits = 127` bits, `conditional-code-params = '(1)`):
+       - Inputs: `((0 . (:seq :int)) (1 . (:code ((0 . :int)) :int)))`, return type: `(:seq :int)`
+       - Body: `(if (= X0 '()) '() (cons (code-eval X1 (at X0 '0)) (:fa (tail X0) X1)))`
+     - Refactored corpus calls (`refactored-call-bits = 20 + 32 + 28 = 80` bits, all certified `provably-total-p`):
+       - `copy`: `(:fa X0 'X0)` (`20` bits)
+       - `inc-all`: `(:fa X0 '(+ X0 '1))` (`32` bits)
+       - `double-all`: `(:fa X0 '(+ X0 X0))` (`28` bits)
+     - **Total MDL Compression**: `305 -> 127 + 80 = 207` bits (`gain = +98` bits).
+
+2. **Group 2 (`((0 . (:seq :int))) -> :int`): `sum`, `length`, `product` $\longrightarrow$ `:fb` (`:foldr`)**
+   - **R4 Synthesized Bodies (`original-bits = 84 + 68 + 87 = 239` bits)**:
+     - `sum` (`84` bits): `(if (= X0 '()) '0 (+ (at X0 '0) (:fa (tail X0))))`
+     - `length` (`68` bits): `(if (= X0 '()) '0 (+ (:fa (tail X0)) '1))`
+     - `product` (`87` bits): `(if (= X0 '()) '1 (* (at X0 '0) (:fa (tail X0))))`
+   - **Control-Spine Anti-Unification & Hole Classification**:
+     - `anti-unify-for-library` produces LGG pattern `(if (= X0 '()) ?0 ?1)` with two holes:
+       - `?0 : :int` with closed fillers `('0, '0, '1)` $\longrightarrow$ first-order value parameter `X1 : :int`.
+       - `?1 : :int` with fillers `((+ (at X0 '0) (:__au_self__ (tail X0))), (+ (:__au_self__ (tail X0)) '1), (* (at X0 '0) (:__au_self__ (tail X0))))`.
+   - **Positional `:code` Extraction & Combinator Synthesis**:
+     - `shared-subterm-cover` extracts the canonicalized 2-subterm cover `A_0 = (at X0 '0)`, `A_1 = (:__au_self__ (tail X0))`.
+     - `abstract-over-subterms` replaces `A_0 -> X0` and `A_1 -> X1`, yielding closed binary `:code` literals `'(+ X0 X1)`, `'(+ X1 '1)`, and `'(* X0 X1)` of type `(:code ((0 . :int) (1 . :int)) :int)`.
+     - Discovered combinator `:fb` (`library-bits = 133` bits, `conditional-code-params = '(2)`):
+       - Inputs: `((0 . (:seq :int)) (1 . :int) (2 . (:code ((0 . :int) (1 . :int)) :int)))`, return type: `:int`
+       - Body: `(if (= X0 '()) X1 (code-eval X2 (at X0 '0) (:fb (tail X0) X1 X2)))`
+     - Refactored corpus calls (`refactored-call-bits = 33 + 36 + 36 = 105` bits, all certified `provably-total-p`):
+       - `sum`: `(:fb X0 '0 '(+ X0 X1))` (`33` bits)
+       - `length`: `(:fb X0 '0 '(+ X1 '1))` (`36` bits)
+       - `product`: `(:fb X0 '1 '(* X0 X1))` (`36` bits)
+     - **Total MDL Compression**: `239 -> 133 + 105 = 238` bits (`gain = +1` bit on 3 folds; `339 -> 133 + 151 = 284` bits, `gain = +55` bits when a 4th fold `sum-squares` is included; while a 2-fold pair has `gain = -16` bits and is rejected).
