@@ -139,12 +139,14 @@ reassemble those conjuncts into `(= V '(v_0 ... v_{k-1}))`. Returns (VALUES expr
                 (eq op-name (operator-name (first expr))))
            (some (lambda (child) (contains-call-to-p child op-name)) (rest expr)))))
 
+(defvar *fold-contract* :equivalent)
+
 (defun unfoldable-seq-part-p (expr)
   "Return T if EXPR is provably total or built from total constructors, holes,
 `:code-eval`, and structurally terminating functions without unguarded partial primitives."
   (or (provably-total-p expr)
-      (hole-p expr)
-      (and (app-p expr)
+      (and (eq *fold-contract* :necessary) (hole-p expr))
+      (and (eq *fold-contract* :necessary) (app-p expr)
            (let ((head (first expr)) (args (rest expr)))
              (and (every #'unfoldable-seq-part-p args)
                   (or (hole-p head)
@@ -152,20 +154,35 @@ reassemble those conjuncts into `(= V '(v_0 ... v_{k-1}))`. Returns (VALUES expr
                        (operator-name head) args
                        (lambda (c) (provably-total-code-arg-p c t)))))))))
 
+(defun demanded-vars (expr)
+  "Variables evaluated on every successful path. Quoted syntax has its own scope."
+  (cond ((var-p expr) (list (ast-id expr)))
+        ((not (app-p expr)) nil)
+        ((eq :if (ast-id expr))
+         (union (demanded-vars (second expr))
+                (intersection (demanded-vars (third expr))
+                              (demanded-vars (fourth expr)) :test #'eql)
+                :test #'eql))
+        (t (reduce (lambda (a b) (union a b :test #'eql))
+                   (mapcar #'demanded-vars (rest expr)) :initial-value nil))))
+
 (defun non-total-args-preserved-p (inputs call-args target-template)
   "Verify that every argument in CALL-ARGS that is not strictly `provably-total-p`
-is referenced in TARGET-TEMPLATE, so call-by-value errors are never dropped."
-  (let ((used-vars (free-vars target-template)))
+is demanded in TARGET-TEMPLATE, so call-by-value errors are never dropped."
+  (let ((used-vars (demanded-vars target-template)))
     (loop for (id . nil) in inputs
           for arg in call-args
           always (or (provably-total-p arg)
                      (member id used-vars :test #'eql)))))
 
-(defun fold-constants (expression &optional schema &key ledger (budget 10000))
+(defun fold-constants (expression &optional schema &key ledger (budget 10000)
+                                                       (contract :equivalent))
   "Preserve values AND definedness. One budget covers the complete traversal.
 An error or cutoff leaves its expression intact. No table inversion is built in."
   (declare (ignore schema))
-  (let ((remaining budget))
+  (assert (member contract '(:equivalent :necessary)))
+  (when (eq contract :necessary) (assert (eq :bool (ast-type expression))))
+  (let ((remaining budget) (*fold-contract* contract))
     (labels
         ((walk (expr)
            (when (zerop remaining) (return-from walk expr))
@@ -189,7 +206,11 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                                         (fourth expr))))
                           (rebuilt (app operator condition yes no)))
                      (cond
-                       ((and (or (provably-total-p condition) code-eval-cond-p) (equal yes no)) yes)
+                       ;; Knowing that a condition is code does not prove that running
+                       ;; it terminates or succeeds. Equal branches may discard only
+                       ;; a total condition; branch-local assumptions above still
+                       ;; retain the original condition's evaluation.
+                       ((and (provably-total-p condition) (equal yes no)) yes)
                        ((and (equal yes (lit :bool t)) (equal no (lit :bool nil))) condition)
                        ((and (eq :bool (ast-type rebuilt))
                              (equal yes (lit :bool nil))
@@ -310,11 +331,10 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                  ((and op-name (defined-function-p op-name))
                   (let ((def (find-function-definition op-name)))
                     (when (and def (function-definition-body def)
-                               (null (function-definition-oracle-table def))
-                               (every #'unfoldable-seq-part-p args))
+                               (null (function-definition-oracle-table def)))
                       (values (function-definition-inputs def) (function-definition-body def)
                               args (contains-call-to-p (function-definition-body def) op-name)))))
-                 ((and (eq :code-eval op-name) (every #'unfoldable-seq-part-p (rest args)))
+                 ((eq :code-eval op-name)
                   (let ((code-arg (first args)) (eval-args (rest args)))
                     (cond
                       ((lit-p code-arg)
@@ -341,8 +361,8 @@ An error or cutoff leaves its expression intact. No table inversion is built in.
                                                      (loop for b in parts
                                                            for (nil . in-type) in a-inputs
                                                            thereis (and (code-subst-code-binding-p (ast-type b) c-type in-type)
-                                                                        (or (not (lit-p b))
-                                                                            (member cid (free-vars (ast-value b)) :test #'eql)))))))
+                                                                        (lit-p b)
+                                                                        (member cid (demanded-vars (ast-value b)) :test #'eql))))))
                            (values a-inputs (ast-value (second code-arg)) sub-args nil))))))))
              (when body
                (let ((bindings (bind-inputs inputs call-args)))

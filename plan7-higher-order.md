@@ -97,11 +97,11 @@ Our architecture already separates **child hypothesis generation** (`lift-frame`
 
 ```mermaid
 flowchart LR
-    P["Parent Frame Ω (Full N×M Grids)"] -->|"1. Locality-Biased Fiber Sample (k ≪ |Ω|·N·M)"| S["Sampled Child Frame Ω_sample"]
+    P["Parent Frame Omega (Full NxM Grids)"] -->|"1. Locality-Biased Fiber Sample (k << |Omega|*N*M)"| S["Sampled Child Frame Omega_sample"]
     S -->|"2. Reentrant Synthesis (Stage A/B + Solvers)"| C["Candidate Code ?0 = 'e"]
-    C -->|"3. Full VM Ratification on All Rows of Ω"| V{"Root Verification Pass?"}
+    C -->|"3. Full VM Ratification on All Rows of Omega"| V{"Root Verification Pass?"}
     V -->|"Yes (0 Errors / Cutoffs)"| OK["Certified Root Solution"]
-    V -->|"No: Fails on Row ω* at Fiber f*"| R["4. CEGAR Attribution: Append Fiber f* to Ω_sample"]
+    V -->|"No: Fails on Row omega* at Fiber f*"| R["4. CEGAR Attribution: Append Fiber f* to Omega_sample"]
     R --> S
 ```
 
@@ -116,7 +116,7 @@ flowchart LR
    - Sampled child frames are canonicalized via `quotient-values` and interned in `synthesis-job-scope-cache`. If two branches of a reentrant search (or two axes of a symmetric tensor) project onto isomorphic local subproblems, they share a single `synthesis-node` and broadcast candidates to all `followers`.
 4. **Counterexample-Guided Attribution (`refine-sampled-lift-from-counterexample`)**:
    - When a candidate `'e` succeeds on $\Omega_{\text{sample}}$ and is enqueued for root verification, `synthesis-verification-step` runs the composed program on **all rows of the root frame $\Omega$**.
-   - If root verification fails on parent row $\omega^*$, the verifier extracts the specific lifted fiber $(\omega^*, \text{call}^*)$ where `'e` violated the pulled-back requirement, appends that fiber to the child node's frame, invalidates `'e`, and resumes the child node—achieving exact attribution while paying only for the fibers actually needed to disambiguate the rule.
+   - If root verification fails on parent row $\omega^*$, the verifier extracts the specific lifted fiber $(\omega^*, \text{call}^*)$ where `'e` violated the pulled-back requirement, appends that fiber to the child node's frame, invalidates `'e`, and resumes the child node -- achieving exact attribution while paying only for the fibers actually needed to disambiguate the rule.
 
 ---
 
@@ -245,7 +245,7 @@ We will add a dedicated test module `tests/higher-order.lisp` (wired into `tests
 
 ---
 
-## 4. Implementation Notes (H1–H4)
+## 4. Implementation Notes (H1-H4)
 
 ### 4.1 Milestone H1: Polymorphic Retyping, `:filter` Subsequence Alignment, and Lockstep Recursion
 - **Polymorphic Combinator Instantiation (`laws.lisp`, `ast.lisp`, `synthesize.lisp`)**:
@@ -289,5 +289,5 @@ We will add a dedicated test module `tests/higher-order.lisp` (wired into `tests
   - Updated `make-law` (`laws.lisp`) to validate input and equation types with `rewrite-scope-type-p` (supporting sequence-typed laws alongside `law-type-p`).
   - Implemented `induce-involution-solvers` (`laws.lisp`, called by `induce-functorial-solvers`) to scan `:law` entries for `(= (f (f X0)) X0)` and register `:unary` `:solver` entries with witness `(f X0)`.
 - **Verification (`tests/higher-order.lisp`, `tests/run.lisp`)**:
-  - Added `tests/higher-order.lisp` (wired into `tests/run.lisp` under `"higher-order"`, `"m9"`, and `"h1"`–`"h4"`), passing 4 comprehensive test suites (203 checks) and 155 total tests (345,194 checks) across the full repository with zero regressions.
+  - Added `tests/higher-order.lisp` (wired into `tests/run.lisp` under `"higher-order"`, `"m9"`, and `"h1"`-`"h4"`), passing 4 comprehensive test suites (203 checks) and 155 total tests (345,194 checks) across the full repository with zero regressions.
 

@@ -140,7 +140,7 @@ or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise r
 (defun conjoin-requirements (req1 req2 target-type &key ledger (budget 10000))
   "Conjoin two row requirements over variable 0 of TARGET-TYPE and fold closed subtrees."
   (let ((schema (make-schema :inputs (list (cons 0 target-type)) :target :bool)))
-    (fold-constants (bool-and req1 req2) schema :ledger ledger :budget budget)))
+    (fold-constants (bool-and req1 req2) schema :ledger ledger :budget budget :contract :necessary)))
 
 (defstruct (frame-conflict (:predicate frame-conflict-struct-p))
   kind
@@ -186,7 +186,7 @@ carrying the folded row requirements when no conflict is detected."
          (folded-rows nil))
     (dolist (row (frame-rows frame))
       (let* ((req (row-requirement row))
-             (folded (fold-constants req checker-schema :ledger ledger :budget budget)))
+             (folded (fold-constants req checker-schema :ledger ledger :budget budget :contract :necessary)))
         (when (unsatisfiable-requirement-p folded)
           (return-from frame-conflict-p
             (values (make-frame-conflict :kind :unsatisfiable-row
@@ -458,13 +458,13 @@ non-decoupled conjuncts sharing identical EXTRA-KNOWNS, folding after each subst
                                             (progn
                                               (setf row-changed t changed t)
                                               (push (fold-constants sub checker-schema
-                                                                    :ledger ledger :budget budget)
+                                                                    :ledger ledger :budget budget :contract :necessary)
                                                     new-conjuncts))))
                                       (push c new-conjuncts))))
                               (if row-changed
                                   (fold-constants (reduce #'bool-and (nreverse new-conjuncts)
                                                           :from-end t :initial-value (lit :bool t))
-                                                  checker-schema :ledger ledger :budget budget)
+                                                  checker-schema :ledger ledger :budget budget :contract :necessary)
                                   req))))
         (unless changed (return reqs))))))
 
@@ -579,7 +579,7 @@ Returns (VALUES lifted-frame coupled-conjuncts reserve-rows)."
          (extra-knowns (mapcar #'row-known (frame-rows raw)))
          (initial-reqs (mapcar (lambda (row)
                                  (fold-constants (row-requirement row) checker-schema
-                                                 :ledger ledger :budget budget))
+                                                 :ledger ledger :budget budget :contract :necessary))
                                (frame-rows raw)))
          (closed-reqs (congruence-close-code-evals initial-reqs extra-knowns code-var checker-schema
                                                    :ledger ledger :budget budget))
@@ -610,7 +610,7 @@ Returns (VALUES lifted-frame coupled-conjuncts reserve-rows)."
                                                       (replace-subexpression c call ret-var)))
                                       (lifted-req (fold-constants raw-lifted
                                                                   ret-checker-schema
-                                                                  :ledger ledger :budget budget))
+                                                                  :ledger ledger :budget budget :contract :necessary))
                                       (dedup-key (list known lifted-req)))
                                  (unless (gethash dedup-key seen-known-req)
                                    (setf (gethash dedup-key seen-known-req) t)
@@ -643,7 +643,7 @@ Returns (VALUES lifted-frame coupled-conjuncts reserve-rows)."
                             (mapcar (lambda (s) (declare (ignore s)) :unresolved) child-inputs)))
                  (lifted-req (if clean-p
                                  (fold-constants replaced ret-checker-schema
-                                                 :ledger ledger :budget budget)
+                                                 :ledger ledger :budget budget :contract :necessary)
                                  (app (op := ret) ret-var (lit ret (default-value-for-type ret))))))
             (charge ledger :pullback (syntax-work lifted-req))
             (push (make-row :key (list p-key :coupled occ-idx)

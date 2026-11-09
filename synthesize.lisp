@@ -221,7 +221,7 @@ and unverified oracle functions from Stage A unconditional observation."
 
 (defstruct synthesis-node
   id parent proposal frame language bound search (phase :prepare) prepared (debt 0)
-  priority heuristic followers reused-from (reserve-rows nil) (coupled-requirements nil)
+  priority heuristic followers reused-from (revision 0) (reserve-rows nil) (coupled-requirements nil)
   ;; Lazy expansion: nil (not yet), :paying (branches staged, debt owed), or :done.
   expansion expansions (expansion-debt 0) (provenance nil))
 
@@ -247,7 +247,7 @@ and unverified oracle functions from Stage A unconditional observation."
   root nodes (ledger (make-ledger)) (messages nil) results best (run-weight 0)
   (turn 0) (cursor 0) active (remaining 0) (quantum 32)
   verification verification-node verification-expression verification-child-expression (verification-row-budget 2000)
-  pending (next-id 1)
+  pending refinement (next-id 1)
   (policy :round-robin) heuristic-bound (heuristic-budget 2000) priority-predictor
   library expand (max-depth 1) self-name oracle-table
   (nogoods nil) (deductive-nogoods-p t) (scope-cache (make-hash-table :test #'equal)) (reused-subproblems 0)
@@ -370,60 +370,10 @@ MAX-DEPTH nil the tree grows for as long as the budget lasts (an anytime search)
   (loop for parent = (synthesis-node-parent node) then (synthesis-node-parent parent)
         while parent count t))
 
-(defun frame-has-sequence-type-p (frame &optional language)
-  "True when FRAME's target is a `:seq` type, or when FRAME has a `:seq` input type not already
-consumed by a first-order defined function in LANGUAGE."
-  (when frame
-    (let* ((schema (frame-schema frame))
-           (target (schema-target schema)))
-      (or (and (consp target) (eq :seq (first target)))
-          (loop for (nil . in-type) in (schema-inputs schema)
-                thereis (and (consp in-type)
-                             (eq :seq (first in-type))
-                             (or (null language)
-                                 (not (some (lambda (o)
-                                              (and (operator-p o)
-                                                   (let ((def (find-function-definition (operator-name o))))
-                                                     (and def
-                                                          (not (some (lambda (s) (code-type-p (cdr s)))
-                                                                     (function-definition-inputs def)))
-                                                          (find in-type (function-definition-inputs def)
-                                                                :key #'cdr :test #'equal)))))
-                                            (language-operators language))))))))))
-
-(defun node-has-sequence-type-p (node)
-  "True when NODE's frame (or its proposal before preparation completes) requires a nested sequence lift."
-  (let ((frame (synthesis-node-frame node))
-        (proposal (synthesis-node-proposal node)))
-    (cond (frame (frame-has-sequence-type-p frame (or (synthesis-node-language node)
-                                                      (and proposal (decomposition-language proposal)))))
-          (proposal
-           (let ((ctype (decomposition-child-type proposal))
-                 (lang (decomposition-language proposal)))
-             (or (and (code-type-p ctype)
-                      (let ((ret (code-sort ctype)))
-                        (and (consp ret) (eq :seq (first ret)))))
-                 (and lang
-                      (loop for (nil . in-type) in (language-inputs lang)
-                            thereis (and (consp in-type)
-                                         (eq :seq (first in-type))
-                                         (not (some (lambda (o)
-                                                      (and (operator-p o)
-                                                           (let ((def (find-function-definition (operator-name o))))
-                                                             (and def
-                                                                  (not (some (lambda (s) (code-type-p (cdr s)))
-                                                                             (function-definition-inputs def)))
-                                                                  (find in-type (function-definition-inputs def)
-                                                                        :key #'cdr :test #'equal)))))
-                                                    (language-operators lang))))))))))))
-
 (defun node-may-expand-p (job node)
   "True when the job expands and NODE lies above the depth limit, if there is one."
   (and (synthesis-job-expand job)
        (not (eq :done (synthesis-node-expansion node)))
-       (or (not (and (synthesis-node-proposal node)
-                     (decomposition-lift-p (synthesis-node-proposal node))))
-           (node-has-sequence-type-p node))
        (or (null (synthesis-job-max-depth job)) (< (node-depth node) (synthesis-job-max-depth job)))))
 
 (defun node-expandable-p (job node)
@@ -1063,20 +1013,28 @@ an added intermediate context variable separating the conflicting parent rows."
                              :introduced-binding (cons new-cid sep-expr))))
             collect repaired))))
 
-(defun child-scope-signature (frame language)
-  "Canonical structural key for child-frame and language equivalence across synthesis branches."
-  (list (schema-inputs (frame-schema frame))
-        (schema-target (frame-schema frame))
-        (mapcar (lambda (row)
-                  (list (row-key row) (row-known row) (row-requirement row)))
-                (frame-rows frame))
-        (frame-pairs frame)
-        (frame-anchors frame)
-        (language-domain language)
-        (language-inputs language)
-        (language-operators language)
-        (language-literals language)
-        (language-constants language)))
+(defun canonical-constraint-rows (rows inputs)
+  (sort (loop for row in rows
+              collect (list (loop for value in (row-known row) for (nil . type) in inputs
+                                  collect (if (eq value :unresolved) :unresolved
+                                              (ast->sexp (lit type value))))
+                            (ast->sexp (row-requirement row))))
+        #'string< :key #'prin1-to-string))
+
+(defun child-scope-signature (frame language &optional reserve)
+  "Frozen constraint identity, independent of occurrence names/order; keep linkage contexts distinct."
+  (let ((inputs (schema-inputs (frame-schema frame))))
+    (list (copy-tree inputs) (copy-tree (schema-target (frame-schema frame)))
+          (canonical-constraint-rows (frame-rows frame) inputs)
+          (canonical-constraint-rows reserve inputs)
+          ;; Observation linkage carries occurrence semantics; do not quotient it away.
+          (when (or (frame-pairs frame) (frame-anchors frame))
+            (copy-tree (list (mapcar #'row-key (frame-rows frame)) (frame-pairs frame) (frame-anchors frame))))
+          (copy-tree (language-domain language))
+          (copy-tree (language-inputs language))
+          (mapcar #'ast->sexp (language-operators language))
+          (copy-tree (language-literals language))
+          (mapcar #'ast->sexp (language-constants language)))))
 
 (defun reconstruct-synthesis-candidate (node expression &optional ledger)
   (loop while (synthesis-node-parent node) do
@@ -1432,7 +1390,7 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
                                         :discovery-work (ledger-total (synthesis-job-ledger job)))))
               (enqueue-node-candidate job node (heuristic-program h-model) cand)))
           (let* ((sig (when (synthesis-node-parent node)
-                        (child-scope-signature frame language)))
+                        (child-scope-signature frame language (synthesis-node-reserve-rows node))))
                  (existing (when sig (gethash sig (synthesis-job-scope-cache job)))))
             (if (and existing (not (eq existing node))
                      (<= (synthesis-node-bound node) (synthesis-node-bound existing)))
@@ -1459,7 +1417,8 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
 (defun synthesis-finished-p (job)
   (and (every (lambda (n) (and (eq :done (synthesis-node-phase n)) (not (node-expandable-p job n))))
               (synthesis-job-nodes job))
-       (null (synthesis-job-pending job)) (null (synthesis-job-verification job))))
+       (null (synthesis-job-pending job)) (null (synthesis-job-verification job))
+       (null (synthesis-job-refinement job))))
 
 (defun action-node (action)
   "Agenda actions are a node (prepare or search it) or (:expand . node)."
@@ -1553,20 +1512,23 @@ then take the lowest full-path price, reserving every 4th selection for round-ro
           (setf (synthesis-node-expansion node) :done
                 (synthesis-node-expansions node) nil)))))
 
+(defun row-satisfaction (row expression inputs &key ledger (budget 2000))
+  "Separate a demonstrated failure from an evaluation cutoff."
+  (let ((run (evaluate expression inputs (row-known row) :ledger ledger :budget budget)))
+    (case (evaluation-status run)
+      (:unknown :unknown)
+      (:error (if (typep (evaluation-error run) 'unresolved-evaluation) :unknown :refuted))
+      (:value
+       (let ((check (evaluate (row-requirement row)
+                              (list (cons 0 (expression-type expression inputs)))
+                              (list (evaluation-value run)) :ledger ledger :budget budget)))
+         (case (evaluation-status check)
+           (:unknown :unknown)
+           (:value (if (evaluation-value check) :satisfied :refuted))
+           (otherwise :refuted)))))))
+
 (defun row-satisfied-p (row expression inputs &key ledger (budget 2000))
-  "Return T when EXPRESSION evaluates to a value on ROW's known inputs that satisfies ROW's requirement."
-  (if (unconstrained-requirement-p (row-requirement row))
-      t
-      (let ((run (evaluate expression inputs (row-known row) :ledger ledger :budget budget)))
-        (and (eq :value (evaluation-status run))
-             (let* ((target (expression-type expression inputs))
-                    (chk (evaluate (row-requirement row)
-                                   (list (cons 0 target))
-                                   (list (evaluation-value run))
-                                   :ledger ledger
-                                   :budget budget)))
-               (and (eq :value (evaluation-status chk))
-                    (eq t (evaluation-value chk))))))))
+  (eq :satisfied (row-satisfaction row expression inputs :ledger ledger :budget budget)))
 
 (defun reconstruct-candidate-to-ancestor (node target-ancestor expression ledger)
   "Reconstruct EXPRESSION from NODE up to TARGET-ANCESTOR (without walking above TARGET-ANCESTOR)."
@@ -1590,72 +1552,67 @@ then take the lowest full-path price, reserving every 4th selection for round-ro
                             ledger))
          ledger))))
 
+(defun synthesis-descendant-p (node ancestor)
+  (loop for n = node then (synthesis-node-parent n) while n thereis (eq n ancestor)))
+
+(defun restart-revised-node (job node frame)
+  "Publish an immutable frame revision and invalidate context-dependent search decisions."
+  (incf (synthesis-node-revision node))
+  (setf (synthesis-node-frame node) frame
+        (synthesis-node-search node) (start-search frame (synthesis-node-language node)
+                                                  :run-weight (synthesis-job-run-weight job))
+        (synthesis-node-heuristic node) nil
+        (synthesis-node-phase node) :search
+        (synthesis-node-expansion node) nil
+        (synthesis-node-reused-from node) nil)
+  (let ((affected (remove-if-not (lambda (n) (synthesis-descendant-p n node))
+                                  (synthesis-job-nodes job))))
+    ;; Sharing can cross occurrence subtrees. Detach followers of retired
+    ;; descendants too, so they do not wait forever on an invalidated donor.
+    (dolist (donor affected)
+      (dolist (follower (synthesis-node-followers donor))
+        (unless (member follower affected)
+          (restart-revised-node job follower (snapshot-frame (synthesis-node-frame follower)))))
+      (setf (synthesis-node-followers donor) nil))
+    (dolist (descendant affected)
+      (unless (eq node descendant)
+        (setf (synthesis-node-phase descendant) :done
+              (synthesis-node-expansion descendant) :done))))
+  (setf (synthesis-job-pending job)
+        (remove-if (lambda (pending) (synthesis-descendant-p (first pending) node))
+                   (synthesis-job-pending job)))
+  (clrhash (synthesis-job-scope-cache job)))
+
 (defun refine-lifted-node-from-counterexample (job node child-expression ledger)
-  "When root verification rejects a candidate originating from NODE, check whether NODE (or a
-lifted ancestor) has held-out `synthesis-node-reserve-rows` violated by CHILD-EXPRESSION.
-Promote the first violated fiber row into the active child frame and return T if refined."
-  (when (and node child-expression)
-    (loop for target = node then (synthesis-node-parent target)
-          while target
-          when (synthesis-node-reserve-rows target)
-            do (let* ((target-expr (reconstruct-candidate-to-ancestor node target child-expression ledger))
-                      (inputs (language-inputs (synthesis-node-language target)))
-                      (failed-row (find-if (lambda (row)
-                                             (not (nth-value 0 (row-satisfied-p row target-expr inputs
-                                                                                :ledger ledger))))
-                                           (synthesis-node-reserve-rows target))))
-                 (when failed-row
-                   (setf (synthesis-node-reserve-rows target)
-                         (remove failed-row (synthesis-node-reserve-rows target) :test #'eq :count 1))
-                   (let ((nframe (synthesis-node-frame target))
-                         (search (synthesis-node-search target)))
-                     (when (and nframe (not (member failed-row (frame-rows nframe) :test #'eq)))
-                       (setf (frame-rows nframe) (append (frame-rows nframe) (list failed-row))))
-                     (when search
-                       (let ((sframe (search-job-frame search)))
-                         (when (and sframe (not (eq sframe nframe))
-                                    (not (member failed-row (frame-rows sframe) :test #'eq)))
-                           (setf (frame-rows sframe) (append (frame-rows sframe) (list failed-row)))))
-                       (setf (search-job-results search)
-                             (remove-if (lambda (cand)
-                                          (not (nth-value 0 (row-satisfied-p failed-row
-                                                                             (candidate-expression cand)
-                                                                             inputs
-                                                                             :ledger ledger))))
-                                        (search-job-results search))
-                             (search-job-best search)
-                             (let ((best nil))
-                               (dolist (cand (search-job-results search) best)
-                                 (when (or (null best)
-                                           (< (candidate-score cand (search-job-run-weight search))
-                                              (candidate-score best (search-job-run-weight search))))
-                                   (setf best cand)))))
-                       (when (and (eq :done (synthesis-node-phase target))
-                                  (not (search-bound-complete-p search (synthesis-node-bound target))))
-                         (setf (synthesis-node-phase target) :search))))
-                   (when (and (synthesis-node-heuristic target)
-                              (heuristic-exact-p (synthesis-node-heuristic target))
-                              (not (nth-value 0 (row-satisfied-p failed-row
-                                                                 (heuristic-program (synthesis-node-heuristic target))
-                                                                 inputs
-                                                                 :ledger ledger))))
-                     (setf (heuristic-exact-p (synthesis-node-heuristic target)) nil))
-                   (setf (synthesis-job-pending job)
-                         (remove-if (lambda (entry)
-                                      (and (eq (first entry) target)
-                                           (fourth entry)
-                                           (not (nth-value 0 (row-satisfied-p failed-row
-                                                                              (fourth entry)
-                                                                              inputs
-                                                                              :ledger ledger)))))
-                                    (synthesis-job-pending job)))
-                   (synthesis-message job target :cegar-refinement
-                                      (list :promoted-row (row-known failed-row)
-                                            :rejected-expression target-expr
-                                            :active-rows (length (frame-rows (synthesis-node-frame target)))
-                                            :reserve-rows (length (synthesis-node-reserve-rows target))
-                                            :scope :child-frame))
-                   (return t))))))
+  "Stage counterexample attribution privately; publish only after its work debt is paid."
+  (declare (ignore ledger))
+  (let ((private (make-ledger)) (publish nil))
+    (when (and node child-expression)
+      (loop for target = node then (synthesis-node-parent target) while target
+            when (synthesis-node-reserve-rows target)
+              do (let* ((expr (reconstruct-candidate-to-ancestor node target child-expression private))
+                        (inputs (language-inputs (synthesis-node-language target)))
+                        (failed (find-if (lambda (row)
+                                           (eq :refuted (row-satisfaction row expr inputs :ledger private)))
+                                         (synthesis-node-reserve-rows target))))
+                   (when failed
+                     (let ((revised (snapshot-frame (synthesis-node-frame target)))
+                           (selected target))
+                       (setf (frame-rows revised) (append (frame-rows revised) (list failed)))
+                       (setf publish
+                             (lambda ()
+                               (setf (synthesis-node-reserve-rows selected)
+                                     (remove failed (synthesis-node-reserve-rows selected) :test #'eq :count 1))
+                               (restart-revised-node job selected revised)
+                               (synthesis-message job selected :cegar-refinement
+                                                  (list :promoted-row (row-known failed)
+                                                        :revision (synthesis-node-revision selected)
+                                                        :active-rows (length (frame-rows revised))
+                                                        :scope :child-frame)))))
+                     (return)))))
+    (when (or publish (plusp (ledger-total private)))
+      (setf (synthesis-job-refinement job) (list (max 1 (ledger-total private)) publish)))
+    (not (null publish))))
 
 (defun synthesis-verification-step (job)
   (let ((ledger (synthesis-job-ledger job)) (root (synthesis-job-root job)))
@@ -1742,6 +1699,12 @@ with a larger limit at any time."
                    (not (synthesis-finished-p job))
                    (not (and stop-on-first (synthesis-job-best job)))) do
     (cond
+      ((synthesis-job-refinement job)
+       (charge (synthesis-job-ledger job) :refinement)
+       (when (<= (decf (first (synthesis-job-refinement job))) 0)
+         (let ((publish (second (synthesis-job-refinement job))))
+           (setf (synthesis-job-refinement job) nil)
+           (when publish (funcall publish)))))
       ((or (null (synthesis-job-active job)) (zerop (synthesis-job-remaining job)))
        (charge (synthesis-job-ledger job) :scheduling) (select-synthesis-lane job))
       (t
@@ -2069,6 +2032,20 @@ covering sound one wins (an exact separator covers every hit), then the shortest
                                     (unless hit-p (setf all-hit nil)))
                          (and has-empty all-hit))))))
 
+(defun typed-recursive-call (name inputs replacements)
+  "Build a recursive proposal against the callee's schema, not the child schema."
+  (let ((definition (and name (find-function-definition name))))
+    (when definition
+      (let ((arguments nil))
+        (dolist (spec (function-definition-inputs definition))
+          (let* ((exact (assoc (car spec) inputs))
+                 (matches (remove-if-not (lambda (s) (equal (cdr s) (cdr spec))) inputs))
+                 (source (if (and exact (equal (cdr exact) (cdr spec))) exact
+                             (when (= 1 (length matches)) (first matches)))))
+            (unless source (return-from typed-recursive-call nil))
+            (push (or (cdr (assoc (car source) replacements)) (var (car source) (cdr source))) arguments)))
+        (apply #'app (op name) (nreverse arguments))))))
+
 (defun lift-inductive-sequence-context (guard invert-p inputs language child-language child-id eff-self)
   "When GUARD is an empty-sequence check `(= Xi '())` with INVERT-P NIL (so the residual child
 lives in the non-empty else branch) and LANGUAGE provides `:at` and `:tail`, lift `(at Xi '0)`
@@ -2087,10 +2064,7 @@ Returns (VALUES bindings language lifted-seq-id)."
                (other-inputs (remove seq-id inputs :key #'car :test #'eql))
                (head-expr (app (op :at seq-type) (var seq-id seq-type) (lit :int 0)))
                (tail-expr (app (op :tail elem-type) (var seq-id seq-type)))
-               (recur-expr (when eff-self
-                             (apply #'app (op eff-self)
-                                    (loop for (id . type) in inputs
-                                          collect (if (eql id seq-id) tail-expr (var id type))))))
+               (recur-expr (typed-recursive-call eff-self inputs (list (cons seq-id tail-expr))))
                (step-expr (or recur-expr tail-expr))
                (lifted-bindings (if (null other-inputs)
                                     (list (cons 0 head-expr) (cons 1 step-expr))
@@ -2200,15 +2174,10 @@ the lockstep recursive step `(<eff-self> (tail X_s1) (tail X_s2) ...)`."
                                            (not (code-type-p otype))
                                            (equal base-expr (var oid otype)))
                                  collect (var oid otype)))
-                       (step-exprs
-                         (if eff-self
-                             (list (apply #'app (op eff-self)
-                                          (loop for (id . type) in inputs
-                                                collect (if (assoc id seq-specs :test #'eql)
-                                                            (app (op :tail (second type)) (var id type))
-                                                            (var id type)))))
-                             (loop for (sid . stype) in seq-specs
-                                   collect (app (op :tail (second stype)) (var sid stype)))))
+                       (tails (loop for (sid . stype) in seq-specs
+                                    collect (cons sid (app (op :tail (second stype)) (var sid stype)))))
+                       (recursive-call (typed-recursive-call eff-self inputs tails))
+                       (step-exprs (if recursive-call (list recursive-call) (mapcar #'cdr tails)))
                        (all-child-exprs (append head-exprs kept-non-seq-exprs step-exprs))
                        (lifted-bindings
                          (loop for expr in all-child-exprs
@@ -2375,717 +2344,6 @@ Returns (VALUES proposals heuristic-model)."
                                                      :stage-a-unresolved (heuristic-unresolved-keys cand-model))))
                                 proposals))))))))))
       (values (nreverse proposals) h-model))))
-
-(defun candidate-library-definitions (language &key self-name functions frame)
-  "Return higher-order `function-definition`s eligible for `library-decompositions`:
-defined functions with a concrete body (excluding SELF-NAME) that take exactly one `:code`
-parameter whose return sort is first-order. When FRAME has sequence types not covered by
-the base definitions, polymorphically instantiates matching combinators via `retype-function-definition`."
-  (let* ((ho-op-names (loop for o in (language-operators language)
-                            for name = (and (operator-p o) (operator-name o))
-                            for def = (and name (find-function-definition name))
-                            when (and def
-                                      (some (lambda (spec) (code-type-p (cdr spec)))
-                                            (function-definition-inputs def)))
-                              collect name))
-         (names (remove-duplicates
-                 (or functions
-                     ho-op-names
-                     (reverse *registered-function-names*))
-                 :test #'eq
-                 :from-end t))
-         (base-defs
-           (loop for name in names
-                 for def = (and (not (eq name self-name))
-                                (or (member name functions :test #'eq)
-                                    (not (gethash name *auto-retyped-functions*)))
-                                (find-function-definition name))
-                 when (and def
-                           (function-definition-body def)
-                           (null (function-definition-oracle-table def))
-                           (= 1 (count-if (lambda (spec) (code-type-p (cdr spec)))
-                                          (function-definition-inputs def)))
-                           (let ((code-spec (find-if (lambda (spec) (code-type-p (cdr spec)))
-                                                     (function-definition-inputs def))))
-                             (not (function-sort-p (code-sort (cdr code-spec))))))
-                   collect def)))
-    (if (null frame)
-        base-defs
-        (let* ((schema (frame-schema frame))
-               (inputs (schema-inputs schema))
-               (target (schema-target schema))
-               (in-elems (remove-duplicates
-                          (loop for (nil . type) in inputs
-                                when (and (consp type) (eq :seq (first type)))
-                                  collect (second type))
-                          :test #'equal))
-               (out-elems (if (and (consp target) (eq :seq (first target)))
-                              (list (second target))
-                              (list target)))
-               (retyped-defs nil))
-          (dolist (def base-defs (remove-duplicates (append base-defs (nreverse retyped-defs))
-                                                    :key #'function-definition-name :test #'eq :from-end t))
-            (let* ((fn-name (function-definition-name def))
-                   (seq-spec (find-if (lambda (s) (and (consp (cdr s)) (eq :seq (first (cdr s)))))
-                                      (function-definition-inputs def)))
-                   (orig-elem (and seq-spec (second (cdr seq-spec)))))
-              (when orig-elem
-                (dolist (in-e in-elems)
-                  (unless (equal in-e orig-elem)
-                    (let ((retyped (ignore-errors (retype-function-definition fn-name in-e :auto-p t))))
-                      (when retyped (push retyped retyped-defs))))
-                  (dolist (out-e out-elems)
-                    (unless (and (equal in-e orig-elem) (equal out-e orig-elem))
-                      (let ((retyped (ignore-errors
-                                      (if (equal in-e out-e)
-                                          (retype-function-definition fn-name in-e :auto-p t)
-                                          (retype-function-definition fn-name in-e
-                                                                      :return-element-type out-e
-                                                                      :auto-p t)))))
-                        (when retyped (push retyped retyped-defs)))))))))))))
-
-(defun candidate-fo-argument-expressions (frame language primary-input-id param-type)
-  "Return candidate AST expressions of PARAM-TYPE to supply a non-primary first-order
-parameter (such as a fold base-case accumulator) of a higher-order library combinator."
-  (let* ((schema (frame-schema frame))
-         (inputs (schema-inputs schema))
-         (target (schema-target schema))
-         (primary-pos (and primary-input-id (position primary-input-id inputs :key #'car :test #'eql)))
-         (primary-type (and primary-pos (cdr (nth primary-pos inputs))))
-         (exprs nil))
-    (flet ((add-expr (e) (pushnew e exprs :test #'equal)))
-      ;; 1. Unused parent input variables of matching type
-      (dolist (spec inputs)
-        (when (and (not (eql (car spec) primary-input-id))
-                   (equal (cdr spec) param-type))
-          (add-expr (var (car spec) (cdr spec)))))
-      ;; 2. Empty-sequence row target value, language constants, literals, and default value of PARAM-TYPE
-      (unless (and (consp param-type) (eq :seq (first param-type)) (some #'var-p exprs))
-        (when (and primary-pos
-                   (consp primary-type) (eq :seq (first primary-type))
-                   (equal param-type target))
-          (dolist (row (frame-rows frame))
-            (when (and (not (unconstrained-requirement-p (row-requirement row)))
-                       (null (nth primary-pos (row-known row))))
-              (let ((allowed (extract-allowed-values (row-requirement row))))
-                (when (and (consp allowed) (= 1 (length allowed)))
-                  (add-expr (lit param-type (first allowed))))))))
-        (dolist (c (language-constants language))
-          (when (equal (ast-type c) param-type)
-            (add-expr c)))
-        (when (and (consp param-type) (eq :seq (first param-type)))
-          (add-expr (lit param-type '())))
-        (when (and (eq param-type :int) (listp (language-literals language)))
-          (dolist (v (language-literals language))
-            (when (integerp v)
-              (add-expr (lit :int v)))))
-        (add-expr (lit param-type (default-value-for-type param-type))))
-      (nreverse exprs))))
-
-(defun function-body-subsequence-filter-p (fdef)
-  "True when FDEF is a higher-order filter combinator over a sequence input whose `:code`
-parameter returns `:bool` and whose body only constructs output elements via `(cons (at X_seq '0) ...)`."
-  (and (function-definition-p fdef)
-       (function-definition-body fdef)
-       (= 2 (length (function-definition-inputs fdef)))
-       (let ((seq-spec (find-if (lambda (s) (and (consp (cdr s)) (eq :seq (first (cdr s)))))
-                                (function-definition-inputs fdef)))
-             (code-spec (find-if (lambda (s) (code-type-p (cdr s)))
-                                 (function-definition-inputs fdef))))
-         (and seq-spec code-spec
-              (equal (cdr seq-spec) (function-definition-return-type fdef))
-              (eq :bool (code-sort (cdr code-spec)))
-              (labels ((cons-heads-from-seq-p (expr)
-                         (if (not (app-p expr))
-                             t
-                             (and (or (not (eq :cons (ast-id expr)))
-                                      (let ((hd (second expr)))
-                                        (and (app-p hd)
-                                             (eq :at (ast-id hd))
-                                             (var-p (second hd))
-                                             (eql (car seq-spec) (ast-id (second hd))))))
-                                  (every #'cons-heads-from-seq-p (rest expr))))))
-                (cons-heads-from-seq-p (function-definition-body fdef)))))))
-
-(defun library-function-descriptor-compatible-p (frame seq-input-id fn-name ledger)
-  "Evaluate FN-NAME's behavioral descriptor (`trigger` AST in `*knowledge-library*`) on
-singleton rows of FRAME in the VM. Returns NIL if any row contradicts the descriptor."
-  (let* ((fdef (find-function-definition fn-name))
-         (subseq-p (function-body-subsequence-filter-p fdef))
-         (desc (or (and *knowledge-library*
-                        (gethash (canonical-op-name fn-name)
-                                 (knowledge-library-descriptors *knowledge-library*)))
-                   (and fdef (compute-function-descriptor fdef))))
-         (inputs (schema-inputs (frame-schema frame)))
-         (target (schema-target (frame-schema frame)))
-         (seq-pos (and seq-input-id (position seq-input-id inputs :key #'car :test #'eql)))
-         (seq-type (and seq-pos (cdr (nth seq-pos inputs)))))
-    (if (null seq-pos)
-        t
-        (let ((desc-inputs (list (cons 0 seq-type) (cons 1 target))))
-          (every (lambda (row)
-                   (if (unconstrained-requirement-p (row-requirement row))
-                       t
-                       (let ((seq-val (nth seq-pos (row-known row)))
-                             (allowed (extract-allowed-values (row-requirement row))))
-                         (if (or (eq seq-val :unresolved)
-                                 (not (and (consp allowed) (= 1 (length allowed)))))
-                             t
-                             (let ((out-val (first allowed)))
-                               (and (or (not subseq-p)
-                                        (and (listp seq-val)
-                                             (listp out-val)
-                                             (<= (length out-val) (length seq-val))
-                                             (every (lambda (y) (member y seq-val :test #'equal))
-                                                    out-val)))
-                                    (or (null desc)
-                                        (let ((run (evaluate desc desc-inputs
-                                                             (list seq-val out-val)
-                                                             :ledger ledger)))
-                                          (or (not (eq :value (evaluation-status run)))
-                                              (evaluation-value run))))))))))
-                 (frame-rows frame))))))
-
-(defun library-decoder-compatible-with-empty-rows-p (frame seq-input-id decoder child-id child-type bindings ledger
-                                                     &key fn-name extra-fo-specs)
-  "Check that DECODER satisfies any behavioral descriptor (`trigger`) for FN-NAME and does not
-immediately contradict any empty-sequence row of FRAME."
-  (when (and fn-name (null extra-fo-specs))
-    (unless (library-function-descriptor-compatible-p frame seq-input-id fn-name ledger)
-      (return-from library-decoder-compatible-with-empty-rows-p nil)))
-  (let* ((inputs (schema-inputs (frame-schema frame)))
-         (seq-pos (and seq-input-id (position seq-input-id inputs :key #'car :test #'eql)))
-         (seq-type (and seq-pos (cdr (nth seq-pos inputs))))
-         (empty-rows (when (and seq-pos (consp seq-type) (eq :seq (first seq-type)))
-                       (remove-if-not (lambda (row)
-                                        (and (not (unconstrained-requirement-p (row-requirement row)))
-                                             (null (nth seq-pos (row-known row)))))
-                                      (frame-rows frame)))))
-    (if (null empty-rows)
-        t
-        (let* ((sub-frame (make-frame (frame-schema frame) empty-rows))
-               (raw (pullback-frame sub-frame decoder child-id child-type bindings ledger))
-               (checker-schema (make-schema :inputs (cons (cons 0 child-type)
-                                                          (schema-inputs (frame-schema raw)))
-                                            :target :bool)))
-          (every (lambda (r)
-                   (not (unsatisfiable-requirement-p
-                         (fold-constants (row-requirement r) checker-schema
-                                         :ledger ledger :budget 500))))
-                 (frame-rows raw))))))
-
-(defun filter-map-decompositions (frame base-lang defs child-id c-bound solver ledger debug-p)
-  "When FRAME transforms a filtered subsequence of a sequence input (`|out| <= |in|` on all rows,
-`|out| < |in|` on at least one row, and outputs are not a pure subsequence of inputs), propose
-composed `(:map (:filter X_p pred) Z_mapper)` `:lift-p t` decompositions."
-  (let* ((schema (frame-schema frame))
-         (inputs (schema-inputs schema))
-         (target (schema-target schema)))
-    (when (and (consp target) (eq :seq (first target)))
-      (let ((ret-elem (second target))
-            (proposals nil))
-        (dolist (p-spec inputs (nreverse proposals))
-          (when (and (consp (cdr p-spec)) (eq :seq (first (cdr p-spec))))
-            (let* ((p-id (car p-spec))
-                   (p-pos (position p-id inputs :key #'car :test #'eql))
-                   (seq-type (cdr p-spec))
-                   (in-elem (second seq-type))
-                   (constrained-rows
-                     (loop for r in (frame-rows frame)
-                           for allowed = (and (not (unconstrained-requirement-p (row-requirement r)))
-                                              (extract-allowed-values (row-requirement r)))
-                           for in-val = (nth p-pos (row-known r))
-                           when (and (not (eq in-val :unresolved))
-                                     (listp in-val)
-                                     (consp allowed)
-                                     (= 1 (length allowed))
-                                     (listp (first allowed)))
-                             collect (list r in-val (first allowed)))))
-              (when (and constrained-rows
-                         (every (lambda (entry) (<= (length (third entry)) (length (second entry))))
-                                constrained-rows)
-                         (some (lambda (entry) (< (length (third entry)) (length (second entry))))
-                               constrained-rows)
-                         (or (not (equal in-elem ret-elem))
-                             (some (lambda (entry)
-                                     (some (lambda (y) (not (member y (second entry) :test #'equal)))
-                                           (third entry)))
-                                   constrained-rows)))
-                (let ((map-def
-                        (find-if (lambda (d)
-                                   (and (equal (function-definition-return-type d) target)
-                                        (= 2 (length (function-definition-inputs d)))
-                                        (find seq-type (function-definition-inputs d) :key #'cdr :test #'equal)
-                                        (let ((cs (find-if (lambda (s) (code-type-p (cdr s)))
-                                                           (function-definition-inputs d))))
-                                          (and cs
-                                               (equal (code-inputs (cdr cs)) (list (cons 0 in-elem)))
-                                               (equal (code-sort (cdr cs)) ret-elem)))))
-                                 defs))
-                      (filter-def
-                        (find-if (lambda (d)
-                                   (and (equal (function-definition-return-type d) seq-type)
-                                        (= 2 (length (function-definition-inputs d)))
-                                        (find seq-type (function-definition-inputs d) :key #'cdr :test #'equal)
-                                        (let ((cs (find-if (lambda (s) (code-type-p (cdr s)))
-                                                           (function-definition-inputs d))))
-                                          (and cs
-                                               (equal (code-inputs (cdr cs)) (list (cons 0 in-elem)))
-                                               (eq (code-sort (cdr cs)) :bool)))))
-                                 defs)))
-                  (when (and map-def filter-def)
-                    (let* ((map-name (function-definition-name map-def))
-                           (filter-name (function-definition-name filter-def))
-                           (map-code-spec (find-if (lambda (s) (code-type-p (cdr s)))
-                                                   (function-definition-inputs map-def)))
-                           (map-code-type (cdr map-code-spec))
-                           (filter-code-spec (find-if (lambda (s) (code-type-p (cdr s)))
-                                                      (function-definition-inputs filter-def)))
-                           (filter-code-type (cdr filter-code-spec))
-                           (code-in (code-inputs map-code-type))
-                           (next-cid (next-child-id code-in))
-                           (bindings (loop for (in-id . in-type) in inputs
-                                           unless (eql in-id p-id)
-                                             collect (prog1 (cons next-cid (var in-id in-type))
-                                                       (incf next-cid))))
-                           (extra-in (mapcar (lambda (b) (cons (car b) (ast-type (cdr b)))) bindings))
-                           (child-inputs (append (copy-tree code-in) extra-in))
-                           (elem-rows nil)
-                           (row-slices nil)
-                           (cursor 0))
-                      (dolist (entry constrained-rows)
-                        (destructuring-bind (r in-val out-val) entry
-                          (let ((extra-vals (evaluate-row-bindings bindings inputs (row-known r)
-                                                                   :ledger ledger :allow-unresolved-p t))
-                                (start cursor))
-                            (dolist (x in-val)
-                              (push (make-row :key cursor
-                                              :known (cons x (copy-tree extra-vals))
-                                              :requirement (lit :bool t))
-                                    elem-rows)
-                              (incf cursor))
-                            (push (list start cursor in-val out-val extra-vals) row-slices))))
-                      (setf elem-rows (nreverse elem-rows)
-                            row-slices (nreverse row-slices))
-                      (when elem-rows
-                        (let* ((elem-frame (make-frame (make-schema :inputs child-inputs :target :bool) elem-rows))
-                               (eq-ops (cons (op := (language-domain base-lang))
-                                             (mapcar (lambda (spec) (op := (cdr spec))) child-inputs)))
-                               (lt-ops (remove-if-not (lambda (o)
-                                                        (and (operator-p o) (eq :< (operator-name o))))
-                                                      (language-operators base-lang)))
-                               (cmp-ops (remove-duplicates (append lt-ops eq-ops) :test #'equal))
-                               (lit-vals (if (listp (language-literals base-lang))
-                                             (remove-duplicates (append '(0 1) (language-literals base-lang))
-                                                                :test #'equal)
-                                             '(0 1)))
-                               (var-atoms (mapcar (lambda (s) (var (car s) (cdr s))) child-inputs))
-                               (lit-atoms (loop for v in lit-vals
-                                                when (value-p v (language-domain base-lang))
-                                                  collect (lit (language-domain base-lang) v)))
-                               (all-atoms (append var-atoms lit-atoms))
-                               (valid-preds nil))
-                          (flet ((check-pred-candidate (raw-expr vals)
-                                   (dolist (inv-p '(nil t))
-                                     (let ((lengths-match-p t)
-                                           (consistent-p t)
-                                           (seen (make-hash-table :test #'equal)))
-                                       (dolist (slice row-slices)
-                                         (destructuring-bind (start end in-val out-val extra-vals) slice
-                                           (let ((kept (loop for idx from start below end
-                                                             for x in in-val
-                                                             for v = (nth idx vals)
-                                                             when (if inv-p (not v) v)
-                                                               collect x)))
-                                             (if (/= (length kept) (length out-val))
-                                                 (progn (setf lengths-match-p nil) (return))
-                                                 (loop for x in kept
-                                                       for y in out-val
-                                                       for key = (cons x extra-vals)
-                                                       do (multiple-value-bind (prev present-p) (gethash key seen)
-                                                            (if (and present-p (not (equal prev y)))
-                                                                (progn (setf consistent-p nil) (return))
-                                                                (setf (gethash key seen) y))))))))
-                                       (when (and lengths-match-p consistent-p)
-                                         (let ((p-expr (if inv-p (bool-not raw-expr) raw-expr)))
-                                           (push (cons (description-size p-expr child-inputs) p-expr)
-                                                 valid-preds)))))))
-                            (dolist (cop cmp-ops)
-                              (let ((op-type (operator-operand-type cop)))
-                                (dolist (a all-atoms)
-                                  (when (equal (ast-type a) op-type)
-                                    (dolist (b all-atoms)
-                                      (when (and (equal (ast-type b) op-type)
-                                                 (not (equal a b))
-                                                 (or (var-p a) (var-p b)))
-                                        (let* ((cand (app cop a b))
-                                               (vals (loop for erow in elem-rows
-                                                           for run = (evaluate cand child-inputs (row-known erow)
-                                                                               :ledger ledger)
-                                                           when (eq :value (evaluation-status run))
-                                                             collect (evaluation-value run))))
-                                          (when (= (length vals) (length elem-rows))
-                                            (check-pred-candidate cand vals)))))))))
-                            (unless valid-preds
-                              (let* ((pred-lang (make-language (language-domain base-lang)
-                                                               child-inputs
-                                                               :operators cmp-ops
-                                                               :literals lit-vals
-                                                               :constants nil))
-                                     (obs (start-observation-search (make-observation-scope elem-frame pred-lang)))
-                                     (obs-before (ledger-total (observation-job-ledger obs)))
-                                     (pred-bound (+ (header-size child-inputs :bool) 20)))
-                                (resume-observation-search obs pred-bound 3000)
-                                (charge ledger :guard-search (- (ledger-total (observation-job-ledger obs)) obs-before))
-                                (dolist (bucket (observation-job-buckets obs))
-                                  (when (eq :bool (observation-bucket-type bucket))
-                                    (check-pred-candidate
-                                     (observed-expression-expression
-                                      (car (last (observation-bucket-members bucket))))
-                                     (observation-bucket-values bucket)))))))
-                          (setf valid-preds (sort valid-preds #'< :key #'car))
-                          (loop for (nil . pred-expr) in valid-preds
-                                repeat 1
-                                do (let* ((pred-code-expr
-                                            (compose-lifted-model (var child-id filter-code-type)
-                                                                  child-id
-                                                                  filter-code-type
-                                                                  pred-expr
-                                                                  bindings
-                                                                  ledger))
-                                          (filter-call
-                                            (if (eql (car (first (function-definition-inputs filter-def)))
-                                                     (car filter-code-spec))
-                                                (app (op filter-name) pred-code-expr (var p-id seq-type))
-                                                (app (op filter-name) (var p-id seq-type) pred-code-expr)))
-                                          (child-var (var child-id map-code-type))
-                                          (decoder
-                                            (if (eql (car (first (function-definition-inputs map-def)))
-                                                     (car map-code-spec))
-                                                (app (op map-name) child-var filter-call)
-                                                (app (op map-name) filter-call child-var)))
-                                          (has-seq-in-p (some (lambda (s)
-                                                                (and (consp (cdr s)) (eq :seq (first (cdr s)))))
-                                                              child-inputs))
-                                          (has-seq-ret-p (and (consp ret-elem) (eq :seq (first ret-elem))))
-                                          (child-ops
-                                            (remove-if
-                                             (lambda (o)
-                                               (and (operator-p o)
-                                                    (let ((oname (operator-name o)))
-                                                      (or (and (not (or has-seq-in-p has-seq-ret-p))
-                                                               (let ((odef (find-function-definition oname)))
-                                                                 (and odef
-                                                                      (or (function-definition-oracle-table odef)
-                                                                          (some (lambda (s) (code-type-p (cdr s)))
-                                                                                (function-definition-inputs odef))))))
-                                                          (and (not (eq ret-elem :bool))
-                                                               (not (some (lambda (op2)
-                                                                            (and (operator-p op2)
-                                                                                 (eq :if (operator-name op2))))
-                                                                          (language-operators base-lang)))
-                                                               (member oname '(:< :=)))
-                                                          (and (not has-seq-in-p)
-                                                               (member oname '(:at :tail :length)))
-                                                          (and (not has-seq-in-p)
-                                                               (not has-seq-ret-p)
-                                                               (eq oname :cons))
-                                                          (and (not has-seq-in-p)
-                                                               (eq oname :=)
-                                                               (consp (operator-operand-type o))
-                                                               (eq :seq (first (operator-operand-type o))))))))
-                                             (language-operators base-lang)))
-                                          (child-consts
-                                            (if (or has-seq-in-p has-seq-ret-p)
-                                                (language-constants base-lang)
-                                                (remove-if (lambda (c)
-                                                             (and (consp (ast-type c))
-                                                                  (eq :seq (first (ast-type c)))))
-                                                           (language-constants base-lang))))
-                                          (c-lang (make-language (language-domain base-lang)
-                                                                 child-inputs
-                                                                 :operators child-ops
-                                                                 :literals (language-literals base-lang)
-                                                                 :constants child-consts)))
-                                     (push (make-decomposition
-                                            :name (list :library-filter-map map-name filter-name pred-expr)
-                                            :decoder decoder
-                                            :child-id child-id
-                                            :child-type map-code-type
-                                            :bindings bindings
-                                            :language c-lang
-                                            :bound c-bound
-                                            :lift-p t
-                                            :solver solver
-                                            :provenance (when debug-p
-                                                          (list :origin :filter-map-expander
-                                                                :map map-name
-                                                                :filter filter-name
-                                                                :predicate pred-expr
-                                                                :decoder decoder)))
-                                           proposals))))))))))))))))
-
-(defun library-decompositions (frame language &key child-language child-bound
-                                                   self-name functions solver ledger
-                                                   (debug-p *synthesis-debug-mode*))
-  "Propose registered higher-order library definitions (`:fa`, `:fb`, ...) whose return type
-matches FRAME's target as `:lift-p t` decompositions. Function-typed (`:code`) parameters
-become lifted child frames via `lift-frame`, while unconsumed parent inputs are passed
-through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closures."
-  (let* ((schema (frame-schema frame))
-         (inputs (schema-inputs schema))
-         (target (schema-target schema))
-         (c-bound (or child-bound (+ (header-size inputs target) 24)))
-         (base-lang (or child-language language))
-         (child-id (next-child-id inputs))
-         (defs (candidate-library-definitions language :self-name self-name :functions functions :frame frame))
-         (proposals nil))
-    (dolist (def defs)
-      (when (equal (function-definition-return-type def) target)
-        (let* ((fn-name (function-definition-name def))
-               (fn-inputs (function-definition-inputs def))
-               (code-spec (find-if (lambda (s) (code-type-p (cdr s))) fn-inputs))
-               (code-param-id (car code-spec))
-               (code-param-type (cdr code-spec))
-               (code-in (code-inputs code-param-type))
-               (ret (code-sort code-param-type))
-               (child-var (var child-id code-param-type))
-               (fo-specs (remove code-param-id fn-inputs :key #'car :test #'eql)))
-          (if (null fo-specs)
-              (let* ((decoder (app (op fn-name) child-var))
-                     (next-cid (next-child-id code-in))
-                     (bindings (loop for (in-id . in-type) in inputs
-                                     collect (prog1 (cons next-cid (var in-id in-type))
-                                               (incf next-cid))))
-                     (extra-in (mapcar (lambda (b) (cons (car b) (ast-type (cdr b)))) bindings))
-                     (child-inputs (append (copy-tree code-in) extra-in))
-                     (c-lang (make-language (language-domain base-lang)
-                                            child-inputs
-                                            :operators (remove (op fn-name) (language-operators base-lang) :test #'equal)
-                                            :literals (language-literals base-lang)
-                                            :constants (language-constants base-lang))))
-                (push (make-decomposition
-                       :name (list :library fn-name)
-                       :decoder decoder
-                       :child-id child-id
-                       :child-type code-param-type
-                       :bindings bindings
-                       :language c-lang
-                       :bound c-bound
-                       :lift-p t
-                       :solver solver
-                       :provenance (when debug-p
-                                     (list :origin :library-expander
-                                           :function fn-name
-                                           :decoder decoder)))
-                      proposals))
-              (let ((primary-spec (first fo-specs))
-                    (extra-fo-specs (rest fo-specs)))
-                (dolist (p-spec inputs)
-                  (when (equal (cdr p-spec) (cdr primary-spec))
-                    (let* ((p-id (car p-spec))
-                           (primary-expr (var p-id (cdr p-spec)))
-                           (extra-options
-                             (mapcar (lambda (espec)
-                                       (candidate-fo-argument-expressions frame language p-id (cdr espec)))
-                                     extra-fo-specs)))
-                      (dolist (extra-tuple (cartesian-product-lists extra-options))
-                        (let* ((fo-alist (cons (cons (car primary-spec) primary-expr)
-                                               (mapcar #'cons (mapcar #'car extra-fo-specs) extra-tuple)))
-                               (call-args (loop for (param-id . nil) in fn-inputs
-                                                collect (if (eql param-id code-param-id)
-                                                            child-var
-                                                            (cdr (assoc param-id fo-alist :test #'eql)))))
-                               (decoder (apply #'app (op fn-name) call-args))
-                               (consumed-ids (loop for arg in call-args
-                                                   when (var-p arg) collect (ast-id arg)))
-                               (next-cid (next-child-id code-in))
-                               (bindings (loop for (in-id . in-type) in inputs
-                                               unless (member in-id consumed-ids :test #'eql)
-                                                 collect (prog1 (cons next-cid (var in-id in-type))
-                                                           (incf next-cid)))))
-                          (when (library-decoder-compatible-with-empty-rows-p
-                                 frame p-id decoder child-id code-param-type bindings ledger
-                                 :fn-name fn-name :extra-fo-specs extra-fo-specs)
-                            (let* ((extra-in (mapcar (lambda (b) (cons (car b) (ast-type (cdr b)))) bindings))
-                                   (child-inputs (append (copy-tree code-in) extra-in))
-                                   (has-seq-in-p (some (lambda (s)
-                                                         (and (consp (cdr s)) (eq :seq (first (cdr s)))))
-                                                       child-inputs))
-                                   (has-seq-ret-p (and (consp ret) (eq :seq (first ret))))
-                                   (child-ops
-                                     (remove-if
-                                      (lambda (o)
-                                        (and (operator-p o)
-                                             (let ((oname (operator-name o)))
-                                               (or (eq oname self-name)
-                                                   (and (not (or has-seq-in-p has-seq-ret-p))
-                                                        (eq oname fn-name))
-                                                   (let ((odef (find-function-definition oname)))
-                                                     (and odef
-                                                          (or (function-definition-oracle-table odef)
-                                                              (and (not (or has-seq-in-p has-seq-ret-p))
-                                                                   (some (lambda (s) (code-type-p (cdr s)))
-                                                                         (function-definition-inputs odef))))))
-                                                   (and (not has-seq-in-p)
-                                                        (member oname '(:at :tail :length)))
-                                                   (and (not has-seq-in-p)
-                                                        (not has-seq-ret-p)
-                                                        (eq oname :cons))
-                                                   (and (not has-seq-in-p)
-                                                        (eq oname :=)
-                                                        (consp (operator-operand-type o))
-                                                        (eq :seq (first (operator-operand-type o))))))))
-                                      (language-operators base-lang)))
-                                   (child-consts
-                                     (if (or has-seq-ret-p
-                                             (some (lambda (o)
-                                                     (and (operator-p o)
-                                                          (eq := (operator-name o))
-                                                          (consp (operator-operand-type o))
-                                                          (eq :seq (first (operator-operand-type o)))))
-                                                   child-ops))
-                                         (language-constants base-lang)
-                                         (remove-if (lambda (c)
-                                                      (and (consp (ast-type c))
-                                                           (eq :seq (first (ast-type c)))))
-                                                    (language-constants base-lang))))
-                                   (c-lang (make-language (language-domain base-lang)
-                                                          child-inputs
-                                                          :operators child-ops
-                                                          :literals (language-literals base-lang)
-                                                          :constants child-consts))
-                                   (eff-c-bound
-                                     (max c-bound
-                                          (+ (header-size child-inputs ret)
-                                             (if (some (lambda (o)
-                                                         (and (operator-p o)
-                                                              (defined-function-p (operator-name o))))
-                                                       child-ops)
-                                                 32
-                                                 24)))))
-                              (push (make-decomposition
-                                     :name (cons :library (cons fn-name extra-tuple))
-                                     :decoder decoder
-                                     :child-id child-id
-                                     :child-type code-param-type
-                                     :bindings bindings
-                                     :language c-lang
-                                     :bound eff-c-bound
-                                     :lift-p t
-                                     :solver solver
-                                     :provenance (when debug-p
-                                                   (list :origin :library-expander
-                                                         :function fn-name
-                                                         :decoder decoder
-                                                         :bindings bindings)))
-                                    proposals)))))))))))))
-    (append (nreverse proposals)
-            (filter-map-decompositions frame base-lang defs child-id c-bound solver ledger debug-p))))
-
-(defun library-expander (&key child-language child-bound functions)
-  "An `:expand` function that proposes registered higher-order library combinators
-whose return type matches the node's target as `:lift-p t` decompositions."
-  (lambda (job node frame language h-model ledger)
-    (declare (ignore h-model))
-    (let* ((proposal (synthesis-node-proposal node))
-           (bound (or child-bound
-                      (synthesis-node-bound node)
-                      (and proposal (decomposition-bound proposal)))))
-      (when (or (not (and proposal (decomposition-lift-p proposal)))
-                (frame-has-sequence-type-p frame language))
-        (library-decompositions frame language
-                                :child-language child-language
-                                :child-bound bound
-                                :self-name (and job (synthesis-job-self-name job))
-                                :functions functions
-                                :solver (and job (synthesis-job-library job))
-                                :ledger ledger
-                                :debug-p (and job (synthesis-job-debug-p job)))))))
-
-(defun combine-expanders (&rest expanders)
-  "Compose multiple `:expand` functions into a single expander without baked-in policy."
-  (lambda (job node frame language h-model ledger)
-    (loop for exp in expanders
-          when exp
-            append (funcall exp job node frame language h-model ledger))))
-
-(defun dependency-proposals (frame language child-bound &key (features nil features-p) (debug-p *synthesis-debug-mode*))
-  "Make dependency hypotheses explicit. FEATURES are synthesized DSL expressions;
-the default seed vocabulary is each available coordinate and the empty context.
-Every hypothesis competes with direct synthesis on the full original frame."
-  (let* ((inputs-spec (schema-inputs (frame-schema frame)))
-         (target (schema-target (frame-schema frame)))
-         (child-id (next-child-id inputs-spec)))
-    (loop for feature in (cons nil (if features-p features
-                                     (mapcar (lambda (spec) (var (car spec) (cdr spec))) inputs-spec)))
-          for inputs = (when feature (list (cons 0 (ast-type feature))))
-          collect (make-decomposition
-                   :name (list :dependency feature) :decoder (var child-id target)
-                   :child-id child-id :child-type target :bindings (when feature (list (cons 0 feature)))
-                   :language (make-language (language-domain language) inputs :operators (language-operators language)
-                                            :literals (language-literals language) :constants (language-constants language))
-                   :bound child-bound
-                   :provenance (when debug-p (list :origin :dependency :feature feature))))))
-
-(defun selector-decompositions (frame language bound &key fibers dependencies (debug-p *synthesis-debug-mode*))
-  (let* ((inputs (schema-inputs (frame-schema frame)))
-         (target (schema-target (frame-schema frame)))
-         (id (next-child-id inputs)))
-    (append (when fibers
-              (list (make-decomposition :name :fibers :decoder (var id target) :child-id id
-                                        :child-type target :bindings (identity-bindings inputs)
-                                        :language language :bound bound :fiber-p t
-                                        :provenance (when debug-p (list :origin :fibers)))))
-            (when dependencies
-              (dependency-proposals frame language bound :debug-p debug-p)))))
-
-(defun start-selector-search (frame language description-limit &key (fibers t) dependencies)
-  "Price direct selector synthesis alongside optional fiber and dependency proposals."
-  (start-synthesis frame language description-limit
-                   :decompositions (selector-decompositions frame language description-limit
-                                                            :fibers fibers :dependencies dependencies)))
-
-(defun heuristic-expander (&key child-language guard-language child-bound guard-bound
-                                (work-limit 20000) (additive-p t) (conditional-p t)
-                                (library-proposals-p t) library-functions)
-  "An `:expand` function: each node turns its own Stage A model into Stage B additive and
-conditional residual branches (plus higher-order library combinator branches when
-LIBRARY-PROPOSALS-P is true and no de novo SELF-NAME is active), so every proposal
-competes under Stage A full-path pricing and the 3:1 reserve schedule."
-  (lambda (job node frame language h-model ledger)
-    (let* ((inputs (schema-inputs (frame-schema frame)))
-           (proposal (synthesis-node-proposal node))
-           (bound (or (synthesis-node-bound node) (and proposal (decomposition-bound proposal)))))
-      (flet ((matching (lang) (and lang (equal (language-inputs lang) inputs) lang)))
-        (let ((stage-b (unless (and proposal (decomposition-lift-p proposal))
-                         (heuristic-decompositions frame language
-                                                   :heuristic-model h-model
-                                                   :child-language (matching child-language)
-                                                   :guard-language (matching guard-language)
-                                                   :description-limit bound
-                                                   :child-bound (or child-bound bound)
-                                                   :guard-bound guard-bound
-                                                   :work-limit work-limit
-                                                   :run-weight (synthesis-job-run-weight job)
-                                                   :additive-p additive-p
-                                                   :conditional-p conditional-p
-                                                   :self-name (synthesis-job-self-name job)
-                                                   :solver (synthesis-job-library job)
-                                                   :ledger ledger
-                                                   :debug-p (synthesis-job-debug-p job))))
-              (lib-props (when (and library-proposals-p
-                                    (or (not (and proposal (decomposition-lift-p proposal)))
-                                        (frame-has-sequence-type-p frame language)))
-                           (library-decompositions frame language
-                                                   :child-language child-language
-                                                   :child-bound (or child-bound bound)
-                                                   :self-name (and job (synthesis-job-self-name job))
-                                                   :functions library-functions
-                                                   :solver (and job (synthesis-job-library job))
-                                                   :ledger ledger
-                                                   :debug-p (and job (synthesis-job-debug-p job))))))
-          (append lib-props stage-b))))))
 
 (defun start-heuristic-synthesis (frame language description-limit
                                   &key decompositions child-language guard-language
@@ -3269,6 +2527,9 @@ Feature equivalence is scoped to the observed rows, never promoted to a law."
          (eff-ctype (if ng-p (nogood-clause-child-type nogood-or-expr) child-type))
          (eff-pincompat (if ng-p (nogood-clause-parent-incompatible-p nogood-or-expr) parent-incompatible-p))
          (eff-inputs (or inputs (infer-exprs-inputs (list clause-expr))))
+         (pattern-bits (multiple-value-bind (constructor scope)
+                           (compile-au-constructor clause-expr eff-inputs ledger)
+                         (description-size constructor scope)))
          (entry (make-knowledge-entry
                  :id id
                  :kind :nogood-schema
@@ -3280,9 +2541,10 @@ Feature equivalence is scoped to the observed rows, never promoted to a law."
                  :auxiliary-code eff-decoder
                  :status :validated
                  :certificate '(:kind :uip-anti-unification)
-                 :bits (syntax-work clause-expr)
+                 :bits pattern-bits
                  :edges (copy-tree edges)
-                 :metadata (append (list :child-id eff-cid
+                 :metadata (append (list :bits-representation :au-constructor
+                                         :child-id eff-cid
                                          :child-type (copy-tree eff-ctype)
                                          :parent-incompatible-p eff-pincompat)
                                    (copy-tree metadata))
@@ -3406,6 +2668,7 @@ Feature equivalence is scoped to the observed rows, never promoted to a law."
                                    (register-residual-p t)
                                    (register-nogoods-p t)
                                    (register-dip-p t)
+                                   (register-templates-p nil)
                                    ledger)
   "Commit learned artifacts from completed `synthesis-job` JOB into LIBRARY:
 1. Finalized recursive or named function definition (with discovery work and edges).
@@ -3511,7 +2774,8 @@ Feature equivalence is scoped to the observed rows, never promoted to a law."
                              :status :empirical
                              :ledger ledger)))
             (push rel-entry committed)))))
-    (nreverse committed)))
+    (append (nreverse committed)
+            (when (and best register-templates-p) (remember-successful-decompositions job library ledger)))))
 
 (defun consolidate-knowledge-library (&rest args)
   "Consolidate LIBRARY across accumulated synthesis jobs, law validations, solver discoveries,
@@ -3673,4 +2937,3 @@ and print a readable report to STREAM when non-NIL."
             (when (getf es :incoming-edges)
               (format stream "    edges <-:   ~S~%" (getf es :incoming-edges)))))
         report))))
-

@@ -2234,11 +2234,15 @@ Returns `(VALUES accepted-abstractions refactored-definitions all-candidates led
 ;;; Persistent Knowledge Library: Descriptors, Functions, Relations
 ;;; ============================================================
 
+(defvar *descriptor-proof-stack* nil)
+
 (defun function-body-length-preserving-p (name body)
   "True when BODY is a structural list recursion on X0 that maps '() to '() and
 constructs one output element via :CONS per (:TAIL X0) step, or delegates directly
 to a length-preserving higher-order combinator on X0."
-  (and (app-p body)
+  (and (not (member name *descriptor-proof-stack*))
+       (let ((*descriptor-proof-stack* (cons name *descriptor-proof-stack*)))
+       (and (app-p body)
        (or (and (eq :if (ast-id body))
                 (let ((cond-ast (second body))
                       (then-ast (third body))
@@ -2269,7 +2273,7 @@ to a length-preserving higher-order combinator on X0."
                                       (find-function-definition comb-name))))
                   (and comb-def
                        (function-definition-body comb-def)
-                       (function-body-length-preserving-p comb-name (function-definition-body comb-def))))))))
+                       (function-body-length-preserving-p comb-name (function-definition-body comb-def))))))))))
 
 (defun compute-function-descriptor (fdef)
   "Synthesize a closed VM-executable Boolean descriptor AST over (X0=seq-input, X1=output)
@@ -2423,8 +2427,7 @@ or a hybrid (PARAMETRIC + TABLE) residual program as a :RELATION entry in LIBRAR
                  :status status
                  :certificate (list :kind :empirical-table :rows (length table))
                  :bits (if rel-ast
-                           (or (ignore-errors (body-size rel-ast norm-inputs))
-                               (syntax-work rel-ast))
+                           (body-size rel-ast norm-inputs)
                            0)
                  :edges edges
                  :metadata (append (list :table (copy-tree table) :default default)
@@ -2432,7 +2435,8 @@ or a hybrid (PARAMETRIC + TABLE) residual program as a :RELATION entry in LIBRAR
                  :library library)))
     (register-knowledge-entry entry :library library :ledger ledger)))
 
-(defun consolidate-residual-relations (entries library ledger)
+(defun consolidate-residual-relations (entries library ledger &key language description-limit
+                                                               (work-limit 100000))
   "Delayed structure discovery across empirical :RELATION entries in LIBRARY.
 1. Within a single relation entry whose residual table has >= 2 first-order rows, check if an
    algebraic expression compresses the residual table with positive MDL gain (delta-S > 0).
@@ -2468,12 +2472,13 @@ or a hybrid (PARAMETRIC + TABLE) residual program as a :RELATION entry in LIBRAR
                       (ops (when (or (eq eff-domain :int)
                                      (and (consp eff-domain) (eq :gf (first eff-domain))))
                              (list (op :+ eff-domain) (op :* eff-domain))))
-                      (lang (make-language eff-domain inputs :operators ops :literals '(0 1 2 3)))
-                      (bound (+ (header-size inputs target) 36))
+                      (lang (or language
+                                (make-language eff-domain inputs :operators ops :literals '(0 1 2 3))))
+                      (bound (or description-limit (+ (header-size inputs target) 36)))
                       (search (start-search frame lang)))
                  (loop for step from 1 to 20
                        until (search-job-best search)
-                       do (resume-search search bound (* step 5000)))
+                       do (resume-search search bound (min work-limit (* step (ceiling work-limit 20)))))
                  (when ledger
                    (charge ledger :child-search (ledger-total (search-job-ledger search))))
                  (and (search-job-best search)
@@ -2517,17 +2522,18 @@ or a hybrid (PARAMETRIC + TABLE) residual program as a :RELATION entry in LIBRAR
                  (when best
                    (let* ((old-total-bits (reduce #'+ remaining :key #'knowledge-entry-bits))
                           (expr-bits (body-size best inputs))
-                          ;; Shared helper function + call overhead across remaining entries
-                          (total-gain (- old-total-bits expr-bits)))
+                          ;; Entries store independent AST copies; pay for every copy.
+                          (total-gain (- old-total-bits (* (length remaining) expr-bits))))
                      (when (plusp total-gain)
                        (dolist (e remaining)
+                         (let ((entry-gain (- (knowledge-entry-bits e) expr-bits)))
                          (setf (knowledge-entry-expression e) best
                                (knowledge-entry-residual e) nil
                                (knowledge-entry-auxiliary-code e) best
                                (knowledge-entry-status e) :empirical
                                (knowledge-entry-bits e) expr-bits
-                               (knowledge-entry-gain e) total-gain)
-                         (pushnew e condensed :test #'eq))))))))))
+                               (knowledge-entry-gain e) entry-gain)
+                         (pushnew e condensed :test #'eq)))))))))))
        by-sig)
       (when condensed
         (incf (knowledge-library-version library)))
@@ -2669,9 +2675,13 @@ recording :REFACTORED-BY and :ABSTRACTS relational edges and refreshing descript
            (target (knowledge-entry-target entry))
            (body (knowledge-entry-expression entry))
            (oracle (getf (knowledge-entry-metadata entry) :oracle-table))
-           (def (if *syncing-knowledge-library-p*
-                    (or (find-function-definition kname)
-                        (define-function kname inputs target body :oracle-table oracle))
+           (existing (find-function-definition kname))
+           (def (if (and existing
+                         (equal inputs (function-definition-inputs existing))
+                         (equal target (function-definition-return-type existing))
+                         (equal body (function-definition-body existing))
+                         (equal oracle (function-definition-oracle-table existing)))
+                    existing
                     (let ((*syncing-knowledge-library-p* t))
                       (define-function kname inputs target body :oracle-table oracle)))))
       (setf (gethash kname (knowledge-library-functions library)) def)
@@ -2684,9 +2694,10 @@ recording :REFACTORED-BY and :ABSTRACTS relational edges and refreshing descript
             (setf (knowledge-entry-trigger entry) desc)
             (setf (gethash kname (knowledge-library-descriptors library)) desc)
             (let ((desc-id (intern (format nil "~A/DESCRIPTOR" (symbol-name kname)) :keyword)))
-              (unless (find-knowledge-entry desc-id library)
+              (unless (let ((existing (find-knowledge-entry desc-id library)))
+                        (and existing (knowledge-evidence-current-p existing :necessary)))
                 (register-knowledge-entry
-                 (make-knowledge-entry
+                 (attest-knowledge-entry (make-knowledge-entry
                   :id desc-id
                   :kind :descriptor
                   :domain (knowledge-entry-domain entry)
@@ -2694,10 +2705,10 @@ recording :REFACTORED-BY and :ABSTRACTS relational edges and refreshing descript
                                 (cons 1 target))
                   :target :bool
                   :expression desc
-                  :status :validated
+                  :status :empirical
                   :certificate '(:kind :structural-descriptor)
                   :edges (list (list :describes kname))
-                  :library library)
+                  :library library) :derived '(:necessary))
                  :library library))
               (add-knowledge-edge entry :described-by desc-id)))))
       (when (knowledge-entry-trigger entry)

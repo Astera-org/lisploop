@@ -3,11 +3,11 @@
 # is left to the TeX installation's default paper.
 PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt
 
-DOCS = plan6.pdf plan7.pdf architecture.pdf plan6-refactor.pdf tests/README.pdf plan7-recursion.pdf
+DOCS = plan7.pdf architecture.pdf tests/README.pdf plan7-recursion.pdf plan7-higher-order.pdf plan7-library.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
-BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp codec.lisp vm.lisp requirements.lisp frame.lisp enumerate.lisp factor.lisp laws.lisp synthesize.lisp benchmark.lisp
+BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp knowledge.lisp codec.lisp vm.lisp evidence.lisp persistence.lisp requirements.lisp frame.lisp enumerate.lisp factor.lisp laws.lisp templates.lisp bootstrap-inverters.lisp synthesize.lisp proposals.lisp benchmark.lisp
 
 .PHONY: all clean test visualizer benchmark benchmark-profile
 

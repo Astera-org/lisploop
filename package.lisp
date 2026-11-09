@@ -143,6 +143,10 @@
    #:propagation-narrowed #:propagation-suggested #:propagation-retained #:propagation-rejected
    #:prepare-propagator-library #:as-propagator-library #:propagate-requirements #:propagation-ambiguous
    #:as-rewrite-library #:register-knowledge-law #:retype-knowledge-laws
+   #:knowledge-evidence-current-p #:infer-function-template #:instantiate-function-template
+   #:learn-knowledge-transformer
+   #:knowledge-library-storage-bits #:walk-typed-ast #:remember-decoder-template
+   #:*library-code-argument-bits* #:*library-code-argument-work* #:*library-partial-proposal-limit*
    #:register-knowledge-solver #:induce-functorial-solvers
    #:start-propagation-search #:resume-propagation-search #:propagation-search-results
    #:propagation-search-best #:propagation-search-ledger #:propagation-search-first-work

@@ -310,6 +310,7 @@
                   (match-frame
                     (simple-frame seq-type inputs
                                   '((((1 2 3)) (10 20 30))))))
+             ;; This structural descriptor now carries current necessary-condition evidence.
              (check (null (library-decompositions mismatch-frame lang :ledger (make-ledger))))
              (check (plusp (length (library-decompositions match-frame lang :ledger (make-ledger)))))))
          ;; 4. Register element-level `:solver` for `:+` and induce second-order `:functor` solvers

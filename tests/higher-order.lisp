@@ -346,7 +346,7 @@
                                             :literals '(0)
                                             :constants (list (lit seq2-int '()) (lit seq-int '()))))
                   (msum-job (start-heuristic-synthesis msum-frame msum-lang 90)))
-             (resume-synthesis msum-job 30000 :stop-on-first t)
+             (resume-synthesis msum-job 150000 :stop-on-first t)
              (check (synthesis-job-best msum-job))
              (let ((expr (candidate-expression (synthesis-job-best msum-job))))
                (check (provably-total-p expr))
@@ -366,8 +366,9 @@
                                           :constants (list (lit seq-int '()))))
                   (batch-job (start-heuristic-synthesis fm-frame fm-lang 100))
                   (step-job (start-heuristic-synthesis fm-frame fm-lang 100)))
-             (resume-synthesis batch-job 25000 :stop-on-first t)
-             (loop for limit from 1 to 25000
+             ;; Conservative descriptor pruning retains an additional branch.
+             (resume-synthesis batch-job 60000 :stop-on-first t)
+             (loop for limit from 1 to 60000
                    until (or (synthesis-finished-p step-job)
                              (synthesis-job-best step-job))
                    do (resume-synthesis step-job limit :stop-on-first t))
@@ -390,7 +391,7 @@
    and `2 -> 4`) but fails root verification on a full sequence (`3 -> 9`),
    `refine-lifted-node-from-counterexample` promotes the failing fiber row from `reserve-rows`
    into the active child frame, emits a `:cegar-refinement` message, and converges to `(* X0 X0)`
-   without restarting child enumeration from scratch."
+   with a fresh search scope for the revised constraints."
   (unwind-protect
        (with-knowledge-library ((make-knowledge-library))
          (clear-function-definitions)
@@ -420,9 +421,20 @@
              ;;    on `(3 5) -> (9 25)`, triggers `:cegar-refinement`, promotes `(3) -> 9`, and finds `(* X0 X0)`.
              (let ((job (start-synthesis sq-frame sq-lang 60
                                          :expand (library-expander)
-                                         :max-depth 1)))
+                                         :max-depth 1))
+                   (unit (start-synthesis sq-frame sq-lang 60
+                                          :expand (library-expander) :max-depth 1)))
                (resume-synthesis job 30000 :stop-on-first t)
+               (loop for limit from 1 to 30000
+                     until (or (synthesis-finished-p unit) (synthesis-job-best unit))
+                     do (resume-synthesis unit limit :stop-on-first t)
+                        (check (<= (ledger-total (synthesis-job-ledger unit)) limit)))
                (check (synthesis-job-best job))
+               (check (synthesis-job-best unit))
+               (check (equal (candidate-expression (synthesis-job-best job))
+                             (candidate-expression (synthesis-job-best unit))))
+               (check (= (ledger-total (synthesis-job-ledger job))
+                         (ledger-total (synthesis-job-ledger unit))))
                (let ((cegar-msg (find :cegar-refinement (synthesis-job-messages job)
                                       :key #'message-claim :test #'eq))
                      (expr (candidate-expression (synthesis-job-best job))))
@@ -504,7 +516,8 @@
                                                                            (lit gf5 3))
                                                                       (lit seq-gf5 '(1 4 0)))))))
                     (p0 (propagate-requirements f0 *knowledge-library* (make-ledger))))
-               (check (plusp (propagation-narrowed p0)))
+               (check (plusp (propagation-suggested p0)))
+               (check (propagation-fallback p0))
                (check (equal '((3 1 2))
                              (extract-allowed-values (row-requirement (first (frame-rows (propagation-frame p0))))))))
 
@@ -530,7 +543,8 @@
                                                                            (lit gf5 2))
                                                                       (lit seq-gf5 '(4 1 3)))))))
                     (p2 (propagate-requirements f2 *knowledge-library* (make-ledger))))
-               (check (plusp (propagation-narrowed p2)))
+               (check (plusp (propagation-suggested p2)))
+               (check (propagation-fallback p2))
                (check (equal '((2 3 4))
                              (extract-allowed-values (row-requirement (first (frame-rows (propagation-frame p2))))))))
 
@@ -592,6 +606,7 @@
            ;; 3. Conserved-quantity / homomorphic invariant discovery (`sum(shift-int(xs, d)) = sum(xs) + d * length(xs)`)
            (register-knowledge-solver :-
                                       :id :int-sub-solve-0
+                                      :trusted-p t
                                       :domain :int
                                       :inputs (arithmetic-inputs :int)
                                       :target :int

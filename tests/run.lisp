@@ -5,7 +5,7 @@
 (defparameter *all-test-modules*
   '("core" "observations" "codec" "laws" "guards" "compression" "symbolic"
     "amortization" "algebra" "propagation" "lifting" "abstraction" "views" "refactor"
-    "recursion" "library" "higher-order"))
+    "recursion" "library" "higher-order" "audit"))
 
 (defparameter *milestone-test-modules*
   '(("m1" . ("core"))
