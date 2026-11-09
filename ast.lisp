@@ -906,10 +906,14 @@ and an unverified candidate BODY during synthesis verification, without global c
           def)
         (define-function kname norm-inputs return-type body :oracle-table oracle-table))))
 
+(defparameter *auto-retyped-functions* (make-hash-table :test #'eq)
+  "Set of function names automatically instantiated via RETYPE-FUNCTION-DEFINITION during synthesis.")
+
 (defun clear-function-definitions ()
   "Remove all dynamically registered function definitions and reset de novo naming."
   (let ((names (copy-list *registered-function-names*)))
     (clrhash *function-definitions*)
+    (clrhash *auto-retyped-functions*)
     (setf *registered-function-names* nil
           *de-novo-function-counter* 0)
     (dolist (kname names)

@@ -5,7 +5,7 @@
 (defparameter *all-test-modules*
   '("core" "observations" "codec" "laws" "guards" "compression" "symbolic"
     "amortization" "algebra" "propagation" "lifting" "abstraction" "views" "refactor"
-    "recursion" "library"))
+    "recursion" "library" "higher-order"))
 
 (defparameter *milestone-test-modules*
   '(("m1" . ("core"))
@@ -16,7 +16,7 @@
     ("m6" . ("abstraction"))
     ("m7" . ("views"))
     ("m8" . ("views" "refactor" "recursion"))
-    ("m9" . ("abstraction" "recursion" "library"))
+    ("m9" . ("abstraction" "recursion" "library" "higher-order"))
     ("r1" . ("recursion"))
     ("r2" . ("recursion"))
     ("r3" . ("recursion"))
@@ -26,7 +26,11 @@
     ("l1" . ("library"))
     ("l2" . ("library"))
     ("l3" . ("library"))
-    ("l4" . ("library"))))
+    ("l4" . ("library"))
+    ("h1" . ("higher-order"))
+    ("h2" . ("higher-order"))
+    ("h3" . ("higher-order"))
+    ("h4" . ("higher-order"))))
 
 (defun resolve-test-modules (args)
   (if (or (null args) (member "all" args :test #'string-equal))

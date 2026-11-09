@@ -53,7 +53,7 @@
    #:conjoin-requirements #:frame-conflict #:frame-conflict-p
    #:frame-constrained-row-count #:frame-min-resolved-rows
    #:orient-observations #:transition-probes #:lookup-model #:frame-oracle-table
-   #:pullback-frame #:compose-model #:lift-frame #:compose-lifted-model #:conserved-quantity-frame #:support-frame
+   #:pullback-frame #:compose-model #:lift-frame #:compose-lifted-model #:*max-active-lifted-rows* #:conserved-quantity-frame #:support-frame
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
    #:partition-pairs-and-anchors #:with-frame-linkage
    #:centered-mod-difference #:correction-packet #:apply-correction-packet #:correction-bit-size #:select-closest-witness
@@ -130,7 +130,7 @@
    #:law-certificate #:law-certificate-evidence #:law-certificate-assignments #:law-certificate-active #:law-certificate-work
    #:law-validation #:start-law-validation #:resume-law-validation #:law-validation-law
    #:law-validation-status #:law-validation-ledger #:law-validation-counterexample #:law-validation-certificate
-   #:propose-observed-laws #:retype-law
+   #:propose-observed-laws #:retype-law #:retype-function-definition
    #:observed-support #:guard-problem #:guard-problem-scope #:guard-problem-support
    #:guard-problem-frame #:guard-problem-equations #:propose-guard-problems #:start-guard-search #:propose-guarded-laws
    #:rewrite-rule #:rewrite-library #:rewrite-library-rules #:prepare-rewrite-library
@@ -159,7 +159,7 @@
    #:start-synthesis #:resume-synthesis #:synthesis-job-best #:synthesis-job-results
    #:synthesis-job-ledger #:synthesis-job-messages #:synthesis-job-debug-p
    #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace
-   #:synthesis-node-priority #:synthesis-node-heuristic #:synthesis-node-provenance
+   #:synthesis-node-priority #:synthesis-node-heuristic #:synthesis-node-provenance #:synthesis-node-reserve-rows
    #:lift-inductive-sequence-context #:explain-synthesis-node #:explain-synthesis-job
    #:library-decompositions #:library-expander #:combine-expanders
    #:heuristic-decompositions #:heuristic-expander #:start-heuristic-synthesis

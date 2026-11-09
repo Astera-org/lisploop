@@ -414,11 +414,13 @@ bindings. No inverse values are enumerated."
   "If CONJUNCT is ready to lift with a single ground call G = (:code-eval CODE-VAR 'a0 ... 'ak-1)
 and equates G with a literal 'val, return (VALUES G 'val)."
   (multiple-value-bind (ground non-ground-p) (collect-code-eval-calls conjunct code-var)
-    (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct)
-      (declare (ignore term-type))
-      (when (and (not non-ground-p) (null (rest ground)) (first ground)
-                 (equal term (first ground)))
-        (values (first ground) lit-node)))))
+    (when (and (not non-ground-p) (null (rest ground)) (first ground))
+      (if (and (equal conjunct (first ground)) (eq :bool (ast-type conjunct)))
+          (values (first ground) (lit :bool t))
+          (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct)
+            (declare (ignore term-type))
+            (when (equal term (first ground))
+              (values (first ground) lit-node)))))))
 
 (defun congruence-close-code-evals (row-reqs extra-knowns code-var checker-schema
                                     &key ledger (budget 10000))
@@ -482,12 +484,88 @@ non-decoupled conjuncts sharing identical EXTRA-KNOWNS, folding after each subst
       (walk expr)
       (unless multiple-p outer))))
 
-(defun lift-frame (parent decoder child-id child-type &optional bindings ledger (budget 10000))
+(defparameter *max-active-lifted-rows* 16
+  "Maximum number of active fiber rows retained by LIFT-FRAME before holding remaining rows in reserve for CEGAR.")
+
+(defun flatten-lifted-conjuncts (expr code-var)
+  "Extract atomic conjuncts from EXPR, resolving any ambiguous (:if (:code-eval CODE-VAR ...) yes no)
+subsequence branch deterministically via its first-match (YES) branch."
+  (let ((raw (extract-conjuncts expr))
+        (out nil))
+    (labels ((expand (c)
+               (if (and (app-p c)
+                        (operator-p (first c))
+                        (eq :if (operator-name (first c)))
+                        (not (and (lit-p (fourth c)) (null (ast-value (fourth c)))))
+                        (app-p (second c))
+                        (operator-p (first (second c)))
+                        (eq :code-eval (operator-name (first (second c))))
+                        (equal (second (second c)) code-var))
+                   (if (not (unsatisfiable-requirement-p (third c)))
+                       (progn
+                         (push (second c) out)
+                         (mapc #'expand (extract-conjuncts (third c))))
+                       (progn
+                         (push (app (op := :bool) (second c) (lit :bool nil)) out)
+                         (mapc #'expand (extract-conjuncts (fourth c)))))
+                   (push c out))))
+      (mapc #'expand raw)
+      (nreverse out))))
+
+(defun select-active-fiber-rows (rows max-active-rows)
+  "When ROWS exceeds MAX-ACTIVE-ROWS, partition ROWS into (VALUES active-rows reserve-rows),
+retaining all unsatisfiable rows, boundary occurrences per parent row, and diverse input values."
+  (if (or (null max-active-rows) (<= (length rows) max-active-rows))
+      (values rows nil)
+      (let ((selected (make-hash-table :test #'eq))
+            (by-parent (make-hash-table :test #'equal))
+            (seen-first-arg (make-hash-table :test #'equal))
+            (count 0))
+        (flet ((pick (r)
+                 (unless (gethash r selected)
+                   (setf (gethash r selected) t)
+                   (incf count))))
+          ;; 1. Always keep unsatisfiable rows so conflicts are detected immediately
+          (dolist (r rows)
+            (when (unsatisfiable-requirement-p (row-requirement r))
+              (pick r)))
+          ;; 2. Group by parent row key and keep first + last occurrence of each parent row
+          (dolist (r rows)
+            (let ((pkey (if (consp (row-key r)) (first (row-key r)) (row-key r))))
+              (push r (gethash pkey by-parent))))
+          (maphash (lambda (pkey group)
+                     (declare (ignore pkey))
+                     (let ((ordered (reverse group)))
+                       (when (< count max-active-rows)
+                         (pick (first ordered)))
+                       (when (and (< count max-active-rows) (rest ordered))
+                         (pick (car (last ordered))))))
+                   by-parent)
+          ;; 3. Keep rows with distinct first known argument (covering extrema/diversity)
+          (dolist (r rows)
+            (when (and (< count max-active-rows) (row-known r))
+              (let ((k0 (first (row-known r))))
+                (unless (gethash k0 seen-first-arg)
+                  (setf (gethash k0 seen-first-arg) t)
+                  (pick r)))))
+          ;; 4. Fill remaining slots up to MAX-ACTIVE-ROWS in row order
+          (dolist (r rows)
+            (when (< count max-active-rows)
+              (pick r)))
+          (let ((active nil)
+                (reserve nil))
+            (dolist (r rows (values (nreverse active) (nreverse reserve)))
+              (if (gethash r selected)
+                  (push r active)
+                  (push r reserve))))))))
+
+(defun lift-frame (parent decoder child-id child-type &optional bindings ledger (budget 10000)
+                                                      (max-active-rows *max-active-lifted-rows*))
   "Lift a parent frame through a higher-order DECODER parameterized by CHILD-ID of (:code inputs ret)
 into a 1-to-many child frame over the code parameter's inputs (plus any extra parent BINDINGS).
 Unfolds DECODER on each parent row, runs cross-row congruence closure on ground :code-eval calls,
 and emits one child row per distinct ground call requirement.
-Returns (VALUES lifted-frame coupled-conjuncts)."
+Returns (VALUES lifted-frame coupled-conjuncts reserve-rows)."
   (assert (and (code-type-p child-type) (not (function-sort-p (code-sort child-type)))))
   (let* ((raw (pullback-frame parent decoder child-id child-type bindings ledger))
          (code-in (code-inputs child-type))
@@ -519,7 +597,7 @@ Returns (VALUES lifted-frame coupled-conjuncts)."
                                                 (copy-tree extra))
                                  :requirement (lit :bool nil))
                        lifted-rows)
-                 (loop for c in (extract-conjuncts req)
+                 (loop for c in (flatten-lifted-conjuncts req code-var)
                        for occ-idx from 0
                        do (multiple-value-bind (ground non-ground-p) (collect-code-eval-calls c code-var)
                             (cond
@@ -527,7 +605,10 @@ Returns (VALUES lifted-frame coupled-conjuncts)."
                                (let* ((call (first ground))
                                       (call-known (mapcar #'ast-value (cddr call)))
                                       (known (append (copy-tree call-known) (copy-tree extra)))
-                                      (lifted-req (fold-constants (replace-subexpression c call ret-var)
+                                      (raw-lifted (if (and (equal c call) (eq :bool ret))
+                                                      (app (op := :bool) ret-var (lit :bool t))
+                                                      (replace-subexpression c call ret-var)))
+                                      (lifted-req (fold-constants raw-lifted
                                                                   ret-checker-schema
                                                                   :ledger ledger :budget budget))
                                       (dedup-key (list known lifted-req)))
@@ -574,9 +655,12 @@ Returns (VALUES lifted-frame coupled-conjuncts)."
                       :known (mapcar (lambda (s) (default-value-for-type (cdr s))) child-inputs)
                       :requirement (lit :bool t))
             lifted-rows))
-    (values (make-frame (make-schema :inputs child-inputs :target ret)
-                        (nreverse lifted-rows))
-            (nreverse coupled))))
+    (multiple-value-bind (active-rows reserve-rows)
+        (select-active-fiber-rows (nreverse lifted-rows) max-active-rows)
+      (values (make-frame (make-schema :inputs child-inputs :target ret)
+                          active-rows)
+              (nreverse coupled)
+              reserve-rows))))
 
 (defun compose-lifted-model (decoder child-id child-type child-model &optional bindings ledger)
   "Package a synthesized CHILD-MODEL of type (code-sort CHILD-TYPE) into a :code expression
@@ -586,18 +670,22 @@ inline it for CHILD-ID in DECODER."
   (let* ((code-in (code-inputs child-type))
          (ret (code-sort child-type))
          (free (free-vars child-model))
-         (used-bindings (when bindings
-                          (some (lambda (b) (member (car b) free :test #'eql)) bindings)))
+         (used-ids (when bindings
+                     (loop for (bid . nil) in bindings
+                           when (member bid free :test #'eql)
+                             collect bid)))
          (code-expr
-           (if (not used-bindings)
+           (if (null used-ids)
                (lit child-type child-model)
-               (let* ((extra-in (mapcar (lambda (b) (cons (car b) (ast-type (cdr b)))) bindings))
+               (let* ((max-used-id (reduce #'max used-ids))
+                      (active-bindings (remove-if (lambda (b) (> (car b) max-used-id)) bindings))
+                      (extra-in (mapcar (lambda (b) (cons (car b) (ast-type (cdr b)))) active-bindings))
                       (full-code-type (code-type (append code-in extra-in) ret))
                       (tuple-args (append (mapcar (lambda (s)
                                                     (lit (code-type code-in (cdr s))
                                                          (var (car s) (cdr s))))
                                                   code-in)
-                                          (mapcar #'cdr bindings)))
+                                          (mapcar #'cdr active-bindings)))
                       (subst-tuple-type (apply #'tuple-type (mapcar #'ast-type tuple-args))))
                  (app (op :code-subst (tuple-type full-code-type subst-tuple-type child-type))
                       (lit full-code-type child-model)
