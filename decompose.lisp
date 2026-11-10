@@ -1,0 +1,467 @@
+(in-package #:lisploop)
+
+;;; Stage B: residual decompositions of a Stage A model, and the heuristic and recursive entry points.
+
+;;; Stage A -> Stage B Residual Pullback Decompositions & Heuristic Synthesis
+(defun additive-residual-type-p (type)
+  "True when TYPE supports additive displacement decoders (:int, (:gf p), or tuples thereof)."
+  (or (eq type :int)
+      (gf-type-p type)
+      (and (tuple-type-p type)
+           (every #'additive-residual-type-p (rest type)))))
+
+(defun make-additive-residual-decoder (base-expr residual-var type)
+  "Construct outer decoder d(X, Z) = base(X) + Z for scalar or tuple TYPE."
+  (assert (additive-residual-type-p type) () "Unsupported additive residual type ~S" type)
+  (if (tuple-type-p type)
+      (apply #'app (op :tuple type)
+             (loop for part-type in (rest type)
+                   for idx from 0
+                   collect (make-additive-residual-decoder
+                            (app (op :at type) base-expr (lit :int idx))
+                            (app (op :at type) residual-var (lit :int idx))
+                            part-type)))
+      (app (op :+ type) base-expr residual-var)))
+
+(defun row-active-for-guard-p (row heuristic-model)
+  "True when ROW is a constrained row whose outcome under HEURISTIC-MODEL is resolved,
+or when HEURISTIC-MODEL has no concrete residuals and ROW is an unresolved constrained row."
+  (and (constrained-row-p row)
+       (or (null (heuristic-residual heuristic-model))
+           (not (member (row-key row) (heuristic-unresolved-keys heuristic-model) :test #'equal)))))
+
+(defun heuristic-hit-mask (frame heuristic-model)
+  "Return the per-row Boolean hit mask (T on satisfied rows, NIL on unary residual rows)."
+  (let ((residuals (heuristic-residual heuristic-model))
+        (unresolved (heuristic-unresolved-keys heuristic-model)))
+    (loop for row in (frame-rows frame)
+          for key = (row-key row)
+          collect (if residuals
+                      (null (assoc key residuals :test #'equal))
+                      (not (member key unresolved :test #'equal))))))
+
+(defun default-guard-language (frame language)
+  "Construct a Boolean guard language over FRAME's inputs for exception-patching."
+  (let* ((inputs (schema-inputs (frame-schema frame)))
+         (domain (language-domain language))
+         (eq-ops (cons (op := domain) (mapcar (lambda (spec) (op := (cdr spec))) inputs)))
+         (lt-ops (remove-if-not (lambda (o)
+                                  (and (operator-p o) (eq :< (operator-name o))))
+                                (language-operators language)))
+         (domain-ops (remove-if (lambda (o)
+                                  (and (consp (operator-type o))
+                                       (eq :bool (car (last (operator-type o))))))
+                                (language-operators language)))
+         (seq-empty-constants
+           (loop for (nil . type) in inputs
+                 when (seq-type-p type)
+                   collect (lit type '()))))
+    (make-language domain inputs
+                   :operators (remove-duplicates (append eq-ops lt-ops (list (op :if :bool)) domain-ops)
+                                                 :test #'equal)
+                   :literals (if (listp (language-literals language))
+                                 (remove-duplicates (append '(0 1) (language-literals language)) :test #'equal)
+                                 (language-literals language))
+                   :constants (remove-duplicates (append seq-empty-constants (language-constants language))
+                                                 :test #'equal))))
+
+(defun observed-predicates (frame language bound work-limit ledger)
+  "Search LANGUAGE observationally over FRAME's rows, up to BOUND bits and WORK-LIMIT work
+charged to LEDGER as guard search. Returns ((expression . row-values) ...), the shortest
+expression of each distinct Boolean behaviour found, the latest behaviour first."
+  (let* ((obs (start-observation-search (make-observation-scope frame language)))
+         (obs-before (ledger-total (observation-job-ledger obs))))
+    (resume-observation-search obs bound work-limit)
+    (charge ledger :guard-search (- (ledger-total (observation-job-ledger obs)) obs-before))
+    (loop for bucket in (observation-job-buckets obs)
+          when (eq :bool (observation-bucket-type bucket))
+            collect (cons (observed-expression-expression (car (last (observation-bucket-members bucket))))
+                          (observation-bucket-values bucket)))))
+
+(defun find-sound-exception-guard (frame hit-mask guard-language guard-bound work-limit ledger
+                                   &key active-mask)
+  "Synthesize a Boolean guard G(X) separating hit and miss rows.
+Returns (VALUES guard invert-p): when INVERT-P is NIL, G(X) is T only on hits; when
+INVERT-P is T, G(X) is NIL only on hits. Guards are grouped observationally; the most
+covering sound one wins (an exact separator covers every hit), then the shortest."
+  (let* ((predicates (observed-predicates (support-frame frame hit-mask ledger)
+                                          guard-language guard-bound work-limit ledger))
+         (inputs (schema-inputs (frame-schema frame)))
+         (rows (frame-rows frame))
+         (eff-active (or active-mask
+                         (let ((constrained (mapcar #'constrained-row-p rows)))
+                           (if (some #'identity constrained)
+                               constrained
+                               (make-list (length rows) :initial-element t))))))
+    (flet ((sound-guard (expr vals)
+             ;; (expr invert-p covered-hits bits) when EXPR, in one polarity, holds on hits only.
+             (let ((sound-hit-p t) (sound-miss-p t) (hits 0) (inv-hits 0))
+               (loop for v in vals for h in hit-mask for active-p in eff-active
+                     when active-p do
+                       (if h (if v (incf hits) (incf inv-hits))
+                           (if v (setf sound-hit-p nil) (setf sound-miss-p nil))))
+               (when (or (and sound-hit-p (plusp hits)) (and sound-miss-p (plusp inv-hits)))
+                 (let ((use-inv-p (and sound-miss-p (or (not sound-hit-p) (> inv-hits hits)))))
+                   (list expr use-inv-p (if use-inv-p inv-hits hits) (description-size expr inputs)))))))
+      (let ((best (best-by (loop for (expr . vals) in predicates
+                                 for guard = (sound-guard expr vals)
+                                 when guard collect guard)
+                           (list :desc #'third) #'fourth)))
+        (values (first best) (second best))))))
+
+(defun find-oracle-operator-name (language)
+  "Return the operator name of any oracle-backed function in LANGUAGE, or NIL."
+  (loop for o in (language-operators language)
+        when (operator-p o) do
+          (let ((def (find-function-definition (operator-name o))))
+            (when (and def (function-definition-oracle-table def))
+              (return (operator-name o))))))
+
+(defun model-satisfies-empty-sequence-rows-p (frame hit-mask)
+  "True when HIT-MASK is T on every constrained row where some sequence input Xi is '()."
+  (let ((inputs (schema-inputs (frame-schema frame)))
+        (rows (frame-rows frame)))
+    (loop for (nil . type) in inputs
+          for pos from 0
+          thereis (and (seq-type-p type)
+                       (loop for row in rows
+                             for hit-p in hit-mask
+                             when (empty-sequence-row-p row pos)
+                               collect hit-p into hits
+                             finally (return (and hits (every #'identity hits))))))))
+
+(defun typed-recursive-call (name inputs replacements)
+  "Build a recursive proposal against the callee's schema, not the child schema."
+  (let ((definition (and name (find-function-definition name))))
+    (when definition
+      (let ((arguments nil))
+        (dolist (spec (function-definition-inputs definition))
+          (let* ((exact (assoc (car spec) inputs))
+                 (matches (remove-if-not (lambda (s) (equal (cdr s) (cdr spec))) inputs))
+                 (source (if (and exact (equal (cdr exact) (cdr spec))) exact
+                             (when (= 1 (length matches)) (first matches)))))
+            (unless source (return-from typed-recursive-call nil))
+            (push (or (cdr (assoc (car source) replacements)) (var (car source) (cdr source))) arguments)))
+        (apply #'app (op name) (nreverse arguments))))))
+
+(defun inductive-projections (seq-specs inputs self-name)
+  "Return (VALUES heads steps) for the non-empty case of the sequence inputs SEQ-SPECS:
+the head `(at Xi '0)` of each, and the call of SELF-NAME on every tail `(tail Xi)`, or the
+bare tails when no such call can be typed against INPUTS."
+  (let* ((tails (loop for (id . type) in seq-specs
+                      collect (cons id (term `(tail ,(var id type))))))
+         (recursive-call (typed-recursive-call self-name inputs tails)))
+    (values (loop for (id . type) in seq-specs collect (term `(at ,(var id type) 0)))
+            (if recursive-call (list recursive-call) (mapcar #'cdr tails)))))
+
+(defun inductive-child-language (language operators constants bindings inputs self-name)
+  "LANGUAGE over the child inputs that BINDINGS project from INPUTS, offering CONSTANTS and
+OPERATORS less the destructors, equality, conditional and SELF-NAME that the decoder applies."
+  (derive-language language
+                   :inputs (loop for (id . expr) in bindings
+                                 collect (cons id (expression-type expr inputs)))
+                   :operators (remove-if (lambda (o)
+                                           (and (operator-p o)
+                                                (member (operator-name o)
+                                                        (list :at :tail := :if self-name))))
+                                         operators)
+                   :constants constants))
+
+(defun lift-inductive-sequence-context (guard invert-p inputs language child-language child-id eff-self)
+  "When GUARD is an empty-sequence check `(= Xi '())` with INVERT-P NIL (so the residual child
+lives in the non-empty else branch) and LANGUAGE provides `:at` and `:tail`, lift `(at Xi '0)`
+and `(<eff-self> ... (tail Xi) ...)` (or `(tail Xi)`) into the child's bindings and grammar.
+Returns (VALUES bindings language lifted-seq-id)."
+  (let ((seq-spec (and (not invert-p)
+                       (language-operator-p language :at)
+                       (language-operator-p language :tail)
+                       (assoc (empty-sequence-guard-var-id guard (mapcar #'car inputs)) inputs))))
+    (if (null seq-spec)
+        (values (identity-bindings inputs) child-language nil)
+        (multiple-value-bind (heads steps) (inductive-projections (list seq-spec) inputs eff-self)
+          (let ((lifted-bindings (if (rest inputs)
+                                     (append (identity-bindings inputs)
+                                             (list (cons child-id (first heads))
+                                                   (cons (1+ child-id) (first steps))))
+                                     (list (cons 0 (first heads)) (cons 1 (first steps))))))
+            (values lifted-bindings
+                    (inductive-child-language language
+                                              (language-operators language)
+                                              (remove (lit (cdr seq-spec) '())
+                                                      (language-constants language)
+                                                      :test #'equal)
+                                              lifted-bindings inputs eff-self)
+                    (car seq-spec)))))))
+
+(defun lockstep-inductive-sequence-decomposition (frame language child-language h-model child-id c-bound
+                                                  eff-self solver ledger debug-p)
+  "When FRAME has >= 2 sequence inputs and LANGUAGE provides `:at` and `:tail`, propose a
+lockstep structural recursion decoder `(if (= X_s1 '()) base (if (= X_s2 '()) base Z_child))`
+whose child receives `(at X_si '0)` for each sequence input, any non-sequence inputs, and
+the lockstep recursive step `(<eff-self> (tail X_s1) (tail X_s2) ...)`."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target (schema-target schema))
+         (seq-specs (remove-if-not #'seq-type-p inputs :key #'cdr))
+         (non-seq-specs (remove-if #'seq-type-p inputs :key #'cdr)))
+    (when (and (>= (length seq-specs) 2)
+               (language-operator-p language :at)
+               (language-operator-p language :tail)
+               (every (lambda (s)
+                        (some (lambda (o)
+                                (and (operator-p o)
+                                     (eq := (operator-name o))
+                                     (equal (cdr s) (operator-operand-type o))))
+                              (language-operators language)))
+                      seq-specs))
+      (let* ((rows (frame-rows frame))
+             (seq-positions (mapcar (lambda (s) (position (car s) inputs :key #'car :test #'eql))
+                                    seq-specs))
+             (empty-rows (remove-if-not
+                          (lambda (r) (some (lambda (pos) (empty-sequence-row-p r pos)) seq-positions))
+                          rows))
+             (non-empty-rows (remove-if-not
+                              (lambda (r)
+                                (and (constrained-row-p r)
+                                     (every (lambda (pos) (consp (nth pos (row-known r))))
+                                            seq-positions)))
+                              rows)))
+        (when (and empty-rows non-empty-rows)
+          (let ((cand-exprs nil))
+            (flet ((add-cand (e) (when e (pushnew e cand-exprs :test #'equal))))
+              (when h-model
+                (add-cand (heuristic-program h-model))
+                (dolist (alt (heuristic-alternatives h-model))
+                  (add-cand (heuristic-program alt))))
+              (dolist (s non-seq-specs)
+                (when (equal (cdr s) target)
+                  (add-cand (var (car s) (cdr s)))))
+              (add-cand (lit target (default-value-for-type target))))
+            (let ((base-expr
+                    (find-if (lambda (expr)
+                               (and (every (lambda (r) (row-satisfied-p r expr inputs :ledger ledger))
+                                           empty-rows)
+                                    (notevery (lambda (r) (row-satisfied-p r expr inputs :ledger ledger))
+                                              non-empty-rows)))
+                             (nreverse cand-exprs))))
+              (when base-expr
+                (multiple-value-bind (head-exprs step-exprs)
+                    (inductive-projections seq-specs inputs eff-self)
+                  (let* ((has-code-param-p (some (lambda (s) (code-type-p (cdr s))) non-seq-specs))
+                         (kept-non-seq-exprs
+                           (loop for (oid . otype) in non-seq-specs
+                                 unless (and has-code-param-p
+                                             (not (code-type-p otype))
+                                             (equal base-expr (var oid otype)))
+                                   collect (var oid otype)))
+                         (lifted-bindings
+                           (loop for expr in (append head-exprs kept-non-seq-exprs step-exprs)
+                                 for cid from 0
+                                 collect (cons cid expr)))
+                         (child-lang
+                           (inductive-child-language
+                            language
+                            (language-operators child-language)
+                            (remove-if (lambda (c) (and (seq-type-p (ast-type c)) (null (ast-value c))))
+                                       (language-constants child-language))
+                            lifted-bindings inputs eff-self)))
+                    (make-decomposition
+                     :name (list :lockstep-inductive (mapcar #'car seq-specs) base-expr)
+                     :decoder (reduce (lambda (spec inner)
+                                        (term `(if (= ,(var (car spec) (cdr spec)) ()) ,base-expr ,inner)))
+                                      seq-specs
+                                      :from-end t
+                                      :initial-value (var child-id target))
+                     :child-id child-id
+                     :child-type target
+                     :bindings lifted-bindings
+                     :language child-lang
+                     :bound (max c-bound (header-bound (language-inputs child-lang) target
+                                                       (if has-code-param-p 72 40)))
+                     :solver solver
+                     :provenance (when debug-p
+                                   (list :origin :lockstep-inductive-sequence-lift
+                                         :base-program base-expr
+                                         :lifted-sequence-ids (mapcar #'car seq-specs)
+                                         :lifted-bindings lifted-bindings)))))))))))))
+
+(defun heuristic-decompositions (frame language &key heuristic-model child-language guard-language
+                                                     description-limit child-bound guard-bound
+                                                     (work-limit 50000) (run-weight 0)
+                                                     (additive-p t) (conditional-p t)
+                                                     self-name solver ledger
+                                                     (debug-p *synthesis-debug-mode*))
+  "Bridge Stage A heuristic condensation to Stage B recursive synthesis by turning
+a non-exact `heuristic-model` into additive displacement and/or conditional
+exception-patching `decomposition` proposals. When a conditional guard is an
+empty-sequence check `(= Xi '())`, lifts `(at Xi '0)` and `(<self-name> ... (tail Xi) ...)`
+into the non-empty branch's child bindings via `lift-inductive-sequence-context`.
+Returns (VALUES proposals heuristic-model)."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target (schema-target schema))
+         (bound (or description-limit (header-bound inputs target 18)))
+         (c-bound (or child-bound bound))
+         (g-bound (or guard-bound (header-bound inputs :bool (if (>= (length inputs) 4) 22 20))))
+         (c-lang (or child-language language))
+         (eff-self (or self-name (find-oracle-operator-name language)))
+         (empty-seq-frame-p (frame-has-empty-sequence-row-p frame))
+         (condense-budget (if heuristic-model 0 (max 1 (if conditional-p (floor work-limit 2) work-limit))))
+         (h-model (or heuristic-model
+                      (condense-heuristic frame language
+                                          :description-limit bound
+                                          :work-limit condense-budget
+                                          :run-weight run-weight
+                                          :ledger ledger))))
+    (when (or (null h-model)
+              (and (heuristic-exact-p h-model)
+                   (null (heuristic-unresolved-keys h-model))
+                   (or (null eff-self)
+                       (expression-calls-operator-p (heuristic-program h-model) eff-self))))
+      (return-from heuristic-decompositions (values nil h-model)))
+    (let* ((program (heuristic-program h-model))
+           (child-id (next-child-id inputs))
+           (child-var (var child-id target))
+           (bindings (identity-bindings inputs))
+           (hit-mask (heuristic-hit-mask frame h-model))
+           (proposals nil))
+      ;; Path B1: Additive / displacement residual decoder d(X, Z) = pi_hat(X) + Z.
+      ;; Purely relational residuals leave no row displacement to synthesize.
+      (when (and additive-p (heuristic-total-p h-model) (additive-residual-type-p target)
+                 (some #'null hit-mask)
+                 (not (and (lit-p program) (eql 0 (ast-value program))))
+                 (not (and eff-self empty-seq-frame-p)))
+        (push (make-decomposition
+               :name (list :heuristic-additive program)
+               :decoder (make-additive-residual-decoder program child-var target)
+               :child-id child-id
+               :child-type target
+               :bindings bindings
+               :language c-lang
+               :bound c-bound
+               :solver solver
+               :provenance (when debug-p
+                             (list :origin :stage-b-additive
+                                   :base-program program
+                                   :stage-a-score (heuristic-score h-model)
+                                   :stage-a-residual (heuristic-residual h-model))))
+              proposals))
+      ;; Path B2: Conditional exception-patching decoder d(X, Z) = (if G pi_hat Z) or (if G_miss Z pi_hat)
+      (when (and conditional-p
+                 (or (not empty-seq-frame-p)
+                     eff-self
+                     (some (lambda (name) (language-operator-p language name)) '(:if :at :tail))))
+        (let ((lockstep (when empty-seq-frame-p
+                          (lockstep-inductive-sequence-decomposition
+                           frame language c-lang h-model child-id c-bound eff-self solver ledger debug-p))))
+          (if lockstep
+              (push lockstep proposals)
+              (let* ((candidates (if (or empty-seq-frame-p eff-self)
+                                     (cons h-model (heuristic-alternatives h-model))
+                                     (list h-model)))
+                     (valid-base-p
+                       (lambda (m)
+                         (and (not (and eff-self
+                                        (heuristic-exact-p m)
+                                        (null (heuristic-unresolved-keys m))
+                                        (not (expression-calls-operator-p (heuristic-program m) eff-self))))
+                              (let ((mask (heuristic-hit-mask frame m)))
+                                (and (some #'identity mask)
+                                     (some #'null mask)
+                                     (or (not empty-seq-frame-p)
+                                         (model-satisfies-empty-sequence-rows-p frame mask)))))))
+                     (cand-model (find-if valid-base-p candidates)))
+                (when cand-model
+                  (let ((cand-program (heuristic-program cand-model))
+                        (cand-hit-mask (heuristic-hit-mask frame cand-model))
+                        (cand-active-mask (loop for row in (frame-rows frame)
+                                                collect (row-active-for-guard-p row cand-model)))
+                        (g-lang (or guard-language (default-guard-language frame language))))
+                    (multiple-value-bind (guard invert-p)
+                        (find-sound-exception-guard frame cand-hit-mask g-lang g-bound
+                                                    (max 1 (- work-limit condense-budget)) ledger
+                                                    :active-mask cand-active-mask)
+                      (when guard
+                        (multiple-value-bind (eff-bindings eff-lang seq-id)
+                            (lift-inductive-sequence-context guard invert-p inputs language c-lang child-id eff-self)
+                          (push (make-decomposition
+                                 :name (list :heuristic-conditional guard cand-program)
+                                 :decoder (term (if invert-p
+                                                    `(if ,guard ,child-var ,cand-program)
+                                                    `(if ,guard ,cand-program ,child-var)))
+                                 :child-id child-id
+                                 :child-type target
+                                 :bindings eff-bindings
+                                 :language eff-lang
+                                 :bound c-bound
+                                 :solver solver
+                                 :provenance (when debug-p
+                                               (list :origin (if seq-id :inductive-sequence-lift :stage-b-conditional)
+                                                     :base-program cand-program
+                                                     :guard guard
+                                                     :invert-p invert-p
+                                                     :lifted-sequence-id seq-id
+                                                     :lifted-bindings eff-bindings
+                                                     :stage-a-score (heuristic-score cand-model)
+                                                     :stage-a-residual (heuristic-residual cand-model)
+                                                     :stage-a-unresolved (heuristic-unresolved-keys cand-model))))
+                                proposals))))))))))
+      (values (nreverse proposals) h-model))))
+
+(defun remove-keys (keys plist)
+  "PLIST without the entries whose indicator is in KEYS."
+  (loop for (key value) on plist by #'cddr
+        unless (member key keys) append (list key value)))
+
+(defun start-heuristic-synthesis (frame language description-limit
+                                  &rest keys
+                                  &key decompositions child-language child-bound
+                                       (condense-budget 20000) (max-depth 2) fibers dependencies
+                                       (debug-p *synthesis-debug-mode*)
+                                  &allow-other-keys)
+  "Launch a `:policy :heuristic` synthesis job in which every node shallower than MAX-DEPTH,
+root included, condenses a Stage A model of its own frame and proposes Stage B residual
+and higher-order library branches through `heuristic-expander`. LIBRARY narrows every
+pulled-back child frame. The other keywords are those of `heuristic-expander`, whose
+work limit is CONDENSE-BUDGET, and of `start-synthesis`."
+  (let ((c-lang (or child-language language))
+        (c-bound (or child-bound description-limit)))
+    (apply #'start-synthesis frame language description-limit
+           :decompositions (append (selector-decompositions frame c-lang c-bound
+                                                            :fibers fibers :dependencies dependencies
+                                                            :debug-p debug-p)
+                                   decompositions)
+           :policy :heuristic
+           :max-depth max-depth
+           :expand (apply #'heuristic-expander :child-language c-lang :child-bound c-bound
+                          :work-limit condense-budget :allow-other-keys t keys)
+           (remove-keys '(:child-language :child-bound :condense-budget :fibers :dependencies
+                          :guard-language :guard-bound :additive-p :conditional-p
+                          :library-proposals-p :library-functions)
+                        keys))))
+
+(defun start-recursive-synthesis (frame language description-limit
+                                  &rest keys
+                                  &key self-name oracle-table library
+                                       (heuristic-budget 5000) (library-proposals-p (not (null library)))
+                                  &allow-other-keys)
+  "Launch a recursive synthesis job with oracle self-lifting for SELF-NAME (defaulting to
+`next-function-name`). Extracts the partial oracle table from FRAME (unless ORACLE-TABLE
+is supplied), condenses base-case and guard splits through standard Stage A/B heuristic
+synthesis, lifts non-empty sequence projections `(at Xi '0)` and `(<self-name> ... (tail Xi) ...)`
+into child frames, and verifies every candidate at the root by executing the concrete
+recursive definition in the VM. Other keywords are those of `start-heuristic-synthesis`."
+  (let* ((fn-name (or self-name (next-function-name)))
+         (inputs (schema-inputs (frame-schema frame)))
+         (target (schema-target (frame-schema frame)))
+         (eff-oracle (copy-tree (or oracle-table (frame-oracle-table frame))))
+         (root-ops (remove-if (lambda (o) (and (operator-p o) (eq fn-name (operator-name o))))
+                              (language-operators language)))
+         (root-lang (derive-language language :operators root-ops)))
+    (define-function fn-name inputs target nil :oracle-table eff-oracle)
+    (apply #'start-heuristic-synthesis frame root-lang description-limit
+           :self-name fn-name
+           :oracle-table eff-oracle
+           :heuristic-budget heuristic-budget
+           :library-proposals-p library-proposals-p
+           keys)))

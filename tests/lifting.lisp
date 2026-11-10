@@ -205,11 +205,11 @@ the composed parent model with minimum total description size S."
     (check (equal (app (op := field) term (lit field 2))
                   (fold-constants unit-member)))
     (check (equal eq-four
-                  (conjoin-requirements pair-member eq-four field)))
+                  (conjoin-requirements pair-member eq-four)))
     (check (equal eq-four
-                  (conjoin-requirements eq-four pair-member field)))
+                  (conjoin-requirements eq-four pair-member)))
     (check (equal (lit :bool nil)
-                  (conjoin-requirements pair-member eq-five field))))
+                  (conjoin-requirements pair-member eq-five))))
   ;; 2. Cannot-link soundness on contradictory frames: when two rows share identical `row-known`
   ;;    and have incompatible singletons `Z=1` vs `Z=3`, tightening preserves the contradiction
   ;;    explicitly; `frame-conflict-p` detects unsatisfiable rows in the refined frame.

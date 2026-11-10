@@ -42,6 +42,28 @@
 (defun function-sort-p (sort)
   (and (consp sort) (eq :fn (first sort))))
 
+(defun input-alist (inputs)
+  "The ordered (id . type) list of INPUTS, which may be a schema or already such a list."
+  (if (schema-p inputs) (schema-inputs inputs) inputs))
+
+(defun lex< (a b &rest keys)
+  "Lexicographic order on A and B: the first key on which they differ decides.
+A key is a function whose value is minimised, or (:desc function) to maximise it."
+  (dolist (key keys nil)
+    (let* ((descending (and (consp key) (eq :desc (first key))))
+           (function (if descending (second key) key))
+           (x (funcall function a))
+           (y (funcall function b)))
+      (unless (= x y)
+        (return (if descending (> x y) (< x y)))))))
+
+(defun best-by (items &rest keys)
+  "The earliest element of ITEMS that is minimal under LEX< with KEYS, or nil."
+  (let ((best (first items)))
+    (dolist (item (rest items) best)
+      (when (apply #'lex< item best keys)
+        (setf best item)))))
+
 (defun valid-inputs-p (inputs)
   (and (listp inputs)
        (= (length inputs) (length (remove-duplicates inputs :key #'car :test #'equal)))
@@ -60,23 +82,110 @@
 
 (defun code-type (inputs sort)
   "Quoted typed syntax in an explicit free-variable scope; never an executable closure."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+  (let ((norm-inputs (input-alist inputs)))
     (assert (and (valid-inputs-p norm-inputs) (valid-sort-p sort)))
     (list :code (copy-tree norm-inputs) (copy-tree sort))))
 
 (defun code-type-p (type) (and (consp type) (eq :code (first type))))
+(defun seq-type-p (type) (and (consp type) (eq :seq (first type))))
+(defun gf-type-p (type) (and (consp type) (eq :gf (first type))))
+(defun tuple-type-p (type) (and (consp type) (eq :tuple (first type))))
 (defun code-inputs (type) (second type))
 (defun code-sort (type) (third type))
 
-(defparameter *symbolic-primitives*
-  '(:code-kind :code-child :code-operator :code-apply :code-match :code-bind
-    :code-subst :code-total :code-less :code-eval))
+(defparameter +primitives+
+  '((:+ ?n (?n ?n) ?n)
+    (:* ?n (?n ?n) ?n)
+    (:= ?t (?t ?t) :bool)
+    (:tuple ?t _ ?t)
+    (:member ?t (?t (:seq ?t)) :bool)
+    (:lookup (:tuple ?k ?v) (?k (:seq (:tuple ?k ?v))) ?v)
+    (:gather ?t ((:seq ?t) (:seq :int)) (:seq ?t))
+    (:- ?n (?n ?n) ?n)
+    (:/ ?n (?n ?n) ?n)
+    (:if ?t (:bool ?t ?t) ?t)
+    (:concat ?t ((:seq (:seq ?t))) (:seq ?t))
+    (:code-kind ?c (?c) :int)
+    (:code-child ?t (_ :int) _)
+    (:code-operator ?t (_) _)
+    (:code-apply ?t (?t _) _)
+    (:code-match ?t (_ _) :bool)
+    (:code-bind ?t (_ _ :int) _)
+    (:code-subst ?t (_ _) _)
+    (:code-total ?e (?e) :bool)
+    (:code-less ?e (?e ?e) :bool)
+    (:at ?t (?t :int) _)
+    (:cons ?t (?t (:seq ?t)) (:seq ?t))
+    (:tail ?t ((:seq ?t)) (:seq ?t))
+    (:length ?t ((:seq ?t)) :int)
+    (:< :int (:int :int) :bool)
+    (:code-eval ?t (?t . _) _))
+  "Every primitive operator, in opcode order, as (name parameter argument-types result-type).
+The last three are patterns over type variables, the parameter being the type an operator
+symbol carries. ?n stands for :int or a prime field, ?c for a code type, ?e for the code
+type of an expression, and any other variable for any type. The wildcard _ marks a part
+that no pattern can express; `compute-operator-signature` computes such a row's signature.")
 
-(defparameter +operator-names+
-  '(:+ :* := :tuple :member :lookup :gather :- :/ :if :concat
-    :code-kind :code-child :code-operator :code-apply :code-match :code-bind
-    :code-subst :code-total :code-less :at
-    :cons :tail :length :< :code-eval))
+(defparameter +operator-names+ (mapcar #'first +primitives+))
+
+(defun primitive-pattern (name)
+  "The (parameter argument-types result-type) patterns of primitive NAME, or nil."
+  (rest (assoc name +primitives+)))
+
+(defun pattern-variables (pattern)
+  "The distinct variables of a type PATTERN, the wildcard included."
+  (cond ((consp pattern)
+         (union (pattern-variables (car pattern)) (pattern-variables (cdr pattern))))
+        ((or (null pattern) (keywordp pattern)) nil)
+        (t (list pattern))))
+
+(defun signature-pattern (name)
+  "The patterns of primitive NAME if they express its whole signature, else nil."
+  (let ((pattern (primitive-pattern name)))
+    (unless (member '_ (pattern-variables pattern)) pattern)))
+
+(defun match-type-pattern (pattern type &optional bindings)
+  "Extend BINDINGS, an alist from the variables of PATTERN to types, so that PATTERN
+matches TYPE. It is an error if they cannot match."
+  (cond ((eq pattern '_) bindings)
+        ((consp pattern)
+         (assert (consp type))
+         (match-type-pattern (cdr pattern) (cdr type)
+                             (match-type-pattern (car pattern) (car type) bindings)))
+        ((or (null pattern) (keywordp pattern)) (assert (eq pattern type)) bindings)
+        ((assoc pattern bindings) (assert (equal type (cdr (assoc pattern bindings)))) bindings)
+        (t (assert (case pattern
+                     (?n (or (eq type :int) (gf-type-p type)))
+                     (?c (code-type-p type))
+                     (?e (expression-code-p type))
+                     (otherwise t)))
+           (acons pattern type bindings))))
+
+(defun encoded-variable (name)
+  "The variable in the parameter of primitive NAME that the result type of an application
+does not determine, or nil. The codec emits the type bound to it after the opcode."
+  (let* ((pattern (primitive-pattern name))
+         (free (set-difference (pattern-variables (first pattern))
+                               (pattern-variables (third pattern)))))
+    (assert (null (rest free)))
+    (first free)))
+
+(defun operator-encoded-type (name type)
+  "The part of TYPE, the parameter of operator NAME, that is emitted in the bitstream, or nil."
+  (let ((variable (encoded-variable name)))
+    (and variable
+         (cdr (assoc variable (match-type-pattern (first (primitive-pattern name)) type))))))
+
+(defun operator-decoded-type (name result read-type)
+  "The inverse of `operator-encoded-type`: the parameter of operator NAME in an application
+of type RESULT, calling READ-TYPE for the part that was emitted."
+  (let ((pattern (primitive-pattern name))
+        (variable (encoded-variable name)))
+    (if pattern
+        (sublis (match-type-pattern (third pattern) result
+                                    (and variable (list (cons variable (funcall read-type)))))
+                (first pattern))
+        result)))
 
 (defstruct (function-definition (:constructor %make-function-definition))
   name inputs return-type body oracle-table total-p conditional-code-params)
@@ -84,97 +193,21 @@
 (defun function-definition-code-type (def)
   (code-type (function-definition-inputs def) (function-definition-return-type def)))
 
+(defun code-parameters (definition)
+  "The `:code`-typed parameter specs of DEFINITION, in declaration order."
+  (remove-if-not #'code-type-p (function-definition-inputs definition) :key #'cdr))
+
 (defvar *function-definitions* (make-hash-table :test #'eq))
 (defvar *registered-function-names* nil)
 (defvar *function-library-version* 0)
 (defvar *de-novo-function-counter* 0)
-(defvar *syncing-knowledge-library-p* nil)
-
-(defstruct knowledge-kind-spec
-  name
-  (priority 50 :type fixnum)
-  validate-fn
-  install-fn
-  consume-fn
-  consolidate-fn)
-
-(defvar *knowledge-kind-specs* nil
-  "Priority-ordered list of declarative `knowledge-kind-spec` definitions.")
-
-(defun find-knowledge-kind-spec (kind)
-  (find (if (keywordp kind) kind (intern (symbol-name kind) :keyword))
-        *knowledge-kind-specs*
-        :key #'knowledge-kind-spec-name :test #'eq))
-
-(defmacro define-knowledge-kind (name &body clauses)
-  "Declaratively register a knowledge kind in `*knowledge-kind-specs*`.
-Supported clauses:
-  (:priority fixnum)
-  (:validate (entry library) &body body)
-  (:install (entry library ledger) &body body)
-  (:consume (entry context ledger) &body body)
-  (:consolidate (entries library ledger) &body body)"
-  (let ((kname (if (keywordp name) name (intern (symbol-name name) :keyword)))
-        (prio (or (second (assoc :priority clauses)) 50))
-        (val-clause (assoc :validate clauses))
-        (ins-clause (assoc :install clauses))
-        (con-clause (assoc :consume clauses))
-        (cns-clause (assoc :consolidate clauses)))
-    `(let ((spec (make-knowledge-kind-spec
-                  :name ,kname
-                  :priority ,prio
-                  :validate-fn ,(when val-clause `(lambda ,(second val-clause) ,@(cddr val-clause)))
-                  :install-fn ,(when ins-clause `(lambda ,(second ins-clause) ,@(cddr ins-clause)))
-                  :consume-fn ,(when con-clause `(lambda ,(second con-clause) ,@(cddr con-clause)))
-                  :consolidate-fn ,(when cns-clause `(lambda ,(second cns-clause) ,@(cddr cns-clause))))))
-       (setf *knowledge-kind-specs*
-             (stable-sort (cons spec (remove ,kname *knowledge-kind-specs*
-                                             :key #'knowledge-kind-spec-name :test #'eq))
-                          #'< :key #'knowledge-kind-spec-priority))
-       ',kname)))
-
-(defstruct (knowledge-entry (:constructor %make-knowledge-entry))
-  id
-  kind
-  (domain :int)
-  inputs
-  target
-  expression
-  guard
-  trigger
-  residual
-  auxiliary-code
-  (status :empirical)
-  certificate
-  (bits 0 :type fixnum)
-  (gain 0 :type fixnum)
-  (work 0 :type fixnum)
-  edges
-  metadata)
-
-(defstruct (knowledge-library (:constructor %make-knowledge-library))
-  (version 0 :type fixnum)
-  entries
-  (by-id (make-hash-table :test #'eq))
-  (by-kind (make-hash-table :test #'eq))
-  (incoming-edges (make-hash-table :test #'eq))
-  (functions (make-hash-table :test #'eq))
-  function-names
-  (rewrite-libraries (make-hash-table :test #'equal))
-  (propagator-libraries (make-hash-table :test #'equal))
-  (descriptors (make-hash-table :test #'eq))
-  priority-predictor
-  (de-novo-counter 0 :type fixnum)
-  (entry-counter 0 :type fixnum))
-
-(defun make-knowledge-library ()
-  (%make-knowledge-library))
-
-(defvar *knowledge-library* (make-knowledge-library)
-  "Active persistent store of synthesized functions, laws, algebras, solvers, descriptors, relations, and heuristics.")
 
 (defun canonical-op-name (name)
   (if (keywordp name) name (intern (symbol-name name) :keyword)))
+
+(defun keyword-id (control &rest arguments)
+  "The keyword named by CONTROL formatted with ARGUMENTS; symbols print as their names."
+  (intern (apply #'format nil control arguments) :keyword))
 
 (defun de-novo-function-name (&optional (index *de-novo-function-counter*))
   "Short alphabetic de novo function symbol in the keyword namespace (:FA, :FB, ..., :FZ, :FAA, ...)."
@@ -215,7 +248,7 @@ Supported clauses:
 
 (defun homogeneous-tuple-type-p (type)
   "True when TYPE is a non-empty (:tuple tau ... tau) with identical component types."
-  (and (consp type) (eq :tuple (first type)) (rest type)
+  (and (tuple-type-p type) (rest type)
        (every #'valid-type-p (rest type))
        (every (lambda (part) (equal part (second type))) (cddr type))))
 
@@ -223,13 +256,12 @@ Supported clauses:
   "Normalize `:at` operand type: accepts `(:seq tau)`, homogeneous `(:tuple tau ... tau)`,
 or element type `tau` (normalized to `(:seq tau)`)."
   (assert (valid-type-p type))
-  (if (and (consp type) (or (eq :seq (first type)) (homogeneous-tuple-type-p type)))
+  (if (or (seq-type-p type) (homogeneous-tuple-type-p type))
       type
       (sequence-type type)))
 
 (defun at-container-element-type (type)
-  (let ((norm (normalize-at-container-type type)))
-    (second norm)))
+  (second (normalize-at-container-type type)))
 
 (defun valid-type-p (type)
   (or (member type '(:int :bool))
@@ -245,7 +277,7 @@ or element type `tau` (normalized to `(:seq tau)`)."
 
 (defun infer-domain-from-types (types)
   (dolist (type types :int)
-    (when (and (consp type) (eq :gf (first type)))
+    (when (gf-type-p type)
       (return type))
     (when (and (consp type) (member (first type) '(:tuple :seq)))
       (let ((sub (infer-domain-from-types (rest type))))
@@ -299,48 +331,9 @@ or element type `tau` (normalized to `(:seq tau)`)."
          (length-width (integer-length width)))
     (+ (1- length-width) length-width (1- width))))
 
-(defun type-bit-size (type)
-  (case type
-    ((:int :bool) 3)
-    (otherwise
-     (ecase (first type)
-       (:gf (+ 3 (positive-bit-size (second type))))
-       (:tuple (+ 3 (positive-bit-size (length type))
-                  (reduce #'+ (rest type) :key #'type-bit-size :initial-value 0)))
-       (:seq (+ 3 (type-bit-size (second type))))
-       (:code (+ 3 (inputs-bit-size (code-inputs type)) 1
-                 (let ((sort (code-sort type)))
-                   (if (function-sort-p sort)
-                       (+ (positive-bit-size (1+ (length (second sort))))
-                          (reduce #'+ (second sort) :key #'type-bit-size :initial-value 0)
-                          (type-bit-size (third sort)))
-                       (type-bit-size sort)))))))))
-
-(defun inputs-bit-size (inputs)
-  (+ (positive-bit-size (1+ (length inputs)))
-     (loop for (id . type) in inputs
-           sum (+ (positive-bit-size (1+ (if (integerp id) id 0)))
-                  (type-bit-size type)))))
-
-(defun operator-name-bit-size (name)
-  (let ((index (or (operator-index name) (error "Unknown operator ~S" name))))
-    (+ 4 (if (>= index 15) (positive-bit-size (- index 14)) 0))))
-
-(defun operator-encoded-type (name type)
-  "Return the type parameter emitted in the bitstream for operator NAME, or NIL."
-  (case name
-    ((:= :member :at :length) type)
-    (:lookup (second type))
-    (otherwise
-     (when (member name *symbolic-primitives*)
-       type))))
-
-(defun operator-bit-size (name type)
-  (let ((encoded-type (operator-encoded-type name type)))
-    (+ (operator-name-bit-size name)
-       (if encoded-type (type-bit-size encoded-type) 0))))
-
 (defun value-bit-size (value type)
+  "The bits `emit-bit-value` writes, computed directly because candidate scoring calls this
+constantly and quoted code is sized from cached metadata."
   (case type
     (:int (positive-bit-size (signed-code value)))
     (:bool 1)
@@ -357,7 +350,7 @@ or element type `tau` (normalized to `(:seq tau)`)."
                          (type-bit-size (ast-meta-type meta))))
                     (body-size value (code-inputs type)))))))))
 
-;;; Symbolic operator typing
+;;; Operator typing
 
 (defun expression-code-p (type)
   (and (code-type-p type) (not (function-sort-p (code-sort type)))))
@@ -370,12 +363,15 @@ or element type `tau` (normalized to `(:seq tau)`)."
   (and (same-code-scope-p binding-type out-code-type)
        (equal (code-sort binding-type) input-type)))
 
-(defun symbolic-operator-signature (name type)
+(defun compute-operator-signature (name type)
+  "The (:fn argument-types result-type) signature of operator NAME with parameter TYPE."
+  (assert (valid-type-p type))
   (flet ((sig (inputs output) (list :fn inputs output)))
     (case name
-      (:code-kind (assert (code-type-p type)) (sig (list type) :int))
-      (:code-total (assert (expression-code-p type)) (sig (list type) :bool))
-      (:code-less (assert (expression-code-p type)) (sig (list type type) :bool))
+      (:tuple
+       (assert (tuple-type-p type))
+       (sig (rest type) type))
+      (:at (sig (list type :int) (at-container-element-type type)))
       (:code-eval
        (assert (expression-code-p type))
        (sig (cons type (mapcar #'cdr (code-inputs type)))
@@ -389,8 +385,8 @@ or element type `tau` (normalized to `(:seq tau)`)."
              (sig (list type (apply #'tuple-type
                                     (mapcar (lambda (arg) (code-type scope arg)) (second sort))))
                   result))))
-      (otherwise
-       (assert (and (consp type) (eq :tuple (first type)) (member (length type) '(3 4))))
+      ((:code-child :code-match :code-bind :code-subst)
+       (assert (and (tuple-type-p type) (member (length type) '(3 4))))
        (let ((a (second type)) (b (third type)) (c (fourth type)))
          (assert (expression-code-p a))
          (ecase name
@@ -405,47 +401,23 @@ or element type `tau` (normalized to `(:seq tau)`)."
                          (equal (code-sort a) (code-sort b))))
             (sig (list a b :int) c))
            (:code-subst
-            (assert (and (consp b) (eq :tuple (first b)) (expression-code-p c)
+            (assert (and (tuple-type-p b) (expression-code-p c)
                          (equal (code-sort a) (code-sort c))
                          (= (length (rest b)) (length (code-inputs a)))
                          (every (lambda (binding input)
                                   (or (code-subst-code-binding-p binding c (cdr input))
                                       (equal binding (cdr input))))
                                 (rest b) (code-inputs a))))
-            (sig (list a b) c))))))))
-
-(defun compute-operator-signature (name type)
-  (assert (valid-type-p type))
-  (flet ((sig (inputs output) (list :fn inputs output)))
-    (case name
-      ((:+ :* :- :/)
-       (assert (or (eq type :int) (and (consp type) (eq (first type) :gf))))
-       (sig (list type type) type))
-      (:<
-       (assert (eq type :int))
-       (sig '(:int :int) :bool))
-      (:= (sig (list type type) :bool))
-      (:if (sig (list :bool type type) type))
-      (:tuple
-       (assert (and (consp type) (eq (first type) :tuple)))
-       (sig (rest type) type))
-      (:member (sig (list type (sequence-type type)) :bool))
-      (:lookup
-       (assert (and (consp type) (eq (first type) :tuple) (= (length type) 3)))
-       (sig (list (second type) (sequence-type type)) (third type)))
-      (:gather (sig (list (sequence-type type) (sequence-type :int)) (sequence-type type)))
-      (:at (sig (list type :int) (at-container-element-type type)))
-      (:concat (sig (list (sequence-type (sequence-type type))) (sequence-type type)))
-      (:cons (sig (list type (sequence-type type)) (sequence-type type)))
-      (:tail (sig (list (sequence-type type)) (sequence-type type)))
-      (:length (sig (list (sequence-type type)) :int))
+            (sig (list a b) c)))))
       (otherwise
-       (cond ((member name *symbolic-primitives*)
-              (symbolic-operator-signature name type))
-             ((and (expression-code-p type)
-                   (member name *registered-function-names*))
-              (sig (mapcar #'cdr (code-inputs type)) (code-sort type)))
-             (t (error "Unknown primitive ~S" name)))))))
+       (let ((pattern (signature-pattern name)))
+         (cond (pattern
+                (let ((bindings (match-type-pattern (first pattern) type)))
+                  (sig (sublis bindings (second pattern)) (sublis bindings (third pattern)))))
+               ((and (expression-code-p type)
+                     (member name *registered-function-names*))
+                (sig (mapcar #'cdr (code-inputs type)) (code-sort type)))
+               (t (error "Unknown primitive ~S" name))))))))
 
 ;;; Homoiconic AST constructors:
 ;;; - Applications are native S-expressions `(op arg1 arg2 ...)`
@@ -465,85 +437,76 @@ or element type `tau` (normalized to `(:seq tau)`)."
            ctype))
         (t type)))
 
+(defun pool-symbol (key name meta)
+  "Enter a new symbol called NAME, carrying META, in the pool under KEY and return it."
+  (let ((sym (make-symbol name)))
+    (setf (gethash sym *node-meta*) meta
+          (gethash key *typed-symbol-pool*) sym)
+    sym))
+
 (defun op (name &optional type)
   "Construct a monomorphic operator symbol that prints cleanly (e.g. +, *, =, or defined :fa)."
   (let* ((kname (canonical-op-name name))
          (norm-type (normalize-operator-type kname type))
-         (sig (compute-operator-signature kname norm-type))
-         (key (list :op kname norm-type)))
-    (let ((existing (gethash key *typed-symbol-pool*)))
-      (if existing
-          (progn
-            (when (member kname *registered-function-names*)
+         (key (list :op kname norm-type))
+         (existing (gethash key *typed-symbol-pool*)))
+    (if (and existing (primitive-pattern kname))
+        ;; The signature and opcode of a pooled primitive never change.
+        existing
+        (let ((sig (compute-operator-signature kname norm-type))
+              (overhead (+ 2 (operator-bit-size kname norm-type))))
+          (if existing
               (let ((meta (gethash existing *node-meta*)))
                 (when meta
-                  (setf (ast-meta-non-var-bits meta) (+ 2 (operator-bit-size kname norm-type))
-                        (ast-meta-value meta) sig))))
-            existing)
-          (let ((sym (make-symbol (symbol-name kname))))
-            (setf (gethash sym *node-meta*)
-                  (make-ast-meta :kind :op :id kname :type (copy-tree norm-type) :value sig
-                                 :non-var-bits (+ 2 (operator-bit-size kname norm-type))
-                                 :var-count 0
-                                 :syntax-work (1+ (if (or (defined-function-p kname)
-                                                          (member kname *registered-function-names*))
-                                                      1
-                                                      (type-work norm-type)))
-                                 :total-p t :free-vars nil)
-                  (gethash key *typed-symbol-pool*) sym)
-            sym)))))
+                  (setf (ast-meta-non-var-bits meta) overhead
+                        (ast-meta-value meta) sig))
+                existing)
+              (pool-symbol
+               key (symbol-name kname)
+               (make-ast-meta :kind :op :id kname :type (copy-tree norm-type) :value sig
+                              :non-var-bits overhead
+                              :var-count 0
+                              :syntax-work (1+ (if (or (defined-function-p kname)
+                                                       (member kname *registered-function-names*))
+                                                   1
+                                                   (type-work norm-type)))
+                              :total-p t :free-vars nil)))))))
 
 (defun operator-p (term)
   (let ((meta (and (symbolp term) (gethash term *node-meta*))))
     (and meta (eq :op (ast-meta-kind meta)))))
 
-(defun operator-name (operator)
+(defun operator-meta (operator)
   (let ((meta (gethash operator *node-meta*)))
     (assert (and meta (eq :op (ast-meta-kind meta))))
-    (ast-meta-id meta)))
+    meta))
 
-(defun operator-operand-type (operator)
-  (let ((meta (gethash operator *node-meta*)))
-    (assert (and meta (eq :op (ast-meta-kind meta))))
-    (ast-meta-type meta)))
+(defun operator-name (operator) (ast-meta-id (operator-meta operator)))
+(defun operator-operand-type (operator) (ast-meta-type (operator-meta operator)))
+(defun operator-type (operator) (ast-meta-value (operator-meta operator)))
+(defun application-overhead (operator) (ast-meta-non-var-bits (operator-meta operator)))
 
-(defun operator-type (operator)
-  (let ((meta (gethash operator *node-meta*)))
-    (assert (and meta (eq :op (ast-meta-kind meta))))
-    (ast-meta-value meta)))
-
-(defun application-overhead (operator)
-  (let ((meta (gethash operator *node-meta*)))
-    (assert (and meta (eq :op (ast-meta-kind meta))))
-    (ast-meta-non-var-bits meta)))
+(defun pooled-leaf (kind prefix id type)
+  "The canonical symbol for variable or hole ID of TYPE, created on first use."
+  (assert (and (integerp id) (not (minusp id))))
+  (let ((key (list kind id type))
+        (var-p (eq kind :var)))
+    (or (gethash key *typed-symbol-pool*)
+        (pool-symbol key (format nil "~A~D" prefix id)
+                     (make-ast-meta :kind kind :id id :type (copy-tree type)
+                                    :non-var-bits 2 :var-count (if var-p 1 0)
+                                    :syntax-work (+ 1 (integer-width id) (type-work type))
+                                    :total-p t :free-vars (and var-p (list id)))))))
 
 (defun var (id type)
   "Construct a typed variable symbol (e.g. X0, X1)."
-  (assert (and (integerp id) (not (minusp id)) (valid-type-p type)))
-  (let ((key (list :var id type)))
-    (or (gethash key *typed-symbol-pool*)
-        (let ((sym (make-symbol (format nil "X~D" id))))
-          (setf (gethash sym *node-meta*)
-                (make-ast-meta :kind :var :id id :type (copy-tree type)
-                               :non-var-bits 2 :var-count 1
-                               :syntax-work (+ 1 (integer-width id) (type-work type))
-                               :total-p t :free-vars (list id))
-                (gethash key *typed-symbol-pool*) sym)
-          sym))))
+  (assert (valid-type-p type))
+  (pooled-leaf :var "X" id type))
 
 (defun hole (id type)
   "Construct a typed pattern hole symbol (e.g. ?0, ?1)."
-  (assert (and (integerp id) (not (minusp id)) (valid-sort-p type)))
-  (let ((key (list :hole id type)))
-    (or (gethash key *typed-symbol-pool*)
-        (let ((sym (make-symbol (format nil "?~D" id))))
-          (setf (gethash sym *node-meta*)
-                (make-ast-meta :kind :hole :id id :type (copy-tree type)
-                               :non-var-bits 2 :var-count 0
-                               :syntax-work (+ 1 (integer-width id) (type-work type))
-                               :total-p t :free-vars nil)
-                (gethash key *typed-symbol-pool*) sym)
-          sym))))
+  (assert (valid-sort-p type))
+  (pooled-leaf :hole "?" id type))
 
 (defun hole-p (term)
   (let ((meta (and (symbolp term) (gethash term *node-meta*))))
@@ -573,11 +536,7 @@ or element type `tau` (normalized to `(:seq tau)`)."
   "Return the pooled typed quote head symbol for literal domain TYPE."
   (let ((key (list :quote type)))
     (or (gethash key *typed-symbol-pool*)
-        (let ((sym (make-symbol "QUOTE")))
-          (setf (gethash sym *node-meta*)
-                (make-ast-meta :kind :quote :type (copy-tree type))
-                (gethash key *typed-symbol-pool*) sym)
-          sym))))
+        (pool-symbol key "QUOTE" (make-ast-meta :kind :quote :type (copy-tree type))))))
 
 (defun compute-lit-meta (type value)
   (make-ast-meta :kind :lit :type (copy-tree type) :value value
@@ -607,8 +566,7 @@ or element type `tau` (normalized to `(:seq tau)`)."
                    (tuple-arg (third expr)))
                (and (lit-p template-arg)
                     (provably-total-p (ast-value template-arg))
-                    (app-p tuple-arg)
-                    (eq :tuple (ast-id tuple-arg))
+                    (app-of-p tuple-arg :tuple)
                     (every (lambda (b)
                              (if (code-type-p (ast-type b))
                                  (provably-total-code-arg-p b allow-open-code-p)
@@ -623,11 +581,10 @@ or element type `tau` (normalized to `(:seq tau)`)."
       (:var (and non-empty-vars (member (ast-meta-id meta) non-empty-vars :test #'eql)))
       (:app (or (eq :cons (ast-meta-id meta))
                 (and (eq :if (ast-meta-id meta))
-                     (let ((gid (empty-sequence-guard-var-id (second expr))))
-                       (and (non-empty-seq-expr-p (third expr)
-                                                  (if gid (remove gid non-empty-vars :test #'eql) non-empty-vars))
-                            (non-empty-seq-expr-p (fourth expr)
-                                                  (if gid (adjoin gid non-empty-vars :test #'eql) non-empty-vars))))))))))
+                     (multiple-value-bind (then-vars else-vars)
+                         (branch-non-empty-vars (second expr) non-empty-vars)
+                       (and (non-empty-seq-expr-p (third expr) then-vars)
+                            (non-empty-seq-expr-p (fourth expr) else-vars)))))))))
 
 (defun operator-step-total-p (op-name arguments code-total-fn &optional non-empty-vars)
   "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total."
@@ -640,7 +597,7 @@ or element type `tau` (normalized to `(:seq tau)`)."
                     (container-type (ast-type (first arguments))))
                 (and (integerp idx) (<= 0 idx)
                      (cond
-                       ((and (consp container-type) (eq :tuple (first container-type)))
+                       ((tuple-type-p container-type)
                         (< idx (length (rest container-type))))
                        ((lit-p container)
                         (< idx (length (ast-value container))))
@@ -651,33 +608,37 @@ or element type `tau` (normalized to `(:seq tau)`)."
     (:code-eval (funcall code-total-fn (first arguments)))
     ((:lookup :gather :code-child :code-operator :code-bind) nil)
     (otherwise
-     (if (defined-function-p op-name)
-         (let ((def (find-function-definition op-name)))
-           (and def
-                (or (function-definition-total-p def)
-                    (and (function-definition-conditional-code-params def)
-                         (every (lambda (param-idx)
-                                  (and (< param-idx (length arguments))
-                                       (funcall code-total-fn (nth param-idx arguments))))
-                                (function-definition-conditional-code-params def))))))
-         t))))
+     (let ((def (find-function-definition op-name)))
+       (or (null def)
+           (function-definition-total-p def)
+           (and (function-definition-conditional-code-params def)
+                (every (lambda (param-idx)
+                         (and (< param-idx (length arguments))
+                              (funcall code-total-fn (nth param-idx arguments))))
+                       (function-definition-conditional-code-params def))))))))
 
 (defun empty-sequence-guard-var-id (condition &optional seq-param-ids)
   "If CONDITION is `(= Xi '())` or `(= '() Xi)` for a sequence variable Xi, return Xi's id."
   (let ((meta (ensure-ast-meta condition)))
     (when (and (eq :app (ast-meta-kind meta)) (eq := (ast-meta-id meta)))
-      (let* ((lhs (second condition)) (rhs (third condition))
-             (lm (ensure-ast-meta lhs)) (rm (ensure-ast-meta rhs)))
-        (cond ((and (eq :var (ast-meta-kind lm))
-                    (consp (ast-meta-type lm)) (eq :seq (first (ast-meta-type lm)))
-                    (or (null seq-param-ids) (member (ast-meta-id lm) seq-param-ids :test #'eql))
-                    (eq :lit (ast-meta-kind rm)) (null (ast-meta-value rm)))
-               (ast-meta-id lm))
-              ((and (eq :var (ast-meta-kind rm))
-                    (consp (ast-meta-type rm)) (eq :seq (first (ast-meta-type rm)))
-                    (or (null seq-param-ids) (member (ast-meta-id rm) seq-param-ids :test #'eql))
-                    (eq :lit (ast-meta-kind lm)) (null (ast-meta-value lm)))
-               (ast-meta-id rm)))))))
+      (flet ((guard (variable empty)
+               (let ((vm (ensure-ast-meta variable)) (em (ensure-ast-meta empty)))
+                 (and (eq :var (ast-meta-kind vm))
+                      (seq-type-p (ast-meta-type vm))
+                      (or (null seq-param-ids) (member (ast-meta-id vm) seq-param-ids))
+                      (eq :lit (ast-meta-kind em)) (null (ast-meta-value em))
+                      (ast-meta-id vm)))))
+        (or (guard (second condition) (third condition))
+            (guard (third condition) (second condition)))))))
+
+(defun branch-non-empty-vars (condition non-empty-vars &optional seq-param-ids)
+  "The sequence variables known to be non-empty in the then-branch and in the else-branch
+of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guard
+`(= Xi '())` makes Xi empty in the first and non-empty in the second."
+  (let ((id (empty-sequence-guard-var-id condition seq-param-ids)))
+    (if id
+        (values (remove id non-empty-vars) (adjoin id non-empty-vars))
+        (values non-empty-vars non-empty-vars))))
 
 (defun expr-total-under-non-empty-p (expr non-empty-vars)
   "True when EXPR is provably total given that sequence variables in NON-EMPTY-VARS are non-empty."
@@ -690,14 +651,11 @@ or element type `tau` (normalized to `(:seq tau)`)."
                  (args (rest expr)))
              (and op-name
                   (if (eq :if op-name)
-                      (let ((gid (empty-sequence-guard-var-id (first args))))
+                      (multiple-value-bind (then-vars else-vars)
+                          (branch-non-empty-vars (first args) non-empty-vars)
                         (and (expr-total-under-non-empty-p (first args) non-empty-vars)
-                             (expr-total-under-non-empty-p
-                              (second args)
-                              (if gid (remove gid non-empty-vars :test #'eql) non-empty-vars))
-                             (expr-total-under-non-empty-p
-                              (third args)
-                              (if gid (adjoin gid non-empty-vars :test #'eql) non-empty-vars))))
+                             (expr-total-under-non-empty-p (second args) then-vars)
+                             (expr-total-under-non-empty-p (third args) else-vars)))
                       (and (every (lambda (a) (expr-total-under-non-empty-p a non-empty-vars)) args)
                            (operator-step-total-p op-name args #'provably-total-code-arg-p non-empty-vars))))))))))
 
@@ -718,8 +676,10 @@ or element type `tau` (normalized to `(:seq tau)`)."
                                                    (third child-metas)))
                              (and (ast-meta-total-p (second child-metas))
                                   (or (ast-meta-total-p (third child-metas))
-                                      (let ((gid (empty-sequence-guard-var-id (first arguments))))
-                                        (and gid (expr-total-under-non-empty-p (third arguments) (list gid))))))))
+                                      (let ((else-vars (nth-value 1 (branch-non-empty-vars
+                                                                     (first arguments) nil))))
+                                        (and else-vars
+                                             (expr-total-under-non-empty-p (third arguments) else-vars)))))))
                     (and (every #'ast-meta-total-p child-metas)
                          (operator-step-total-p op-name arguments #'provably-total-code-arg-p)))))
          (free-vars (remove-duplicates
@@ -741,7 +701,7 @@ Returns (values total-p conditional-code-params)."
   (when (null body)
     (return-from analyze-function-body-totality (values nil nil)))
   (let ((seq-param-ids (loop for (id . type) in inputs
-                             when (and (consp type) (eq :seq (first type))) collect id))
+                             when (seq-type-p type) collect id))
         (decreasing-param-id nil)
         (self-call-arg-lists nil)
         (code-params nil))
@@ -750,9 +710,9 @@ Returns (values total-p conditional-code-params)."
                    (and (var-p arg)
                         (let ((pos (position (ast-id arg) inputs :key #'car :test #'eql)))
                           (when pos (pushnew pos code-params) t)))
-                   (and (app-p arg) (eq :code-subst (ast-id arg))
+                   (and (app-of-p arg :code-subst)
                         (lit-p (second arg)) (provably-total-p (ast-value (second arg)))
-                        (app-p (third arg)) (eq :tuple (ast-id (third arg)))
+                        (app-of-p (third arg) :tuple)
                         (every (lambda (b)
                                  (if (code-type-p (ast-type b))
                                      (code-arg-safe-p b)
@@ -769,10 +729,11 @@ Returns (values total-p conditional-code-params)."
                       ((null op-name) nil)
                       ((eq op-name :if)
                        (destructuring-bind (cond-expr yes-expr no-expr) args
-                         (and (walk cond-expr non-empty-vars)
-                              (let ((gid (empty-sequence-guard-var-id cond-expr seq-param-ids)))
-                                (and (walk yes-expr (if gid (remove gid non-empty-vars :test #'eql) non-empty-vars))
-                                     (walk no-expr (if gid (adjoin gid non-empty-vars :test #'eql) non-empty-vars)))))))
+                         (multiple-value-bind (then-vars else-vars)
+                             (branch-non-empty-vars cond-expr non-empty-vars seq-param-ids)
+                           (and (walk cond-expr non-empty-vars)
+                                (walk yes-expr then-vars)
+                                (walk no-expr else-vars)))))
                       ((eq op-name name)
                        (and (every (lambda (a) (walk a non-empty-vars)) args)
                             (let ((matched-id
@@ -812,126 +773,6 @@ Returns (values total-p conditional-code-params)."
                (remhash node *node-meta*)))
            *node-meta*))
 
-(defun evict-operator-symbol-pool (kname)
-  "Retain pooled `:op` symbols for KNAME in `*typed-symbol-pool*` so ASTs stored in
-`knowledge-library` entries preserve `eq` operator symbol identity across library switches."
-  (declare (ignore kname))
-  nil)
-
-(defun recompute-registered-functions-totality ()
-  "Recompute totality and conditional-code-params across all registered functions until fixed point."
-  (invalidate-app-meta)
-  (loop
-    (let ((changed-p nil))
-      (dolist (fname *registered-function-names*)
-        (let ((fdef (find-function-definition fname)))
-          (when fdef
-            (multiple-value-bind (new-total new-cond)
-                (if (function-definition-oracle-table fdef)
-                    (values nil nil)
-                    (analyze-function-body-totality fname
-                                                    (function-definition-inputs fdef)
-                                                    (function-definition-body fdef)))
-              (unless (and (eq new-total (function-definition-total-p fdef))
-                           (equal new-cond (function-definition-conditional-code-params fdef)))
-                (setf (function-definition-total-p fdef) new-total
-                      (function-definition-conditional-code-params fdef) new-cond
-                      changed-p t))))))
-      (if changed-p
-          (invalidate-app-meta)
-          (return))))
-  (dolist (fname *registered-function-names*)
-    (let ((fdef (find-function-definition fname)))
-      (when (and fdef (function-definition-body fdef))
-        (ensure-ast-meta (function-definition-body fdef))))))
-
-(defun define-function (name inputs return-type body &key oracle-table)
-  "Register a homoiconic Lisp function definition (or oracle table) under NAME."
-  (let* ((kname (canonical-op-name name))
-         (norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
-    (assert (and (not (member kname +operator-names+))
-                 (valid-inputs-p norm-inputs)
-                 (valid-type-p return-type)))
-    (unless (member kname *registered-function-names*)
-      (setf *registered-function-names* (append *registered-function-names* (list kname))))
-    (let* ((def (%make-function-definition :name kname
-                                           :inputs (copy-tree norm-inputs)
-                                           :return-type (copy-tree return-type)))
-           (self-op (progn (setf (gethash kname *function-definitions*) def)
-                           (let ((sym (op kname))
-                                 (ctype (function-definition-code-type def)))
-                             (setf (gethash sym *node-meta*)
-                                   (make-ast-meta :kind :op :id kname :type (copy-tree ctype)
-                                                  :value (compute-operator-signature kname ctype)
-                                                  :non-var-bits (+ 2 (operator-bit-size kname ctype))
-                                                  :var-count 0 :syntax-work 2
-                                                  :total-p t :free-vars nil))
-                             sym)))
-           (resolved-body (if (functionp body) (funcall body self-op) body)))
-      (when resolved-body
-        (assert (equal return-type (expression-type resolved-body norm-inputs))))
-      (when oracle-table
-        (dolist (entry oracle-table)
-          (assert (and (consp entry)
-                       (= (length (car entry)) (length norm-inputs))
-                       (every (lambda (val spec) (value-p val (cdr spec))) (car entry) norm-inputs)
-                       (value-p (cdr entry) return-type)))))
-      (let ((copied-body (when resolved-body (copy-tree resolved-body))))
-        (setf (function-definition-body def) copied-body
-              (function-definition-oracle-table def) (copy-tree oracle-table)
-              (function-definition-total-p def) nil
-              (function-definition-conditional-code-params def) nil)
-        (recompute-registered-functions-totality)
-        (incf *function-library-version*)
-        (when (and *knowledge-library* (not *syncing-knowledge-library-p*))
-          (sync-function-to-knowledge-library *knowledge-library* def))
-        def))))
-
-(defun set-function-active-implementation (name inputs return-type &key body oracle-table)
-  "Lightweight swap of an already-registered recursive function between an ORACLE-TABLE
-and an unverified candidate BODY during synthesis verification, without global cache eviction."
-  (let* ((kname (canonical-op-name name))
-         (norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
-         (def (find-function-definition kname)))
-    (if (and def
-             (equal (function-definition-inputs def) norm-inputs)
-             (equal (function-definition-return-type def) return-type)
-             (null (function-definition-total-p def)))
-        (let ((copied-body (when body (copy-tree body))))
-          (when copied-body (ensure-ast-meta copied-body))
-          (setf (function-definition-body def) copied-body
-                (function-definition-oracle-table def) oracle-table
-                (function-definition-total-p def) nil
-                (function-definition-conditional-code-params def) nil)
-          def)
-        (define-function kname norm-inputs return-type body :oracle-table oracle-table))))
-
-(defparameter *auto-retyped-functions* (make-hash-table :test #'eq)
-  "Set of function names automatically instantiated via RETYPE-FUNCTION-DEFINITION during synthesis.")
-
-(defun clear-function-definitions ()
-  "Remove all dynamically registered function definitions and reset de novo naming."
-  (let ((names (copy-list *registered-function-names*)))
-    (clrhash *function-definitions*)
-    (clrhash *auto-retyped-functions*)
-    (setf *registered-function-names* nil
-          *de-novo-function-counter* 0)
-    (dolist (kname names)
-      (evict-operator-symbol-pool kname))
-    (invalidate-app-meta)
-    (incf *function-library-version*)
-    (when (and *knowledge-library* (not *syncing-knowledge-library-p*))
-      (let ((*syncing-knowledge-library-p* t))
-        (clrhash (knowledge-library-functions *knowledge-library*))
-        (clrhash (knowledge-library-descriptors *knowledge-library*))
-        (setf (knowledge-library-function-names *knowledge-library*) nil
-              (knowledge-library-de-novo-counter *knowledge-library*) 0
-              (knowledge-library-entries *knowledge-library*)
-              (remove-if (lambda (e) (member (knowledge-entry-kind e) '(:function :descriptor)))
-                         (knowledge-library-entries *knowledge-library*)))
-        (rebuild-knowledge-library-indexes *knowledge-library*)))
-    nil))
-
 (defun app (operator &rest arguments)
   "Construct a homoiconic application `(op arg1 arg2 ...)` with O(1) cached metadata."
   (let ((op-meta (and (symbolp operator) (gethash operator *node-meta*))))
@@ -968,6 +809,10 @@ and an unverified candidate BODY during synthesis verification, without global c
 (defun lit-p (term) (eq :lit (ast-kind term)))
 (defun app-p (term) (eq :app (ast-kind term)))
 
+(defun app-of-p (term name)
+  "True when TERM applies the operator named NAME."
+  (and (app-p term) (eq name (ast-id term))))
+
 (defun bool-not (expression)
   (app (op :if :bool) expression (lit :bool nil) (lit :bool t)))
 
@@ -988,7 +833,7 @@ and an unverified candidate BODY during synthesis verification, without global c
 
 (defun body-size (expression inputs)
   "O(1) expression bit length conditional on a declared schema; used by the enumerator."
-  (let* ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+  (let* ((norm-inputs (input-alist inputs))
          (meta (ensure-ast-meta expression)))
     (expression-type expression norm-inputs)
     (+ (ast-meta-non-var-bits meta)
@@ -997,7 +842,7 @@ and an unverified candidate BODY during synthesis verification, without global c
 
 (defun expression-type (expression &optional inputs (allow-holes nil))
   "Validate syntax and variable scope, returning the expression's monomorphic type."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs))
+  (let ((norm-inputs (input-alist inputs))
         (meta (ignore-errors (ensure-ast-meta expression))))
     (assert meta () "Not an expression: ~S" expression)
     (ecase (ast-meta-kind meta)
@@ -1025,44 +870,56 @@ and an unverified candidate BODY during synthesis verification, without global c
          (assert (and (eq :fn (first sig)) (equal actual (second sig))))
          (third sig))))))
 
+(defun map-ast (function tree &key code)
+  "Rebuild TREE from the leaves up. FUNCTION is called with each node and its metadata and
+returns the node's replacement, or nil to keep it; an application is offered after its
+operator and arguments have been mapped. Subtrees that do not change are shared with TREE.
+Quoted code is mapped only when CODE is true."
+  (labels ((walk (node)
+             (let ((meta (ignore-errors (ensure-ast-meta node))))
+               (if (null meta)
+                   node
+                   (let ((rebuilt
+                           (case (ast-meta-kind meta)
+                             (:app (let ((parts (mapcar #'walk node)))
+                                     (if (every #'eq parts node) node (apply #'app parts))))
+                             (:lit (let ((type (ast-meta-type meta)) (value (ast-meta-value meta)))
+                                     (if (and code (code-type-p type))
+                                         (let ((inner (walk value)))
+                                           (if (eq inner value) node (lit type inner)))
+                                         node)))
+                             (t node))))
+                     (or (funcall function rebuilt
+                                  (if (eq rebuilt node) meta (ensure-ast-meta rebuilt)))
+                         rebuilt))))))
+    (walk tree)))
+
 (defun instantiate (tree substitutions &optional (tag :hole))
   "Simultaneous AST substitution on homoiconic S-expressions; literals are boundaries."
-  (let ((meta (ignore-errors (ensure-ast-meta tree))))
-    (cond
-      ((null meta) tree)
-      ((eq (ast-meta-kind meta) tag)
-       (let ((entry (assoc (ast-meta-id meta) substitutions)))
-         (if entry (cdr entry) tree)))
-      ((eq (ast-meta-kind meta) :app)
-       (let ((new-op (instantiate (first tree) substitutions tag))
-             (new-args (mapcar (lambda (x) (instantiate x substitutions tag)) (rest tree))))
-         (if (and (eq new-op (first tree))
-                  (every #'eq new-args (rest tree)))
-             tree
-             (apply #'app new-op new-args))))
-      (t tree))))
+  (map-ast (lambda (node meta)
+             (declare (ignore node))
+             (and (eq tag (ast-meta-kind meta))
+                  (cdr (assoc (ast-meta-id meta) substitutions))))
+           tree))
 
 (defun bind-inputs (inputs values)
   "Pair input variable IDs from INPUTS (or a schema) with corresponding VALUES."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
-    (mapcar (lambda (spec value) (cons (car spec) value)) norm-inputs values)))
+  (mapcar (lambda (spec value) (cons (car spec) value)) (input-alist inputs) values))
 
 (defun identity-bindings (inputs)
   "Build the identity variable substitution ((id . (var id type)) ...) for INPUTS."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
-    (mapcar (lambda (spec) (cons (car spec) (var (car spec) (cdr spec)))) norm-inputs)))
+  (mapcar (lambda (spec) (cons (car spec) (var (car spec) (cdr spec)))) (input-alist inputs)))
 
 (defun literal-bindings (inputs values)
   "Build the literal substitution ((id . (lit type value)) ...) for INPUTS and VALUES."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
-    (loop for spec in norm-inputs
-          for value in values
-          unless (eq value :unresolved)
-            collect (cons (car spec) (lit (cdr spec) value)))))
+  (loop for spec in (input-alist inputs)
+        for value in values
+        unless (eq value :unresolved)
+          collect (cons (car spec) (lit (cdr spec) value))))
 
 (defun next-child-id (inputs)
   "Return the next fresh variable ID after all IDs in INPUTS (or 0 if empty)."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+  (let ((norm-inputs (input-alist inputs)))
     (if norm-inputs (1+ (reduce #'max norm-inputs :key #'car)) 0)))
 
 (defun rename-function-calls (expr from-name to-target &optional extra-args)
@@ -1072,32 +929,21 @@ optionally appending EXTRA-ARGS to each replaced call."
         (target-op (when (operator-p to-target) to-target))
         (kto (when (and to-target (not (operator-p to-target)))
                (canonical-op-name to-target))))
-    (labels ((walk (node)
-               (cond
-                 ((or (null kfrom) (and kto (eq kfrom kto) (null extra-args))) node)
-                 ((and (consp node) (operator-p (first node)))
-                  (let* ((head (first node))
-                         (match-p (eq kfrom (operator-name head)))
-                         (new-head (if match-p
-                                       (or target-op
-                                           (if (defined-function-p kto)
-                                               (op kto)
-                                               (op kto (operator-operand-type head))))
-                                       head))
-                         (new-args (mapcar #'walk (rest node))))
-                    (if (and (not match-p) (every #'eq new-args (rest node)))
-                        node
-                        (apply #'app new-head (if match-p (append new-args extra-args) new-args)))))
-                 ((and (lit-p node) (code-type-p (ast-type node)))
-                  (let ((inner (walk (ast-value node))))
-                    (if (eq inner (ast-value node))
-                        node
-                        (lit (ast-type node) inner))))
-                 (t node))))
-      (if (and kto (not (defined-function-p kto)) (not (member kto *registered-function-names*)))
-          (let ((*registered-function-names* (append *registered-function-names* (list kto))))
-            (walk expr))
-          (walk expr)))))
+    (flet ((rename ()
+             (map-ast (lambda (node meta)
+                        (when (and (eq :app (ast-meta-kind meta)) (eq kfrom (ast-meta-id meta)))
+                          (apply #'app
+                                 (or target-op
+                                     (if (defined-function-p kto)
+                                         (op kto)
+                                         (op kto (operator-operand-type (first node)))))
+                                 (append (rest node) extra-args))))
+                      expr :code t)))
+      (cond ((or (null kfrom) (and kto (eq kfrom kto) (null extra-args))) expr)
+            ((and kto (not (defined-function-p kto)) (not (member kto *registered-function-names*)))
+             (let ((*registered-function-names* (append *registered-function-names* (list kto))))
+               (rename)))
+            (t (rename))))))
 
 (defun ast->sexp (expr)
   "Convert an in-memory AST (including variables, holes, literals, `:code` values, and operators)
@@ -1151,3 +997,71 @@ Literal data is opaque. Function definitions are dependencies, not AST children.
       (:lit (when (code-type-p (ast-type expression))
               (walk-typed-ast (ast-value expression) (code-inputs (ast-type expression)) visitor)))))
   expression)
+
+;;; A surface syntax for building typed ASTs in host code.
+
+(defun operator-parameter-from-arguments (name types expected)
+  "The type parameter of primitive NAME, read off whichever argument TYPES are already
+known (nil marks an argument that is not), or else off the EXPECTED result type."
+  (if (and (eq name :tuple) (notany #'null types))
+      (cons :tuple types)
+      (destructuring-bind (&optional parameter arguments result) (primitive-pattern name)
+        (let ((bindings nil))
+          (flet ((learn (pattern type)
+                   (when type
+                     (setf bindings (or (ignore-errors (match-type-pattern pattern type bindings))
+                                        bindings)))))
+            (loop for (pattern) on arguments
+                  for type in types
+                  do (learn pattern type))
+            (learn result expected)
+            ;; A variable that nothing bound is left in place and is not a type.
+            (let ((type (sublis bindings parameter)))
+              (and (valid-type-p type) type)))))))
+
+(defun term (form &optional expected)
+  "Build a typed AST from FORM, a plain S-expression whose operators are named by symbols
+or keywords; each operator's type parameter is inferred from its arguments.
+Anything in FORM that is already an AST is used as it stands, so a backquoted template
+can splice in variables, sub-expressions, or an operator in head position. A bare literal
+(a number, nil, t, or a quoted datum) takes its type from context: the type its operator
+requires at that position, or EXPECTED at the top."
+  (flet ((node-p (x) (and x (or (symbolp x) (consp x)) (gethash x *node-meta*)))
+         (literal (value)
+           (assert expected () "The literal ~S needs a type from its context." value)
+           (lit expected value)))
+    (cond ((node-p form) form)
+          ((eq form t) (lit :bool t))
+          ((atom form) (literal form))
+          ((eq 'quote (first form)) (literal (second form)))
+          (t
+           (let* ((head (first form))
+                  (head-meta (node-p head))
+                  (name (cond ((null head-meta) (canonical-op-name head))
+                              ((eq :op (ast-meta-kind head-meta)) (ast-meta-id head-meta))))
+                  ;; Argument types fixed before the operator is: a supplied operator or
+                  ;; hole, or a registered function, declares them.
+                  (declared (cond ((and head-meta (eq :hole (ast-meta-kind head-meta)))
+                                   (second (ast-meta-type head-meta)))
+                                  (head-meta (second (ast-meta-value head-meta)))
+                                  ((defined-function-p name) (second (operator-type (op name))))))
+                  ;; First pass builds every argument that needs no type from this operator.
+                  (built (loop for raw in (rest form) for index from 0
+                               collect (cond (declared (term raw (nth index declared)))
+                                             ((and (eq name :if) (zerop index)) (term raw :bool))
+                                             (t (ignore-errors (term raw))))))
+                  (operator (cond (head-meta head)
+                                  (declared (op name))
+                                  (t (let ((parameter (operator-parameter-from-arguments
+                                                       name
+                                                       (mapcar (lambda (node) (and node (ast-type node))) built)
+                                                       expected)))
+                                       (assert parameter () "Cannot infer the type of ~S in ~S." head form)
+                                       (op name parameter)))))
+                  (wanted (or declared (second (operator-type operator))))
+                  (arguments (loop for node in built for raw in (rest form) for type in wanted
+                                   collect (or node (term raw type)))))
+             (assert (and (= (length arguments) (length wanted))
+                          (every (lambda (node type) (equal type (ast-type node))) arguments wanted))
+                     () "Ill-typed arguments in ~S: wanted ~S." form wanted)
+             (apply #'app operator arguments))))))

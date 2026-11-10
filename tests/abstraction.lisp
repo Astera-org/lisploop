@@ -237,12 +237,12 @@ Returns (VALUES trees inputs hidden-oracle next-state)."
          (occs (collect-tree-occurrences tree inputs :tree-index 0 :ledger work)))
     (check (= 7 (length occs)))
     (dolist (occ occs)
-      (let ((path (tree-occurrence-path occ))
-            (sub (tree-occurrence-term occ))
-            (wrapper (tree-occurrence-wrapper occ)))
+      (let* ((path (tree-occurrence-path occ))
+             (sub (tree-occurrence-term occ))
+             (wrapper (replace-at-path tree path (hole 999 (tree-occurrence-sort occ)))))
         (check (equal sub (subtree-at-path tree path)))
         (check (equal tree (replace-at-path tree path sub)))
-        (check (equal tree (instantiate wrapper (list (cons (tree-occurrence-context-hole-id occ) sub)))))))))
+        (check (equal tree (instantiate wrapper (list (cons 999 sub)))))))))
 
 (deftest abstraction-tree-corpus-packet-and-spliced-model
   (let* ((domain :int)

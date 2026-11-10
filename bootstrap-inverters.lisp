@@ -14,7 +14,7 @@ return `(VALUES elem-type seq-type code-type)`."
            (t0 (cdr (first inps)))
            (t1 (cdr (second inps)))
            (ret (function-definition-return-type fdef)))
-      (when (and (consp t0) (eq :seq (first t0))
+      (when (and (seq-type-p t0)
                  (equal t0 ret)
                  (code-type-p t1)
                  (= 1 (length (code-inputs t1)))
@@ -27,90 +27,92 @@ return `(VALUES elem-type seq-type code-type)`."
 
 (defun build-functorial-map-inverter (map-name elem-type seq-type src-ctype elem-solver)
   "Construct a second-order VM guard, witness, and code-inverter AST for inverting
-`(:map z 'code) = c` at position 0 using binary element solver ELEM-SOLVER."
+`(:map z 'code) = c` at position 0 using binary element solver ELEM-SOLVER. Also returns
+the name of the element operator and the position ELEM-SOLVER solves it at."
   (let* ((meta (knowledge-entry-metadata elem-solver))
-         (op-name (or (getf meta :operator-name)
-                      (let ((op-ast (sexp->ast (getf meta :operator))))
-                        (and (operator-p op-ast) (operator-name op-ast)))))
+         (op-name (operator-name (sexp->ast (getf meta :operator))))
          (elem-pos (getf meta :position))
-         (elem-witness (knowledge-entry-expression elem-solver)))
-    (when (and op-name (member elem-pos '(0 1)) elem-witness)
-      (let* ((pat-ctype (code-type (list (cons 0 elem-type) (cons 1 elem-type)) elem-type))
-             (pat-ast (lit pat-ctype (app (op op-name elem-type)
-                                          (var 0 elem-type)
-                                          (var 1 elem-type))))
-             (known-code (var 0 src-ctype))
-             (target-seq (var 1 seq-type))
-             (bind-type (tuple-type pat-ctype src-ctype src-ctype))
-             (b0 (app (op :code-bind bind-type) pat-ast known-code (lit :int 0)))
-             (b1 (app (op :code-bind bind-type) pat-ast known-code (lit :int 1)))
-             (var-part (if (zerop elem-pos) b0 b1))
-             (const-part (if (zerop elem-pos) b1 b0))
-             (subst-tup-type (tuple-type src-ctype src-ctype))
-             (subst-type (tuple-type pat-ctype subst-tup-type src-ctype))
-             (inv-code-expr (app (op :code-subst subst-type)
-                                 (lit pat-ctype elem-witness)
-                                 (app (op :tuple subst-tup-type)
-                                      const-part
-                                      (lit src-ctype (var 0 elem-type)))))
-             (match-cond (app (op :code-match (tuple-type pat-ctype src-ctype))
-                              pat-ast known-code))
-             (var-ok (app (op := src-ctype) var-part (lit src-ctype (var 0 elem-type))))
-             (const-ok (app (op := :int) (app (op :code-kind src-ctype) const-part) (lit :int 1)))
-             (total-ok (app (op :code-total src-ctype) inv-code-expr))
-             (guard-ast (app (op :if :bool)
-                             match-cond
-                             (bool-and var-ok (bool-and const-ok total-ok))
-                             (lit :bool nil)))
-             (witness-ast (app (op map-name) target-seq inv-code-expr)))
-        (values guard-ast witness-ast inv-code-expr op-name elem-pos)))))
+         (pat-ctype (code-type (list (cons 0 elem-type) (cons 1 elem-type)) elem-type))
+         (pattern (lit pat-ctype (app (op op-name elem-type) (var 0 elem-type) (var 1 elem-type))))
+         (known-code (var 0 src-ctype))
+         (element (lit src-ctype (var 0 elem-type))) ; the code that returns its argument
+         (bind (op :code-bind (tuple-type pat-ctype src-ctype src-ctype)))
+         (b0 (app bind pattern known-code (lit :int 0)))
+         (b1 (app bind pattern known-code (lit :int 1)))
+         (var-part (if (zerop elem-pos) b0 b1))
+         (const-part (if (zerop elem-pos) b1 b0))
+         (inverse (term `(,(op :code-subst (tuple-type pat-ctype (tuple-type src-ctype src-ctype)
+                                                       src-ctype))
+                          ,(lit pat-ctype (knowledge-entry-expression elem-solver))
+                          (tuple ,const-part ,element)))))
+    (values (term `(if (,(op :code-match (tuple-type pat-ctype src-ctype)) ,pattern ,known-code)
+                       ,(bool-and (term `(= ,var-part ,element))
+                                  (bool-and (term `(= (code-kind ,const-part) 1))
+                                            (term `(code-total ,inverse))))
+                       nil))
+            (app (op map-name) (var 1 seq-type) inverse)
+            inverse op-name elem-pos)))
+
+(defun build-pointwise-sequence-inverter (map-name elem-type seq-type src-ctype elem-solver)
+  "Witness and guard that solve `(fn xs p) = ys` for xs from `(p ys)`, where fn applies a
+binary scalar operator to each element of xs and p, and ELEM-SOLVER inverts that operator
+at the element's position: MAP-NAME maps the element witness, with p bound, over ys."
+  (let* ((bin-ctype (code-type (list (cons 0 elem-type) (cons 1 elem-type)) elem-type))
+         (parameter (var 0 elem-type))
+         ;; The element witness reads (known target); as mapped code it reads (target known).
+         (swapped (instantiate (knowledge-entry-expression elem-solver)
+                               (list (cons 0 (var 1 elem-type)) (cons 1 (var 0 elem-type))) :var))
+         (inverse (term `(,(op :code-subst (tuple-type bin-ctype (tuple-type src-ctype elem-type)
+                                                       src-ctype))
+                          ,(lit bin-ctype swapped)
+                          (tuple ,(lit src-ctype (var 0 elem-type)) ,parameter))))
+         (guard (knowledge-entry-guard elem-solver)))
+    (values (app (op map-name) (var 1 seq-type) inverse)
+            ;; A scalar guard that reads the target would have to hold of every output
+            ;; element; it is omitted, which is one reason the result stays a conjecture.
+            (if (member 1 (free-vars guard)) (lit :bool t) guard))))
+
+(defun build-pointwise-parameter-inverter (seq-type elem-solver)
+  "Witness and guard that solve `(fn xs p) = ys` for the scalar p from `(xs ys)`: ELEM-SOLVER,
+which inverts the scalar operator at the parameter's position, applied to the heads of xs
+and ys when both are nonempty and of equal length."
+  (let* ((xs (var 0 seq-type))
+         (ys (var 1 seq-type))
+         (heads (list (cons 0 (term `(at ,xs 0))) (cons 1 (term `(at ,ys 0))))))
+    (values (instantiate (knowledge-entry-expression elem-solver) heads :var)
+            (term `(if (< 0 (length ,xs))
+                       (if (= (length ,xs) (length ,ys))
+                           ,(instantiate (knowledge-entry-guard elem-solver) heads :var)
+                           nil)
+                       nil)))))
 
 (defun extract-pointwise-binary-step (src-entry elem-type seq-type)
   "If `:function` entry SRC-ENTRY has signature `((0 . seq-type) (1 . elem-type)) -> seq-type`
 and applies a binary scalar operator `(op elem param)` or `(op param elem)` to each element
 of `X0` with parameter `X1` (either via `:map` + `:code-subst` or direct structural recursion),
 return (VALUES op-name elem-pos param-pos)."
-  (let ((inputs (knowledge-entry-inputs src-entry))
-        (target (knowledge-entry-target src-entry))
-        (expr (knowledge-entry-expression src-entry))
-        (aux (knowledge-entry-auxiliary-code src-entry)))
-    (when (and (= 2 (length inputs))
-               (equal (cons 0 seq-type) (first inputs))
-               (equal (cons 1 elem-type) (second inputs))
-               (equal seq-type target))
-      (flet ((check-binary-op (step elem-var param-var)
-               (when (and (app-p step)
-                          (operator-p (first step))
-                          (= 2 (length (rest step))))
-                 (let ((op-name (operator-name (first step)))
-                       (a0 (second step))
-                       (a1 (third step)))
-                   (cond
-                     ((and (equal a0 elem-var) (equal a1 param-var))
-                      (values op-name 0 1))
-                     ((and (equal a0 param-var) (equal a1 elem-var))
-                      (values op-name 1 0)))))))
-        (let ((v0 (var 0 elem-type))
-              (v1 (var 1 elem-type)))
-          (or (and aux
-                   (multiple-value-bind (op-name epos ppos)
-                       (check-binary-op aux v0 v1)
-                     (when op-name (return-from extract-pointwise-binary-step (values op-name epos ppos)))))
-              (when (and (app-p expr) (= 2 (length (rest expr))))
-                (let ((code-arg (third expr)))
-                  (when (and (app-p code-arg)
-                             (eq :code-subst (ast-id code-arg))
-                             (lit-p (second code-arg)))
-                    (multiple-value-bind (op-name epos ppos)
-                        (check-binary-op (ast-value (second code-arg)) v0 v1)
-                      (when op-name (return-from extract-pointwise-binary-step (values op-name epos ppos)))))))
-              (when (and (app-p expr) (eq :if (ast-id expr)))
-                (let ((else-br (fourth expr))
-                      (head-x0 (app (op :at seq-type) (var 0 seq-type) (lit :int 0))))
-                  (when (and (app-p else-br) (eq :cons (ast-id else-br)))
-                    (multiple-value-bind (op-name epos ppos)
-                        (check-binary-op (second else-br) head-x0 v1)
-                      (when op-name (return-from extract-pointwise-binary-step (values op-name epos ppos)))))))))))))
+  (let ((expr (knowledge-entry-expression src-entry))
+        (aux (knowledge-entry-auxiliary-code src-entry))
+        (v0 (var 0 elem-type))
+        (v1 (var 1 elem-type)))
+    (flet ((binary-step (step element parameter)
+             (when (and (app-p step) (operator-p (first step)) (= 2 (length (rest step))))
+               (cond ((and (equal (second step) element) (equal (third step) parameter))
+                      (list (operator-name (first step)) 0 1))
+                     ((and (equal (second step) parameter) (equal (third step) element))
+                      (list (operator-name (first step)) 1 0))))))
+      (when (and (equal (knowledge-entry-inputs src-entry)
+                        (list (cons 0 seq-type) (cons 1 elem-type)))
+                 (equal seq-type (knowledge-entry-target src-entry)))
+        (values-list
+         (or (and aux (binary-step aux v0 v1))
+             (and (app-p expr) (= 2 (length (rest expr)))
+                  (app-of-p (third expr) :code-subst)
+                  (lit-p (second (third expr)))
+                  (binary-step (ast-value (second (third expr))) v0 v1))
+             (and (app-of-p expr :if)
+                  (app-of-p (fourth expr) :cons)
+                  (binary-step (second (fourth expr)) (term `(at ,(var 0 seq-type) 0)) v1))))))))
 
 (defun induce-involution-solvers (library &key (ledger (make-ledger)))
   "Scan `:law` entries in LIBRARY for involution identities `(= (f (f X0)) X0)` over a unary
@@ -119,16 +121,11 @@ function or operator `f : tau -> tau` and induce `:unary` `:solver` entries `(f 
     (dolist (law-entry (knowledge-entries-of-kind :law library) (nreverse induced))
       (let ((eq-expr (knowledge-entry-expression law-entry))
             (inputs (knowledge-entry-inputs law-entry)))
-        (when (and (= 1 (length inputs))
-                   (app-p eq-expr)
-                   (eq := (ast-id eq-expr))
-                   (= 2 (length (rest eq-expr))))
+        (when (and (= 1 (length inputs)) (app-of-p eq-expr :=))
           (let* ((tau (cdar inputs))
                  (x0 (var (caar inputs) tau))
-                 (lhs (second eq-expr))
-                 (rhs (third eq-expr))
-                 (nested (cond ((equal rhs x0) lhs)
-                               ((equal lhs x0) rhs))))
+                 (nested (cond ((equal (third eq-expr) x0) (second eq-expr))
+                               ((equal (second eq-expr) x0) (third eq-expr)))))
             (when (and nested
                        (app-p nested)
                        (operator-p (first nested))
@@ -139,29 +136,120 @@ function or operator `f : tau -> tau` and induce `:unary` `:solver` entries `(f 
                               (= 1 (length (rest inner)))
                               (equal (second inner) x0))))
               (let* ((fn-op (first nested))
-                     (fn-name (operator-name fn-op))
-                     (solver-id (intern (format nil "~A/INVOLUTION-INVERTER" (symbol-name fn-name)) :keyword))
+                     (solver-id (keyword-id "~A/INVOLUTION-INVERTER" (operator-name fn-op)))
                      (cert-p (knowledge-evidence-current-p law-entry :equivalence))
-                     (guard (instantiate (or (knowledge-entry-guard law-entry) (lit :bool t))
-                                         (list (cons (caar inputs) (var 0 tau))) :var))
-                     (unique-p (and cert-p (equal guard (lit :bool t)))))
+                     (guard (instantiate (knowledge-entry-guard law-entry)
+                                         (list (cons (caar inputs) (var 0 tau))) :var)))
                 (unless (find-knowledge-entry solver-id library)
                   (push (register-knowledge-solver
-                         fn-op
-                         :id solver-id
-                         :library library
+                         fn-op :id solver-id :library library
                          :domain (or (knowledge-entry-domain law-entry) tau)
-                         :inputs (list (cons 0 tau))
-                         :target tau
-                         :position :unary
-                         :witness (app fn-op (var 0 tau))
-                         :guard guard
+                         :inputs (list (cons 0 tau)) :target tau :position :unary
+                         :witness (app fn-op (var 0 tau)) :guard guard
                          :certified-p cert-p
-                         :unique-p unique-p
-                         :status (if cert-p :validated :conjecture)
+                         :unique-p (and cert-p (equal guard (lit :bool t)))
                          :edges (list (list :induced-by (knowledge-entry-id law-entry)))
                          :ledger ledger)
                         induced))))))))))
+
+(defun induce-combinator-solvers (library ledger map-name elem-type seq-type src-ctype elem-solvers)
+  "Register the `:functor` theory of the map-like combinator MAP-NAME and the solvers that
+lift ELEM-SOLVERS, the binary scalar solvers over ELEM-TYPE, through it. Returns the new
+entries in registration order."
+  (let ((functor-id (keyword-id "~A/FUNCTOR" map-name))
+        (map-inputs (list (cons 0 src-ctype) (cons 1 seq-type)))
+        (induced nil))
+    (labels
+        ((new-p (id) (null (find-knowledge-entry id library)))
+         (induce (id function esolver &rest fields)
+           ;; Shape recognition and scalar certification do not certify a sequence
+           ;; transformation: the scalar guard and the combinator's semantics need proofs.
+           ;; So every lifted solver is registered as a conjecture, which keeps forward
+           ;; verification and the fallback lane.
+           (push (apply #'register-knowledge-solver function
+                        :id id :library library :ledger ledger
+                        :unique-p (getf (knowledge-entry-metadata esolver) :unique-p t)
+                        :edges (list (list :induced-by functor-id (knowledge-entry-id esolver)))
+                        fields)
+                 induced))
+         (element-solver (operator position)
+           (find-if (lambda (solver)
+                      (let ((meta (knowledge-entry-metadata solver)))
+                        (and (eq operator (getf meta :operator-name))
+                             (eql position (getf meta :position)))))
+                    elem-solvers))
+         (map-inverter (esolver)
+           "Invert `(MAP-NAME z 'code) = c` for z, then every unary function known to be
+MAP-NAME applied to a fixed step."
+           (multiple-value-bind (guard witness inverse op-name elem-pos)
+               (build-functorial-map-inverter map-name elem-type seq-type src-ctype esolver)
+             (let ((id (keyword-id "~A/INVERT-~A-~D" map-name op-name elem-pos)))
+               (when (new-p id)
+                 (induce id map-name esolver :domain elem-type :inputs map-inputs
+                         :target seq-type :position 0 :witness witness :guard guard)))
+             (dolist (edge (knowledge-edges-from map-name :abstracts library))
+               (dolist (src-fn (rest edge))
+                 (refactored-inverter src-fn esolver guard inverse)))))
+         (refactored-inverter (src-fn esolver guard inverse)
+           "Invert the unary SRC-FN, whose auxiliary code is its step under MAP-NAME, by
+mapping the step's inverse; GUARD and INVERSE are the map inverter's, run on that step."
+           (let* ((src-entry (find-knowledge-entry src-fn library))
+                  (step (and src-entry
+                             (= 1 (length (knowledge-entry-inputs src-entry)))
+                             (knowledge-entry-auxiliary-code src-entry)))
+                  (id (keyword-id "~A/INVERTER" src-fn)))
+             (when (and step (new-p id))
+               (let ((grun (evaluate guard map-inputs (list step nil) :ledger ledger)))
+                 (when (and (eq :value (evaluation-status grun)) (evaluation-value grun))
+                   (let ((irun (evaluate inverse (list (cons 0 src-ctype)) (list step)
+                                         :ledger ledger)))
+                     (when (eq :value (evaluation-status irun))
+                       (induce id src-fn esolver :domain elem-type
+                               :inputs (list (cons 0 seq-type)) :target seq-type :position :unary
+                               :witness (app (op map-name) (var 0 seq-type)
+                                             (lit src-ctype (evaluation-value irun)))))))))))
+         (pointwise-inverters (src-entry)
+           "Invert `(fn xs param) = ys`, where fn applies a binary scalar operator to each
+element of xs and param, for the sequence xs and for the scalar param."
+           (multiple-value-bind (operator elem-pos param-pos)
+               (extract-pointwise-binary-step src-entry elem-type seq-type)
+             (when operator
+               (let* ((src-fn (knowledge-entry-id src-entry))
+                      (seq-solver (element-solver operator elem-pos))
+                      (seq-id (keyword-id "~A/INVERT-0" src-fn))
+                      (param-solver (element-solver operator param-pos))
+                      (param-id (keyword-id "~A/INVERT-1" src-fn)))
+                 (when (and seq-solver (new-p seq-id))
+                   (multiple-value-bind (witness guard)
+                       (build-pointwise-sequence-inverter map-name elem-type seq-type src-ctype
+                                                          seq-solver)
+                     (induce seq-id src-fn seq-solver :domain seq-type
+                             :inputs (list (cons 0 elem-type) (cons 1 seq-type)) :target seq-type
+                             :position 0 :witness witness :guard guard)))
+                 (when (and param-solver (new-p param-id))
+                   (multiple-value-bind (witness guard)
+                       (build-pointwise-parameter-inverter seq-type param-solver)
+                     (induce param-id src-fn param-solver :domain seq-type
+                             :inputs (list (cons 0 seq-type) (cons 1 seq-type)) :target elem-type
+                             :position 1 :witness witness :guard guard))))))))
+      (when (new-p functor-id)
+        (push (register-knowledge-entry
+               (make-knowledge-entry
+                :id functor-id :kind :functor :domain elem-type
+                :inputs map-inputs :target seq-type
+                :expression (app (op map-name) (var 1 seq-type) (var 0 src-ctype))
+                :status :conjecture
+                :metadata (list :origin :bootstrap-structural :combinator map-name)
+                :edges (list (list :lifts-inverter map-name))
+                :library library)
+               :library library :ledger ledger)
+              induced))
+      ;; Registration order is the order propagation tries rules in: the pointwise solvers
+      ;; follow the first element solver's inverters and precede those of the rest.
+      (map-inverter (first elem-solvers))
+      (mapc #'pointwise-inverters (knowledge-entries-of-kind :function library))
+      (mapc #'map-inverter (rest elem-solvers))
+      (nreverse induced))))
 
 (defun induce-functorial-solvers (library &key (ledger (make-ledger)))
   "Traverse higher-order `:abstracts` / `:refactored-by` edges, element `:solver` entries, and
@@ -173,220 +261,35 @@ involution `:law` entries in LIBRARY to induce second-order `:functor` theories 
 4. Involution functions satisfying `(= (f (f X0)) X0)`."
   (let ((induced nil))
     (dolist (fn-entry (knowledge-entries-of-kind :function library))
-      (let* ((map-name (knowledge-entry-id fn-entry))
-             (fdef (or (gethash map-name (knowledge-library-functions library))
-                       (find-function-definition map-name))))
+      (let ((map-name (knowledge-entry-id fn-entry)))
         (multiple-value-bind (elem-type seq-type src-ctype)
-            (map-like-combinator-signature fdef)
-          (when elem-type
-            (let ((elem-solvers
-                    (remove-if-not (lambda (s)
-                                     (and (equal elem-type (knowledge-entry-domain s))
-                                          (equal elem-type (knowledge-entry-target s))
-                                          (equal (knowledge-entry-inputs s)
-                                                 (list (cons 0 elem-type) (cons 1 elem-type)))
-                                          (member (getf (knowledge-entry-metadata s) :position) '(0 1))))
-                                   (knowledge-entries-of-kind :solver library))))
-              (when elem-solvers
-                (let ((functor-id (intern (format nil "~A/FUNCTOR" (symbol-name map-name)) :keyword)))
-                  (unless (find-knowledge-entry functor-id library)
-                    (push (register-knowledge-entry
-                           (make-knowledge-entry
-                            :id functor-id
-                            :kind :functor
-                            :domain elem-type
-                            :inputs (list (cons 0 src-ctype) (cons 1 seq-type))
-                            :target seq-type
-                            :expression (app (op map-name) (var 1 seq-type) (var 0 src-ctype))
-                            :status :conjecture
-                            :metadata (list :origin :bootstrap-structural :combinator map-name)
-                            :edges (list (list :lifts-inverter map-name))
-                            :library library)
-                           :library library :ledger ledger)
-                          induced))
-                  (dolist (esolver elem-solvers)
-                    (multiple-value-bind (guard-ast witness-ast inv-code-expr op-name elem-pos)
-                        (build-functorial-map-inverter map-name elem-type seq-type src-ctype esolver)
-                      (when (and guard-ast witness-ast)
-                        (let ((map-solver-id
-                                (intern (format nil "~A/INVERT-~A-~D"
-                                                (symbol-name map-name)
-                                                (symbol-name op-name)
-                                                elem-pos)
-                                        :keyword))
-                              (map-inputs (list (cons 0 src-ctype) (cons 1 seq-type)))
-                              ;; Shape recognition and scalar certification do not
-                              ;; certify this sequence transformation: the scalar
-                              ;; guard and the combinator's semantics need proofs.
-                              ;; Keep forward verification and the fallback lane.
-                              (cert-p nil))
-                          (unless (find-knowledge-entry map-solver-id library)
-                            (push (register-knowledge-solver
-                                   map-name
-                                   :id map-solver-id
-                                   :library library
-                                   :domain elem-type
-                                   :inputs map-inputs
-                                   :target seq-type
-                                   :position 0
-                                   :witness witness-ast
-                                   :guard guard-ast
-                                   :certified-p cert-p
-                                   :unique-p (getf (knowledge-entry-metadata esolver) :unique-p t)
-                                   :status (if cert-p :validated :conjecture)
-                                   :edges (list (list :induced-by functor-id (knowledge-entry-id esolver)))
-                                   :ledger ledger)
-                                  induced))
-                          ;; Induce unary inverters for unary functions refactored through MAP-NAME
-                          (dolist (edge (knowledge-edges-from map-name :abstracts library))
-                            (dolist (src-fn (rest edge))
-                              (let* ((src-entry (find-knowledge-entry src-fn library))
-                                     (step-ast (and src-entry
-                                                    (= 1 (length (knowledge-entry-inputs src-entry)))
-                                                    (knowledge-entry-auxiliary-code src-entry)))
-                                     (unary-id (intern (format nil "~A/INVERTER" (symbol-name src-fn)) :keyword)))
-                                (when (and step-ast (null (find-knowledge-entry unary-id library)))
-                                  (let ((grun (evaluate guard-ast map-inputs (list step-ast nil) :ledger ledger)))
-                                    (when (and (eq :value (evaluation-status grun))
-                                               (evaluation-value grun))
-                                      (let ((irun (evaluate inv-code-expr (list (cons 0 src-ctype))
-                                                            (list step-ast) :ledger ledger)))
-                                        (when (eq :value (evaluation-status irun))
-                                          (let* ((inv-step-ast (evaluation-value irun))
-                                                 (unary-inputs (list (cons 0 seq-type)))
-                                                 (unary-witness (app (op map-name)
-                                                                     (var 0 seq-type)
-                                                                     (lit src-ctype inv-step-ast))))
-                                            (push (register-knowledge-solver
-                                                   src-fn
-                                                   :id unary-id
-                                                   :library library
-                                                   :domain elem-type
-                                                   :inputs unary-inputs
-                                                   :target seq-type
-                                                   :position :unary
-                                                   :witness unary-witness
-                                                   :guard (lit :bool t)
-                                                   :certified-p cert-p
-                                                   :unique-p (getf (knowledge-entry-metadata esolver) :unique-p t)
-                                                   :status (if cert-p :validated :conjecture)
-                                                   :edges (list (list :induced-by functor-id (knowledge-entry-id esolver)))
-                                                   :ledger ledger)
-                                                  induced))))))))))))
-                  ;; Induce binary sequence (pos 0) and scalar parameter (pos 1) solvers for pointwise binary functions
-                  (dolist (src-entry (knowledge-entries-of-kind :function library))
-                    (let ((src-fn (knowledge-entry-id src-entry)))
-                      (multiple-value-bind (bin-op epos ppos)
-                          (extract-pointwise-binary-step src-entry elem-type seq-type)
-                        (when bin-op
-                          ;; 1. Position 0 solver: invert `(src-fn xs param) = y` for `xs` given `(param, y)`
-                          (let* ((seq-esolver
-                                   (find-if (lambda (s)
-                                              (let ((m (knowledge-entry-metadata s)))
-                                                (and (eq bin-op (getf m :operator-name))
-                                                     (eql epos (getf m :position)))))
-                                            elem-solvers))
-                                 (pos0-id (intern (format nil "~A/INVERT-0" (symbol-name src-fn)) :keyword)))
-                            (when (and seq-esolver (null (find-knowledge-entry pos0-id library)))
-                              (let* ((ewit (knowledge-entry-expression seq-esolver))
-                                     (egrd (or (knowledge-entry-guard seq-esolver) (lit :bool t)))
-                                     (swapped-wit (instantiate ewit
-                                                               (list (cons 0 (var 1 elem-type))
-                                                                     (cons 1 (var 0 elem-type)))
-                                                               :var))
-                                     (bin-ctype (code-type (list (cons 0 elem-type) (cons 1 elem-type)) elem-type))
-                                     (tup-type (tuple-type src-ctype elem-type))
-                                     (subst-type (tuple-type bin-ctype tup-type src-ctype))
-                                     (code-arg (app (op :code-subst subst-type)
-                                                    (lit bin-ctype swapped-wit)
-                                                    (app (op :tuple tup-type)
-                                                         (lit src-ctype (var 0 elem-type))
-                                                         (var 0 elem-type))))
-                                     (pos0-inputs (list (cons 0 elem-type) (cons 1 seq-type)))
-                                     (pos0-witness (app (op map-name) (var 1 seq-type) code-arg))
-                                     (pos0-guard (if (member 1 (free-vars egrd) :test #'eql)
-                                                     (lit :bool t)
-                                                     egrd))
-                                     ;; In particular, POS0-GUARD may omit a scalar
-                                     ;; guard that depends on each output element.
-                                     (cert-p nil))
-                                (push (register-knowledge-solver
-                                       src-fn
-                                       :id pos0-id
-                                       :library library
-                                       :domain seq-type
-                                       :inputs pos0-inputs
-                                       :target seq-type
-                                       :position 0
-                                       :witness pos0-witness
-                                       :guard pos0-guard
-                                       :certified-p cert-p
-                                       :unique-p (getf (knowledge-entry-metadata seq-esolver) :unique-p t)
-                                       :status (if cert-p :validated :conjecture)
-                                       :edges (list (list :induced-by functor-id (knowledge-entry-id seq-esolver)))
-                                       :ledger ledger)
-                                      induced))))
-                          ;; 2. Position 1 solver: invert `(src-fn xs param) = y` for scalar `param` given `(xs, y)`
-                          (let* ((param-esolver
-                                   (find-if (lambda (s)
-                                              (let ((m (knowledge-entry-metadata s)))
-                                                (and (eq bin-op (getf m :operator-name))
-                                                     (eql ppos (getf m :position)))))
-                                            elem-solvers))
-                                 (pos1-id (intern (format nil "~A/INVERT-1" (symbol-name src-fn)) :keyword)))
-                            (when (and param-esolver (null (find-knowledge-entry pos1-id library)))
-                              (let* ((pwit (knowledge-entry-expression param-esolver))
-                                     (pgrd (or (knowledge-entry-guard param-esolver) (lit :bool t)))
-                                     (xs-var (var 0 seq-type))
-                                     (ys-var (var 1 seq-type))
-                                     (head-xs (app (op :at seq-type) xs-var (lit :int 0)))
-                                     (head-ys (app (op :at seq-type) ys-var (lit :int 0)))
-                                     (head-subs (list (cons 0 head-xs) (cons 1 head-ys)))
-                                     (pos1-inputs (list (cons 0 seq-type) (cons 1 seq-type)))
-                                     (pos1-witness (instantiate pwit head-subs :var))
-                                     (non-empty-cond (app (op :< :int)
-                                                          (lit :int 0)
-                                                          (app (op :length elem-type) xs-var)))
-                                     (same-len-cond (app (op := :int)
-                                                         (app (op :length elem-type) xs-var)
-                                                         (app (op :length elem-type) ys-var)))
-                                     (inst-grd (instantiate pgrd head-subs :var))
-                                     (pos1-guard (app (op :if :bool)
-                                                      non-empty-cond
-                                                      (app (op :if :bool)
-                                                           same-len-cond
-                                                           inst-grd
-                                                           (lit :bool nil))
-                                                      (lit :bool nil))))
-                                (push (register-knowledge-solver
-                                       src-fn
-                                       :id pos1-id
-                                       :library library
-                                       :domain seq-type
-                                       :inputs pos1-inputs
-                                       :target elem-type
-                                       :position 1
-                                       :witness pos1-witness
-                                       :guard pos1-guard
-                                       :certified-p nil
-                                       :unique-p (getf (knowledge-entry-metadata param-esolver) :unique-p t)
-                                       :status :conjecture
-                                       :edges (list (list :induced-by functor-id (knowledge-entry-id param-esolver)))
-                                       :ledger ledger)
-                                      induced)))))))))))))))))
-    (setf induced (nconc (nreverse induced) (induce-involution-solvers library :ledger ledger)
-                         (induce-solvers-from-transformers library ledger)))
-    induced))
+            (map-like-combinator-signature
+             (or (gethash map-name (knowledge-library-functions library))
+                 (find-function-definition map-name)))
+          (let ((elem-solvers
+                  (and elem-type
+                       (remove-if-not
+                        (lambda (s)
+                          (and (equal elem-type (knowledge-entry-domain s))
+                               (equal elem-type (knowledge-entry-target s))
+                               (equal (knowledge-entry-inputs s)
+                                      (list (cons 0 elem-type) (cons 1 elem-type)))
+                               (member (getf (knowledge-entry-metadata s) :position) '(0 1))))
+                        (knowledge-entries-of-kind :solver library)))))
+            (when elem-solvers
+              (setf induced
+                    (nconc induced
+                           (induce-combinator-solvers library ledger map-name elem-type seq-type
+                                                      src-ctype elem-solvers))))))))
+    (nconc induced
+           (induce-involution-solvers library :ledger ledger)
+           (induce-solvers-from-transformers library ledger))))
 
 (define-knowledge-kind :functor
   (:priority 40)
   (:validate (entry library)
     (declare (ignore library))
-    (when (knowledge-entry-expression entry)
-      (expression-type (knowledge-entry-expression entry) (knowledge-entry-inputs entry))))
-  (:install (entry library ledger)
-    (declare (ignore entry library ledger))
-    nil)
+    (assert-entry-expression-type entry))
   (:consolidate (entries library ledger)
     (declare (ignore entries))
     (induce-functorial-solvers library :ledger ledger)))

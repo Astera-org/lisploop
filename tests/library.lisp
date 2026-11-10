@@ -534,3 +534,207 @@
                             (synthesis-job-messages warm-len-job)))
                (check (< warm-add-len-work cold-add-len-work))))))
     (clear-function-definitions)))
+
+(deftest library-m9-compositional-names-overlapping-policy-and-deferred-proposals
+  "Verify M9.2, M9.3, and M9.4:
+1. Smooth `:seq` residual delta packets (`correction-packet`, `apply-correction-packet`,
+   `correction-bit-size`) provide a monotone bit-size gradient on sequence mismatches.
+2. Meaningful compositional secondary addresses (`knowledge-entry-compositional-name`,
+   `knowledge-entry-descriptor-profile`, `find-knowledge-entries-by-address`) are derived
+   from function syntax across `:type`, `:shape-delta`, `:boundary`, `:sampled-content`,
+   and `:algebraic` facets and survive homoiconic library serialization.
+3. Overlapping policy scoring (`score-entry-by-descriptors`) discriminates `:map`, `:filter`,
+   `:foldr`, and `:map-adjacent` across sequence tasks.
+4. Deferred fallback proposal records (`synthesis-node-deferred-proposals`) keep secondary
+   proposals without executing `prepare-synthesis-node` until budget permits, eliminating
+   the `:register-templates-p t` warm synthesis work regression while preserving anytime
+   completeness via `promote-next-deferred-proposal`."
+  (unwind-protect
+       (with-knowledge-library ((make-knowledge-library))
+         (clear-function-definitions)
+         ;; 1. Smooth `:seq` correction packet round-trip and bit-size gradient
+         (let* ((seq-type (sequence-type :int))
+                (base '(10 20 30 40))
+                (near '(10 21 30 40))
+                (far '(99 88 77 66))
+                (longer '(10 20 30 40 50))
+                (pkt-near (correction-packet base near seq-type))
+                (pkt-far (correction-packet base far seq-type))
+                (pkt-longer (correction-packet base longer seq-type)))
+           (check (equal near (apply-correction-packet base pkt-near seq-type)))
+           (check (equal far (apply-correction-packet base pkt-far seq-type)))
+           (check (equal longer (apply-correction-packet base pkt-longer seq-type)))
+           (check (< (correction-bit-size base near seq-type)
+                     (correction-bit-size base far seq-type)))
+           (check (<= (correction-bit-size base far seq-type)
+                      (value-bit-size far seq-type))))
+         ;; 2. Compositional secondary addresses and multi-facet descriptor profiles
+         (let* ((seq-type (sequence-type :int))
+                (u-code (code-type '((0 . :int)) :int))
+                (p-code (code-type '((0 . :int)) :bool))
+                (b-code (code-type '((0 . :int) (1 . :int)) :int))
+                (xs (var 0 seq-type)))
+           (define-function :map (list (cons 0 seq-type) (cons 1 u-code)) seq-type
+             (lambda (self)
+               (app (op :if seq-type)
+                    (app (op := seq-type) xs (lit seq-type '()))
+                    (lit seq-type '())
+                    (app (op :cons :int)
+                         (app (op :code-eval u-code) (var 1 u-code)
+                              (app (op :at seq-type) xs (lit :int 0)))
+                         (app self (app (op :tail :int) xs) (var 1 u-code))))))
+           (define-function :filter (list (cons 0 seq-type) (cons 1 p-code)) seq-type
+             (lambda (self)
+               (app (op :if seq-type)
+                    (app (op := seq-type) xs (lit seq-type '()))
+                    (lit seq-type '())
+                    (app (op :if seq-type)
+                         (app (op :code-eval p-code) (var 1 p-code)
+                              (app (op :at seq-type) xs (lit :int 0)))
+                         (app (op :cons :int)
+                              (app (op :at seq-type) xs (lit :int 0))
+                              (app self (app (op :tail :int) xs) (var 1 p-code)))
+                         (app self (app (op :tail :int) xs) (var 1 p-code))))))
+           (define-function :foldr (list (cons 0 seq-type) (cons 1 :int) (cons 2 b-code)) :int
+             (lambda (self)
+               (app (op :if :int)
+                    (app (op := seq-type) xs (lit seq-type '()))
+                    (var 1 :int)
+                    (app (op :code-eval b-code) (var 2 b-code)
+                         (app (op :at seq-type) xs (lit :int 0))
+                         (app self (app (op :tail :int) xs) (var 1 :int) (var 2 b-code))))))
+           (define-function :map-adjacent (list (cons 0 seq-type) (cons 1 b-code)) seq-type
+             (lambda (self)
+               (app (op :if seq-type)
+                    (app (op := seq-type) xs (lit seq-type '()))
+                    (lit seq-type '())
+                    (app (op :if seq-type)
+                         (app (op := seq-type) (app (op :tail :int) xs) (lit seq-type '()))
+                         (lit seq-type '())
+                         (app (op :cons :int)
+                              (app (op :code-eval b-code) (var 1 b-code)
+                                   (app (op :at seq-type) (app (op :tail :int) xs) (lit :int 0))
+                                   (app (op :at seq-type) xs (lit :int 0)))
+                              (app self (app (op :tail :int) xs) (var 1 b-code)))))))
+           (let ((map-e (find-knowledge-entry :map))
+                 (filter-e (find-knowledge-entry :filter))
+                 (fold-e (find-knowledge-entry :foldr))
+                 (adj-e (find-knowledge-entry :map-adjacent)))
+             (check (eq :FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP
+                        (knowledge-entry-compositional-name map-e)))
+             (check (eq :FUNCTION/HO-SEQ->SEQ/LEN-LE/EMPTY->EMPTY/SUBSET-ELEMENTS
+                        (knowledge-entry-compositional-name filter-e)))
+             (check (eq :FUNCTION/HO-SEQ->SCALAR/ANY/ANY/SCALAR-REDUCTION
+                        (knowledge-entry-compositional-name fold-e)))
+             (check (eq :FUNCTION/HO-SEQ->SEQ/LEN-DEC-1/EMPTY->EMPTY/ANY
+                        (knowledge-entry-compositional-name adj-e)))
+             ;; Secondary address lookup by full compositional name and by facet descriptor ID
+             (check (member map-e (find-knowledge-entries-by-address
+                                   :FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP)))
+             (check (member filter-e (find-knowledge-entries-by-address :DESC/SUBSET-ELEMENTS)))
+             (check (member adj-e (find-knowledge-entries-by-address :DESC/LEN-DEC-1)))
+             ;; Homoiconic serialization round-trip preserves compositional names and descriptor profiles
+             (let ((packet (serialize-knowledge-library *knowledge-library*)))
+               (with-knowledge-library ((deserialize-knowledge-library packet))
+                 (let ((restored-map (find-knowledge-entry :map)))
+                   (check (eq :FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP
+                              (knowledge-entry-compositional-name restored-map)))
+                   (check (plusp (length (knowledge-entry-descriptor-profile restored-map))))
+                   (check (member restored-map
+                                  (find-knowledge-entries-by-address :DESC/POINTWISE-MAP))))))))
+         ;; 3. Overlapping policy scoring across sequence task families
+         (let* ((seq-type (sequence-type :int))
+                (inputs (list (cons 0 seq-type)))
+                (map-frame (simple-frame seq-type inputs '(((()) ()) (((1 2 3)) (5 6 7)))))
+                (filt-frame (simple-frame seq-type inputs '(((()) ()) (((1 5 2 8)) (5 8)))))
+                (diff-frame (simple-frame seq-type inputs '(((()) ()) (((10 13 19)) (3 6))))))
+           (multiple-value-bind (m-ok m-score m-clauses) (score-entry-by-descriptors :map map-frame 0)
+             (multiple-value-bind (f-ok f-score _fc) (score-entry-by-descriptors :filter map-frame 0)
+               (declare (ignore _fc))
+               (check m-ok)
+               (check f-ok)
+               (check (member :DESC/LEN-EQ m-clauses))
+               (check (member :DESC/POINTWISE-MAP m-clauses))
+               ;; On equal-length non-subset task, `:map` scores strictly better (lower) than `:filter`
+               (check (< m-score f-score))))
+           (multiple-value-bind (m-ok-filt _ms _mc) (score-entry-by-descriptors :map filt-frame 0)
+             (declare (ignore _ms _mc))
+             ;; `:map` is soundly pruned on length-contracting filter frame
+             (check (null m-ok-filt)))
+           (multiple-value-bind (f-ok-filt f-score-filt f-clauses-filt)
+               (score-entry-by-descriptors :filter filt-frame 0)
+             (check f-ok-filt)
+             (check (< f-score-filt -10))
+             (check (member :DESC/LEN-LE f-clauses-filt))
+             (check (member :DESC/SUBSET-ELEMENTS f-clauses-filt)))
+           (multiple-value-bind (a-ok-diff a-score-diff a-clauses-diff)
+               (score-entry-by-descriptors :map-adjacent diff-frame 0)
+             (check a-ok-diff)
+             (check (< a-score-diff -8))
+             (check (member :DESC/LEN-DEC-1 a-clauses-diff))))
+         ;; 4. Deferred fallback proposals & elimination of R8 `:register-templates-p t` regression
+         (clear-function-definitions)
+         (let* ((seq-type (sequence-type :int))
+                (inputs (list (cons 0 seq-type)))
+                (base-ops (list (op :+ :int) (op :cons :int) (op :tail :int)
+                                (op :at seq-type) (op := seq-type) (op :if seq-type)))
+                (inc-lang (make-language :int inputs :operators base-ops :literals '(1)
+                                         :constants (list (lit seq-type '()))))
+                (add3-lang (make-language :int inputs :operators base-ops :literals '(3)
+                                          :constants (list (lit seq-type '()))))
+                (shift4-lang (make-language :int inputs :operators base-ops :literals '(4)
+                                            :constants (list (lit seq-type '()))))
+                (inc-frame (simple-frame seq-type inputs
+                                         '(((()) ()) (((2)) (3)) (((5 2)) (6 3)) (((0 5 2)) (1 6 3)))))
+                (add3-frame (simple-frame seq-type inputs
+                                          '(((()) ()) (((2)) (5)) (((5 2)) (8 5)) (((0 5 2)) (3 8 5)))))
+                (shift4-frame (simple-frame seq-type inputs
+                                            '(((()) ()) (((2)) (6)) (((5 2)) (9 6)) (((0 5 2)) (4 9 6)))))
+                (cold-work 0))
+           (with-knowledge-library ((make-knowledge-library))
+             (let ((cold-job (start-recursive-synthesis shift4-frame shift4-lang 90
+                                                        :self-name :shift4-cold-m9
+                                                        :library *knowledge-library*)))
+               (resume-synthesis cold-job 120000 :stop-on-first t)
+               (check (synthesis-job-best cold-job))
+               (setf cold-work (ledger-total (synthesis-job-ledger cold-job)))))
+           (with-knowledge-library ((make-knowledge-library))
+             (let ((j-inc (start-recursive-synthesis inc-frame inc-lang 90
+                                                     :self-name :inc-m9
+                                                     :library *knowledge-library*))
+                   (j-add3 (start-recursive-synthesis add3-frame add3-lang 90
+                                                      :self-name :add3-m9
+                                                      :library *knowledge-library*)))
+               (resume-synthesis j-inc 120000 :stop-on-first t)
+               (resume-synthesis j-add3 120000 :stop-on-first t)
+               (commit-synthesis-job j-inc :name :inc-m9 :library *knowledge-library* :register-templates-p t)
+               (commit-synthesis-job j-add3 :name :add3-m9 :library *knowledge-library* :register-templates-p t)
+               (consolidate-knowledge-library *knowledge-library*
+                                              :synthesis-jobs (list j-inc j-add3)
+                                              :library-names '(:map))
+               ;; Also register a dependency-free `:decoder-template` so `learned-decoder-decompositions`
+               ;; actively emits a `:learned-template` fallback proposal on `shift4-frame`.
+               (remember-decoder-template
+                (make-decomposition
+                 :decoder (app (op :if seq-type)
+                               (app (op := seq-type) (var 0 seq-type) (lit seq-type '()))
+                               (lit seq-type '())
+                               (app (op :cons :int) (var 1 :int) (var 0 seq-type)))
+                 :child-id 1
+                 :child-type :int
+                 :bindings (list (cons 0 (app (op :at seq-type) (var 0 seq-type) (lit :int 0)))))
+                inputs)
+               (let ((warm-job (start-recursive-synthesis shift4-frame shift4-lang 90
+                                                          :self-name :shift4-warm-m9
+                                                          :library *knowledge-library*)))
+                 (resume-synthesis warm-job 120000 :stop-on-first t)
+                 (check (synthesis-job-best warm-job))
+                 ;; Deferred proposal is retained on root without premature preparation
+                 (check (plusp (length (synthesis-node-deferred-proposals (synthesis-job-root warm-job)))))
+                 ;; Warm work with `:register-templates-p t` is strictly less than cold work
+                 (check (< (ledger-total (synthesis-job-ledger warm-job)) cold-work))
+                 ;; Promoting the deferred proposal on demand materializes a child synthesis node
+                 (let ((promoted (promote-next-deferred-proposal warm-job)))
+                   (check promoted)
+                   (check (eq :prepare (synthesis-node-phase promoted)))))))))
+    (clear-function-definitions)))

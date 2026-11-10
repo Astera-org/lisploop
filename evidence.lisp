@@ -48,10 +48,12 @@
               :snapshot (knowledge-statement-snapshot entry)))
   entry)
 
-(defun knowledge-evidence-current-p (entry obligation)
-  "A status label alone never authorizes semantic elimination."
+(defun knowledge-evidence-current-p (entry obligation &optional snapshot)
+  "A status label alone never authorizes semantic elimination. SNAPSHOT is ENTRY's present
+statement snapshot, for a caller that has already taken it."
   (let ((certificate (knowledge-entry-certificate entry)))
     (and (listp certificate)
          (member (getf certificate :method) '(:exhaustive :derived :trusted-axiom))
          (member obligation (getf certificate :obligations))
-         (equalp (getf certificate :snapshot) (knowledge-statement-snapshot entry)))))
+         (equalp (getf certificate :snapshot)
+                 (or snapshot (knowledge-statement-snapshot entry))))))

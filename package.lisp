@@ -3,9 +3,9 @@
   (:export
    ;; 1. ast.lisp — Homoiconic S-expressions, schemas, bidirectional typing, O(1) metadata
    #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-inputs #:code-sort
-   #:valid-type-p #:function-sort-p #:value-p
+   #:valid-type-p #:function-sort-p #:value-p #:seq-type-p #:gf-type-p #:tuple-type-p #:input-alist
    #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
-   #:lit #:var #:op #:app #:hole #:bool-not #:bool-and
+   #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:app-of-p
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p #:operator-name #:operator-type #:operator-operand-type #:application-overhead
    #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p
@@ -60,7 +60,7 @@
    #:relational-linkage-residual
    #:quotient-values #:restore-quotient #:quotient-model
    ;; 5. enumerate.lisp — Grammar enumerator, synthesis & observation search, multi-lane propagation search
-   #:language #:make-language #:snapshot-language #:language-domain #:language-inputs
+   #:language #:make-language #:derive-language #:snapshot-language #:language-domain #:language-inputs
    #:language-operators #:language-literals #:language-constants #:language-version
    #:enumerator #:make-enumerator #:enumerator-size #:enumerator-buckets #:enumeration-step
    #:candidate #:make-candidate #:candidate-expression #:candidate-size #:candidate-run-work #:candidate-discovery-work
@@ -95,23 +95,21 @@
    #:abstract-function-bodies #:discover-library-abstractions
    #:function-body-length-preserving-p #:compute-function-descriptor
    #:compose-hybrid-residual-program #:register-knowledge-relation #:consolidate-residual-relations
-   #:knowledge-graph-locality-key #:consolidate-library-functions
+   #:consolidate-library-functions
    #:patterns-isomorphic-p #:pattern-holes #:pattern-hole-counts
    #:subtree-at-path #:replace-at-path #:tree-occurrence #:tree-occurrence-p
    #:tree-occurrence-tree-index #:tree-occurrence-path #:tree-occurrence-term
-   #:tree-occurrence-sort #:tree-occurrence-signature #:tree-occurrence-wrapper #:collect-tree-occurrences
+   #:tree-occurrence-sort #:tree-occurrence-signature #:collect-tree-occurrences
    #:au-substitutions-frame #:tree-corpus #:tree-corpus-domain #:tree-corpus-inputs #:tree-corpus-sort
    #:tree-corpus-trees #:tree-corpus-packet #:make-tree-corpus #:decode-tree-corpus #:tree-corpus-frame
    #:corpus-abstraction-model #:subexpression-abstraction #:subexpression-abstraction-p
-   #:subexpression-abstraction-kind #:subexpression-abstraction-pattern #:subexpression-abstraction-sort
-   #:subexpression-abstraction-occurrences #:subexpression-abstraction-substitutions
-   #:subexpression-abstraction-wrappers #:subexpression-abstraction-paths
+   #:subexpression-abstraction-kind #:subexpression-abstraction-pattern
+   #:subexpression-abstraction-substitutions #:subexpression-abstraction-paths
    #:subexpression-abstraction-model #:subexpression-abstraction-bits
    #:subexpression-abstraction-literal-bits #:subexpression-abstraction-gain
    #:subexpression-abstraction-structural-score #:discover-subexpression-abstractions
    #:shuffle-frame-rows #:partition-view-proposal #:partition-view-proposal-p
-   #:partition-view-proposal-kind #:partition-view-proposal-guard #:partition-view-proposal-labels
-   #:partition-view-proposal-partition #:partition-view-proposal-part-models
+   #:partition-view-proposal-kind #:partition-view-proposal-guard #:partition-view-proposal-part-models
    #:partition-view-proposal-model #:partition-view-proposal-conflict
    #:partition-view-proposal-bits #:partition-view-proposal-run-work
    #:evaluate-guard-partition #:synthesize-supplied-partition-view #:discover-partition-views
@@ -174,5 +172,15 @@
    #:dependency-search-features #:dependency-search-ledger
    #:start-heuristic-search #:resume-heuristic-search #:heuristic-search-best #:heuristic-search-ledger
    #:register-knowledge-nogood-schema #:register-knowledge-dip-feature #:register-knowledge-heuristic
-   #:commit-synthesis-job #:consolidate-knowledge-library #:explain-knowledge-library))
+   #:commit-synthesis-job #:consolidate-knowledge-library #:explain-knowledge-library
+   ;; M9 partial fiber probes, compositional secondary addresses, and policy descriptors.
+   #:probe-frame-coordinates
+   #:descriptor-clause #:descriptor-clause-p #:make-descriptor-clause
+   #:descriptor-clause-id #:descriptor-clause-facet #:descriptor-clause-tier
+   #:descriptor-clause-status #:descriptor-clause-weight-bits #:descriptor-clause-work-cost
+   #:knowledge-entry-compositional-name #:knowledge-entry-descriptor-profile
+   #:find-knowledge-entries-by-address
+   #:compute-entry-descriptor-profile #:derive-compositional-name
+   #:score-entry-by-descriptors #:consolidate-policy-descriptors
+   #:decomposition-policy-score #:synthesis-node-deferred-proposals #:promote-next-deferred-proposal))
 (in-package #:lisploop)

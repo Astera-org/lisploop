@@ -522,8 +522,7 @@ For this finite shape these orderings select the LGG; no general optimality is c
          (z0 (var 0 pair-type))
          (coord-conj (bool-and (app (op := :int) (app at-pair z0 (lit :int 0)) (lit :int 2))
                                (app (op := :int) (app at-pair z0 (lit :int 1)) (lit :int 4))))
-         (folded-conj (fold-constants coord-conj (make-schema :inputs (list (cons 0 pair-type)) :target :bool)
-                                      :ledger ledger))
+         (folded-conj (fold-constants coord-conj :ledger ledger))
          ;; And Cartesian product extraction when coordinates have `:member` sets
          (member-conj (bool-and (app (op := :int) (app at-pair z0 (lit :int 0)) (lit :int 2))
                                 (app (op :member :int) (app at-pair z0 (lit :int 1))
@@ -549,8 +548,7 @@ For this finite shape these orderings select the LGG; no general optimality is c
                                              collect (make-row :key i :known (list i)
                                                                :requirement (singleton-requirement pair-type pt)))))
              (pulled (pullback-frame parent-frame row-decoder 9 :int (list (cons 0 (var 0 :int))) ledger))
-             (checker-schema (make-schema :inputs '((0 . :int)) :target :bool))
-             (folded-reqs (mapcar (lambda (r) (fold-constants (row-requirement r) checker-schema :ledger ledger))
+             (folded-reqs (mapcar (lambda (r) (fold-constants (row-requirement r) :ledger ledger))
                                   (frame-rows pulled))))
         (check (equal generated-points (evaluation-value (evaluate batch-qmodel nil nil :ledger ledger))))
         ;; Pullback stays relational. Inversion is no longer a built-in simplifier rule.
@@ -576,9 +574,8 @@ For this finite shape these orderings select the LGG; no general optimality is c
                                    (list (make-row :key 0 :known '(0) :requirement (singleton-requirement :int 5))
                                          (make-row :key 1 :known '(1) :requirement (singleton-requirement :int 7)))))
          (pulled (pullback-frame parent-frame grid-decoder 9 pair-type (list (cons 0 (var 0 :int))) ledger))
-         (checker-schema (make-schema :inputs (list (cons 0 pair-type)) :target :bool))
-         (r0-folded (fold-constants (row-requirement (first (frame-rows pulled))) checker-schema :ledger ledger))
-         (r1-folded (fold-constants (row-requirement (second (frame-rows pulled))) checker-schema :ledger ledger)))
+         (r0-folded (fold-constants (row-requirement (first (frame-rows pulled))) :ledger ledger))
+         (r1-folded (fold-constants (row-requirement (second (frame-rows pulled))) :ledger ledger)))
     (check (eq :unknown (extract-allowed-values r0-folded)))
     (check (eq :unknown (extract-allowed-values r1-folded)))
     (check (accepts r0-folded '(0 1)))
@@ -588,3 +585,46 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (eq :error (evaluation-status (check-requirement r0-folded '(-1 0)))))))
 
 
+
+(deftest term-builder-infers-operator-types-and-splices-asts
+  ;; `term` must produce exactly the AST that the explicit constructors build.
+  (let* ((seq (sequence-type :int))
+         (unary (code-type '((0 . :int)) :int))
+         (x (var 0 :int))
+         (xs (var 0 seq))
+         (f (var 1 unary))
+         (field (gf 7))
+         (y (var 0 field)))
+    (check (equal (app (op :+ :int) (app (op :* :int) x (lit :int 3)) (lit :int 1))
+                  (term `(+ (* ,x 3) 1))))
+    ;; A literal argument takes the type its operator requires at that position.
+    (check (equal (app (op :cons :int) (lit :int 1) xs) (term `(cons 1 ,xs))))
+    (check (equal (app (op :member :int) x (lit seq '(1 2))) (term `(member ,x '(1 2)))))
+    (check (equal (app (op :if field) (app (op := field) y (lit field 0)) (lit field 1)
+                       (app (op :/ field) (lit field 1) y))
+                  (term `(if (= ,y 0) 1 (/ 1 ,y)))))
+    (check (equal (app (op :tuple (tuple-type :int :int)) x (app (op :length :int) xs))
+                  (term `(tuple ,x (length ,xs)))))
+    ;; The expected type reaches literals that no argument can type.
+    (check (equal (app (op :if seq) (app (op := seq) xs (lit seq '())) (lit seq '()) xs)
+                  (term `(if (= ,xs ()) () ,xs))))
+    (raises (term '(= 1 2)))
+    (raises (term `(+ ,x ,xs)))
+    ;; An operator spliced into head position, and a registered function named by keyword.
+    (clear-function-definitions)
+    (let (by-hand by-term)
+      (define-function :fa (list (cons 0 seq) (cons 1 unary)) seq
+        (lambda (self)
+          (setf by-term (term `(if (= ,xs ()) ()
+                                   (cons (code-eval ,f (at ,xs 0)) (,self (tail ,xs) ,f)))
+                              seq)
+                by-hand (app (op :if seq) (app (op := seq) xs (lit seq '())) (lit seq '())
+                             (app (op :cons :int)
+                                  (app (op :code-eval unary) f (app (op :at seq) xs (lit :int 0)))
+                                  (app self (app (op :tail :int) xs) f))))))
+      (check (equal by-hand by-term))
+      (check (equal (app (op :fa) xs (lit unary (app (op :+ :int) x (lit :int 1))))
+                    (term `(:fa ,xs ',(term `(+ ,x 1))))))
+      (check (equal '(2 3 4)
+                    (result (term `(:fa '(1 2 3) ',(term `(+ ,x 1)))) nil nil))))
+    (clear-function-definitions)))

@@ -696,3 +696,121 @@
                              (extract-allowed-values
                               (row-requirement (first (frame-rows (propagation-frame lag-prop)))))))))))
     (clear-function-definitions)))
+
+(deftest higher-order-m9-partial-fibers-adjacent-stencils-and-2d-probes
+  "Verify M9.1 & M9.2:
+1. Budget-calibrated partial fiber unfolding (`:max-fibers` in `fold-constants` and `lift-frame`)
+   stops recursive constructor-headed unfolding after O(k) fibers on N=16 and N=64 sequences
+   instead of allocating and computing all N fibers upfront.
+2. Contiguous adjacent fiber preservation (`((0 0) (0 1))`) in `select-active-fiber-rows` and
+   `probe-frame-coordinates` constrains discrete-derivative / stencil higher-order combinators
+   from a 2-fiber prefix.
+3. Progressive on-demand CEGAR reserve fiber unfolding (`refine-lifted-node-from-counterexample`)
+   discovers counterexamples beyond the initial partial fiber window."
+  (unwind-protect
+       (with-knowledge-library ((make-knowledge-library))
+         (clear-function-definitions)
+         (define-standard-int-combinators)
+         (let* ((seq-type (sequence-type :int))
+                (grid-type (sequence-type seq-type))
+                (unary-code (code-type (list (cons 0 :int)) :int))
+                (binary-code (code-type (list (cons 0 :int) (cons 1 :int)) :int))
+                (inputs (list (cons 0 seq-type)))
+                (decoder (app (op :map) (var 0 seq-type) (var 1 unary-code))))
+           ;; 1. O(k) partial fiber unfolding on N=16 and N=64 vs full N unfolding
+           (let* ((xs-16 (loop for i from 1 to 16 collect i))
+                  (ys-16 (mapcar (lambda (x) (* x x)) xs-16))
+                  (f-16 (simple-frame seq-type inputs (list (list (list xs-16) ys-16))))
+                  (l-partial-16 (make-ledger))
+                  (l-full-16 (make-ledger)))
+             (multiple-value-bind (child-p coupled-p reserve-p)
+                 (lift-frame f-16 decoder 1 unary-code nil l-partial-16 10000 2)
+               (multiple-value-bind (child-f coupled-f _res-f)
+                   (lift-frame f-16 decoder 1 unary-code nil l-full-16 20000 nil)
+                 (declare (ignore _res-f))
+                 (check (null coupled-p))
+                 (check (null coupled-f))
+                 (check (= 2 (length (frame-rows child-p))))
+                 (check (= 2 (length reserve-p)))
+                 (check (= 16 (length (frame-rows child-f))))
+                 ;; Contiguous adjacent fibers (0 0) and (0 1) are retained in the active window
+                 (check (equal '((0 0) (0 1)) (mapcar #'row-key (frame-rows child-p))))
+                 ;; Partial expansion uses strictly less work than full N=16 unfolding
+                 (check (< (ledger-total l-partial-16) (ledger-total l-full-16))))))
+           (let* ((xs-64 (loop for i from 1 to 64 collect i))
+                  (ys-64 (mapcar (lambda (x) (+ x 5)) xs-64))
+                  (f-64 (simple-frame seq-type inputs (list (list (list xs-64) ys-64))))
+                  (l-partial-64 (make-ledger))
+                  (l-full-64 (make-ledger)))
+             (multiple-value-bind (child-64 coupled-64 reserve-64)
+                 (lift-frame f-64 decoder 1 unary-code nil l-partial-64 10000 2)
+               (lift-frame f-64 decoder 1 unary-code nil l-full-64 200000 nil)
+               (check (null coupled-64))
+               (check (= 2 (length (frame-rows child-64))))
+               (check (<= (length reserve-64) 2))
+               (check (equal '((0 0) (0 1)) (mapcar #'row-key (frame-rows child-64))))
+               (check (< (ledger-total l-partial-64) 12000))
+               (check (< (* 4 (ledger-total l-partial-64)) (ledger-total l-full-64)))))
+           ;; 2. Coordinate-targeted probes (`probe-frame-coordinates`) for 1D and 2D grids
+           (let* ((f-1d (simple-frame seq-type inputs '((((10 20 30 40)) (11 21 31 41)))))
+                  (probed-1d (probe-frame-coordinates f-1d decoder 1 unary-code nil (make-ledger)))
+                  (f-2d (simple-frame grid-type (list (cons 0 grid-type))
+                                      '(((((1 2 3) (4 5 6) (7 8 9)))
+                                         ((2 4 6) (8 10 12) (14 16 18))))))
+                  (probed-2d (probe-frame-coordinates f-2d (var 1 grid-type) 1 grid-type
+                                                      (list (cons 0 (var 0 grid-type)))
+                                                      (make-ledger)
+                                                      :coordinates '((0 0) (0 1) (1 0) (1 1)))))
+             (check (= 2 (length (frame-rows probed-1d))))
+             (check (= 4 (length (frame-rows probed-2d))))
+             (check (equal '(2) (extract-allowed-values (row-requirement (first (frame-rows probed-2d))))))
+             (check (equal '(4) (extract-allowed-values (row-requirement (second (frame-rows probed-2d)))))))
+           ;; 3. Discrete derivative / adjacent stencil combinator `:map-adjacent` constrained by 2 adjacent fibers
+           (let ((xs (var 0 seq-type))
+                 (f-var (var 1 binary-code)))
+             (define-function :map-adjacent (list (cons 0 seq-type) (cons 1 binary-code)) seq-type
+               (lambda (self)
+                 (app (op :if seq-type)
+                      (app (op := seq-type) xs (lit seq-type '()))
+                      (lit seq-type '())
+                      (app (op :if seq-type)
+                           (app (op := seq-type) (app (op :tail :int) xs) (lit seq-type '()))
+                           (lit seq-type '())
+                           (app (op :cons :int)
+                                (app (op :code-eval binary-code) f-var
+                                     (app (op :at seq-type) (app (op :tail :int) xs) (lit :int 0))
+                                     (app (op :at seq-type) xs (lit :int 0)))
+                                (app self (app (op :tail :int) xs) f-var))))))
+             (let* ((diff-frame (simple-frame seq-type inputs
+                                              '(((()) ())
+                                                (((10 13 19 20 25 31)) (3 6 1 5 6)))))
+                    (diff-decoder (app (op :map-adjacent) (var 0 seq-type) (var 1 binary-code)))
+                    (diff-ledger (make-ledger)))
+               (multiple-value-bind (diff-child diff-coupled _diff-res)
+                   (lift-frame diff-frame diff-decoder 1 binary-code nil diff-ledger 10000 2)
+                 (declare (ignore _diff-res))
+                 (check (null diff-coupled))
+                 (check (= 2 (length (frame-rows diff-child))))
+                 (check (equal '((1 0) (1 1)) (mapcar #'row-key (frame-rows diff-child))))
+                 (check (equal '(13 10) (row-known (first (frame-rows diff-child)))))
+                 (check (equal '(19 13) (row-known (second (frame-rows diff-child))))))))
+           ;; 4. On-demand CEGAR unfolding when counterexample lies at index 5 (beyond initial 4 unfolded fibers)
+           (let* ((*max-active-lifted-rows* 2)
+                  (cegar-frame (simple-frame seq-type inputs
+                                             '((((0 2 0 2 0 3)) (0 4 0 4 0 9)))))
+                  (cegar-lang (make-language :int inputs
+                                             :operators (list (op :map) (op :+ :int) (op :* :int))
+                                             :literals '(0 1 2)
+                                             :constants (list (lit seq-type '()))))
+                  (job (start-synthesis cegar-frame cegar-lang 60
+                                        :expand (library-expander :functions '(:map))
+                                        :max-depth 1)))
+             (resume-synthesis job 40000 :stop-on-first t)
+             (check (synthesis-job-best job))
+             (let ((cegar-msg (find :cegar-refinement (synthesis-job-messages job)
+                                    :key #'message-claim :test #'eq))
+                   (expr (candidate-expression (synthesis-job-best job))))
+               (check cegar-msg)
+               (check (equal '(3) (getf (message-evidence cegar-msg) :promoted-row)))
+               (check (equal '(0 4 9 16 25) (result expr inputs '((0 2 3 4 5)))))))))
+    (clear-function-definitions)))

@@ -30,6 +30,15 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
                 (catch ,tag (cons :complete (multiple-value-list (progn ,@body)))))))
        (if (eq :complete (car ,answer)) (values-list (cdr ,answer)) ,cutoff))))
 
+(defmacro pay-debt (place budget ledger category)
+  "Charge up to BUDGET units of the staged work held in PLACE to LEDGER under CATEGORY,
+reduce PLACE by that amount, and return it. A job publishes staged results once PLACE is zero."
+  (let ((spent (gensym "SPENT")))
+    `(let ((,spent (min ,budget ,place)))
+       (charge ,ledger ,category ,spent)
+       (decf ,place ,spent)
+       ,spent)))
+
 (defun charge (ledger category &optional (amount 1))
   (assert (and (integerp amount) (>= amount 0)))
   (when (and ledger (eq ledger *work-limit-ledger*) *work-limit*
@@ -66,24 +75,23 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
 
 (defun start-program-validation (expression inputs)
   "Snapshot and validate static code through the same prepaid, resumable VM."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
-    (%make-evaluation :tasks (list (list :validate-program (copy-tree expression) (copy-tree norm-inputs))))))
+  (%make-evaluation :tasks (list (list :validate-program (copy-tree expression)
+                                       (copy-tree (input-alist inputs))))))
 
 (defun start-validated-evaluation (program values)
   "Reuse completed static validation; still validate/copy every new input value."
   (assert (and (validated-program-p program) (equal (validated-program-versions program) (vm-versions))))
   (%make-evaluation :inputs (validated-program-inputs program) :values values :prepared-p t
-                    :tasks (list (list :validate-inputs) (list :eval (validated-program-expression program)))))
+                    :tasks (list (list :validate) (list :eval (validated-program-expression program)))))
 
 (defun start-evaluation (expression inputs values)
   "An isolated, resumable machine. Its environment contains supplied arguments only."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
-    (%make-evaluation :inputs norm-inputs :values values
-                      :tasks (list (list :validate expression) (list :eval expression)))))
+  (%make-evaluation :inputs (input-alist inputs) :values values
+                    :tasks (list (list :validate expression) (list :eval expression))))
 
 (defun arithmetic-cost (name type values)
   "Unit arithmetic only for fixed primes <= 257; otherwise a bit-sensitive tariff."
-  (if (and (consp type) (eq (first type) :gf) (<= (second type) 257))
+  (if (and (gf-type-p type) (<= (second type) 257))
       1
       (let ((a (integer-width (first values)))
             (b (integer-width (second values))))
@@ -92,10 +100,12 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
                (expt (integer-length (second type)) (if (eq name :/) 3 2)) 0)))))
 
 (defun expression-pattern (expression)
-  (ecase (ast-kind expression)
-    (:var (hole (ast-id expression) (ast-type expression)))
-    (:app (apply #'app (first expression) (mapcar #'expression-pattern (rest expression))))
-    ((:lit :op :hole) expression)))
+  "EXPRESSION with each variable turned into the hole of the same id and type."
+  (map-ast (lambda (node meta)
+             (declare (ignore node))
+             (when (eq :var (ast-meta-kind meta))
+               (hole (ast-meta-id meta) (ast-meta-type meta))))
+           expression))
 
 (defvar *last-code-match* nil
   "Single-entry memo cache (pattern source scope bindings matched) so :code-bind reuses :code-match.")
@@ -112,38 +122,28 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
           (setf *last-code-match* (list pattern source scope bindings matched))
           (values bindings matched)))))
 
-(defun symbolic-primitive-cost (name type values)
-  "Prepay traversal/copying, including nested substitutions and failed matches."
-  (let* ((weights (mapcar #'value-work values (second (symbolic-operator-signature name type))))
-         (base (1+ (reduce #'+ weights))))
-    (case name
-      ((:code-match :code-bind :code-subst) (+ base (* (first weights) (second weights))))
-      (:code-less (* 4 (+ base (type-work type))))
-      (otherwise base))))
-
 (defun primitive-cost (operator values)
+  "The prepaid cost of applying OPERATOR to VALUES. A call pays one unit, its body being
+charged as it runs, and arithmetic has its own tariff. Any other primitive pays one unit and
+the work of its arguments, plus what its own traversal, copying or matching can add."
   (let ((name (operator-name operator))
         (type (operator-operand-type operator)))
-    (when (or (eq name :code-eval) (defined-function-p name))
-      (return-from primitive-cost 1))
-    (when (member name *symbolic-primitives*)
-      (return-from primitive-cost (symbolic-primitive-cost name type values)))
-    (case name
-      ((:+ :* :- :/ :<) (arithmetic-cost name type values))
-      (otherwise
-       (+ 1 (loop for value in values
-                  for input-type in (second (operator-type operator))
-                  sum (value-work value input-type))
-          (case name
-            (:gather
-             (loop with width = (integer-width (length (first values)))
-                   for index in (second values)
-                   sum (1+ (max width (integer-width index)))))
-            (:at
-             (let ((width (integer-width (length (first values))))
-                   (index (second values)))
-               (1+ (max width (integer-width index)))))
-            (otherwise 0)))))))
+    (cond
+      ((or (eq name :code-eval) (defined-function-p name)) 1)
+      ((member name '(:+ :* :- :/ :<)) (arithmetic-cost name type values))
+      (t
+       (let* ((weights (mapcar #'value-work values (second (operator-type operator))))
+              (base (1+ (reduce #'+ weights))))
+         (case name
+           ;; Nested substitutions and failed matches are paid for in advance.
+           ((:code-match :code-bind :code-subst) (+ base (* (first weights) (second weights))))
+           (:code-less (* 4 (+ base (type-work type))))
+           ((:gather :at)
+            ;; Each access compares an index with the length of the container.
+            (let ((width (integer-width (length (first values)))))
+              (+ base (loop for index in (if (eq name :at) (list (second values)) (second values))
+                            sum (1+ (max width (integer-width index)))))))
+           (otherwise base)))))))
 
 (defun checked-position (index length)
   "An integer becomes a position only at access; no wrapping or negative offsets."
@@ -195,7 +195,8 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
                           collect (cons id (if (code-subst-code-binding-p b-type out-type input-type)
                                                value
                                                (lit input-type value))))
-                    :var)))))
+                    :var)))
+    (otherwise (error "Unknown primitive ~S" name))))
 
 (defun execute-primitive (operator values)
   (let ((name (operator-name operator))
@@ -231,15 +232,14 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
       (:at
        (let* ((items (first values)) (length (length items)))
          (nth (checked-position (second values) length) items)))
-      (otherwise (if (member name *symbolic-primitives*)
-                     (execute-symbolic-primitive name type values)
-                     (error "Unknown primitive ~S" name))))))
+      (otherwise (execute-symbolic-primitive name type values)))))
 
 (defun instruction-cost (state task)
   (ecase (first task)
     (:validate-program (syntax-work (second task)))
-    ((:validate :validate-inputs)
-     (+ (if (eq :validate (first task)) (syntax-work (second task)) 0)
+    ;; A :validate task checks the input values, and the expression too when it names one.
+    (:validate
+     (+ (if (rest task) (syntax-work (second task)) 0)
         (loop for spec in (evaluation-inputs state)
               for value in (evaluation-values state)
               sum (+ (integer-width (car spec)) (type-work (cdr spec))
@@ -260,12 +260,12 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
        (expression-type expression inputs)
        (push (%make-validated-program :expression expression :inputs inputs :versions (vm-versions))
              (evaluation-stack state))))
-    ((:validate :validate-inputs)
+    (:validate
      (let ((inputs (evaluation-inputs state)) (values (evaluation-values state)))
        (assert (= (length inputs) (length values)))
        (assert (every (lambda (spec value) (or (eq value :unresolved) (value-p value (cdr spec))))
                       inputs values))
-       (when (eq :validate (first task)) (expression-type (second task) inputs))
+       (when (rest task) (expression-type (second task) inputs))
        (setf (evaluation-environment state)
              (bind-inputs inputs (mapcar #'copy-tree values)))))
     (:eval
@@ -303,8 +303,8 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
      (let* ((operator (second task))
             (name (operator-name operator))
             (type (operator-operand-type operator))
-            (raw-values (loop repeat (third task) collect (pop (evaluation-stack state))))
-            (ordered-values (reverse raw-values)))
+            (ordered-values (reverse (loop repeat (third task)
+                                           collect (pop (evaluation-stack state))))))
        (flet ((call-body (inputs args body)
                 (push (list :restore-env (evaluation-environment state)) (evaluation-tasks state))
                 (setf (evaluation-environment state) (bind-inputs inputs args))
@@ -338,11 +338,9 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
         (let ((task (first (evaluation-tasks state))))
           (when (zerop (evaluation-remaining-cost state))
             (setf (evaluation-remaining-cost state) (instruction-cost state task)))
-          (let ((spent (min budget (evaluation-remaining-cost state))))
+          (let ((spent (pay-debt (evaluation-remaining-cost state) budget ledger category)))
             (decf budget spent)
-            (decf (evaluation-remaining-cost state) spent)
             (incf (evaluation-work state) spent)
-            (charge ledger category spent)
             (setf instruction-paid-p t))
           (when (zerop (evaluation-remaining-cost state))
             (pop (evaluation-tasks state))
@@ -351,12 +349,8 @@ CUTOFF is returned on interruption. Resumable controllers use explicit state."
               (assert (= (length (evaluation-stack state)) 1))
               (setf (evaluation-status state) :value
                     (evaluation-value state) (first (evaluation-stack state)))))))
-      (unresolved-evaluation (condition)
-        (setf (evaluation-status state) :unresolved
-              (evaluation-error state) (princ-to-string condition)
-              unpaid-error-p (not instruction-paid-p)))
       (error (condition)
-        (setf (evaluation-status state) :error
+        (setf (evaluation-status state) (if (typep condition 'unresolved-evaluation) :unresolved :error)
               (evaluation-error state) (princ-to-string condition)
               unpaid-error-p (not instruction-paid-p))))
     (values state unpaid-error-p)))

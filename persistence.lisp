@@ -1,6 +1,6 @@
 (in-package #:lisploop)
 
-;;; Generic Knowledge Library Serialization & Deserialization
+;;; Saving and restoring a knowledge library as a portable S-expression packet.
 
 (defun serialize-hybrid-slot (value)
   "Serialize VALUE as `(:ast ...)` when it is a valid AST node, or `(:data ...)` otherwise."
@@ -16,47 +16,75 @@
       (:ast (sexp->ast (second encoded)))
       (:data (copy-tree (second encoded))))))
 
+(defun descriptor-clause->plist (clause)
+  (if (descriptor-clause-p clause)
+      (list :id (descriptor-clause-id clause)
+            :facet (descriptor-clause-facet clause)
+            :tier (descriptor-clause-tier clause)
+            :status (descriptor-clause-status clause)
+            :weight-bits (descriptor-clause-weight-bits clause)
+            :work-cost (descriptor-clause-work-cost clause))
+      (copy-tree clause)))
+
+(defun plist->descriptor-clause (plist)
+  "Rebuild a clause; a field that is absent or nil in PLIST takes the struct's default."
+  (if (descriptor-clause-p plist)
+      plist
+      (apply #'make-descriptor-clause
+             (loop for (key value) on plist by #'cddr
+                   when value append (list key value)))))
+
+(defun convert-descriptor-profile (metadata converter)
+  "A copy of the entry METADATA plist with each clause of its descriptor profile converted."
+  (let ((copy (copy-list metadata)))
+    (when (getf copy :descriptor-profile)
+      (setf (getf copy :descriptor-profile)
+            (mapcar converter (getf copy :descriptor-profile))))
+    (copy-tree copy)))
+
+(defparameter +knowledge-entry-slots+
+  '((:id knowledge-entry-id :data)
+    (:kind knowledge-entry-kind :data)
+    (:domain knowledge-entry-domain :data)
+    (:inputs knowledge-entry-inputs :data)
+    (:target knowledge-entry-target :data)
+    (:expression knowledge-entry-expression :ast)
+    (:guard knowledge-entry-guard :ast)
+    (:trigger knowledge-entry-trigger :ast)
+    (:residual knowledge-entry-residual :hybrid)
+    (:auxiliary-code knowledge-entry-auxiliary-code :ast)
+    (:status knowledge-entry-status :data)
+    (:certificate knowledge-entry-certificate :hybrid)
+    (:bits knowledge-entry-bits :data)
+    (:gain knowledge-entry-gain :data)
+    (:work knowledge-entry-work :data)
+    (:edges knowledge-entry-edges :data)
+    (:metadata knowledge-entry-metadata :metadata))
+  "Each slot of a `knowledge-entry` as (keyword reader encoding). The keyword is both the
+packet key and the `make-knowledge-entry` argument.")
+
 (defun knowledge-entry->sexp (entry)
   "Serialize `knowledge-entry` ENTRY into a portable homoiconic plist S-expression."
-  (list :id (knowledge-entry-id entry)
-        :kind (knowledge-entry-kind entry)
-        :domain (copy-tree (knowledge-entry-domain entry))
-        :inputs (copy-tree (knowledge-entry-inputs entry))
-        :target (copy-tree (knowledge-entry-target entry))
-        :expression (ast->sexp (knowledge-entry-expression entry))
-        :guard (ast->sexp (knowledge-entry-guard entry))
-        :trigger (ast->sexp (knowledge-entry-trigger entry))
-        :residual (serialize-hybrid-slot (knowledge-entry-residual entry))
-        :auxiliary-code (ast->sexp (knowledge-entry-auxiliary-code entry))
-        :status (knowledge-entry-status entry)
-        :certificate (serialize-hybrid-slot (knowledge-entry-certificate entry))
-        :bits (knowledge-entry-bits entry)
-        :gain (knowledge-entry-gain entry)
-        :work (knowledge-entry-work entry)
-        :edges (copy-tree (knowledge-entry-edges entry))
-        :metadata (copy-tree (knowledge-entry-metadata entry))))
+  (loop for (key reader encoding) in +knowledge-entry-slots+
+        for value = (funcall reader entry)
+        append (list key (ecase encoding
+                           (:data (copy-tree value))
+                           (:ast (ast->sexp value))
+                           (:hybrid (serialize-hybrid-slot value))
+                           (:metadata (convert-descriptor-profile value #'descriptor-clause->plist))))))
 
 (defun sexp->knowledge-entry (plist &optional (library *knowledge-library*))
-  "Reconstruct a `knowledge-entry` from its `knowledge-entry->sexp` plist representation."
-  (make-knowledge-entry
-   :id (getf plist :id)
-   :kind (getf plist :kind)
-   :domain (getf plist :domain)
-   :inputs (getf plist :inputs)
-   :target (getf plist :target)
-   :expression (sexp->ast (getf plist :expression))
-   :guard (sexp->ast (getf plist :guard))
-   :trigger (sexp->ast (getf plist :trigger))
-   :residual (deserialize-hybrid-slot (getf plist :residual))
-   :auxiliary-code (sexp->ast (getf plist :auxiliary-code))
-   :status (or (getf plist :status) :empirical)
-   :certificate (deserialize-hybrid-slot (getf plist :certificate))
-   :bits (or (getf plist :bits) 0)
-   :gain (or (getf plist :gain) 0)
-   :work (or (getf plist :work) 0)
-   :edges (getf plist :edges)
-   :metadata (getf plist :metadata)
-   :library library))
+  "Reconstruct a `knowledge-entry` from its `knowledge-entry->sexp` plist representation.
+A slot that is absent from PLIST takes the default of `make-knowledge-entry`."
+  (apply #'make-knowledge-entry :library library
+         (loop for (key nil encoding) in +knowledge-entry-slots+
+               for value = (let ((stored (getf plist key)))
+                             (ecase encoding
+                               (:data stored)
+                               (:ast (sexp->ast stored))
+                               (:hybrid (deserialize-hybrid-slot stored))
+                               (:metadata (convert-descriptor-profile stored #'plist->descriptor-clause))))
+               when value append (list key value))))
 
 (defun serialize-knowledge-library (&optional (library *knowledge-library*))
   "Serialize LIBRARY into a self-contained homoiconic S-expression packet."
@@ -73,52 +101,40 @@
 installing all entries in priority order (`:function` before `:law`, `:solver`, `:functor`, `:heuristic`)."
   (assert (and (consp sexp) (eq :knowledge-library (first sexp))))
   (let* ((plist (rest sexp))
-         (enc-ver (getf plist :encoding-version))
-         (lib (if target-library
-                  (clear-knowledge-library target-library)
-                  (make-knowledge-library)))
-         (fn-names (getf plist :function-names))
-         (entry-plists (getf plist :entries))
-         (ordered-plists
-           (stable-sort (copy-list entry-plists)
-                        #'<
-                        :key (lambda (ep)
-                               (let ((spec (find-knowledge-kind-spec (getf ep :kind))))
-                                 (if spec (knowledge-kind-spec-priority spec) 50))))))
-    (assert (eql +encoding-version+ enc-ver) () "Unsupported knowledge-library encoding version ~S" enc-ver)
-    (setf (knowledge-library-de-novo-counter lib) (or (getf plist :de-novo-counter) 0)
-          (knowledge-library-entry-counter lib) (or (getf plist :entry-counter) 0)
-          (knowledge-library-function-names lib) (copy-list fn-names))
-    (flet ((populate ()
-             ;; Declare every signature before decoding bodies, including forward
-             ;; references and mutually recursive definitions in saved order.
-             (dolist (ep entry-plists)
-               (when (eq :function (getf ep :kind))
-                 (let ((name (canonical-op-name (getf ep :id))))
-                   (setf (gethash name *function-definitions*)
-                         (%make-function-definition :name name :inputs (copy-tree (getf ep :inputs))
-                                                    :return-type (copy-tree (getf ep :target)))))))
-             (dolist (fn-name fn-names)
-               (let ((kfn (canonical-op-name fn-name)))
-                 (unless (member kfn *registered-function-names*)
-                   (setf *registered-function-names* (append *registered-function-names* (list kfn))))))
-             (let ((installed-by-id (make-hash-table :test #'eq)))
-               (dolist (ep ordered-plists)
-                 (let ((entry (sexp->knowledge-entry ep lib)))
-                   (register-knowledge-entry entry :library lib :ledger ledger)
-                   (setf (gethash (knowledge-entry-id entry) installed-by-id) entry)))
-               ;; Preserve original chronological entry order
-               (setf (knowledge-library-entries lib)
-                     (loop for ep in entry-plists
-                           for id = (canonical-op-name (getf ep :id))
-                           for e = (gethash id installed-by-id)
-                           when e collect e)))))
-      (if (eq lib *knowledge-library*)
-          (populate)
-          (with-knowledge-library (lib)
-            (populate))))
-    (setf (knowledge-library-version lib) (or (getf plist :version) (knowledge-library-version lib)))
-    lib))
+         (library (if target-library
+                      (clear-knowledge-library target-library)
+                      (make-knowledge-library)))
+         (entry-plists (getf plist :entries)))
+    (assert (eql +encoding-version+ (getf plist :encoding-version)) ()
+            "Unsupported knowledge-library encoding version ~S" (getf plist :encoding-version))
+    (with-knowledge-library (library)
+      (setf *de-novo-function-counter* (or (getf plist :de-novo-counter) 0)
+            (knowledge-library-entry-counter library) (or (getf plist :entry-counter) 0))
+      ;; Declare every signature before decoding bodies, including forward
+      ;; references and mutually recursive definitions in saved order.
+      (dolist (entry-plist entry-plists)
+        (when (eq :function (getf entry-plist :kind))
+          (let ((name (canonical-op-name (getf entry-plist :id))))
+            (setf (gethash name *function-definitions*)
+                  (%make-function-definition :name name
+                                             :inputs (copy-tree (getf entry-plist :inputs))
+                                             :return-type (copy-tree (getf entry-plist :target)))))))
+      (setf *registered-function-names* (mapcar #'canonical-op-name (getf plist :function-names)))
+      (let ((installed (make-hash-table :test #'eq)))
+        (dolist (entry-plist (stable-sort (copy-list entry-plists) #'<
+                                          :key (lambda (entry-plist)
+                                                 (knowledge-kind-priority (getf entry-plist :kind)))))
+          (let ((entry (sexp->knowledge-entry entry-plist library)))
+            (register-knowledge-entry entry :library library :ledger ledger)
+            (setf (gethash (knowledge-entry-id entry) installed) entry)))
+        ;; Entries were installed in kind order; restore the saved chronological order.
+        (setf (knowledge-library-entries library)
+              (loop for entry-plist in entry-plists
+                    for entry = (gethash (canonical-op-name (getf entry-plist :id)) installed)
+                    when entry collect entry))))
+    (setf (knowledge-library-version library)
+          (or (getf plist :version) (knowledge-library-version library)))
+    library))
 
 (defun save-knowledge-library (pathname &optional (library *knowledge-library*))
   "Write LIBRARY as a canonical homoiconic S-expression file at PATHNAME."

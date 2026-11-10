@@ -31,7 +31,7 @@
         (check (equal (outcome-signature predicate '((0 . :int)) (list value))
                       (outcome-signature (fold-constants predicate) '((0 . :int)) (list value)))))))
   (let* ((expr (app (op :+ :int) (lit :int 3) (lit :int 4))) (ledger (make-ledger)))
-    (check (equal expr (fold-constants expr nil :ledger ledger :budget 0)))
+    (check (equal expr (fold-constants expr :ledger ledger :budget 0)))
     (check (zerop (ledger-total ledger)))))
 
 (deftest exhaustive-small-partial-boolean-contexts

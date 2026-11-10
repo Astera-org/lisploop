@@ -390,10 +390,10 @@
          ;; 4. Budget cutoff leaves unreduced expression intact and semantically equivalent
          (let* ((call (app (op :fa) (app (op :cons :int) x0 (lit seq-type '(2 3 4)))))
                 (ledger (make-ledger)))
-           (check (equal call (fold-constants call nil :ledger ledger :budget 0)))
+           (check (equal call (fold-constants call :ledger ledger :budget 0)))
            (check (zerop (ledger-total ledger)))
            (dolist (b '(1 2 4 8 100))
-             (let ((cut (fold-constants call nil :budget b)))
+             (let ((cut (fold-constants call :budget b)))
                (dolist (v '(5 9))
                  (check (equal (result call '((0 . :int)) (list v))
                                (result cut '((0 . :int)) (list v)))))))))
@@ -1977,8 +1977,7 @@ covers, and `:register-p nil` dry-run isolation."
                                   (lit binary-code (app (op :+ :int) (var 0 :int) (var 1 :int)))
                                   (app (op :tuple subst-tup-type) x9 x1-code)))
                     (call-expr (app (op :fb) (lit seq-type '(2 3)) (lit :int 0) adapter))
-                    (checker-schema (make-schema :inputs (list (cons 9 binary-code)) :target :int))
-                    (unfolded (fold-constants call-expr checker-schema)))
+                    (unfolded (fold-constants call-expr)))
                ;; Unfolds across both elements '(2 3), exposing (:code-eval X9 ...) on each step
                (check (not (contains-call-to-p unfolded :fb)))
                (check (contains-call-to-p unfolded :code-eval)))))

@@ -7,19 +7,34 @@
 (defconstant +encoding-version+ 7)
 (defconstant +opcode-width+ 4)
 
+(defun emitted-bits (emitter &rest arguments)
+  "The number of bits EMITTER writes for ARGUMENTS, counted without building a packet."
+  (let ((bits 0))
+    (apply emitter (append arguments (list (lambda (width value)
+                                             (declare (ignore value))
+                                             (incf bits width)))))
+    bits))
+
 (defun emit-operator-name (name emit)
   (let ((index (or (operator-index name) (error "Unknown operator ~S" name))))
     (funcall emit +opcode-width+ (min 15 index))
     (when (>= index 15) (emit-positive (- index 14) emit))))
 
-(defun emit-operator (operator emit)
-  (let* ((meta (ensure-ast-meta operator))
-         (name (ast-meta-id meta))
-         (encoded-type (operator-encoded-type name (ast-meta-type meta))))
-    (assert (eq :op (ast-meta-kind meta)))
+(defun emit-operator-code (name type emit)
+  "Emit operator NAME and the part of its parameter TYPE that a decoder cannot infer."
+  (let ((encoded-type (operator-encoded-type name type)))
     (emit-operator-name name emit)
     (when encoded-type
       (emit-bit-type encoded-type emit))))
+
+(defun emit-operator (operator emit)
+  (let ((meta (ensure-ast-meta operator)))
+    (assert (eq :op (ast-meta-kind meta)))
+    (emit-operator-code (ast-meta-id meta) (ast-meta-type meta) emit)))
+
+(defun operator-name-bit-size (name) (emitted-bits #'emit-operator-name name))
+(defun operator-bit-size (name type) (emitted-bits #'emit-operator-code name type))
+(defun type-bit-size (type) (emitted-bits #'emit-bit-type type))
 
 (defun emit-positive (value emit)
   (let* ((width (integer-length value)) (length-width (integer-length width)))
@@ -75,10 +90,11 @@
   (emit-bit-type type emit))
 
 (defun header-size (inputs type)
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
-    (+ (positive-bit-size +encoding-version+)
-       (inputs-bit-size norm-inputs)
-       (type-bit-size type))))
+  (emitted-bits #'emit-bit-header (input-alist inputs) type))
+
+(defun header-bound (inputs type slack)
+  "A description bound that leaves SLACK bits for the body after the header of INPUTS and TYPE."
+  (+ (header-size inputs type) slack))
 
 (defun emit-bit-expression (expression inputs type emit)
   (let* ((meta (ensure-ast-meta expression))
@@ -97,7 +113,7 @@
                  (emit-bit-expression child inputs child-type emit)))))))
 
 (defun emit-bit-model (expression inputs emit)
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+  (let ((norm-inputs (input-alist inputs)))
     (assert (valid-inputs-p norm-inputs))
     (let ((type (expression-type expression norm-inputs)))
       (emit-bit-header norm-inputs type emit)
@@ -105,7 +121,7 @@
 
 (defun description-size (expression &optional inputs)
   "Exact packet length in bits, including the schema; O(1) via cached AST metadata."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+  (let ((norm-inputs (input-alist inputs)))
     (assert (valid-inputs-p norm-inputs))
     (let ((type (expression-type expression norm-inputs)))
       (+ (header-size norm-inputs type)
@@ -179,18 +195,7 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
                  (1 (lit type (read-value type)))
                  (2
                   (let* ((name (read-operator-name))
-                         (operand-type (case name
-                                         ((:= :member :at :length) (read-type))
-                                         (:lookup (tuple-type (read-type) type))
-                                         ((:gather :concat :cons :tail)
-                                          (assert (and (consp type) (eq (first type) :seq)))
-                                          (second type))
-                                         (:< (assert (eq type :bool)) :int)
-                                         (otherwise
-                                          (if (member name *symbolic-primitives*)
-                                              (read-type)
-                                              type))))
-                         (operator (op name operand-type)))
+                         (operator (op name (operator-decoded-type name type #'read-type))))
                     (assert (equal type (third (operator-type operator))))
                     (apply #'app operator
                            (mapcar (lambda (child-type) (read-expression inputs child-type))
@@ -205,16 +210,15 @@ Reject truncation, trailing bits, unused codes and unsupported versions."
 
 (defun expression-less-p (left right inputs)
   "Compare two expressions by O(1) description-size, breaking ties by canonical packet bits."
-  (let ((norm-inputs (if (schema-p inputs) (schema-inputs inputs) inputs)))
+  (let ((norm-inputs (input-alist inputs)))
     (and (not (equal left right))
          (let ((left-size (description-size left norm-inputs))
                (right-size (description-size right norm-inputs)))
            (or (< left-size right-size)
                (and (= left-size right-size)
-                    (let ((left-bits (encode-model left norm-inputs))
-                          (right-bits (encode-model right norm-inputs)))
-                      (loop for i below (length left-bits)
-                            for lb = (aref left-bits i)
-                            for rb = (aref right-bits i)
-                            when (/= lb rb) return (< lb rb)
-                            finally (return nil)))))))))
+                    (let* ((left-bits (encode-model left norm-inputs))
+                           (right-bits (encode-model right norm-inputs))
+                           (first-difference (mismatch left-bits right-bits)))
+                      (and first-difference
+                           (< (aref left-bits first-difference)
+                              (aref right-bits first-difference))))))))))
