@@ -870,28 +870,32 @@ Returns (values total-p conditional-code-params)."
          (assert (and (eq :fn (first sig)) (equal actual (second sig))))
          (third sig))))))
 
-(defun map-ast (function tree &key code)
-  "Rebuild TREE from the leaves up. FUNCTION is called with each node and its metadata and
-returns the node's replacement, or nil to keep it; an application is offered after its
-operator and arguments have been mapped. Subtrees that do not change are shared with TREE.
-Quoted code is mapped only when CODE is true."
-  (labels ((walk (node)
+(defun map-ast (function tree &key code root-first)
+  "Rebuild TREE, replacing nodes as FUNCTION directs. FUNCTION is called with a node and its
+metadata and returns the node's replacement, or nil to keep it. By default the tree is
+rebuilt from the leaves up: an application is offered after its operator and arguments
+have been mapped. With ROOT-FIRST a node is offered before its parts, and a node that is
+replaced is not descended into, so FUNCTION sees exactly the nodes outside every
+replacement. Subtrees that do not change are shared with TREE. Quoted code is mapped only
+when CODE is true."
+  (labels ((map-parts (node meta)
+             (case (ast-meta-kind meta)
+               (:app (let ((parts (mapcar #'walk node)))
+                       (if (every #'eq parts node) node (apply #'app parts))))
+               (:lit (let ((type (ast-meta-type meta)) (value (ast-meta-value meta)))
+                       (if (and code (code-type-p type))
+                           (let ((inner (walk value)))
+                             (if (eq inner value) node (lit type inner)))
+                           node)))
+               (t node)))
+           (walk (node)
              (let ((meta (ignore-errors (ensure-ast-meta node))))
-               (if (null meta)
-                   node
-                   (let ((rebuilt
-                           (case (ast-meta-kind meta)
-                             (:app (let ((parts (mapcar #'walk node)))
-                                     (if (every #'eq parts node) node (apply #'app parts))))
-                             (:lit (let ((type (ast-meta-type meta)) (value (ast-meta-value meta)))
-                                     (if (and code (code-type-p type))
-                                         (let ((inner (walk value)))
-                                           (if (eq inner value) node (lit type inner)))
-                                         node)))
-                             (t node))))
-                     (or (funcall function rebuilt
-                                  (if (eq rebuilt node) meta (ensure-ast-meta rebuilt)))
-                         rebuilt))))))
+               (cond ((null meta) node)
+                     (root-first (or (funcall function node meta) (map-parts node meta)))
+                     (t (let ((rebuilt (map-parts node meta)))
+                          (or (funcall function rebuilt
+                                       (if (eq rebuilt node) meta (ensure-ast-meta rebuilt)))
+                              rebuilt)))))))
     (walk tree)))
 
 (defun instantiate (tree substitutions &optional (tag :hole))
@@ -1000,24 +1004,36 @@ Literal data is opaque. Function definitions are dependencies, not AST children.
 
 ;;; A surface syntax for building typed ASTs in host code.
 
+(defun operator-parameter-from-pattern (name types expected)
+  "The type parameter of primitive NAME, as far as its type patterns determine it from
+the argument TYPES that are known (nil marks one that is not) and the EXPECTED result type."
+  (destructuring-bind (&optional parameter arguments result) (primitive-pattern name)
+    (let ((bindings nil))
+      (flet ((learn (pattern type)
+               (when type
+                 (setf bindings (or (ignore-errors (match-type-pattern pattern type bindings))
+                                    bindings)))))
+        (loop for (pattern) on arguments
+              for type in types
+              do (learn pattern type))
+        (learn result expected)
+        ;; A variable that nothing bound is left in place and is not a type.
+        (let ((type (sublis bindings parameter)))
+          (and (valid-type-p type) type))))))
+
 (defun operator-parameter-from-arguments (name types expected)
   "The type parameter of primitive NAME, read off whichever argument TYPES are already
 known (nil marks an argument that is not), or else off the EXPECTED result type."
-  (if (and (eq name :tuple) (notany #'null types))
-      (cons :tuple types)
-      (destructuring-bind (&optional parameter arguments result) (primitive-pattern name)
-        (let ((bindings nil))
-          (flet ((learn (pattern type)
-                   (when type
-                     (setf bindings (or (ignore-errors (match-type-pattern pattern type bindings))
-                                        bindings)))))
-            (loop for (pattern) on arguments
-                  for type in types
-                  do (learn pattern type))
-            (learn result expected)
-            ;; A variable that nothing bound is left in place and is not a type.
-            (let ((type (sublis bindings parameter)))
-              (and (valid-type-p type) type)))))))
+  (flet ((tuple-of (&rest parts)
+           (and (notany #'null parts) (apply #'tuple-type parts))))
+    (case name
+      ;; These carry a tuple of the types involved, which no single pattern expresses.
+      (:tuple (apply #'tuple-of types))
+      (:code-match (tuple-of (first types) (second types)))
+      (:code-child (tuple-of (first types) expected))
+      ((:code-bind :code-subst) (tuple-of (first types) (second types) expected))
+      (:code-operator expected)
+      (otherwise (operator-parameter-from-pattern name types expected)))))
 
 (defun term (form &optional expected)
   "Build a typed AST from FORM, a plain S-expression whose operators are named by symbols
@@ -1026,7 +1042,10 @@ Anything in FORM that is already an AST is used as it stands, so a backquoted te
 can splice in variables, sub-expressions, or an operator in head position. A bare literal
 (a number, nil, t, or a quoted datum) takes its type from context: the type its operator
 requires at that position, or EXPECTED at the top."
-  (flet ((node-p (x) (and x (or (symbolp x) (consp x)) (gethash x *node-meta*)))
+  (flet ((node-p (x)
+           ;; The metadata of X if it is an AST. Copied trees are ASTs too; their metadata
+           ;; is rebuilt on demand, so the cache alone cannot decide.
+           (and x (or (symbolp x) (consp x)) (ignore-errors (ensure-ast-meta x))))
          (literal (value)
            (assert expected () "The literal ~S needs a type from its context." value)
            (lit expected value)))

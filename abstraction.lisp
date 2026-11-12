@@ -65,18 +65,16 @@
 (defun normalize-guarded-equalities (expr)
   "In `(if (= Xi 'c) then else)` (or `(= 'c Xi)`), canonicalize the guard to `(= Xi 'c)`
 and replace occurrences of `Xi` inside `then` with `'c`."
-  (if (not (app-p expr))
-      expr
-      (let* ((op-node (first expr))
-             (args (mapcar #'normalize-guarded-equalities (rest expr))))
-        (if (and (operator-p op-node) (eq :if (operator-name op-node)))
-            (multiple-value-bind (v l) (extract-var-literal-equality (first args))
-              (let ((canon-guard (if v (app (first (first args)) v l) (first args)))
-                    (then-branch (if v
-                                     (replace-subexpression (second args) v l)
-                                     (second args))))
-                (app op-node canon-guard then-branch (third args))))
-            (apply #'app op-node args)))))
+  (map-ast (lambda (node meta)
+             (when (and (eq :app (ast-meta-kind meta)) (eq :if (ast-meta-id meta)))
+               (destructuring-bind (operator guard then else) node
+                 (multiple-value-bind (variable literal) (extract-var-literal-equality guard)
+                   (when variable
+                     (app operator
+                          (app (first guard) variable literal)
+                          (replace-subexpression then variable literal)
+                          else))))))
+           expr))
 
 (defun infer-self-operator-name (expr inputs return-type &optional declared-name)
   "Determine the recursive self-call operator name in EXPR matching `(inputs -> return-type)`."
@@ -222,7 +220,7 @@ evaluates on that cover. Returns nil unless every hole can be abstracted and one
                     (setf code-p t)
                     (add-parameter hole-id common-type
                                    (lambda (parameter)
-                                     (apply #'app (op :code-eval common-type) parameter cover))
+                                     (term `(code-eval ,parameter ,@cover)))
                                    (nreverse literals))))))
       (when code-p
         (values (nreverse parameters) (nreverse replacements) (nreverse arguments))))))

@@ -154,7 +154,7 @@
 (deftest guarded-rewrites-preserve-errors-and-terminate
   (let* ((domain (gf 5)) (inputs (list (cons 0 domain))) (x (var 0 domain))
          (zero (lit domain 0)) (one (lit domain 1)) (mul (op :* domain)) (div (op :/ domain))
-         (condition (app (op := domain) x zero)) (guard (negate-predicate condition))
+         (condition (app (op := domain) x zero)) (guard (bool-not condition))
          (cancel (make-law domain inputs (app div x x) one :guard guard))
          (rules (list (checked-law (make-law domain inputs (app mul zero x) zero))
                       (checked-law (make-law domain inputs (app (op :- domain) x x) zero))
@@ -221,7 +221,7 @@
     (check (eq :error (evaluation-status (evaluate expression inputs '(1 t)))))
     (check (equal x (normalize-for-test (app (op :if domain) c x x) inputs (list law) domain))))
   (let* ((domain (gf 5)) (inputs (list (cons 0 domain))) (x (var 0 domain))
-         (guard (negate-predicate (app (op := domain) x (lit domain 0))))
+         (guard (bool-not (app (op := domain) x (lit domain 0))))
          (law (make-law domain inputs (app (op :/ domain) x x) (lit domain 1) :guard guard))
          (state (start-law-validation law)))
     (resume-law-validation state 1)
@@ -376,7 +376,7 @@
            (eta-law (make-law d3 tuple-inputs
                               (app tup-op (app at-op t0 idx0) (app at-op t0 idx1))
                               t0))
-           (nz-guard (negate-predicate (app (op := d3) (app at-op t0 idx1) (lit d3 0))))
+           (nz-guard (bool-not (app (op := d3) (app at-op t0 idx1) (lit d3 0))))
            (guarded-tuple-law
              (make-law d3 tuple-inputs
                        (app tup-op

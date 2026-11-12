@@ -73,7 +73,7 @@
 (deftest au-law-repeated-expression-and-operator-holes
   (let* ((laws (loop for n in '(2 3 4) for name in '(:+ :* :-) collect
                 (let* ((v (lit :int n)) (expression (app (op name :int) v v))
-                       (guard (negate-predicate (app (op := :int) v (lit :int 0)))))
+                       (guard (bool-not (app (op := :int) v (lit :int 0)))))
                   (make-law :int nil expression expression :guard guard))))
          (corpus (make-law-corpus laws)))
     (multiple-value-bind (models pattern substitutions groups) (propose-law-compressions corpus)

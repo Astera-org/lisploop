@@ -42,11 +42,11 @@
     (assert (rewrite-scope-type-p type domain))
     (assert (eq :bool (expression-type guard inputs)))
     (%make-law :domain (copy-tree domain) :inputs (copy-tree inputs)
-               :equation (copy-tree (app (op := type) left right))
+               :equation (copy-tree (term `(= ,left ,right)))
                :guard (copy-tree guard) :origin (copy-tree origin))))
 
 (defun law-statement (law)
-  (app (op :if :bool) (law-guard law) (law-equation law) (lit :bool t)))
+  (term `(if ,(law-guard law) ,(law-equation law) t)))
 
 (defun law-snapshot (law)
   (list (copy-tree (law-domain law)) (encode-model (law-equation law) (law-inputs law))
@@ -310,9 +310,6 @@ checked law. Its setup work is the syntax of every statement, usable as a rule o
                     () "Rewrite requires unchanged, current, exhaustive evidence in this domain")
          collect (list (law-inputs law) (law-equation law) (law-guard law)))))
 
-(defun negate-predicate (expression)
-  (app (op :if :bool) expression (lit :bool nil) (lit :bool t)))
-
 (defun compile-rule-transformer (rule inputs)
   "Lower a frozen checked direction to an ordinary DSL program on quoted syntax."
   (let* ((parameters (rewrite-rule-inputs rule))
@@ -322,27 +319,24 @@ checked law. Its setup work is the syntax of every statement, usable as a rule o
          (source (var 0 source-type)) (assumptions (var 1 (sequence-type guard-type)))
          (pattern (lit pattern-type (rewrite-rule-pattern rule)))
          (binding-types (mapcar (lambda (parameter) (code-type inputs (cdr parameter))) parameters))
+         ;; One quoted binding per rule parameter, read off the match of PATTERN on SOURCE.
          (bindings (loop for parameter in parameters for type in binding-types collect
-                     (app (op :code-bind (tuple-type pattern-type source-type type))
-                          pattern source (lit :int (car parameter)))))
-         (binding-tuple-type (apply #'tuple-type binding-types))
-         (binding-tuple (apply #'app (op :tuple binding-tuple-type) bindings)))
+                     (term `(code-bind ,pattern ,source ,(car parameter)) type)))
+         (binding-tuple (term `(tuple ,@bindings))))
     (flet ((fill-template (expression type)
-             (let ((template-type (code-type parameters (code-sort type))))
-               (app (op :code-subst (tuple-type template-type binding-tuple-type type))
-                    (lit template-type expression) binding-tuple))))
+             (term `(code-subst ,(lit (code-type parameters (code-sort type)) expression)
+                                ,binding-tuple)
+                   type)))
       (let* ((replacement (fill-template (rewrite-rule-replacement rule) source-type))
              (guard (fill-template (rewrite-rule-guard rule) guard-type))
-             (established (app (op :if :bool)
-                               (app (op := guard-type) guard (lit guard-type (lit :bool t)))
-                               (lit :bool t) (app (op :member guard-type) guard assumptions)))
-             (result (app (op :if source-type) established
-                          (app (op :if source-type) (app (op :code-less source-type) replacement source)
-                               replacement source) source)))
-        (loop for binding in (reverse bindings) for type in (reverse binding-types) do
-          (setf result (app (op :if source-type) (app (op :code-total type) binding) result source)))
-        (values (app (op :if source-type)
-                     (app (op :code-match (tuple-type pattern-type source-type)) pattern source) result source)
+             ;; The instantiated guard is literally true, or is among the assumptions in force.
+             (established (term `(if (= ,guard ',(lit :bool t)) t (member ,guard ,assumptions))))
+             (result (term `(if ,established
+                                (if (code-less ,replacement ,source) ,replacement ,source)
+                                ,source))))
+        (dolist (binding (reverse bindings))
+          (setf result (term `(if (code-total ,binding) ,result ,source))))
+        (values (term `(if (code-match ,pattern ,source) ,result ,source))
                 (list (cons 0 source-type) (cons 1 (sequence-type guard-type))))))))
 
 (defstruct (rewriting (:constructor %make-rewriting))
@@ -399,7 +393,7 @@ checked law. Its setup work is the syntax of every statement, usable as a rule o
       (:choose
        (let* ((condition (pop (rewriting-stack state))) (args (rest expression)))
          (push (list :finish-if expression assumptions condition) (rewriting-tasks state))
-         (push (list :walk (third args) (cons (negate-predicate condition) assumptions)) (rewriting-tasks state))
+         (push (list :walk (third args) (cons (bool-not condition) assumptions)) (rewriting-tasks state))
          (push (list :walk (second args) (cons condition assumptions)) (rewriting-tasks state))))
       (:finish-if
        (let ((no (pop (rewriting-stack state))) (yes (pop (rewriting-stack state))))
@@ -480,7 +474,7 @@ checked law. Its setup work is the syntax of every statement, usable as a rule o
   "Only fold literal Boolean conditions; no algebraic identity is supplied."
   (if (lit-p condition)
       (if (ast-value condition) yes no)
-      (app (op :if :bool) condition yes no)))
+      (term `(if ,condition ,yes ,no))))
 
 (defun arithmetic-definedness (relation position known unknown)
   (let ((args (if (zerop position) (list unknown known) (list known unknown))))
@@ -492,7 +486,7 @@ checked law. Its setup work is the syntax of every statement, usable as a rule o
          (k (var 0 domain)) (c (var 1 domain)) (z (var 2 domain)))
     (literal-conditional
      (arithmetic-definedness relation position k z)
-     (app (op := domain) (arithmetic-application (arithmetic-relation-operator relation) position k z) c)
+     (term `(= ,(arithmetic-application (arithmetic-relation-operator relation) position k z) ,c))
      (lit :bool nil))))
 
 (defun solve-witness-law (discovery)
@@ -507,7 +501,7 @@ checked law. Its setup work is the syntax of every statement, usable as a rule o
   (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation)))
     (make-law domain (arithmetic-inputs domain 3)
               (arithmetic-requirement relation (solve-discovery-position discovery))
-              (app (op := domain) (var 2 domain) (solve-discovery-witness discovery))
+              (term `(= ,(var 2 domain) ,(solve-discovery-witness discovery)))
               :guard (solve-discovery-guard discovery))))
 
 (defun validate-arithmetic-solver (discovery &key (samples nil samples-p)
@@ -758,7 +752,7 @@ value and true, or nil when the guard rejects CONTEXT or either program has no v
             (loop for position in positions
                   for part in (if (rest positions) value (list value))
                   for unknown = (nth position (rest term))
-                  collect (app (op := (ast-type unknown)) unknown (lit (ast-type unknown) part)))
+                  collect (term `(= ,unknown ',part)))
             :from-end t)))
 
 (defun solve-learned-equality (conjunct library ledger certified-p result)

@@ -128,8 +128,8 @@ Evidence/provenance are not part of this syntax-compression task."
 (defun packet-chunks-model (chunks &optional ledger)
   "A normal closed VM program; its dictionary and full occurrence order are encoded."
   (multiple-value-bind (representatives residual) (quotient-values chunks ledger)
-    (let ((model (app (op :concat :bool)
-                      (quotient-model (sequence-type :bool) representatives residual ledger))))
+    (let ((model (term `(concat ,(quotient-model (sequence-type :bool) representatives residual
+                                                 ledger)))))
       (charge ledger :construction (syntax-work model))
       model)))
 

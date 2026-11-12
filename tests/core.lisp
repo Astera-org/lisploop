@@ -628,3 +628,52 @@ For this finite shape these orderings select the LGG; no general optimality is c
       (check (equal '(2 3 4)
                     (result (term `(:fa '(1 2 3) ',(term `(+ ,x 1)))) nil nil))))
     (clear-function-definitions)))
+
+(deftest term-builder-infers-code-operator-types
+  (let* ((scope '((0 . :int) (1 . :int)))
+         (code (code-type scope :int))
+         (pattern (lit code (app (op :+ :int) (var 0 :int) (var 1 :int))))
+         (source (var 0 code))
+         (bindings (tuple-type code code)))
+    (check (equal (app (op :code-match (tuple-type code code)) pattern source)
+                  (term `(code-match ,pattern ,source))))
+    ;; The arguments of these three do not fix their result type; it comes from context.
+    (check (equal (app (op :code-bind (tuple-type code code code)) pattern source (lit :int 0))
+                  (term `(code-bind ,pattern ,source 0) code)))
+    (check (equal (app (op :code-child (tuple-type code code)) source (lit :int 1))
+                  (term `(code-child ,source 1) code)))
+    (check (equal (app (op :code-subst (tuple-type code bindings code)) pattern
+                       (app (op :tuple bindings) source source))
+                  (term `(code-subst ,pattern (tuple ,source ,source)) code)))
+    (check (equal (app (op :if code) (app (op :code-match (tuple-type code code)) pattern source)
+                       (app (op :code-bind (tuple-type code code code)) pattern source (lit :int 1))
+                       source)
+                  (term `(if (code-match ,pattern ,source) (code-bind ,pattern ,source 1) ,source))))
+    (raises (term `(code-bind ,pattern ,source 0)))
+    ;; A copied AST is still an AST, not a template to be elaborated.
+    (check (equal pattern (term (copy-tree pattern))))))
+
+(deftest map-ast-rebuilds-leaves-first-or-root-first
+  (let* ((x (var 0 :int))
+         (y (var 1 :int))
+         (sum (app (op :+ :int) x y))
+         (tree (app (op :* :int) sum (app (op :+ :int) x (lit :int 1))))
+         (seven-for-x (lambda (node meta)
+                        (declare (ignore meta))
+                        (and (eq node x) (lit :int 7)))))
+    ;; Unchanged subtrees are shared, so a map that replaces nothing returns the tree itself.
+    (check (eq tree (map-ast (lambda (node meta) (declare (ignore node meta)) nil) tree)))
+    (check (equal (term `(* (+ 7 ,y) (+ 7 1))) (map-ast seven-for-x tree)))
+    ;; Root first, a replaced node is not descended into: the variables inside SUM are never offered.
+    (let ((offered nil))
+      (check (equal (term `(* ,y (+ ,x 1)))
+                    (map-ast (lambda (node meta)
+                               (when (eq :var (ast-meta-kind meta)) (push node offered))
+                               (and (equal node sum) y))
+                             tree :root-first t)))
+      (check (equal (list x) offered)))
+    ;; Quoted code is opaque unless the caller asks for it to be mapped.
+    (let ((quoted (lit (code-type '((0 . :int)) :int) x)))
+      (check (eq quoted (map-ast seven-for-x quoted)))
+      (check (equal (lit (code-type '((0 . :int)) :int) (lit :int 7))
+                    (map-ast seven-for-x quoted :code t))))))

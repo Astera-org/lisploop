@@ -82,9 +82,9 @@ is nil when the guard fails to evaluate on some row."
   (let ((best nil) (inputs (schema-inputs (frame-schema frame))))
     (dolist (yes true-models)
       (dolist (no false-models)
-        (let* ((branch (app (op :if type) guard
-                            (if bindings (instantiate yes bindings :var) yes)
-                            (if bindings (instantiate no bindings :var) no)))
+        (let* ((branch (term `(if ,guard
+                                  ,(if bindings (instantiate yes bindings :var) yes)
+                                  ,(if bindings (instantiate no bindings :var) no))))
                (model (if decoder (instantiate decoder (list (cons child-id branch)) :var) branch))
                (bits (description-size model inputs)))
           (charge ledger :construction (syntax-work model))

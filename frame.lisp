@@ -113,12 +113,12 @@ or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise r
 
 (defun singleton-requirement (type value)
   (assert (value-p value type))
-  (app (op := type) (var 0 type) (lit type value)))
+  (term `(= ,(var 0 type) ',value)))
 
 (defun set-requirement (type values)
   "An explicit finite set of whole values: tuples are never split into marginal sets."
   (assert (every (lambda (v) (value-p v type)) values))
-  (app (op :member type) (var 0 type) (lit (sequence-type type) (copy-tree values))))
+  (term `(member ,(var 0 type) ',values)))
 
 (defun make-row (&key key known requirement)
   (assert requirement () "make-row requires :requirement")
@@ -306,8 +306,6 @@ The original frame remains available; this conversion executes no transition."
   "Package actual available witnesses. Reject unavailable or contradictory tables."
   (let* ((schema (frame-schema frame))
          (inputs (schema-inputs schema))
-         (key-type (apply #'tuple-type (mapcar #'cdr inputs)))
-         (entry-type (tuple-type key-type (schema-target schema)))
          (groups nil))
     (assert (schema-lookup-p schema))
     (dolist (row (frame-rows frame))
@@ -319,12 +317,11 @@ The original frame remains available; this conversion executes no transition."
             (setf (cdr old) (intersection (cdr old) values :test #'equal))
             (push (cons (row-known row) (copy-list values)) groups))))
     (assert (every #'cdr groups) () "Inconsistent requirements for a lookup key")
-    (let ((model (app (op :lookup entry-type)
-                      (apply #'app (op :tuple key-type)
-                             (mapcar (lambda (spec) (var (car spec) (cdr spec))) inputs))
-                      (lit (sequence-type entry-type)
-                           (mapcar (lambda (group) (list (car group) (second group)))
-                                   (reverse groups))))))
+    ;; The table maps each tuple of known inputs to its first surviving witness.
+    (let ((model (term `(lookup (tuple ,@(mapcar (lambda (spec) (var (car spec) (cdr spec))) inputs))
+                                ',(mapcar (lambda (group) (list (car group) (second group)))
+                                          (reverse groups)))
+                       (schema-target schema))))
       (charge ledger :baseline (syntax-work model))
       model)))
 
@@ -521,7 +518,7 @@ subsequence branch deterministically via its first-match (YES) branch."
                                 (equal (second (second c)) code-var)))
                       (push c out))
                      ((unsatisfiable-requirement-p (third c))
-                      (push (app (op := :bool) (second c) (lit :bool nil)) out)
+                      (push (term `(= ,(second c) nil)) out)
                       (mapc #'expand (extract-conjuncts (fourth c))))
                      (t
                       (push (second c) out)
@@ -610,15 +607,15 @@ the full sequence or matrix spine."
          (target-type (schema-target (frame-schema frame)))
          (probed-target nil)
          (probed-rows nil))
-    (labels ((project-coord (term val type coord)
+    (labels ((project-coord (expr val type coord)
                (if (null coord)
-                   (values (app (op := type) term (lit type val)) type val)
+                   (values (term `(= ,expr ',val)) type val)
                    (when (and (seq-type-p type) (listp val))
                      (let* ((raw-idx (first coord))
                             (idx (if (minusp raw-idx) (+ (length val) raw-idx) raw-idx))
                             (elem-type (second type)))
                        (when (and (<= 0 idx) (< idx (length val)))
-                         (project-coord (app (op :at type) term (lit :int idx))
+                         (project-coord (term `(at ,expr ,idx))
                                         (nth idx val)
                                         elem-type
                                         (rest coord))))))))
@@ -737,7 +734,7 @@ Returns (VALUES lifted-frame coupled-conjuncts reserve-rows)."
                                               (list key occ-idx) call extra
                                               (fold-necessary
                                                (if (and (equal c call) (eq :bool ret))
-                                                   (app (op := :bool) ret-var (lit :bool t))
+                                                   (term `(= ,ret-var t))
                                                    (replace-subexpression c call ret-var))
                                                ledger budget)))
                                         (dedup-key (list (row-known row) (row-requirement row))))
@@ -786,11 +783,9 @@ inline it for CHILD-ID in DECODER."
                                                     (lit (code-type code-in (cdr s))
                                                          (var (car s) (cdr s))))
                                                   code-in)
-                                          (mapcar #'cdr active-bindings)))
-                      (subst-tuple-type (apply #'tuple-type (mapcar #'ast-type tuple-args))))
-                 (app (op :code-subst (tuple-type full-code-type subst-tuple-type child-type))
-                      (lit full-code-type child-model)
-                      (apply #'app (op :tuple subst-tuple-type) tuple-args)))))
+                                          (mapcar #'cdr active-bindings))))
+                 (term `(code-subst ,(lit full-code-type child-model) (tuple ,@tuple-args))
+                       child-type))))
          (model (instantiate decoder (list (cons child-id code-expr)) :var)))
     (charge ledger :composition (syntax-work model))
     model))
@@ -940,12 +935,8 @@ The search for each value's representative is charged to CATEGORY."
 when RESIDUAL is a sequence of integer indices, emits batch `(gather 'R 'residual)`;
 when RESIDUAL is an `:int` AST expression, emits per-row `(at 'R residual)`."
   (let ((model (if (ast-kind residual)
-                   (app (op :at (sequence-type type))
-                        (lit (sequence-type type) representatives)
-                        residual)
-                   (app (op :gather type)
-                        (lit (sequence-type type) representatives)
-                        (lit (sequence-type :int) residual)))))
+                   (term `(at ,(lit (sequence-type type) representatives) ,residual))
+                   (term `(gather ,(lit (sequence-type type) representatives) ',residual)))))
     (charge ledger :construction (syntax-work model))
     model))
 

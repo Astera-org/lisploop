@@ -5,7 +5,7 @@
    #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-inputs #:code-sort
    #:valid-type-p #:function-sort-p #:value-p #:seq-type-p #:gf-type-p #:tuple-type-p #:input-alist
    #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
-   #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:app-of-p
+   #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:map-ast #:app-of-p
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p #:operator-name #:operator-type #:operator-operand-type #:application-overhead
    #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p

@@ -301,7 +301,7 @@ Uncertified descriptors are hints; no function shape implies a hard rejection."
               (expression (knowledge-entry-expression descriptor))
               (predicate (if (equal guard (lit :bool t))
                              expression
-                             (app (op :if :bool) guard expression (lit :bool t)))))
+                             (term `(if ,guard ,expression t)))))
          (every (lambda (pair)
                   (let ((run (evaluate predicate (knowledge-entry-inputs descriptor)
                                        (list (car pair) (cdr pair)) :ledger ledger)))

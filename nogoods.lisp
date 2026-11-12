@@ -100,12 +100,13 @@ Returns (VALUES values agree-p)."
           (values nil nil)))))
 
 (defun binding-equalities (exprs values inputs)
-  "The equalities `(= expr 'value)` over EXPRS and VALUES in step, skipping unresolved values."
+  "The equalities `(= expr 'value)` over EXPRS and VALUES in step, skipping unresolved values.
+Every expression must be well scoped under INPUTS."
   (loop for expr in exprs
         for value in values
-        for type = (expression-type expr inputs)
+        do (expression-type expr inputs)
         unless (eq value :unresolved)
-          collect (app (op := type) expr (lit type value))))
+          collect (term `(= ,expr ',value))))
 
 (defun equalities-conjunction (equalities)
   "The conjunction of EQUALITIES, or the true literal when there are none."

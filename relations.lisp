@@ -31,20 +31,15 @@ The rows of a lookup table are `(key value)` lists; see `member-table-p` for a s
                         (t (lit target default)))))
     (if (null residual-table)
         fallback
-        (let* ((key-type (relation-key-type norm-inputs))
-               (vars (loop for (id . type) in norm-inputs collect (var id type)))
-               (key (if (= 1 (length vars))
-                        (first vars)
-                        (apply #'app (op :tuple key-type) vars))))
+        (let* ((vars (loop for (id . type) in norm-inputs collect (var id type)))
+               (key (if (rest vars) (term `(tuple ,@vars)) (first vars))))
           (flet ((member-of (keys)
-                   (app (op :member key-type) key (lit (sequence-type key-type) keys))))
+                   (term `(member ,key ',keys))))
             (if (member-table-p residual-table norm-inputs target fallback)
                 (member-of residual-table)
-                (let* ((row-type (tuple-type key-type target))
-                       (lookup (app (op :lookup row-type) key
-                                    (lit (sequence-type row-type) residual-table))))
+                (let ((lookup (term `(lookup ,key ',residual-table) target)))
                   (if fallback
-                      (app (op :if target) (member-of (mapcar #'first residual-table)) lookup fallback)
+                      (term `(if ,(member-of (mapcar #'first residual-table)) ,lookup ,fallback))
                       lookup))))))))
 
 (defun register-knowledge-relation (id table &key

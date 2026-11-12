@@ -237,7 +237,7 @@
          (obs (guard-test-observations domain rows (list left a) inputs))
          (problem (first (propose-guard-problems obs)))
          (job (start-guard-search problem (guard-test-language domain inputs)))
-         (bound (description-size (negate-predicate (app (op := domain) b (lit domain 0))) inputs)))
+         (bound (description-size (bool-not (app (op := domain) b (lit domain 0))) inputs)))
     (check (equal '(nil t t nil t t nil t t) (guard-problem-support problem)))
     (resume-search job bound 2000000)
     (let ((validation (checked-law (first (propose-guarded-laws problem job)))))

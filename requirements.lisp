@@ -37,15 +37,10 @@ return (VALUES term term-type values-list)."
 
 (defun replace-subexpression (expr target replacement)
   "Replace every subtree of EXPR that is EQUAL to TARGET with REPLACEMENT."
-  (cond
-    ((equal expr target) replacement)
-    ((app-p expr)
-     (let* ((args (rest expr))
-            (new-args (mapcar (lambda (arg) (replace-subexpression arg target replacement)) args)))
-       (if (every #'eq new-args args)
-           expr
-           (apply #'app (first expr) new-args))))
-    (t expr)))
+  (map-ast (lambda (node meta)
+             (declare (ignore meta))
+             (and (equal node target) replacement))
+           expr :root-first t))
 
 (defun extract-conjuncts (expr)
   "Return the list of atomic conjuncts of a `(if A B 'nil)` conjunction tree."
@@ -214,7 +209,7 @@ simplified where that cannot drop or reorder a partial computation."
         ((and (equal yes true) (equal no false)) condition)
         ((and bool-p (equal yes false) (not (equal no false))
               (or (provably-total-p condition) code-eval-cond-p))
-         (let ((neg-cond (app (op := :bool) condition false)))
+         (let ((neg-cond (term `(= ,condition ,false))))
            (if (equal no true) neg-cond (bool-and neg-cond no))))
         ;; Set filtering/reordering is safe only for a total conjunction.
         ((and bool-p (equal no false) (provably-total-p condition) (provably-total-p yes))
@@ -363,7 +358,7 @@ Returns nil when the call has no such body."
                                             ((lit-p b)
                                              (setf demanded (union demanded (demanded-vars (ast-value b))))
                                              (instantiate (ast-value b) eval-bindings :var))
-                                            (t (apply #'app (op :code-eval (ast-type b)) b eval-args))))))
+                                            (t (term `(code-eval ,b ,@eval-args)))))))
          (when (and (unfoldable-parts-p sub-args contract)
                     (loop for (cid . nil) in c-inputs
                           for earg in eval-args
