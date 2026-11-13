@@ -9,7 +9,7 @@ RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
 BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp knowledge.lisp codec.lisp vm.lisp evidence.lisp persistence.lisp requirements.lisp frame.lisp enumerate.lisp unify.lisp fibers.lisp laws.lisp templates.lisp bootstrap-inverters.lisp condense.lisp abstraction.lisp descriptors.lisp relations.lisp synthesize.lisp nogoods.lisp decompose.lisp proposals.lisp consolidate.lisp explain.lisp milestones/load.lisp milestones/corpus.lisp milestones/views.lisp milestones/algebra-discovery.lisp milestones/propagation-search.lisp milestones/dependency-search.lisp benchmark.lisp
 
-.PHONY: all clean test test-kernel test-milestones visualizer benchmark benchmark-profile
+.PHONY: all clean test test-kernel test-milestones benchmark benchmark-profile
 
 all: $(DOCS)
 
@@ -20,10 +20,6 @@ test-milestones:
 	$(SBCL) --script tests/run.lisp milestones
 
 test: test-kernel test-milestones
-	$(SBCL) --script tests/visualizer.lisp
-
-visualizer:
-	$(SBCL) --script visualizer/generate.lisp
 
 $(RESULTS_DIR):
 	mkdir -p $@

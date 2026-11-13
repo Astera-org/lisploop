@@ -757,7 +757,7 @@ The five modules in `milestones/` implement standalone experimental drivers and 
 | Milestone | Implemented Capabilities | Primary Modules & Test Suites |
 | :--- | :--- | :--- |
 | **M1** | Typed ASTs, Encoding v7, resumable VM (Tariff v10), first-order pullback, quotient/partition models, exact search | `ast`, `codec`, `vm`, `frame`, `enumerate` (`tests/core.lisp`, `tests/codec.lisp`) |
-| **M2** | Empirical observation buckets, transition probes, pair invariance, anchor diversity, metric linkage residuals | `frame`, `enumerate` (`tests/observations.lisp`, `tests/visualizer.lisp`) |
+| **M2** | Empirical observation buckets, transition probes, pair invariance, anchor diversity, metric linkage residuals | `frame`, `enumerate` (`tests/observations.lisp`) |
 | **M3** | Guarded law discovery, finite-domain certificates, law retyping, law corpus compression, VM-compiled rewrites | `laws`, `milestones/corpus` (`tests/laws.lisp`, `tests/guards.lisp`, `tests/compression.lisp`, `tests/symbolic.lisp`, `tests/amortization.lisp`) |
 | **M4** | Causal reorientation, witness/uniqueness solver certification, dual-grade `propagate-requirements` with 3:1 fallback | `laws`, `milestones/algebra-discovery`, `milestones/propagation-search` (`tests/algebra.lisp`, `tests/propagation.lisp`) |
 | **M5** | Bounded branch-and-bound `infer-fibers`, context-label projection, selector and dependency synthesis | `fibers`, `proposals`, `milestones/dependency-search` (`tests/lifting.lisp`, `tests/refactor.lisp`) |
@@ -774,7 +774,7 @@ The five modules in `milestones/` implement standalone experimental drivers and 
 From `/home/tlh24/sandbox/team/tlh/lisploop`:
 
 ```bash
-# Run all 18 core test suites and the visualizer exporter suite:
+# Run all 18 core test suites:
 make test
 
 # Run specific milestone aliases or module test suites via tests/run.lisp:

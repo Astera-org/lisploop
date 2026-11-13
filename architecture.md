@@ -231,7 +231,7 @@ The order below is the order in `load.lisp`; `package.lisp` loads first.
 
 Rewrite preparation caches belong to each `rewrite-library`; there is no global prepared-rewrite cache. `*last-code-match*` is a separate single-entry host memo used by symbolic match/bind/substitution primitives. Neither mechanism shares arbitrary child synthesis problems.
 
-Fixtures now live in `tests/support.lisp` and the relevant suites. The former standalone experiment runners have been removed. `tests/run.lisp` loads fifteen suites and accepts module names or `m1`–`m9` and `r1`–`r6` aliases; `tests/visualizer.lisp` is separate. `benchmark.lisp` measures bounded GF(5) search scaling and VM dispatch. The visualizer exports observation data to static reports.
+Fixtures now live in `tests/support.lisp` and the relevant suites. The former standalone experiment runners have been removed. `tests/run.lisp` loads fifteen suites and accepts module names or `m1`–`m9` and `r1`–`r6` aliases. `benchmark.lisp` measures bounded GF(5) search scaling and VM dispatch.
 
 ## 6. Status, evidence, and objectives
 
@@ -274,4 +274,4 @@ sbcl --script tests/run.lisp algebra propagation
 sbcl --script benchmark.lisp meter
 ```
 
-`make test` runs all core suites and the visualizer exporter checks. Milestone aliases select tests; they do not regenerate the historical reports. `make visualizer` writes generated visualizer assets. `make benchmark` writes benchmark logs. The default `make` target builds document PDFs, not tests.
+`make test` runs all core suites. Milestone aliases select tests; they do not regenerate the historical reports. `make benchmark` writes benchmark logs. The default `make` target builds document PDFs, not tests.

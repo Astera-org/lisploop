@@ -35,7 +35,7 @@ This plan distinguishes **implemented mechanisms and tests** from **proposed ext
 | Milestone | Question and current boundary | Main source | Current evidence |
 | :--- | :--- | :--- | :--- |
 | [1. Search](#sec-m1) | Typed bounded synthesis, pullback, reconstruction, and preemption | `ast.lisp`, `codec.lisp`, `vm.lisp`, `frame.lisp`, `enumerate.lisp` | `tests/core.lisp`, `tests/codec.lisp` |
-| [2. Equivalence](#sec-m2) | Empirical buckets and informative action invariants | `frame.lisp`, `enumerate.lisp` | `tests/observations.lisp`, `tests/visualizer.lisp` |
+| [2. Equivalence](#sec-m2) | Empirical buckets and informative action invariants | `frame.lisp`, `enumerate.lisp` | `tests/observations.lisp` |
 | [3. Laws and syntax](#sec-m3) | Guarded laws, exact corpus reconstruction, checked symbolic rewrites | `laws.lisp`, `factor.lisp`, `vm.lisp` | Law, guard, compression, symbolic, and amortization suites |
 | [4. Algebra](#sec-m4) | Learned witnesses and guards; certified versus tentative propagation | `laws.lisp`, `enumerate.lisp` | `tests/algebra.lisp`, `tests/propagation.lisp` |
 | [5. Lifting](#sec-m5) | Supplied lifting, bounded fiber proposals, explicit dependencies | `factor.lisp`, `synthesize.lisp` | `tests/lifting.lisp`, `tests/refactor.lisp` |
@@ -472,7 +472,7 @@ Current node selection is deterministic: root reserve, pending verification prio
 | 8 | `laws.lisp` | Laws, guards, rewrite libraries, arithmetic solvers and propagation |
 | 9 | `synthesize.lisp` | Resumable heuristic, recursive, selector, and dependency search |
 
-`tests/support.lisp` and suite-local fixtures are test infrastructure, not kernel modules. `benchmark.lisp` and `visualizer/` are separate consumers. Rewrite program caches belong to individual `rewrite-library` objects; they do not provide global DAG reuse.
+`tests/support.lisp` and suite-local fixtures are test infrastructure, not kernel modules. `benchmark.lisp` is a separate consumer. Rewrite program caches belong to individual `rewrite-library` objects; they do not provide global DAG reuse.
 
 ### 3.1 Typed syntax and packet sizing
 
@@ -522,7 +522,7 @@ The parent-pricing control uses an expensive context binding whose child variabl
 
 ## 4. The Nine Milestones: Implemented Experiments and Remaining Work {#sec-milestones}
 
-The following sections identify current evidence without treating historical traces or planned examples as current executable runners. Run `make test` for all core suites and the separate visualizer checks; `tests/run.lisp` accepts suite names and milestone aliases `m1` through `m7`.
+The following sections identify current evidence without treating historical traces or planned examples as current executable runners. Run `make test` for all core suites; `tests/run.lisp` accepts suite names and milestone aliases `m1` through `m7`.
 
 ### 4.1 Milestone 1: Core Typed Synthesis, Pullback, Views, and AU {#sec-m1}
 
@@ -540,7 +540,7 @@ Reorientation, joint tuple-valued pullback, composition, quotient/partition reco
 
 **Implemented.** `transition-probes` reorients recorded transitions into paired before/after inputs without rerunning the transition. Observation jobs group complete output vectors and classify invariance and anchor diversity. Scope identity, types, versions, and input snapshots bound the evidence.
 
-**Evidence.** `tests/observations.lisp` covers field and integer invariants, held-out replay, negative transitions, accidental agreements split by fresh evidence, storage-shuffle controls, outcome retention, errors, and resumption. `tests/visualizer.lisp` checks read-only export and exact/quoted-value handling.
+**Evidence.** `tests/observations.lisp` covers field and integer invariants, held-out replay, negative transitions, accidental agreements split by fresh evidence, storage-shuffle controls, outcome retention, errors, and resumption.
 
 **Boundary.** In addition to Boolean `invariant-p` and `informative-p` flags, `observation-bucket` records metric `pair-bits`, `anchor-bits`, and `residual-bits` via `relational-linkage-residual`. Exact search (`start-search`) remains governed strictly by row requirements.
 

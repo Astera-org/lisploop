@@ -1,9 +1,8 @@
 # Tests
 
 Run `make test` from the project directory. This runs:
-1. `make test-kernel` (`sbcl --script tests/run.lisp kernel`) in a fresh SBCL process with **only** `load.lisp` loaded (zero `milestones/` code),
-2. `make test-milestones` (`sbcl --script tests/run.lisp milestones`) in a fresh SBCL process with `milestones/load.lisp` layered on top of the kernel, and
-3. `sbcl --script tests/visualizer.lisp` for read-only visualizer export and JSON checks.
+1. `make test-kernel` (`sbcl --script tests/run.lisp kernel`) in a fresh SBCL process with **only** `load.lisp` loaded (zero `milestones/` code), and
+2. `make test-milestones` (`sbcl --script tests/run.lisp milestones`) in a fresh SBCL process with `milestones/load.lisp` layered on top of the kernel.
 
 All scripts load relative to themselves, so absolute paths also work from another working directory. SBCL is the only dependency for these tests.
 
@@ -46,7 +45,6 @@ Test assertions target **semantic contracts** rather than incidental internal st
 | `higher-order.lisp` | `:code` parameters, `:code-eval` / `:code-subst`, library combinators (`:map`, `:foldr`, `:filter`), learned decoder templates, and polymorphic functor lifting (`H1`–`H4`) |
 | `audit.lisp` | Focused regression and soundness probes (totality bypass rejection, occurs-check, nogood soundness, CEGAR unit-budget accounting, cache isolation) |
 | `invariants.lisp` | Cross-module property & metamorphic contracts: `fold-constants` (`:equivalent` / `:necessary`), `pullback-frame` / `lift-frame` Galois soundness, row-order & input-schema alpha-renaming invariance, and warm-library distractor resilience + consolidation idempotence |
-| `visualizer.lisp` | Standalone read-only visualizer export, quoted/exact values, and JSON boundary checks |
 
 ## Milestone Suites (`tests/milestones/*.lisp` — `milestones/load.lisp`)
 
@@ -59,7 +57,3 @@ Test assertions target **semantic contracts** rather than incidental internal st
 | `milestones/propagation.lisp` | Propagator-library isolation, forward-verified integer targets, branch scheduling, resumption, and expensive-context reuse (`M4`) |
 | `milestones/corpus.lisp` | Standalone tree-corpus packet encoding and subgraph correspondence search (`milestones/corpus.lisp`, `M6`) |
 | `milestones/views.lisp` | Guarded partition views, 3-way model comparison, shuffle invariance, locality-prioritized AU, 2D tuple projections, and standalone dependency search (`M7`–`M8`) |
-
-After `make visualizer`, `node visualizer/check-data.cjs` checks the generated
-data and HTML. The optional desktop browser check is documented in
-[`visualizer/README.md`](../visualizer/README.md).
