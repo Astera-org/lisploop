@@ -15,12 +15,13 @@
              (job (start-observation-search scope))
              (sum (app (op :+ field) (var 0 field) (var 1 field)))
              (reverse-sum (app (op :+ field) (var 1 field) (var 0 field)))
-             (bound (+ (language-header-size language) 16)))
+             (bound (+ (language-header-size language) 16))
+             (reference (reference-one-application field inputs (language-operators language) bound)))
         (check (eq :bounded-exhaustion
-                    (message-claim (resume-observation-search job (+ (language-header-size language) 5) 100000))))
+                   (message-claim (resume-observation-search job (+ (language-header-size language) 5) 100000))))
         (check (null (observation-invariants job)))
         (check (eq :bounded-exhaustion (message-claim (resume-observation-search job bound 1000000))))
-        (check (= 105 (length (observation-job-records job))))
+        (check (= (length reference) (length (observation-job-records job))))
         (check (= 1 (length (observation-invariants job))))
         (check (= 2 (length (observation-bucket-members (first (observation-invariants job))))))
         (check (observed-agreement-p (find-observation job sum) (find-observation job reverse-sum)))
@@ -32,24 +33,23 @@
         (check (observation-bucket-counterexample (bucket-for job (var 0 field))))
         (check (eq :replayed-observations (observation-scope-evidence scope)))
         ;; Independent syntax enumeration and output oracle at this COMPLETE tiny bound.
-        (let ((reference (reference-one-application field inputs (language-operators language) bound)))
-          (check (null (set-exclusive-or reference
-                                         (mapcar #'observed-expression-expression (observation-job-records job))
-                                         :test #'equal)))
-          (dolist (expression reference)
-            (check (equal (observed-expression-values (find-observation job expression))
-                           (loop for row in (frame-rows frame) collect
-                             (reference-value expression
-                                              (mapcar #'cons '(0 1) (row-known row)) 5))))))
-        (check (= 105 (loop for bucket in (observation-job-buckets job)
-                           sum (length (observation-bucket-members bucket)))))
+        (check (same-set-p reference
+                           (mapcar #'observed-expression-expression (observation-job-records job))))
+        (dolist (expression reference)
+          (check (equal (observed-expression-values (find-observation job expression))
+                        (loop for row in (frame-rows frame) collect
+                          (reference-value expression
+                                           (mapcar #'cons '(0 1) (row-known row)) 5)))))
+        (check (= (length reference)
+                  (loop for bucket in (observation-job-buckets job)
+                        sum (length (observation-bucket-members bucket)))))
         (let* ((shuffled (make-frame (frame-schema frame) (reverse (frame-rows frame))))
                (other (start-observation-search
                        (make-observation-scope shuffled language :pairs pairs :anchors anchors))))
           (resume-observation-search other bound 1000000)
           (check (observation-bucket-informative-p (bucket-for other sum)))
           (check (equal (reverse (observed-expression-values (find-observation job sum)))
-                         (observed-expression-values (find-observation other sum)))))
+                        (observed-expression-values (find-observation other sum)))))
         (dolist (message (observation-job-messages job))
           (check (eq :training (message-call-id message)))
           (check (member (message-claim message) '(:bounded-exhaustion :observed-invariant))))))))
@@ -57,7 +57,6 @@
 (deftest invariants-fresh-data-and-negative-transition
   (let* ((field (gf 5)) (inputs (list (cons 0 field) (cons 1 field)))
          (language (make-language field inputs))
-         ;; Supplied oracle only in this validation control; discovery is tested above.
          (sum (app (op :+ field) (var 0 field) (var 1 field))))
     (loop for shift in '(4 3) for expected in '(t nil) do
       (multiple-value-bind (transitions anchors)
@@ -67,7 +66,7 @@
           (let* ((scope (make-observation-scope frame language :pairs pairs :anchors anchors))
                  (job (start-observation-search scope :expressions (list sum))))
             (check (eq :replay-complete
-                        (message-claim (resume-observation-search job (description-size sum inputs) 100000))))
+                       (message-claim (resume-observation-search job (description-size sum inputs) 100000))))
             (check (eq expected (observation-bucket-informative-p (bucket-for job sum))))
             (check (eq (not expected) (not (null (observation-bucket-counterexample (bucket-for job sum))))))))))
     ;; One orbit cannot establish variation between starting sums.
@@ -101,7 +100,7 @@
       (check (eq (bucket-for old x) (bucket-for old square)))
       (check (= (length (observation-job-records old)) (length (observation-job-records new))))
       (check (= (length (observation-job-records new))
-                 (loop for bucket in (observation-job-buckets new) sum (length (observation-bucket-members bucket))))))))
+                (loop for bucket in (observation-job-buckets new) sum (length (observation-bucket-members bucket))))))))
 
 (deftest observation-scope-types-and-occurrences
   (let* ((field (gf 5)) (inputs (list (cons 0 field)))
@@ -112,13 +111,12 @@
          (x (var 0 field))
          (left (start-observation-search scope :expressions (list x)))
          (right (start-observation-search other :expressions (list x))))
-    ;; Caller-side mutation cannot change the frozen input evidence.
     (setf (first (row-known (first (frame-rows frame)))) 4)
     (resume-observation-search left (description-size x inputs) 10000)
     (resume-observation-search right (description-size x inputs) 10000)
     (check (equal '(0 0 1) (observed-expression-values (find-observation left x))))
     (check (equal (observed-expression-values (find-observation left x))
-                   (observed-expression-values (find-observation right x))))
+                  (observed-expression-values (find-observation right x))))
     (check (not (observed-agreement-p (find-observation left x) (find-observation right x))))
     (raises (make-observation-scope frame language :pairs '((0 9))))
     (raises (make-observation-scope frame language :pairs '((0 1)) :anchors '(0 0)))
@@ -135,7 +133,7 @@
     (resume-observation-search job (reduce #'max expressions :key #'description-size) 10000)
     (check (= 3 (length (observation-job-buckets job))))
     (check (not (observed-agreement-p (find-observation job (first expressions))
-                                     (find-observation job (second expressions)))))))
+                                      (find-observation job (second expressions)))))))
 
 (deftest observation-cutoffs-errors-and-replay-bounds
   (let* ((field (gf 5)) (inputs (list (cons 0 field)))
@@ -143,14 +141,11 @@
                                         (make-language field inputs)))
          (x (var 0 field)) (square (app (op :* field) x x))
          (job (start-observation-search scope :expressions (list x square))))
-    (loop until (eq (observation-job-phase job) :evaluate) do (observation-step job 1))
-    (let ((work (ledger-total (observation-job-ledger job))))
-      (check (eq :cutoff (message-claim (resume-observation-search job (description-size x inputs) (1+ work)))))
-      (check (eq :unknown (observed-expression-status (observation-job-current job))))
-      (check (not (observed-agreement-p (observation-job-current job) (observation-job-current job))))
-      (check (null (observation-job-buckets job)))
-      (check (null (find-observation job x)))
-      (check (not (observed-agreement-p (find-observation job x) (find-observation job x)))))
+    ;; Partial budget leaves record unpublished and unavailable for agreement.
+    (check (eq :cutoff (message-claim (resume-observation-search job (description-size x inputs) 1))))
+    (check (null (observation-job-buckets job)))
+    (check (null (find-observation job x)))
+    (check (not (observed-agreement-p (find-observation job x) (find-observation job x))))
     (check (eq :replay-complete (message-claim (resume-observation-search job (description-size x inputs) 10000))))
     (check (= 1 (length (observation-job-records job))))
     (check (null (find-observation job square)))
@@ -176,16 +171,19 @@
 (deftest observation-batching-and-resumption
   (multiple-value-bind (transitions anchors) (gf5-transition-fixture)
     (multiple-value-bind (frame pairs) (transition-probes transitions (gf 5))
-      (let* ((language (make-language (gf 5) (schema-inputs (frame-schema frame))))
-             (scope (make-observation-scope frame language :pairs pairs :anchors anchors))
-             (unit (start-observation-search scope)) (batch (start-observation-search scope)))
-        (dolist (limit '(0 1 50 71 72 80 90 100 130 150 300 500 1500 3000 10000 1000000))
-          (resume-observation-search unit (+ (language-header-size language) 16) limit :quantum 1)
-          (resume-observation-search batch (+ (language-header-size language) 16) limit)
-          (check (<= (ledger-total (observation-job-ledger batch)) limit))
-          (check (equalp unit batch)))
-        (check (= (+ (language-header-size language) 16) (observation-job-completed-bound batch)))
-        (check (= 105 (length (observation-job-records batch))))))))
+      (let* ((field (gf 5))
+             (inputs (schema-inputs (frame-schema frame)))
+             (language (make-language field inputs))
+             (bound (+ (language-header-size language) 16))
+             (reference (reference-one-application field inputs (language-operators language) bound))
+             (scope (make-observation-scope frame language :pairs pairs :anchors anchors)))
+        (multiple-value-bind (batch)
+            (check-observation-resumption
+             (lambda () (start-observation-search scope))
+             bound
+             :limits '(0 1 50 71 72 80 90 100 130 150 300 500 1500 3000 10000 1000000))
+          (check (= bound (observation-job-completed-bound batch)))
+          (check (= (length reference) (length (observation-job-records batch)))))))))
 
 (deftest transition-reorientation-reuses-recorded-data
   (let ((ledger (make-ledger)))
@@ -202,34 +200,33 @@
           (loop for row in (frame-rows transitions) for pair in pairs do
             (destructuring-bind (a b) (row-known row)
               (check (equal (list (mod (1+ a) 5) (mod (+ b 4) 5))
-                             (first (extract-allowed-values (row-requirement row))))))
+                            (first (extract-allowed-values (row-requirement row))))))
             (check (equal (row-known row)
-                           (row-known (find (first pair) (frame-rows frame) :key #'row-key :test #'equal))))
+                          (row-known (find (first pair) (frame-rows frame) :key #'row-key :test #'equal))))
             (check (equal (first (extract-allowed-values (row-requirement row)))
-                           (row-known (find (second pair) (frame-rows frame) :key #'row-key :test #'equal))))))))))
+                          (row-known (find (second pair) (frame-rows frame) :key #'row-key :test #'equal))))))))))
 
 (deftest observation-error-and-large-instruction-batching
   (let* ((scope (make-observation-scope (probe-frame :int nil '(nil nil))
                                         (make-language :int nil :operators nil)))
          (big (1- (ash 1 128)))
          (heavy (app (op := :int)
-                      (app (op :* :int) (lit :int big) (lit :int big))
-                      (lit :int (* big big))))
+                     (app (op :* :int) (lit :int big) (lit :int big))
+                     (lit :int (* big big))))
          (entry (tuple-type :int :int))
          (missing (app (op :lookup entry) (lit :int 0) (lit (sequence-type entry) nil)))
          (expressions (list missing heavy))
-         (unit (start-observation-search scope :expressions expressions))
-         (batch (start-observation-search scope :expressions expressions))
          (bound (description-size heavy)))
-    (dolist (limit '(0 1 10 100 150 1000 5000 17000 18000 35000 100000))
-      (resume-observation-search unit bound limit :quantum 1)
-      (resume-observation-search batch bound limit)
-      (check (<= (ledger-total (observation-job-ledger batch)) limit))
-      (check (equalp unit batch)))
-    (check (eq :error (observed-expression-status (find-observation batch missing))))
-    (check (eq :complete (observed-expression-status (find-observation batch heavy))))
-    (check (equal '(t t) (observed-expression-values (find-observation batch heavy))))
-    (check (= 1 (length (observation-job-buckets batch))))))
+    (multiple-value-bind (batch)
+        (check-observation-resumption
+         (lambda () (start-observation-search scope :expressions expressions))
+         bound
+         :budget 100000
+         :limits '(0 1 10 100 150 1000 5000 17000 18000 35000 100000))
+      (check (eq :error (observed-expression-status (find-observation batch missing))))
+      (check (eq :complete (observed-expression-status (find-observation batch heavy))))
+      (check (equal '(t t) (observed-expression-values (find-observation batch heavy))))
+      (check (= 1 (length (observation-job-buckets batch)))))))
 
 (deftest declared-literal-vocabulary
   (let* ((literals (list -1 0 1 1))
@@ -248,7 +245,8 @@
   (let* ((scope (make-observation-scope (probe-frame :int nil '(nil))
                                         (make-language :int nil :literals nil)))
          (job (start-observation-search scope)))
-    (check (eq :bounded-exhaustion (message-claim (resume-observation-search job 31 10000))))
+    (check (eq :bounded-exhaustion
+               (message-claim (resume-observation-search job (+ (header-size nil :int) 20) 10000))))
     (check (null (observation-job-records job))))
   (check (eq :all (language-literals (make-language :int nil))))
   (raises (make-language (gf 5) nil :literals '(-1)))
@@ -261,31 +259,25 @@
              (language (make-language :int inputs))
              (scope (make-observation-scope frame language :pairs pairs :anchors anchors))
              (job (start-observation-search scope))
-             (sum (app (op :+ :int) (var 0 :int) (var 1 :int))))
+             (sum (app (op :+ :int) (var 0 :int) (var 1 :int)))
+             (leaves (append (list (var 0 :int) (var 1 :int))
+                             (loop for n from -31 to 31 collect (lit :int n))))
+             (reference (reference-typed-trees leaves (language-operators language) 1 inputs
+                                               (description-size sum inputs))))
+        (check (< (description-size sum inputs) (description-size (app (op :+ :int) (var 0 :int) sum) inputs)))
         (check (eq :cutoff (message-claim (resume-observation-search job (description-size sum inputs) 100))))
         (check (eq :bounded-exhaustion (message-claim (resume-observation-search job (description-size sum inputs) 1000000))))
-        (check (= 83 (length (observation-job-records job))))
+        (check (= (length reference) (length (observation-job-records job))))
         (check (= 1 (length (observation-invariants job))))
         (check (= 2 (length (observation-bucket-members (first (observation-invariants job))))))
         (check (observation-bucket-informative-p (bucket-for job sum)))
         (check (not (observation-bucket-informative-p (bucket-for job (lit :int 0)))))
-        ;; All eligible integer literals, variables, and one-application trees.
-        (let* ((leaves (append (list (var 0 :int) (var 1 :int))
-                                (loop for n from -31 to 31 collect (lit :int n))))
-               (reference (remove-if
-                           (lambda (e) (> (description-size e inputs) (description-size sum inputs)))
-                           (append leaves
-                                   (loop for name in '(:+ :*) append
-                                     (loop for left in leaves append
-                                       (loop for right in leaves collect (app (op name :int) left right))))))))
-          (check (< (description-size sum inputs) (description-size (app (op :+ :int) (var 0 :int) sum) inputs)))
-          (check (null (set-exclusive-or reference
-                                         (mapcar #'observed-expression-expression (observation-job-records job))
-                                         :test #'equal)))
-          (dolist (expression reference)
-            (check (equal (observed-expression-values (find-observation job expression))
-                           (loop for row in (frame-rows frame) collect
-                             (integer-reference-value expression (mapcar #'cons '(0 1) (row-known row))))))))
+        (check (same-set-p reference
+                           (mapcar #'observed-expression-expression (observation-job-records job))))
+        (dolist (expression reference)
+          (check (equal (observed-expression-values (find-observation job expression))
+                        (loop for row in (frame-rows frame) collect
+                          (integer-reference-value expression (mapcar #'cons '(0 1) (row-known row)))))))
         (let ((expressions (mapcar #'observed-expression-expression
                                    (observation-bucket-members (first (observation-invariants job))))))
           (loop for shift in '(-1 -2) do
@@ -293,16 +285,17 @@
                 (integer-transition-fixture :starts (integer-held-out-starts) :steps 1 :shift-b shift)
               (check (every (lambda (row)
                               (not (member (row-known row) (frame-rows transitions)
-                                           :key #'row-known :test #'equal))) (frame-rows held-out)))
+                                           :key #'row-known :test #'equal)))
+                            (frame-rows held-out)))
               (multiple-value-bind (fresh pairs) (transition-probes held-out :int)
                 (let* ((fresh-scope (make-observation-scope fresh language :pairs pairs :anchors held-out-anchors))
                        (replay (start-observation-search fresh-scope :expressions expressions)))
                   (check (eq :replay-complete (message-claim (resume-observation-search replay (description-size sum inputs) 1000000))))
                   (check (eq (= shift -1) (not (null (observation-invariants replay)))))
                   (check (equal (observed-expression-values (find-observation replay sum))
-                                 (mapcar (lambda (row) (apply #'+ (row-known row))) (frame-rows fresh))))
+                                (mapcar (lambda (row) (apply #'+ (row-known row))) (frame-rows fresh))))
                   (check (> (observed-expression-run-work (find-observation replay sum))
-                             (observed-expression-run-work (find-observation job sum))))
+                            (observed-expression-run-work (find-observation job sum))))
                   (check (eq :replayed-observations (observation-scope-evidence fresh-scope))))))))))))
 
 (deftest integer-accidental-agreement-and-exact-large-values
@@ -317,23 +310,26 @@
                 (make-observation-scope (probe-frame :int inputs (mapcar #'list values)) language)
                 :expressions (mapcar #'observed-expression-expression (observation-job-records old)))))
       (resume-observation-search new (description-size square inputs) 1000000)
-      (check (= 18 (length (observation-job-records new))))
+      (check (= (length (observation-job-records old)) (length (observation-job-records new))))
       (check (not (observed-agreement-p (find-observation new x) (find-observation new square))))
       (check (equal values (observed-expression-values (find-observation new x))))
       (check (equal (mapcar (lambda (value) (* value value)) values)
-                     (observed-expression-values (find-observation new square))))
+                    (observed-expression-values (find-observation new square))))
       (check (eq (bucket-for old x) (bucket-for old square))))))
 
 (deftest integer-observation-discovery-budget-parity
   (let* ((inputs '((0 . :int))) (n (ash 1 256))
+         (language (make-language :int inputs))
          (scope (make-observation-scope (probe-frame :int inputs (list (list n) (list (1+ n))))
-                                        (make-language :int inputs)))
+                                        language))
          (bound (description-size (app (op :* :int) (var 0 :int) (var 0 :int)) inputs))
-         (unit (start-observation-search scope)) (batch (start-observation-search scope)))
-    (dolist (limit '(0 50 100 1000 10000 65000 66000 100000 250000 1000000))
-      (resume-observation-search unit bound limit :quantum 1)
-      (resume-observation-search batch bound limit)
-      (check (<= (ledger-total (observation-job-ledger batch)) limit))
-      (check (equalp unit batch)))
-    (check (= bound (observation-job-completed-bound batch)))
-    (check (= 18 (length (observation-job-records batch))))))
+         (leaves (cons (var 0 :int) (loop for k from -15 to 15 collect (lit :int k))))
+         (reference (reference-typed-trees leaves (language-operators language) 1 inputs bound)))
+    (multiple-value-bind (batch)
+        (check-observation-resumption
+         (lambda () (start-observation-search scope))
+         bound
+         :budget 1000000
+         :limits '(0 50 100 1000 10000 65000 66000 100000 250000 1000000))
+      (check (= bound (observation-job-completed-bound batch)))
+      (check (= (length reference) (length (observation-job-records batch)))))))

@@ -1,36 +1,64 @@
 # Tests
 
-Run `make test` from the project directory. This runs `tests/run.lisp` and the
-separate visualizer exporter checks in `tests/visualizer.lisp`. Both scripts load
-relative to themselves, so absolute paths also work from another directory.
-SBCL is the only dependency for these tests.
+Run `make test` from the project directory. This runs:
+1. `make test-kernel` (`sbcl --script tests/run.lisp kernel`) in a fresh SBCL process with **only** `load.lisp` loaded (zero `milestones/` code),
+2. `make test-milestones` (`sbcl --script tests/run.lisp milestones`) in a fresh SBCL process with `milestones/load.lisp` layered on top of the kernel, and
+3. `sbcl --script tests/visualizer.lisp` for read-only visualizer export and JSON checks.
 
-`run.lisp` loads the kernel (`../load.lisp`) and shared test support/fixtures
-(`support.lisp`) before registering and running the suites. Pass optional module
-names or milestone aliases (`m1`..`m7`) to run a subset, e.g.
-`sbcl --script tests/run.lisp lifting views` or `sbcl --script tests/run.lisp m4`.
-Loading `load.lisp` alone never loads or runs tests. The suites use the kernel
-package to inspect internal continuations and ledgers without expanding the
-public API just for testing.
+All scripts load relative to themselves, so absolute paths also work from another working directory. SBCL is the only dependency for these tests.
+
+## Running Subsets
+
+`tests/run.lisp` accepts group selectors (`all`, `kernel`, `milestones`), milestone aliases (`m1`..`m9`, `r1`..`r6`, `l1`..`l4`, `h1`..`h4`), or individual module names:
+
+```bash
+sbcl --script tests/run.lisp kernel
+sbcl --script tests/run.lisp milestones
+sbcl --script tests/run.lisp invariants recursion
+sbcl --script tests/run.lisp m9
+```
+
+When a command selects both kernel and milestone modules (including the default `all` run), `run.lisp` asserts pure-kernel isolation and executes all selected kernel modules *before* loading `milestones/load.lisp` and `tests/milestones/support.lisp`. Loading `load.lisp` alone never loads milestone code or tests.
+
+## Architecture & Shared Contract Oracles
+
+Test assertions target **semantic contracts** rather than incidental internal struct layouts:
+- **Anytime Resumption Parity (`check-anytime-resumption` and domain wrappers in `support.lisp`)**: Verifies step-budget obedience (`delta-work <= limit`), monotonic progress, and identical terminal claims, verified outputs, optimal MDL candidate sizes, and total ledger work between unit-step and batch runs without locking in transient queue/hash-table internals via `equalp`.
+- **Synthesized Model & Task Oracles (`check-synthesized-model`, `check-synthesis-task`)**: Validates codec round-trip (`decode-model`/`encode-model`), frame verification (`verify`), optional held-out generalization, structural call contracts, and resumption parity.
+- **Library Abstraction & M9 Policy Alignment (`check-library-abstractions-contract`)**: Validates net corpus MDL bit compression, compositional call sites, and public M9 descriptor/addressing invariants (`score-entry-by-descriptors`, `find-knowledge-entries-by-address`) without locking in brittle internal names or magic score constants.
+
+## Kernel Suites (`tests/*.lisp` — pure `load.lisp`)
 
 | Module | Coverage |
 |---|---|
-| `support.lisp` | Test harness, shared fixtures, reference evaluators, and cross-suite law/algebra helpers |
-| `core.lisp` | Frames, VM, reconstruction, AU, bounded synthesis and continuations |
-| `observations.lisp` | Observed equality, invariants, scopes and replay |
-| `codec.lisp` | Canonical encoding, independent enumeration and structural work |
-| `laws.lisp` | Arithmetic, validation, guarded rewrites and checked search |
-| `guards.lisp` | Exact agreement subsets and core Boolean guard search |
-| `compression.lisp` | Complete law-corpus reconstruction and objective selection |
-| `symbolic.lisp` | Quoted expressions, DSL transformers, AU lowering and symbolic synthesis |
-| `amortization.lisp` | Reusable validation, preparation accounting, cache isolation and cold/warm continuations |
-| `algebra.lisp` | Both operands of all four arithmetic operators, learned guards, finite certificates, integer counterexamples, exact propagation and AU |
-| `propagation.lisp` | DSL rule matching, library isolation, forward-verified integer targets, retained alternatives, fair branch scheduling, resumption, and expensive-context reuse |
+| `support.lisp` | Pure-kernel test harness, state isolation (`with-clean-kernel-state`), semantic resumption/synthesis/library contract helpers, multi-arity reference tree generator, and pure-kernel fixtures |
+| `core.lisp` | Types, frames, total metered VM (including exact VM step-determinism), codec round-trips, anti-unification, and bounded search |
+| `codec.lisp` | Canonical prefix-free encoding, multi-arity/0-ary completeness against independent reference trees, and structural work |
+| `observations.lisp` | Observed equality, invariants, scopes, anchor/pair stability, and replay |
+| `laws.lisp` | Certified finite-field and counterexample-checked integer laws, guarded rewrites, orientation, and checked search |
+| `symbolic.lisp` | Quoted expressions (`:code`), DSL transformers, AU lowering, and symbolic synthesis |
+| `amortization.lisp` | Reusable validation, preparation accounting, cache isolation, and cold/warm continuations |
 | `lifting.lisp` | Hard-EM fiber clustering, cannot-links, heuristic condensation, supplied and unsupervised lifting, and tentative integer propagation |
-| `abstraction.lisp` | Aligned anti-unification, subtree occurrence indexing, tree corpus packets, subgraph correspondence search, and law-normalized syntax |
-| `views.lisp` | Guarded partition views, 3-way model comparison, physical shuffle invariance, locality-prioritized AU scheduling, and 2D tuple projections |
-| `refactor.lisp` | Partial-expression semantics, immutable problem snapshots, recursive reconstruction, dependency/selector synthesis, global budgets, resumption, and informative messages |
-| `visualizer.lisp` | Read-only export, quoted/exact values and JSON boundaries |
+| `abstraction.lisp` | Aligned anti-unification, subtree occurrence indexing, law-normalized syntax, higher-order body abstraction, and library compression |
+| `refactor.lisp` | Partial-expression semantics, immutable snapshots, recursive reconstruction, selector/dependency decomposition, global budgets, and resumption |
+| `recursion.lisp` | Sequences, structural totality, recursive `define-function`, inductive lifts, nogoods/DIP repair, active-set CEGAR, corpus abstraction, and de-novo combinator synthesis (`R1`–`R6`) |
+| `library.lisp` | Unified `knowledge-library`, relational edges, epistemic evidence/attestation, behavioural descriptors, S-expression persistence, and consolidation (`L1`–`L4` / `M9`) |
+| `higher-order.lisp` | `:code` parameters, `:code-eval` / `:code-subst`, library combinators (`:map`, `:foldr`, `:filter`), learned decoder templates, and polymorphic functor lifting (`H1`–`H4`) |
+| `audit.lisp` | Focused regression and soundness probes (totality bypass rejection, occurs-check, nogood soundness, CEGAR unit-budget accounting, cache isolation) |
+| `invariants.lisp` | Cross-module property & metamorphic contracts: `fold-constants` (`:equivalent` / `:necessary`), `pullback-frame` / `lift-frame` Galois soundness, row-order & input-schema alpha-renaming invariance, and warm-library distractor resilience + consolidation idempotence |
+| `visualizer.lisp` | Standalone read-only visualizer export, quoted/exact values, and JSON boundary checks |
+
+## Milestone Suites (`tests/milestones/*.lisp` — `milestones/load.lisp`)
+
+| Module | Coverage |
+|---|---|
+| `milestones/support.lisp` | Milestone-only test fixtures for corpus packets, guard discovery, algebraic solver discovery, and propagation controls |
+| `milestones/guards.lisp` | Exact agreement subsets and core Boolean guard search (`M3`) |
+| `milestones/compression.lisp` | Complete law-corpus reconstruction and MDL objective selection (`M3`) |
+| `milestones/algebra.lisp` | Algebraic inverter discovery across all four arithmetic operators, learned guards, certificates, and exact propagation (`M4`) |
+| `milestones/propagation.lisp` | Propagator-library isolation, forward-verified integer targets, branch scheduling, resumption, and expensive-context reuse (`M4`) |
+| `milestones/corpus.lisp` | Standalone tree-corpus packet encoding and subgraph correspondence search (`milestones/corpus.lisp`, `M6`) |
+| `milestones/views.lisp` | Guarded partition views, 3-way model comparison, shuffle invariance, locality-prioritized AU, 2D tuple projections, and standalone dependency search (`M7`–`M8`) |
 
 After `make visualizer`, `node visualizer/check-data.cjs` checks the generated
 data and HTML. The optional desktop browser check is documented in

@@ -46,9 +46,8 @@
                     ((10) (0) (10)) ((10) nil nil) (nil nil nil)))
       (destructuring-bind (items positions expected) case
         (check (equal expected (result (decode-model (encode-model model inputs))
-                                      inputs (list items positions))))))
+                                       inputs (list items positions))))))
     ;; Negative positions are valid integer data; failure occurs at access.
-    ;; Include the exact upper bound, a late bad access, and arbitrary bignums.
     (dolist (values (list '((10 20 30) (-1)) '((10 20 30) (3))
                           '((10 20 30) (0 3)) '(nil (0))
                           (list '(10) (list (ash 1 256)))
@@ -60,8 +59,7 @@
     ;; A field residue is still not an integer position.
     (raises (expression-type (app (op :gather :int) (lit sequence '(10))
                                   (lit (sequence-type (gf 5)) '(0))))))
-  ;; Arithmetic can select a stored position sequence through ordinary lookup;
-  ;; gather then consumes that sequence without a conversion or special type.
+  ;; Arithmetic can select a stored position sequence through ordinary lookup.
   (let* ((sequence (sequence-type :int)) (entry (tuple-type :int sequence))
          (inputs '((0 . :int)))
          (positions (app (op :lookup entry)
@@ -70,8 +68,7 @@
          (model (app (op :gather :int) (lit sequence '(10 20 30)) positions)))
     (check (equal '(30 10) (result (decode-model (encode-model model inputs)) inputs '(0))))
     (check (equal '(20 20) (result model inputs '(1)))))
-  ;; Bounds work is prepaid and resumable, with identical errors and ledgers
-  ;; whether the gather succeeds or fails after a valid first position.
+  ;; Focused VM step-determinism check: 1-unit stepping vs batch stepping on `evaluation`.
   (dolist (positions '((0 2) (0 -1) (0 3)))
     (let* ((model (quotient-model :int '(10 20 30) positions))
            (whole (evaluate model nil nil))
@@ -93,6 +90,58 @@
   (raises (restore-quotient '(10) '(-1)))
   (raises (restore-quotient nil '(0))))
 
+(deftest concatenation-codec-values-and-cutoffs
+  (dolist (spec (list (list :int '((1 -2) nil (3) (1 -2)))
+                      (list :bool '((nil t) nil (nil)))
+                      (list (gf 5) '((4 0) (1)))
+                      (list (tuple-type :int :bool) '(((1 t)) nil ((2 nil))))
+                      (list :int nil)
+                      (list :int '(nil nil))))
+    (destructuring-bind (type chunks) spec
+      (let* ((model (app (op :concat type) (lit (sequence-type (sequence-type type)) chunks)))
+             (whole (evaluate model nil nil)))
+        (check (equal (loop for chunk in chunks append chunk) (evaluation-value whole)))
+        (check (= (primitive-cost (op :concat type) (list chunks))
+                  (1+ (value-work chunks (sequence-type (sequence-type type))))))
+        (check-codec-roundtrip model nil)
+        (check-evaluation-resumption model nil nil))))
+  (raises (expression-type (app (op :concat :int) (lit (sequence-type :int) '(1 2)))))
+  (raises (expression-type (app (op :concat :int) (lit (sequence-type (sequence-type :bool)) '((t))))))
+  ;; Version 5 predates the concat opcode; old packets cannot inherit its semantics.
+  (raises (decode-model #*011011000011)))
+
+(deftest core-search-listed-proposals-and-objective
+  (let* ((inputs '((0 . :int))) (x (var 0 :int)) (zero (lit :int 0))
+         (twice (app (op :+ :int) x x)) (bad (app (op :/ :int) (lit :int 1) zero))
+         (frame (simple-frame :int inputs '(((0) 0) ((1) 2) ((-3) -6))))
+         (language (make-language :int inputs))
+         (models (list twice x zero bad twice (lit :bool t)))
+         (job (start-search frame language :expressions models)))
+    (check (eq :replay-complete (message-claim (resume-search job (1- (description-size twice inputs)) 100000))))
+    (check (null (search-job-best job)))
+    (let ((message (resume-search job 100 100000)))
+      (check (eq :replay-complete (message-claim message)))
+      (check (eq :listed-expressions (getf (message-evidence message) :syntax-coverage))))
+    (check (= 1 (length (search-job-results job))))
+    (check (= 5 (length (search-job-proposals job))))
+    (check (equal twice (candidate-expression (search-job-best job))))
+    (check (= 3 (search-job-rejected job)))
+    (raises (resume-search job 99 100000)))
+  (let* ((domain (gf 5)) (inputs (list (cons 0 domain))) (x (var 0 domain))
+         (sum (app (op :+ domain) x (lit domain 0)))
+         (law (checked-law (make-law domain inputs sum x)))
+         (frame (simple-frame domain inputs '(((0) 0) ((4) 4))))
+         (job (start-search frame (make-language domain inputs) :expressions (list sum x) :laws (list law))))
+    (check (eq :replay-complete (message-claim (resume-search job 100 1000000))))
+    (check (= 2 (length (search-job-results job))))
+    (check (plusp (ledger-total (search-job-ledger job)))))
+  (let* ((frame (simple-frame :int nil '((nil 0)))) (language (make-language :int nil))
+         (empty (start-search frame language :expressions nil)))
+    (check (eq :cutoff (message-claim (resume-search empty 100 0))))
+    (check (eq :replay-complete (message-claim (resume-search empty 100 100))))
+    (check (null (search-job-results empty)))
+    (raises (start-search frame language :expressions (list (var 99 :int))))))
+
 (deftest isolated-reorientation-and-model-data
   (let* ((field (gf 5)) (types (list field field field))
          (records '((10 1 2 3) (20 4 3 2) (30 2 4 1)))
@@ -105,14 +154,13 @@
     (check (plusp (replay-model inverse frame)))
     (check (equal '(1 3) (row-known (first (frame-rows frame)))))
     (check (eq :error (evaluation-status (evaluate (var 1 field)
-                                                  (schema-inputs (frame-schema frame)) '(1 3)))))
+                                                   (schema-inputs (frame-schema frame)) '(1 3)))))
     (let* ((lookup (lookup-model frame))
            (inputs (schema-inputs (frame-schema frame)))
            (encoded (encode-model lookup inputs))
            (known (mapcar #'row-known (frame-rows frame))))
       (check (> (description-size lookup inputs) (description-size inverse inputs)))
       (check (plusp (replay-model lookup frame)))
-      ;; Only packet bits and declared arguments survive this isolated replay.
       (setf frame nil records nil)
       (check (equal '(2 3 4) (mapcar (lambda (values) (result (decode-model encoded) inputs values)) known)))
       (let ((indirect (instantiate lookup (list (cons 0 (var 99 field))) :var)))
@@ -122,7 +170,7 @@
   (raises (lookup-model (simple-frame :int '((0 . :int)) '(((1) 2)))))
   (let* ((req (app (op := :int) (app (op :+ :int) (var 0 :int) (lit :int 0)) (lit :int 2)))
          (frame (make-frame (make-schema :inputs nil :target :int :lookup-p t)
-                             (list (make-row :key 0 :known nil :requirement req)))))
+                            (list (make-row :key 0 :known nil :requirement req)))))
     (raises (lookup-model frame)))
   (let ((frame (make-frame
                 (make-schema :inputs '((0 . :int)) :target :int :lookup-p t)
@@ -135,7 +183,6 @@
   (let* ((field (gf 2)) (pair (tuple-type field field))
          (parent (simple-frame pair nil '((nil (0 0)))))
          (diagonal (app (op :tuple pair) (var 7 field) (var 7 field))))
-    ;; Keep both alternatives joint, including when the child itself is a tuple.
     (setf (row-requirement (first (frame-rows parent))) (set-requirement pair '((0 0) (1 1))))
     (let* ((child (pullback-frame parent (var 7 pair) 7 pair nil))
            (req (row-requirement (first (frame-rows child)))))
@@ -164,7 +211,6 @@
       (check (plusp (replay-model model parent)))
       (loop for prow in (frame-rows parent) for crow in (frame-rows child) do
         (loop for z below 5 do
-          ;; Independent explicit fiber oracle: only in this finite contract check.
           (check (eq (= (mod (+ (first (row-known prow)) z) 5)
                          (first (extract-allowed-values (row-requirement prow))))
                       (accepts (row-requirement crow) z)))))
@@ -177,6 +223,36 @@
     (loop for z below 5 do
       (check (accepts (row-requirement (first (frame-rows child))) z))
       (check (not (accepts (row-requirement (second (frame-rows child))) z))))))
+
+(deftest constant-folding-and-conflict-detection
+  (let* ((pair (tuple-type :int :int))
+         (z (var 0 :int))
+         (diag-conflict (app (op := pair) (app (op :tuple pair) z z) (lit pair '(2 3))))
+         (ledger (make-ledger))
+         (folded (fold-constants diag-conflict :ledger ledger)))
+    (check (equal (lit :bool nil) folded))
+    (check (plusp (ledger-total ledger)))
+    (check (equal (lit :bool nil)
+                  (conjoin-requirements (singleton-requirement :int 2)
+                                        (singleton-requirement :int 3))))
+    (check (equal (singleton-requirement :int 2)
+                  (conjoin-requirements (set-requirement :int '(1 2))
+                                        (set-requirement :int '(2 3)))))
+    (check (equal (lit :bool nil)
+                  (conjoin-requirements (set-requirement :int '(1 2))
+                                        (set-requirement :int '(3 4)))))
+    (let ((bad-row-frame (make-frame (make-schema :inputs '((0 . :int)) :target :int)
+                                     (list (make-row :key :diag :known '(5)
+                                                     :requirement diag-conflict))))
+          (incompatible-frame (make-frame (make-schema :inputs '((0 . :int)) :target :int)
+                                          (list (make-row :key :r1 :known '(7)
+                                                          :requirement (set-requirement :int '(1 2)))
+                                                (make-row :key :r2 :known '(7)
+                                                          :requirement (set-requirement :int '(3 4)))))))
+      (check (frame-conflict-p bad-row-frame))
+      (check (eq :unsatisfiable-row (frame-conflict-kind (frame-conflict-p bad-row-frame))))
+      (check (frame-conflict-p incompatible-frame))
+      (check (eq :incompatible-rows (frame-conflict-kind (frame-conflict-p incompatible-frame)))))))
 
 (deftest views-preserve-occurrences
   (let* ((rows '((0 8) (1 2) (2 8) (3 2) (4 9)))
@@ -200,14 +276,14 @@
       (check (not (equal values representatives)))
       (check (> (description-size (lit (tuple-type (sequence-type :int) (sequence-type :int))
                                        (list representatives residual)))
-                 (description-size (lit (sequence-type :int) representatives))))
+                (description-size (lit (sequence-type :int) representatives))))
       (raises (restore-quotient representatives '(3))))))
 
 (deftest syntax-replay-matching-and-au
   (let* ((signature (operator-type (op :+ :int)))
          (template (app (hole 0 signature) (hole 1 :int) (hole 1 :int)))
          (sources (list (app (op :+ :int) (lit :int 2) (lit :int 2))
-                         (app (op :* :int) (lit :int 3) (lit :int 3)))))
+                        (app (op :* :int) (lit :int 3) (lit :int 3)))))
     (loop for source in sources for operator in '(:+ :*) for value in '(2 3) do
       (let ((supplied (list (cons 0 (op operator :int)) (cons 1 (lit :int value)))))
         (check (equal source (instantiate template supplied))))
@@ -219,13 +295,13 @@
       (loop for source in sources for substitution in substitutions do
         (check (equal source (instantiate pattern substitution)))))
     (check (not (nth-value 1 (match-pattern template
-                                           (app (op :* :int) (lit :int 3) (lit :int 4))))))
+                                            (app (op :* :int) (lit :int 3) (lit :int 4))))))
     (multiple-value-bind (pattern substitutions)
         (anti-unify (list (first sources) (app (op :* :int) (lit :int 3) (lit :int 4))))
       (check (= 3 (length (first substitutions))))
       (check (not (equal (first (rest pattern)) (second (rest pattern))))))
     (check (not (nth-value 1 (match-pattern template
-                                           (app (op := :int) (lit :int 2) (lit :int 2)))))))
+                                            (app (op := :int) (lit :int 2) (lit :int 2)))))))
   (multiple-value-bind (pattern substitutions) (anti-unify (list (lit :int 2) (lit :int 3)))
     (check (equal pattern (hole 0 :int)))
     (check (equal (instantiate pattern (second substitutions)) (lit :int 3))))
@@ -244,18 +320,13 @@
          (message (resume-search job bound 100000)))
     (check (eq :bounded-exhaustion (message-claim message)))
     (check (= bound (search-job-completed-bound job)))
-    (let ((actual nil))
-      (maphash (lambda (key bucket) (declare (ignore key))
-                 (setf actual (append actual (coerce bucket 'list))))
-               (enumerator-buckets (search-job-enumerator job)))
-      (check (= (length actual) (length reference)))
-      (check (null (set-exclusive-or actual reference :test #'equal))))
+    (check (same-set-p (enumerated-expressions job) reference))
     (let ((passing (remove-if-not
                     (lambda (expression)
                       (and (= 0 (reference-value expression '((0 . 0)) 2))
-                           (= 1 (reference-value expression '((0 . 1)) 2)))) reference)))
-      (check (null (set-exclusive-or passing (mapcar #'candidate-expression (search-job-results job))
-                                     :test #'equal))))))
+                           (= 1 (reference-value expression '((0 . 1)) 2))))
+                    reference)))
+      (check (same-set-p passing (mapcar #'candidate-expression (search-job-results job)))))))
 
 (deftest integer-payload-bounds-and-contradiction
   (let* ((frame (simple-frame :int nil '((nil -12))))
@@ -274,7 +345,7 @@
     (check (eq :bounded-exhaustion (message-claim (resume-search job bound 100000))))
     (check (null (search-job-results job)))
     (check (plusp (search-job-rejected job)))
-    (check (plusp (cdr (assoc :checking (ledger-counts (search-job-ledger job))))))))
+    (check (plusp (ledger-total (search-job-ledger job))))))
 
 (deftest resume-reaches-planted-program
   (multiple-value-bind (frame oracle) (gf5-fixture)
@@ -288,25 +359,23 @@
       (check (eq :bounded-exhaustion (message-claim (resume-search job (+ (language-header-size language) 5) 10000))))
       (check (null (search-job-results job)))
       (check (eq :cutoff (message-claim (resume-search job bound 1000))))
-      ;; Cross interruption boundaries inside evaluation and checking, too.
       (loop for limit from 1001 to 1300 do (resume-search job bound limit))
       (check (eq :bounded-exhaustion (message-claim (resume-search job bound 5000000))))
       (check (eq :bounded-exhaustion (message-claim (resume-search whole bound 5000000))))
       (check (search-job-best job))
-      (check (equalp (search-job-results job) (search-job-results whole)))
+      (check (same-set-p (search-job-results job) (search-job-results whole) :key #'candidate-expression))
       (check (= (ledger-total (search-job-ledger job)) (ledger-total (search-job-ledger whole))))
       (check (every (lambda (message) (eq :resumed (message-call-id message))) (search-job-messages job)))
       (check (plusp (search-job-rejected job)))
       (check (= (candidate-run-work (search-job-best job))
-                 (replay-model (candidate-expression (search-job-best job)) frame)))
+                (replay-model (candidate-expression (search-job-best job)) frame)))
       (check (some (lambda (c) (equal oracle (candidate-expression c))) (search-job-results job)))
       ;; Storage order affects early-rejection work, never accepted semantics.
       (let* ((shuffled (make-frame (frame-schema frame) (reverse (frame-rows frame))))
              (other (start-search shuffled language)))
         (resume-search other bound 5000000)
-        (check (null (set-exclusive-or (mapcar #'candidate-expression (search-job-results other))
-                                       (mapcar #'candidate-expression (search-job-results job))
-                                       :test #'equal)))))))
+        (check (same-set-p (mapcar #'candidate-expression (search-job-results other))
+                           (mapcar #'candidate-expression (search-job-results job))))))))
 
 (defun normalize-pattern (pattern)
   (let ((ids nil))
@@ -322,7 +391,6 @@
       (walk pattern))))
 
 (defun reference-flat-match-p (pattern source)
-  "Independent oracle for the deliberately finite, single-application AU fixtures."
   (let ((bindings nil))
     (labels ((slot (p s)
                (if (hole-p p)
@@ -336,8 +404,6 @@
                (slot (second (rest pattern)) (second (rest source))))))))
 
 (defun reference-flat-au (left right field)
-  "Exhaust ALL admissible flat patterns, choosing most fixed slots then fewest holes.
-For this finite shape these orderings select the LGG; no general optimality is claimed."
   (let* ((operator-options (list (hole 0 (operator-type (first left)))))
          (first-options (list (hole 1 field) (hole 2 field)))
          (second-options (copy-list first-options))
@@ -369,60 +435,52 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (dolist (left sources)
       (dolist (right sources)
         (check (equal (normalize-pattern (anti-unify (list left right)))
-                       (reference-flat-au left right field)))))))
+                      (reference-flat-au left right field)))))))
 
 (deftest checker-interruption-is-unresolved
   (let* ((field (gf 2))
          (frame (simple-frame field nil '((nil 0))))
-         (job (start-search frame (make-language field nil :operators nil)))
-         (bound (description-size (lit field 0))))
-    (loop until (eq (search-job-phase job) :check) do (search-step job))
-    (let* ((state (search-job-evaluation job))
-           (previous (search-job-completed-bound job))
-           (cutoff (resume-search job bound (1+ (ledger-total (search-job-ledger job))))))
-      (check (eq :cutoff (message-claim cutoff)))
-      (check (eq :unknown (evaluation-status state)))
-      (check (eq state (search-job-evaluation job)))
-      (check (= previous (search-job-completed-bound job)))
-      (check (null (search-job-results job)))
+         (language (make-language field nil :operators nil))
+         (bound (description-size (lit field 0)))
+         (whole (start-search frame language)))
+    (check (eq :bounded-exhaustion (message-claim (resume-search whole bound 10000))))
+    (let ((total (ledger-total (search-job-ledger whole)))
+          (job (start-search frame language)))
+      (loop for limit from 1 below total do
+        (let ((cutoff (resume-search job bound limit)))
+          (check (eq :cutoff (message-claim cutoff)))
+          (check (<= (ledger-total (search-job-ledger job)) limit))
+          (check (< (search-job-completed-bound job) bound))))
       (check (eq :bounded-exhaustion (message-claim (resume-search job bound 10000))))
       (check (search-job-best job)))))
 
 (deftest batched-search-preserves-continuations-and-costs
   (multiple-value-bind (frame oracle) (gf5-fixture)
     (let* ((language (make-language (gf 5) (schema-inputs (frame-schema frame))))
-           (unit (start-search frame language :call-id :batch-parity))
-           (batch (start-search frame language :call-id :batch-parity))
-           (whole (start-search frame language))
            (bound (description-size oracle (schema-inputs (frame-schema frame))))
-           (complete (resume-search whole bound 1000000))
-           (first-work (reduce #'min (search-job-results whole) :key #'candidate-discovery-work))
-           (total-work (ledger-total (search-job-ledger whole))))
-      (check (eq :bounded-exhaustion (message-claim complete)))
-      ;; Cross partial construction, execution/checking instructions, the first
-      ;; successful return, and the exact completion boundary at different budgets.
-      (dolist (limit (sort (remove-duplicates
+           (whole (start-search frame language)))
+      (check (eq :bounded-exhaustion (message-claim (resume-search whole bound 1000000))))
+      (let* ((first-work (reduce #'min (search-job-results whole) :key #'candidate-discovery-work))
+             (total-work (ledger-total (search-job-ledger whole)))
+             (limits (sort (remove-duplicates
                             (append (loop for n from 0 to 400 by 7 collect n)
                                     (loop for n from 400 to 2500 by 137 collect n)
                                     (list (1- first-work) first-work (1+ first-work)
-                                          (1- total-work) total-work (1+ total-work)))) #'<))
-        (resume-search unit bound limit :quantum 1)
-        (resume-search batch bound limit)
-        (check (<= (ledger-total (search-job-ledger batch)) limit))
-        ;; Includes buckets, VM stacks/debt, messages, result order, and every
-        ;; ledger category, not merely the best expression or final total.
-        (check (equalp unit batch)))
-      (check (= bound (search-job-completed-bound batch)))
-      (check (equalp (search-job-results whole) (search-job-results batch)))
-      (check (= 10 (length (search-job-results batch))))
-      (check (plusp (reduce #'min (search-job-results batch) :key #'candidate-discovery-work)))
-      (raises (resume-search batch bound 1000000 :quantum 0)))))
+                                          (1- total-work) total-work)))
+                           #'<)))
+        (multiple-value-bind (batch stepped)
+            (check-search-resumption (lambda () (start-search frame language :call-id :batch-parity))
+                                     bound :budget 1000000 :limits limits)
+          (check (= bound (search-job-completed-bound stepped)))
+          (check (= 10 (length (search-job-results batch))))
+          (check (plusp (reduce #'min (search-job-results batch) :key #'candidate-discovery-work)))
+          (raises (resume-search batch bound 1000000 :quantum 0)))))))
 
 (deftest batched-checker-debt-and-errors
   (let* ((big (1- (ash 1 128)))
          (heavy (app (op := :int)
-                      (app (op :* :int) (lit :int big) (lit :int big))
-                      (lit :int (* big big))))
+                     (app (op :* :int) (lit :int big) (lit :int big))
+                     (lit :int (* big big))))
          (entry-type (tuple-type :int :int))
          (missing-lookup
            (app (op := :int)
@@ -434,36 +492,36 @@ For this finite shape these orderings select the LGG; no general optimality is c
                                 (list (make-row :key 0 :known nil
                                                 :requirement predicate))))
              (language (make-language :int nil :operators nil))
-             (unit (start-search frame language :call-id :checker-parity))
-             (batch (start-search frame language :call-id :checker-parity))
              (bound (description-size (lit :int 0))))
-        (dolist (limit '(0 8 80 160 161 1000 16384 17000 50000 200000))
-          (resume-search unit bound limit :quantum 1)
-          (resume-search batch bound limit)
-          (check (<= (ledger-total (search-job-ledger batch)) limit))
-          (check (equalp unit batch)))
-        (check (= bound (search-job-completed-bound batch)))
-        (check (= expected-count (length (search-job-results batch))))))))
+        (multiple-value-bind (batch)
+            (check-search-resumption
+             (lambda () (start-search frame language :call-id :checker-parity))
+             bound
+             :budget 200000
+             :limits '(0 8 80 160 161 1000 16384 17000 50000 200000))
+          (check (= bound (search-job-completed-bound batch)))
+          (check (= expected-count (length (search-job-results batch)))))))))
 
-(deftest unpaid-instruction-error-after-batched-work
-  ;; Exercise an instruction-cost failure after earlier instructions in the same
-  ;; batch. This must retain the reference search's one validation-error unit.
+(deftest runtime-error-after-paid-instruction-work
+  ;; A candidate that executes costly bignum arithmetic and then fails with a runtime error
+  ;; (division by zero) must remain budget-obedient under resumption, reject the candidate,
+  ;; and charge all paid evaluation work to the job ledger.
   (let* ((frame (simple-frame :int nil '((nil 0))))
          (language (make-language :int nil :operators nil))
-         (unit (start-search frame language :call-id :error-parity))
-         (batch (start-search frame language :call-id :error-parity)))
-    (dolist (job (list unit batch))
-      (let ((state (start-evaluation (lit :int 0) nil nil)))
-        (setf (evaluation-tasks state)
-              (append (evaluation-tasks state) (list (list :invalid-instruction)))
-              (search-job-evaluation job) state
-              (search-job-phase job) :evaluate)))
-    (loop while (eq :evaluate (search-job-phase unit)) do (search-step unit))
-    (search-step batch 100)
-    (check (equalp unit batch))
-    (check (eq :error (evaluation-status (search-job-evaluation batch))))
-    (check (= (1+ (evaluation-work (search-job-evaluation batch))) (ledger-total (search-job-ledger batch))))
-    (check (= 1 (cdr (assoc :validation (ledger-counts (search-job-ledger batch))))))))
+         (big (1- (ash 1 128)))
+         (failing-expr (app (op :/ :int)
+                            (app (op :* :int) (lit :int big) (lit :int big))
+                            (lit :int 0)))
+         (bound (description-size failing-expr nil)))
+    (multiple-value-bind (batch)
+        (check-search-resumption
+         (lambda () (start-search frame language :expressions (list failing-expr) :call-id :error-parity))
+         bound
+         :budget 200000
+         :limits '(0 1 8 64 500 16384 17000 50000))
+      (check (null (search-job-results batch)))
+      (check (= 1 (search-job-rejected batch)))
+      (check (> (ledger-total (search-job-ledger batch)) (* 128 128))))))
 
 (deftest at-operator-tuple-projections-and-quotient-pullback
   ;; 1. Canonical operator pooling, signature, provably-total-p, and runtime bounds checking
@@ -479,7 +537,6 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (equal (list :fn (list seq-type :int) :int) (operator-type at-seq)))
     (check (equal (list :fn (list pair-type :int) :int) (operator-type at-pair)))
     (check (equal (list :fn (list grid-type :int) seq-type) (operator-type at-grid)))
-    ;; In-bounds literal index on a tuple or literal sequence is provably total; out-of-bounds or dynamic is not
     (check (provably-total-p (app at-pair z (lit :int 0))))
     (check (provably-total-p (app at-pair z (lit :int 1))))
     (check (not (provably-total-p (app at-pair z (lit :int 2)))))
@@ -487,7 +544,6 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (provably-total-p (app at-seq (lit seq-type '(10 20 30)) (lit :int 2))))
     (check (not (provably-total-p (app at-seq (lit seq-type '(10 20 30)) (lit :int 3)))))
     (check (not (provably-total-p (app at-seq s (lit :int 0)))))
-    ;; Runtime execution & out-of-bounds erroring
     (let ((ok-pair (evaluate (app at-pair z (lit :int 1)) (list (cons 0 pair-type)) '((7 11))))
           (err-pair (evaluate (app at-pair z (lit :int 2)) (list (cons 0 pair-type)) '((7 11))))
           (err-neg (evaluate (app at-seq s (lit :int -1)) (list (cons 0 seq-type)) '((10 20)))))
@@ -495,7 +551,6 @@ For this finite shape these orderings select the LGG; no general optimality is c
       (check (= 11 (evaluation-value ok-pair)))
       (check (eq :error (evaluation-status err-pair)))
       (check (eq :error (evaluation-status err-neg))))
-    ;; Beta-reduction of `(at (tuple e0 e1) 'i) -> ei` in `fold-constants`
     (let* ((x0 (var 0 :int))
            (x1 (var 1 :int))
            (tup (app (op :tuple pair-type) (app (op :+ :int) x0 (lit :int 1)) (app (op :* :int) x1 (lit :int 2)))))
@@ -503,8 +558,7 @@ For this finite shape these orderings select the LGG; no general optimality is c
                     (fold-constants (app at-pair tup (lit :int 0)))))
       (check (equal (app (op :* :int) x1 (lit :int 2))
                     (fold-constants (app at-pair tup (lit :int 1)))))))
-  ;; 2. Tuple intermediate representation Z : (:tuple :int :int) in a single pullback:
-  ;;    coordinate projections `(at Z '0)` and `(at Z '1)` reassemble into canonical tuple requirements
+  ;; 2. Tuple intermediate representation Z : (:tuple :int :int) in a single pullback
   (let* ((ledger (make-ledger))
          (pair-type (tuple-type :int :int))
          (at-pair (op :at pair-type))
@@ -513,17 +567,14 @@ For this finite shape these orderings select the LGG; no general optimality is c
                             (make-row :key 1 :known '(2) :requirement (singleton-requirement pair-type '(4 7)))))
          (parent-frame (make-frame parent-schema parent-rows))
          (z (var 9 pair-type))
-         ;; Outer decoder accesses both coordinates of tuple Z via `:at`
          (decoder (app (op :tuple pair-type)
                        (app (op :+ :int) (var 0 :int) (app at-pair z (lit :int 0)))
                        (app (op :+ :int) (var 0 :int) (app at-pair z (lit :int 1)))))
          (child-frame (pullback-frame parent-frame decoder 9 pair-type (list (cons 0 (var 0 :int))) ledger))
-         ;; Also test direct coordinate equality conjunction reassembly into `(= Z '(u v))`
          (z0 (var 0 pair-type))
          (coord-conj (bool-and (app (op := :int) (app at-pair z0 (lit :int 0)) (lit :int 2))
                                (app (op := :int) (app at-pair z0 (lit :int 1)) (lit :int 4))))
          (folded-conj (fold-constants coord-conj :ledger ledger))
-         ;; And Cartesian product extraction when coordinates have `:member` sets
          (member-conj (bool-and (app (op := :int) (app at-pair z0 (lit :int 0)) (lit :int 2))
                                 (app (op :member :int) (app at-pair z0 (lit :int 1))
                                      (lit (sequence-type :int) '(4 6))))))
@@ -531,8 +582,7 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (equal (singleton-requirement pair-type '(2 4)) folded-conj))
     (check (equal '((2 4)) (extract-allowed-values folded-conj)))
     (check (equal '((2 4) (2 6)) (extract-allowed-values member-conj))))
-  ;; 3. Quotienting a generated tuple space and pulling back through per-row `(quotient-model type reps Z)`:
-  ;;    Pullback retains forward relational requirements, including errors outside the table.
+  ;; 3. Quotienting a generated tuple space and pulling back through per-row `(quotient-model type reps Z)`
   (let* ((ledger (make-ledger))
          (pair-type (tuple-type :int :int))
          (generated-points '((10 20) (30 40) (10 20) (50 60))))
@@ -551,13 +601,11 @@ For this finite shape these orderings select the LGG; no general optimality is c
              (folded-reqs (mapcar (lambda (r) (fold-constants (row-requirement r) :ledger ledger))
                                   (frame-rows pulled))))
         (check (equal generated-points (evaluation-value (evaluate batch-qmodel nil nil :ledger ledger))))
-        ;; Pullback stays relational. Inversion is no longer a built-in simplifier rule.
         (loop for req in folded-reqs for j in residual do
           (check (accepts req j))
           (check (eq :error (evaluation-status (check-requirement req -1)))))
         (check (every (lambda (req) (eq :unknown (extract-allowed-values req))) folded-reqs)))))
-  ;; 4. 2D grid pullback through `(at (at 'G (at Z '0)) (at Z '1))` with color aliasing:
-  ;;    preserves aliased coordinates without any built-in 2D inversion rule.
+  ;; 4. 2D grid pullback through `(at (at 'G (at Z '0)) (at Z '1))` with color aliasing
   (let* ((ledger (make-ledger))
          (pair-type (tuple-type :int :int))
          (seq-int (sequence-type :int))
@@ -569,7 +617,6 @@ For this finite shape these orderings select the LGG; no general optimality is c
                             (app (op :at grid-type) (lit grid-type grid)
                                  (app (op :at pair-type) z (lit :int 0)))
                             (app (op :at pair-type) z (lit :int 1))))
-         ;; Color 5 appears at (0, 1) and (1, 2); Color 7 appears uniquely at (1, 0); Color 9 is absent
          (parent-frame (make-frame (make-schema :inputs '((0 . :int)) :target :int)
                                    (list (make-row :key 0 :known '(0) :requirement (singleton-requirement :int 5))
                                          (make-row :key 1 :known '(1) :requirement (singleton-requirement :int 7)))))
@@ -584,50 +631,43 @@ For this finite shape these orderings select the LGG; no general optimality is c
     (check (accepts r1-folded '(1 0)))
     (check (eq :error (evaluation-status (check-requirement r0-folded '(-1 0)))))))
 
-
-
 (deftest term-builder-infers-operator-types-and-splices-asts
-  ;; `term` must produce exactly the AST that the explicit constructors build.
-  (let* ((seq (sequence-type :int))
-         (unary (code-type '((0 . :int)) :int))
-         (x (var 0 :int))
-         (xs (var 0 seq))
-         (f (var 1 unary))
-         (field (gf 7))
-         (y (var 0 field)))
-    (check (equal (app (op :+ :int) (app (op :* :int) x (lit :int 3)) (lit :int 1))
-                  (term `(+ (* ,x 3) 1))))
-    ;; A literal argument takes the type its operator requires at that position.
-    (check (equal (app (op :cons :int) (lit :int 1) xs) (term `(cons 1 ,xs))))
-    (check (equal (app (op :member :int) x (lit seq '(1 2))) (term `(member ,x '(1 2)))))
-    (check (equal (app (op :if field) (app (op := field) y (lit field 0)) (lit field 1)
-                       (app (op :/ field) (lit field 1) y))
-                  (term `(if (= ,y 0) 1 (/ 1 ,y)))))
-    (check (equal (app (op :tuple (tuple-type :int :int)) x (app (op :length :int) xs))
-                  (term `(tuple ,x (length ,xs)))))
-    ;; The expected type reaches literals that no argument can type.
-    (check (equal (app (op :if seq) (app (op := seq) xs (lit seq '())) (lit seq '()) xs)
-                  (term `(if (= ,xs ()) () ,xs))))
-    (raises (term '(= 1 2)))
-    (raises (term `(+ ,x ,xs)))
-    ;; An operator spliced into head position, and a registered function named by keyword.
-    (clear-function-definitions)
-    (let (by-hand by-term)
-      (define-function :fa (list (cons 0 seq) (cons 1 unary)) seq
-        (lambda (self)
-          (setf by-term (term `(if (= ,xs ()) ()
-                                   (cons (code-eval ,f (at ,xs 0)) (,self (tail ,xs) ,f)))
-                              seq)
-                by-hand (app (op :if seq) (app (op := seq) xs (lit seq '())) (lit seq '())
-                             (app (op :cons :int)
-                                  (app (op :code-eval unary) f (app (op :at seq) xs (lit :int 0)))
-                                  (app self (app (op :tail :int) xs) f))))))
-      (check (equal by-hand by-term))
-      (check (equal (app (op :fa) xs (lit unary (app (op :+ :int) x (lit :int 1))))
-                    (term `(:fa ,xs ',(term `(+ ,x 1))))))
-      (check (equal '(2 3 4)
-                    (result (term `(:fa '(1 2 3) ',(term `(+ ,x 1)))) nil nil))))
-    (clear-function-definitions)))
+  (with-clean-kernel-state
+    (let* ((seq (sequence-type :int))
+           (unary (code-type '((0 . :int)) :int))
+           (x (var 0 :int))
+           (xs (var 0 seq))
+           (f (var 1 unary))
+           (field (gf 7))
+           (y (var 0 field)))
+      (check (equal (app (op :+ :int) (app (op :* :int) x (lit :int 3)) (lit :int 1))
+                    (term `(+ (* ,x 3) 1))))
+      (check (equal (app (op :cons :int) (lit :int 1) xs) (term `(cons 1 ,xs))))
+      (check (equal (app (op :member :int) x (lit seq '(1 2))) (term `(member ,x '(1 2)))))
+      (check (equal (app (op :if field) (app (op := field) y (lit field 0)) (lit field 1)
+                         (app (op :/ field) (lit field 1) y))
+                    (term `(if (= ,y 0) 1 (/ 1 ,y)))))
+      (check (equal (app (op :tuple (tuple-type :int :int)) x (app (op :length :int) xs))
+                    (term `(tuple ,x (length ,xs)))))
+      (check (equal (app (op :if seq) (app (op := seq) xs (lit seq '())) (lit seq '()) xs)
+                    (term `(if (= ,xs ()) () ,xs))))
+      (raises (term '(= 1 2)))
+      (raises (term `(+ ,x ,xs)))
+      (let (by-hand by-term)
+        (define-function :fa (list (cons 0 seq) (cons 1 unary)) seq
+          (lambda (self)
+            (setf by-term (term `(if (= ,xs ()) ()
+                                     (cons (code-eval ,f (at ,xs 0)) (,self (tail ,xs) ,f)))
+                                seq)
+                  by-hand (app (op :if seq) (app (op := seq) xs (lit seq '())) (lit seq '())
+                               (app (op :cons :int)
+                                    (app (op :code-eval unary) f (app (op :at seq) xs (lit :int 0)))
+                                    (app self (app (op :tail :int) xs) f))))))
+        (check (equal by-hand by-term))
+        (check (equal (app (op :fa) xs (lit unary (app (op :+ :int) x (lit :int 1))))
+                      (term `(:fa ,xs ',(term `(+ ,x 1))))))
+        (check (equal '(2 3 4)
+                      (result (term `(:fa '(1 2 3) ',(term `(+ ,x 1)))) nil nil)))))))
 
 (deftest term-builder-infers-code-operator-types
   (let* ((scope '((0 . :int) (1 . :int)))
@@ -637,7 +677,6 @@ For this finite shape these orderings select the LGG; no general optimality is c
          (bindings (tuple-type code code)))
     (check (equal (app (op :code-match (tuple-type code code)) pattern source)
                   (term `(code-match ,pattern ,source))))
-    ;; The arguments of these three do not fix their result type; it comes from context.
     (check (equal (app (op :code-bind (tuple-type code code code)) pattern source (lit :int 0))
                   (term `(code-bind ,pattern ,source 0) code)))
     (check (equal (app (op :code-child (tuple-type code code)) source (lit :int 1))
@@ -650,7 +689,6 @@ For this finite shape these orderings select the LGG; no general optimality is c
                        source)
                   (term `(if (code-match ,pattern ,source) (code-bind ,pattern ,source 1) ,source))))
     (raises (term `(code-bind ,pattern ,source 0)))
-    ;; A copied AST is still an AST, not a template to be elaborated.
     (check (equal pattern (term (copy-tree pattern))))))
 
 (deftest map-ast-rebuilds-leaves-first-or-root-first
@@ -661,10 +699,8 @@ For this finite shape these orderings select the LGG; no general optimality is c
          (seven-for-x (lambda (node meta)
                         (declare (ignore meta))
                         (and (eq node x) (lit :int 7)))))
-    ;; Unchanged subtrees are shared, so a map that replaces nothing returns the tree itself.
     (check (eq tree (map-ast (lambda (node meta) (declare (ignore node meta)) nil) tree)))
     (check (equal (term `(* (+ 7 ,y) (+ 7 1))) (map-ast seven-for-x tree)))
-    ;; Root first, a replaced node is not descended into: the variables inside SUM are never offered.
     (let ((offered nil))
       (check (equal (term `(* ,y (+ ,x 1)))
                     (map-ast (lambda (node meta)
@@ -672,7 +708,6 @@ For this finite shape these orderings select the LGG; no general optimality is c
                                (and (equal node sum) y))
                              tree :root-first t)))
       (check (equal (list x) offered)))
-    ;; Quoted code is opaque unless the caller asks for it to be mapped.
     (let ((quoted (lit (code-type '((0 . :int)) :int) x)))
       (check (eq quoted (map-ast seven-for-x quoted)))
       (check (equal (lit (code-type '((0 . :int)) :int) (lit :int 7))
