@@ -1,0 +1,388 @@
+(in-package #:lisploop)
+
+(defun parity-key-expression (&optional (var-id 0))
+  "Object-level `:int` remainder expression `(- r (* (/ r '2) '2))` computing `r mod 2`."
+  (let ((r (var var-id :int))
+        (two (lit :int 2)))
+    (app (op :- :int)
+         r
+         (app (op :* :int)
+              (app (op :/ :int) r two)
+              two))))
+
+(defun parity-zero-guard (&optional (var-id 0))
+  "Object-level `:bool` guard `(= (- r (* (/ r '2) '2)) '0)` testing evenness of `r`."
+  (app (op := :int) (parity-key-expression var-id) (lit :int 0)))
+
+(defun locality-abstraction-fixture (&key (domain :int) (mode :co-local) ledger)
+  "Construct a 6-tree AST corpus in which planted instances of a shared template p
+are arranged according to MODE:
+  :CO-LOCAL    — 2 planted trees placed adjacent at indices (3, 4), surrounded by 4 distractors.
+  :DISTANT     — 2 planted trees placed at opposite ends (0, 5), separated by 4 distractors.
+  :INTERLEAVED — 3 planted trees placed at even indices (0, 2, 4), interleaved with 3 odd distractors.
+Returns (VALUES trees inputs hidden-oracle)."
+  (assert (member mode '(:co-local :distant :interleaved)))
+  (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
+         (x0 (var 0 domain))
+         (x1 (var 1 domain))
+         (plus (op :+ domain))
+         (mul (op :* domain))
+         (sub (op :- domain))
+         (anchor (app plus
+                      (app mul x0 (lit domain 2))
+                      (app plus
+                           (app mul x1 (lit domain 3))
+                           (app mul (app plus x0 x1) (lit domain 5)))))
+         (branch (app mul (hole 0 domain) anchor))
+         (pattern (app plus branch branch))
+         (planted-args (list x0
+                             (app plus x1 (lit domain 2))
+                             (app mul x0 (lit domain 3))))
+         (planted-trees
+           (mapcar (lambda (arg)
+                     (instantiate pattern (list (cons 0 arg))))
+                   planted-args))
+         (distractors
+           (list (app plus x0 (lit domain 1))
+                 (app plus x1 (lit domain 2))
+                 (app plus (app sub x0 (lit domain 3)) x1)
+                 (app plus x0 (app sub x1 (lit domain 4)))))
+         (trees
+           (ecase mode
+             (:co-local
+              (list (first distractors)
+                    (second distractors)
+                    (third distractors)
+                    (first planted-trees)
+                    (second planted-trees)
+                    (fourth distractors)))
+             (:distant
+              (list (first planted-trees)
+                    (first distractors)
+                    (second distractors)
+                    (third distractors)
+                    (fourth distractors)
+                    (second planted-trees)))
+             (:interleaved
+              (list (first planted-trees)
+                    (first distractors)
+                    (second planted-trees)
+                    (second distractors)
+                    (third planted-trees)
+                    (third distractors)))))
+         (planted-indices
+           (ecase mode
+             (:co-local '(3 4))
+             (:distant '(0 5))
+             (:interleaved '(0 2 4)))))
+    (dolist (tree trees)
+      (charge ledger :construction (syntax-work tree)))
+    (values trees
+            inputs
+            (list :pattern pattern
+                  :mode mode
+                  :planted-indices planted-indices))))
+
+(deftest view-discovery-and-three-way-comparison
+  (let ((ledger (make-ledger)))
+    (multiple-value-bind (frame decoder)
+        (integer-lifting-fixture :offsets '(1 3) :steps 7 :repetitions 2 :ledger ledger)
+      (let* ((parent-inputs (schema-inputs (frame-schema frame)))
+             (t-bindings (list (cons 1 (var 1 :int))))
+             (t-inputs (list (cons 1 :int)))
+             (child-lang (make-language :int t-inputs :operators (list (op :+ :int)) :literals '(1 3)))
+             (child-bound (description-size (app (op :+ :int) (lit :int 3) (var 1 :int)) t-inputs))
+             (plus-solver (arithmetic-control :int :+ 1))
+             (parity-guard (parity-zero-guard 0))
+             (r0-guard (app (op := :int) (var 0 :int) (lit :int 0)))
+             (t0-guard (app (op := :int) (var 1 :int) (lit :int 0))))
+        ;; M8C conflict pruning on non-separating guards
+        (multiple-value-bind (r0-props r0-conflict)
+            (synthesize-supplied-partition-view frame r0-guard child-lang
+                                                :child-bindings t-bindings :child-bound child-bound
+                                                :decoder decoder :child-id 9 :child-type :int
+                                                :solver plus-solver :ledger ledger)
+          (check (null r0-props))
+          (check r0-conflict)
+          (check (eq :incompatible-rows (frame-conflict-kind (partition-view-proposal-conflict r0-conflict)))))
+        (multiple-value-bind (t0-props t0-conflict)
+            (synthesize-supplied-partition-view frame t0-guard child-lang
+                                                :child-bindings t-bindings :child-bound child-bound
+                                                :decoder decoder :child-id 9 :child-type :int
+                                                :solver plus-solver :ledger ledger)
+          (check (null t0-props))
+          (check t0-conflict)
+          (check (eq :incompatible-rows (frame-conflict-kind (partition-view-proposal-conflict t0-conflict)))))
+        ;; Valid parity view synthesis & 3-way comparison
+        (multiple-value-bind (props conflict)
+            (synthesize-supplied-partition-view frame parity-guard child-lang
+                                                :child-bindings t-bindings :child-bound child-bound
+                                                :decoder decoder :child-id 9 :child-type :int
+                                                :solver plus-solver :ledger ledger)
+          (check (null conflict))
+          (let ((sep-prop (find :separate-parts props :key #'partition-view-proposal-kind))
+                (shared-prop (find :shared-decoder props :key #'partition-view-proposal-kind))
+                (lookup-bits (description-size (lookup-model frame ledger) parent-inputs)))
+            (check sep-prop)
+            (check shared-prop)
+            (check (< (partition-view-proposal-bits shared-prop)
+                      (partition-view-proposal-bits sep-prop)))
+            (check (< (partition-view-proposal-bits sep-prop) lookup-bits))
+            (check (plusp (replay-model (partition-view-proposal-model sep-prop) frame ledger)))
+            (check (plusp (replay-model (partition-view-proposal-model shared-prop) frame ledger))))))))
+  ;; 2. Autonomous grammar-enumerated view discovery on GF(7) two-regime sequences
+  (let ((field (gf 7))
+        (ledger (make-ledger)))
+    (multiple-value-bind (gf-frame gf-decoder)
+        (gf7-lifting-fixture :offsets '(1 3) :steps 7 :repetitions 1 :ledger ledger)
+      (let* ((parent-inputs (schema-inputs (frame-schema gf-frame)))
+             (iota-t (gf7-iota-conversion (var 1 :int) :steps 7 :ledger ledger))
+             (t-bindings (list (cons 1 iota-t)))
+             (t-inputs (list (cons 1 field)))
+             (guard-lang (make-language :int parent-inputs :operators (list (op := :int)) :literals '(0 1)))
+             (guard-bound (description-size (app (op := :int) (var 0 :int) (lit :int 0)) parent-inputs))
+             (part-expr-0 (app (op :+ field) (var 1 field) (lit field 1)))
+             (part-expr-1 (app (op :+ field) (var 1 field) (lit field 3)))
+             (child-lang (make-language field t-inputs
+                                        :operators (list (op :+ field))
+                                        :literals '(1 3)))
+             (child-bound (max (description-size part-expr-0 t-inputs)
+                               (description-size part-expr-1 t-inputs)))
+             (plus-solver (arithmetic-control field :+ 1)))
+        (multiple-value-bind (best-prop proposals conflicts)
+            (discover-partition-views gf-frame guard-lang child-lang
+                                      :guard-bound guard-bound
+                                      :child-bindings t-bindings
+                                      :child-bound child-bound
+                                      :decoder gf-decoder :child-id 9 :child-type field
+                                      :solver plus-solver :ledger ledger)
+          (let ((sep-prop (find :separate-parts proposals :key #'partition-view-proposal-kind))
+                (shared-prop (find :shared-decoder proposals :key #'partition-view-proposal-kind))
+                (lookup-prop (find :lookup proposals :key #'partition-view-proposal-kind)))
+            (check best-prop)
+            (check sep-prop)
+            (check shared-prop)
+            (check lookup-prop)
+            (check (plusp (length conflicts)))
+            (check (eq :shared-decoder (partition-view-proposal-kind best-prop)))
+            (check (< (partition-view-proposal-bits shared-prop)
+                      (partition-view-proposal-bits lookup-prop)))
+            (check (< (partition-view-proposal-bits shared-prop)
+                      (partition-view-proposal-bits sep-prop)))
+            (check (plusp (replay-model (partition-view-proposal-model best-prop) gf-frame ledger)))))))))
+
+(deftest view-physical-shuffle-and-permutation-reconstruction
+  (let ((ledger (make-ledger)))
+    (multiple-value-bind (frame decoder supplied-r-to-j true-labels records)
+        (integer-lifting-fixture :offsets '(1 3) :steps 7 :repetitions 2 :ledger ledger)
+      (declare (ignore supplied-r-to-j true-labels))
+      (let* ((n (length (frame-rows frame)))
+             (perm (append (reverse (loop for i below n by 2 collect i))
+                           (loop for i from 1 below n by 2 collect i)))
+             (shuffled-frame (shuffle-frame-rows frame perm ledger))
+             (parity-guard (parity-zero-guard 0))
+             (t-bindings (list (cons 1 (var 1 :int))))
+             (t-inputs (list (cons 1 :int)))
+             (child-lang (make-language :int t-inputs :operators (list (op :+ :int)) :literals '(1 3)))
+             (child-bound (description-size (app (op :+ :int) (lit :int 3) (var 1 :int)) t-inputs))
+             (plus-solver (arithmetic-control :int :+ 1)))
+        (multiple-value-bind (orig-props)
+            (synthesize-supplied-partition-view frame parity-guard child-lang
+                                                :child-bindings t-bindings :child-bound child-bound
+                                                :decoder decoder :child-id 9 :child-type :int
+                                                :solver plus-solver :ledger ledger)
+          (multiple-value-bind (shuf-props)
+              (synthesize-supplied-partition-view shuffled-frame parity-guard child-lang
+                                                  :child-bindings t-bindings :child-bound child-bound
+                                                  :decoder decoder :child-id 9 :child-type :int
+                                                  :solver plus-solver :ledger ledger)
+            (let ((orig-shared (find :shared-decoder orig-props :key #'partition-view-proposal-kind))
+                  (shuf-shared (find :shared-decoder shuf-props :key #'partition-view-proposal-kind)))
+              (check (equal (partition-view-proposal-model orig-shared)
+                            (partition-view-proposal-model shuf-shared)))
+              (check (= (partition-view-proposal-bits orig-shared)
+                        (partition-view-proposal-bits shuf-shared)))
+              (check (= (replay-model (partition-view-proposal-model orig-shared) frame ledger)
+                        (replay-model (partition-view-proposal-model shuf-shared) shuffled-frame ledger))))))
+        (let* ((ordered-targets (mapcar #'fourth records))
+               (value-labels (mapcar (lambda (v) (mod v 2)) ordered-targets))
+               (val-part (partition-rows ordered-targets value-labels ledger))
+               (concat-groups (apply #'append (partition-groups val-part)))
+               (pmodel (partition-model val-part :int ledger))
+               (decoded-pmodel (decode-model (encode-model pmodel nil)))
+               (pmodel-run (evaluate decoded-pmodel nil nil :ledger ledger)))
+          (check (not (equal ordered-targets concat-groups)))
+          (check (eq :value (evaluation-status pmodel-run)))
+          (check (equal ordered-targets (evaluation-value pmodel-run)))
+          (check (equal ordered-targets (reassemble-partition val-part ledger))))
+        (let* ((t-only-frame (orient-observations '(:int :int :int) records '(1) '(2)
+                                                  :lookup-p t :ledger ledger))
+               (t-guard-lang (make-language :int '((1 . :int)) :operators (list (op := :int)) :literals '(0 1 2))))
+          (multiple-value-bind (best-t-prop t-props t-conflicts)
+              (discover-partition-views t-only-frame t-guard-lang child-lang
+                                        :guard-bound (description-size (app (op := :int) (var 1 :int) (lit :int 2)) '((1 . :int)))
+                                        :child-bound child-bound :ledger ledger)
+            (check (null best-t-prop))
+            (check (null t-props))
+            (check (plusp (length t-conflicts)))))
+        (multiple-value-bind (true-frame false-frame labels part linked-frame)
+            (evaluate-guard-partition frame parity-guard :child-bindings t-bindings :ledger ledger)
+          (declare (ignore true-frame false-frame labels part))
+          (check (= (- (length (frame-rows frame)) 2) (length (frame-pairs linked-frame))))
+          (check (= 2 (length (frame-anchors linked-frame))))
+          (let* ((parent-inputs (schema-inputs (frame-schema linked-frame)))
+                 (scope (make-observation-scope linked-frame
+                                                (make-language :int parent-inputs
+                                                               :operators (list (op := :int))
+                                                               :literals '(0))))
+                 (obs-job (start-observation-search scope :expressions (list parity-guard))))
+            (resume-observation-search obs-job (description-size parity-guard parent-inputs) 100000)
+            (check (= 1 (length (observation-invariants obs-job))))))
+        (let ((child-frame (pullback-frame frame decoder 9 :int (list (cons 0 (var 0 :int))) ledger)))
+          (multiple-value-bind (f-pairs f-anchors refined)
+              (fiber-pairs-and-anchors child-frame ledger)
+            (check (= (- (length (frame-rows child-frame)) 2) (length f-pairs)))
+            (check (= 2 (length f-anchors)))
+            (check (equal f-pairs (frame-pairs refined)))
+            (check (equal f-anchors (frame-anchors refined)))))))))
+
+(deftest view-locality-scheduling-and-canonical-reserve
+  (let ((ledger (make-ledger)))
+    (multiple-value-bind (co-trees inputs co-oracle)
+        (locality-abstraction-fixture :domain :int :mode :co-local :ledger ledger)
+      (multiple-value-bind (can-comp can-struct)
+          (discover-subexpression-abstractions co-trees inputs
+                                               :schedule :canonical :pair-budget 6 :ledger ledger)
+        (declare (ignore can-comp))
+        (multiple-value-bind (loc-comp loc-struct)
+            (discover-subexpression-abstractions co-trees inputs
+                                                 :schedule :locality :pair-budget 6 :ledger ledger)
+          (check (not (patterns-isomorphic-p (getf co-oracle :pattern)
+                                             (subexpression-abstraction-pattern can-struct)
+                                             inputs ledger)))
+          (check (patterns-isomorphic-p (getf co-oracle :pattern)
+                                        (subexpression-abstraction-pattern loc-struct)
+                                        inputs ledger))
+          (check (plusp (subexpression-abstraction-gain loc-comp)))
+          (check (plusp (verify-corpus-abstraction-replay loc-comp co-trees inputs ledger))))))
+    (multiple-value-bind (dist-trees inputs dist-oracle)
+        (locality-abstraction-fixture :domain :int :mode :distant :ledger ledger)
+      (multiple-value-bind (win-comp win-struct)
+          (discover-subexpression-abstractions dist-trees inputs
+                                               :schedule :locality-only :ledger ledger)
+        (declare (ignore win-comp))
+        (multiple-value-bind (res-comp res-struct)
+            (discover-subexpression-abstractions dist-trees inputs
+                                                 :schedule :locality :ledger ledger)
+          (check (not (patterns-isomorphic-p (getf dist-oracle :pattern)
+                                             (subexpression-abstraction-pattern win-struct)
+                                             inputs ledger)))
+          (check (patterns-isomorphic-p (getf dist-oracle :pattern)
+                                        (subexpression-abstraction-pattern res-struct)
+                                        inputs ledger))
+          (check (plusp (subexpression-abstraction-gain res-comp)))
+          (check (plusp (verify-corpus-abstraction-replay res-comp dist-trees inputs ledger))))))
+    (multiple-value-bind (int-trees inputs int-oracle)
+        (locality-abstraction-fixture :domain :int :mode :interleaved :ledger ledger)
+      (let ((parity-key (parity-key-expression 0)))
+        (multiple-value-bind (raw-comp raw-struct)
+            (discover-subexpression-abstractions int-trees inputs
+                                                 :schedule :locality-only :pair-budget 1 :ledger ledger)
+          (declare (ignore raw-comp))
+          (multiple-value-bind (ind-comp ind-struct)
+              (discover-subexpression-abstractions int-trees inputs
+                                                   :schedule :locality-only :pair-budget 1
+                                                   :locality-key parity-key :ledger ledger)
+            (check (not (patterns-isomorphic-p (getf int-oracle :pattern)
+                                               (subexpression-abstraction-pattern raw-struct)
+                                               inputs ledger)))
+            (check (patterns-isomorphic-p (getf int-oracle :pattern)
+                                          (subexpression-abstraction-pattern ind-struct)
+                                          inputs ledger))
+            (check (plusp (subexpression-abstraction-gain ind-comp)))
+            (check (plusp (verify-corpus-abstraction-replay ind-comp int-trees inputs ledger)))))))
+    (multiple-value-bind (grid-trees inputs grid-oracle)
+        (locality-abstraction-fixture :domain :int :mode :interleaved :ledger ledger)
+      (let* ((pair-type (tuple-type :int :int))
+             (row-expr (app (op :/ :int) (var 0 :int) (lit :int 2)))
+             (col-expr (parity-key-expression 0))
+             (iso-2d-key (app (op :tuple pair-type) row-expr col-expr))
+             (aniso-2d-key (app (op :tuple pair-type)
+                                row-expr
+                                (app (op :* :int) (lit :int 2) col-expr)))
+             (projected-col-key (app (op :at pair-type) iso-2d-key (lit :int 1))))
+        (multiple-value-bind (pos-vec labels-vec reps residual)
+            (compute-tree-locality-positions (length grid-trees) iso-2d-key ledger)
+          (declare (ignore pos-vec))
+          (check (= 6 (length reps)))
+          (check (equal '((0 0) (0 1) (1 0) (1 1) (2 0) (2 1)) (coerce labels-vec 'list)))
+          (check (equal '(0 1 2 3 4 5) residual)))
+        (multiple-value-bind (pos-vec labels-vec reps residual)
+            (compute-tree-locality-positions (length grid-trees) projected-col-key ledger)
+          (declare (ignore pos-vec labels-vec))
+          (check (equal '(0 1) reps))
+          (check (equal '(0 1 0 1 0 1) residual)))
+        (dolist (key-expr (list aniso-2d-key projected-col-key))
+          (multiple-value-bind (comp struct)
+              (discover-subexpression-abstractions grid-trees inputs
+                                                   :schedule :locality-only :pair-budget 1
+                                                   :locality-key key-expr :ledger ledger)
+            (check (patterns-isomorphic-p (getf grid-oracle :pattern)
+                                          (subexpression-abstraction-pattern struct)
+                                          inputs ledger))
+            (check (plusp (subexpression-abstraction-gain comp)))
+            (check (plusp (verify-corpus-abstraction-replay comp grid-trees inputs ledger)))))))))
+
+(deftest view-tentative-conflict-preserves-original-alternatives
+  (let* ((frame (simple-frame :int '((0 . :int) (1 . :int))
+                              '(((2 0) 1) ((3 0) 1) ((2 1) 1) ((3 1) 1))))
+         (guard (app (op := :int) (var 1 :int) (lit :int 0)))
+         (decoder (app (op :/ :int) (var 9 :int) (var 0 :int)))
+         (language (make-language :int '((2 . :int)) :operators nil :literals '(1 2 3))))
+    (multiple-value-bind (proposals conflict)
+        (synthesize-supplied-partition-view frame guard language
+                                            :child-bindings (list (cons 2 (lit :int 0))) :child-bound 30
+                                            :decoder decoder :child-id 9 :child-type :int
+                                            :solver (arithmetic-control :int :/ 0))
+      (check (null conflict))
+      (let ((shared (find :shared-decoder proposals :key #'partition-view-proposal-kind)))
+        (check shared)
+        (check (every (lambda (model) (equal model (lit :int 3))) (partition-view-proposal-part-models shared)))
+        (check (evaluate-model-run-work (partition-view-proposal-model shared) frame))))))
+
+(deftest view-orchestration-total-budget
+  (let* ((frame (simple-frame :int '((0 . :int)) '(((0) 1) ((1) 2)) :lookup-p t))
+         (guard (app (op := :int) (var 0 :int) (lit :int 0)))
+         (language (make-language :int '((0 . :int)) :operators nil :literals '(1 2)))
+         (ledger (make-ledger)))
+    (multiple-value-bind (proposals conflict status)
+        (synthesize-supplied-partition-view frame guard language :work-limit 3 :ledger ledger)
+      (check (null proposals)) (check (null conflict)) (check (eq :cutoff (message-claim status))))
+    (check (= 3 (ledger-total ledger)))))
+
+(deftest shared-decoder-survives-separate-branch-conflict
+  (let* ((frame (simple-frame :int '((0 . :int)) '(((0) 1) ((1) 2) ((2) 3))))
+         (guard (app (op := :int) (var 0 :int) (lit :int 0)))
+         (language (make-language :int '((1 . :int)) :operators nil :literals '(1)))
+         (decoder (app (op :+ :int) (var 0 :int) (var 9 :int))))
+    (multiple-value-bind (proposals conflict)
+        (synthesize-supplied-partition-view frame guard language :child-bindings (list (cons 1 (lit :int 0)))
+                                            :child-bound 30 :decoder decoder :child-id 9 :child-type :int)
+      (check conflict)
+      (check (null (find :separate-parts proposals :key #'partition-view-proposal-kind)))
+      (let ((shared (find :shared-decoder proposals :key #'partition-view-proposal-kind)))
+        (check shared)
+        (check (evaluate-model-run-work (partition-view-proposal-model shared) frame))))))
+
+(deftest synthesized-dependency-features-and-cutoff-evidence
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (frame (simple-frame :int inputs '(((0 0) 0) ((1 0) 1) ((0 1) 1))))
+         (features (make-language :int inputs :operators (list (op :+ :int)) :literals nil))
+         (selectors (make-language :int inputs :operators nil :literals nil))
+         (bound (description-size (app (op :+ :int) (var 0 :int) (var 1 :int)) inputs))
+         (job (start-dependency-search frame features selectors bound 25)))
+    (check (eq :cutoff (message-claim (resume-dependency-search job 1))))
+    (check (= 1 (ledger-total (dependency-search-ledger job))))
+    (check (eq :bounded-exhaustion (message-claim (resume-dependency-search job 100000))))
+    (check (find (app (op :+ :int) (var 0 :int) (var 1 :int)) (dependency-search-features job) :test #'equal))
+    (check (synthesis-job-best (dependency-search-synthesis job)))))
