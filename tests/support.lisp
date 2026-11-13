@@ -1,6 +1,8 @@
 (in-package #:lisploop)
 
-;;; 1. Test Harness & Core Assertions
+;;; ===========================================================================
+;;; 1. Test Harness, Clean State Isolation & Core Semantic Assertions
+;;; ===========================================================================
 
 (defvar *tests* nil)
 (defvar *checks* 0)
@@ -14,6 +16,12 @@
 (defmacro deftest (name &body body)
   `(progn (defun ,name () ,@body) (push ',name *tests*)))
 
+(defmacro with-clean-kernel-state (&body body)
+  "Execute BODY inside an isolated, fresh `knowledge-library` (with its own function table,
+registered names, de-novo counter, and knowledge entries) and restore outer state on exit."
+  `(with-knowledge-library ((make-knowledge-library))
+     ,@body))
+
 (defun result (expression &optional inputs values)
   (let ((state (evaluate expression inputs values)))
     (check (eq (evaluation-status state) :value))
@@ -23,6 +31,13 @@
   (let ((state (check-requirement requirement value)))
     (check (eq (evaluation-status state) :value))
     (evaluation-value state)))
+
+(defun outcome-signature (expression inputs values)
+  "Observable evaluation outcome: (:value val), (:error), (:unresolved), or (:unknown)."
+  (let ((run (evaluate expression inputs values)))
+    (list (evaluation-status run)
+          (when (eq :value (evaluation-status run))
+            (evaluation-value run)))))
 
 (defun simple-frame (type inputs examples &key lookup-p)
   (make-frame (make-schema :inputs inputs :target type :lookup-p lookup-p)
@@ -39,7 +54,8 @@
   (let ((bits (encode-model expression inputs)))
     (check (= (length bits) (description-size expression inputs)))
     (multiple-value-bind (decoded schema) (decode-model bits)
-      (check (equal expression decoded)) (check (equal inputs schema)))
+      (check (equal expression decoded))
+      (check (equal inputs schema)))
     (raises (decode-model (subseq bits 0 (1- (length bits)))))
     (raises (decode-model (concatenate 'bit-vector bits #*0)))))
 
@@ -57,20 +73,350 @@
             (check (and (eq (evaluation-status ok) :value) (evaluation-value ok))))
           (evaluation-work run))))))
 
-(defun verify-corpus-abstraction-replay (abstraction expected-trees expected-inputs &optional ledger)
-  "Bit-encode, decode, and execute `(subexpression-abstraction-model abstraction)` in the VM,
-and verify that `decode-tree-corpus` reconstructs EXPECTED-TREES in exact occurrence order."
-  (let* ((model (subexpression-abstraction-model abstraction))
-         (decoded-model (decode-model (encode-model model nil)))
-         (run (evaluate decoded-model nil nil :ledger ledger :budget 10000000)))
-    (check (eq :value (evaluation-status run)))
-    (multiple-value-bind (reconstructed-trees schema)
-        (decode-tree-corpus (evaluation-value run))
-      (check (equal expected-inputs schema))
-      (check (equal expected-trees reconstructed-trees))
-      (evaluation-work run))))
+(defun same-set-p (xs ys &key (key #'identity) (test #'equal))
+  "Order-independent set equality under KEY and TEST."
+  (and (= (length (remove-duplicates xs :key key :test test))
+          (length (remove-duplicates ys :key key :test test)))
+       (null (set-exclusive-or xs ys :key key :test test))))
 
-;;; 2. Shared Reference Enumerators & Evaluators
+(defun canonical-expression-sort (expressions inputs)
+  "Deterministically sort unique EXPRESSIONS by canonical codec order under INPUTS."
+  (sort (remove-duplicates (copy-list expressions) :test #'equal)
+        (lambda (a b) (expression-less-p a b inputs))))
+
+(defun enumerated-expressions (job-or-enumerator)
+  "Return all expressions materialized so far by a `search-job`, `observation-job`, or `enumerator`,
+without coupling tests to internal hash-table bucket layouts."
+  (let ((enum (etypecase job-or-enumerator
+                (enumerator job-or-enumerator)
+                (search-job (search-job-enumerator job-or-enumerator))
+                (observation-job (observation-job-enumerator job-or-enumerator)))))
+    (loop for bucket being the hash-values of (enumerator-buckets enum)
+          append (coerce bucket 'list))))
+
+(defun canonical-ledger-alist (ledger)
+  "Order-normalized `(category . work)` alist for LEDGER."
+  (sort (copy-alist (ledger-counts ledger))
+        #'string< :key (lambda (pair) (symbol-name (car pair)))))
+
+;;; ===========================================================================
+;;; 2. Semantic Anytime Resumption Contract Helpers
+;;; ===========================================================================
+
+(defun default-resumption-limits (total &key exhaustive-p)
+  (cond ((<= total 0) '(0))
+        ((or exhaustive-p (<= total 64))
+         (loop for k from 0 to total collect k))
+        (t
+         (sort (remove-duplicates
+                (list 0 1 2 5 13
+                      (floor total 4)
+                      (floor total 2)
+                      (floor (* 3 total) 4)
+                      (max 0 (1- total))
+                      total))
+               #'<))))
+
+(defun check-anytime-resumption
+    (&key make-job advance work-fn finished-fn view-fn score-fn
+          limits exhaustive-p (view-test #'equal) (check-exact-intermediate-work-p nil))
+  "Validate the semantic anytime contract between a batch execution and a stepped execution:
+1. Strict budget obedience (`work <= limit`) at every resume point (no synchronous budget leaks).
+2. Monotone non-decreasing work and (when SCORE-FN is provided) monotone non-increasing score.
+3. Terminal work parity and semantic equivalence of observable outcomes (`VIEW-FN`), without
+   coupling to internal struct phases, debt counters, closures, or hash/alist ordering."
+  (let ((batch (funcall make-job))
+        (stepped (funcall make-job)))
+    (funcall advance batch :final nil)
+    (let* ((total (funcall work-fn batch))
+           (schedule (or limits (default-resumption-limits total :exhaustive-p exhaustive-p)))
+           (prev-work 0)
+           (prev-score most-positive-fixnum))
+      (dolist (limit schedule)
+        (let ((capped (min limit total)))
+          (funcall advance stepped :limit capped)
+          (let ((w (funcall work-fn stepped)))
+            (check (<= w capped))
+            (check (>= w prev-work))
+            (when (and check-exact-intermediate-work-p (< capped total))
+              (check (= w capped)))
+            (setf prev-work w))
+          (when score-fn
+            (let ((s (funcall score-fn stepped)))
+              (when s
+                (check (<= s prev-score))
+                (setf prev-score s))))
+          (when (and finished-fn (< capped total))
+            (check (not (funcall finished-fn stepped))))))
+      (when (< (funcall work-fn stepped) total)
+        (funcall advance stepped :limit total))
+      (when finished-fn
+        (check (eq (not (null (funcall finished-fn batch)))
+                   (not (null (funcall finished-fn stepped))))))
+      (check (= total (funcall work-fn stepped)))
+      (check (funcall view-test (funcall view-fn batch) (funcall view-fn stepped)))
+      (values batch stepped))))
+
+(defun check-evaluation-resumption (expression inputs values &key (budget 1000000) limits exhaustive-p)
+  (check-anytime-resumption
+   :make-job (lambda () (start-evaluation expression inputs values))
+   :advance (lambda (ev &key limit final)
+              (declare (ignore final))
+              (let ((target (or limit budget)))
+                (loop while (and (eq :unknown (evaluation-status ev))
+                                 (< (evaluation-work ev) target))
+                      do (advance-evaluation ev 1))))
+   :work-fn #'evaluation-work
+   :finished-fn (lambda (ev) (not (eq :unknown (evaluation-status ev))))
+   :view-fn (lambda (ev)
+              (list (evaluation-status ev)
+                    (when (eq :value (evaluation-status ev)) (evaluation-value ev))))
+   :limits limits
+   :exhaustive-p exhaustive-p
+   :check-exact-intermediate-work-p t))
+
+(defun check-search-resumption (make-job-fn bound &key (budget 1000000) limits exhaustive-p)
+  (let ((last-batch-claim nil)
+        (last-step-claim nil))
+    (multiple-value-prog1
+        (check-anytime-resumption
+         :make-job make-job-fn
+         :advance (lambda (job &key limit final)
+                    (declare (ignore final))
+                    (let ((msg (resume-search job bound (or limit budget))))
+                      (if limit
+                          (setf last-step-claim (message-claim msg))
+                          (setf last-batch-claim (message-claim msg)))))
+         :work-fn (lambda (job) (ledger-total (search-job-ledger job)))
+         :score-fn (lambda (job) (and (search-job-best job) (candidate-size (search-job-best job))))
+         :view-fn (lambda (job)
+                    (let ((inputs (schema-inputs (frame-schema (search-job-frame job)))))
+                      (list (search-job-completed-bound job)
+                            (and (search-job-best job) (candidate-size (search-job-best job)))
+                            (and (search-job-best job)
+                                 (candidate-score (search-job-best job) (search-job-run-weight job)))
+                            (canonical-expression-sort
+                             (mapcar #'candidate-expression (search-job-results job))
+                             inputs))))
+         :limits limits
+         :exhaustive-p exhaustive-p)
+      (check (eq last-batch-claim last-step-claim)))))
+
+(defun check-observation-resumption (make-job-fn bound &key (budget 1000000) limits exhaustive-p)
+  (check-anytime-resumption
+   :make-job make-job-fn
+   :advance (lambda (job &key limit final)
+              (declare (ignore final))
+              (resume-observation-search job bound (or limit budget)))
+   :work-fn (lambda (job) (ledger-total (observation-job-ledger job)))
+   :view-fn (lambda (job)
+              (list (observation-job-completed-bound job)
+                    (length (observation-job-records job))
+                    (mapcar (lambda (b)
+                              (list (observation-bucket-type b)
+                                    (observation-bucket-values b)
+                                    (observation-bucket-invariant-p b)
+                                    (length (observation-bucket-members b))))
+                            (observation-job-buckets job))))
+   :limits limits
+   :exhaustive-p exhaustive-p))
+
+(defun check-law-validation-resumption (make-validation-fn &key (budget 1000000) limits exhaustive-p)
+  (check-anytime-resumption
+   :make-job make-validation-fn
+   :advance (lambda (val &key limit final)
+              (declare (ignore final))
+              (resume-law-validation val (or limit budget)))
+   :work-fn (lambda (val) (ledger-total (law-validation-ledger val)))
+   :finished-fn (lambda (val) (not (eq :unknown (law-validation-status val))))
+   :view-fn (lambda (val)
+              (list (law-validation-status val)
+                    (law-validation-counterexample val)
+                    (let ((cert (law-validation-certificate val)))
+                      (and cert (list (law-certificate-evidence cert)
+                                      (law-certificate-assignments cert)
+                                      (law-certificate-active cert))))))
+   :limits limits
+   :exhaustive-p exhaustive-p))
+
+(defun check-rewriting-resumption (make-rewriting-fn &key (budget 1000000) limits exhaustive-p)
+  (check-anytime-resumption
+   :make-job make-rewriting-fn
+   :advance (lambda (rw &key limit final)
+              (declare (ignore final))
+              (let ((target (or limit budget)))
+                (when (> target (rewriting-work rw))
+                  (advance-rewriting rw (- target (rewriting-work rw))))))
+   :work-fn #'rewriting-work
+   :finished-fn (lambda (rw) (eq :complete (rewriting-status rw)))
+   :view-fn (lambda (rw)
+              (list (rewriting-status rw)
+                    (rewriting-value rw)
+                    (rewriting-steps rw)))
+   :limits limits
+   :exhaustive-p exhaustive-p))
+
+(defun check-heuristic-search-resumption (make-job-fn &key (budget 1000000) limits exhaustive-p)
+  (check-anytime-resumption
+   :make-job make-job-fn
+   :advance (lambda (job &key limit final)
+              (declare (ignore final))
+              (resume-heuristic-search job (or limit budget)))
+   :work-fn (lambda (job) (ledger-total (heuristic-search-ledger job)))
+   :score-fn (lambda (job)
+               (and (heuristic-search-best job)
+                    (heuristic-score (heuristic-search-best job))))
+   :view-fn (lambda (job)
+              (let ((best (heuristic-search-best job)))
+                (and best
+                     (list (heuristic-program best)
+                           (heuristic-exact-p best)
+                           (heuristic-score best)
+                           (heuristic-residual best)))))
+   :limits limits
+   :exhaustive-p exhaustive-p))
+
+(defun check-synthesis-resumption (make-job-fn &key (budget 1000000) stop-on-first limits exhaustive-p)
+  (check-anytime-resumption
+   :make-job make-job-fn
+   :advance (lambda (job &key limit final)
+              (declare (ignore final))
+              (resume-synthesis job (or limit budget) :stop-on-first stop-on-first))
+   :work-fn (lambda (job) (ledger-total (synthesis-job-ledger job)))
+   :score-fn (lambda (job)
+               (and (synthesis-job-best job)
+                    (candidate-score (synthesis-job-best job) (synthesis-job-run-weight job))))
+    :view-fn (lambda (job)
+              (let ((best (synthesis-job-best job))
+                    (inputs (schema-inputs (frame-schema (synthesis-node-frame (synthesis-job-root job))))))
+                (list (synthesis-finished-p job)
+                      (and best (candidate-size best))
+                      (and best (candidate-score best (synthesis-job-run-weight job)))
+                      (canonical-expression-sort
+                       (mapcar #'candidate-expression (synthesis-job-results job))
+                       inputs))))
+   :limits limits
+   :exhaustive-p exhaustive-p))
+
+;;; ===========================================================================
+;;; 3. Declarative Synthesis & Library Abstraction Contract Validators
+;;; ===========================================================================
+
+(defun check-synthesized-model (expression frame &key held-out (require-total-p t)
+                                                      (check-codec-p t) must-call-ops max-bits)
+  "Verify EXPRESSION as a valid, serializable, generalizing solution to FRAME."
+  (check expression)
+  (let ((inputs (schema-inputs (frame-schema frame))))
+    (when check-codec-p
+      (check-codec-roundtrip expression inputs))
+    (when require-total-p
+      (check (provably-total-p expression)))
+    (when max-bits
+      (check (<= (description-size expression inputs) max-bits)))
+    (dolist (op-name must-call-ops)
+      (check (contains-call-to-p expression op-name)))
+    ;; Verify every constrained row of FRAME
+    (dolist (row (frame-rows frame))
+      (unless (or (equal (lit :bool t) (row-requirement row))
+                  (member :unresolved (row-known row)))
+        (let ((val (result expression inputs (row-known row))))
+          (check (accepts (row-requirement row) val)))))
+    ;; Verify held-out generalization examples: each entry is (args expected-value)
+    (dolist (case-spec held-out)
+      (destructuring-bind (args expected) case-spec
+        (check (equal expected (result expression inputs args)))))
+    expression))
+
+(defun check-synthesis-task (frame language bound
+                             &key (budget 100000) (runner :heuristic) (stop-on-first t)
+                                  held-out (require-total-p t) must-call-ops max-bits
+                                  self-name library max-depth expand decompositions
+                                  policy priority-predictor (deductive-nogoods-p t) debug-p)
+  "Run a synthesis task via RUNNER (`:heuristic`, `:recursive`, or `:direct`) and verify semantic
+soundness, totality, serialization, and held-out generalization."
+  (let ((job (ecase runner
+               (:recursive
+                (start-recursive-synthesis frame language bound
+                                           :self-name (or self-name :fa)
+                                           :library library
+                                           :debug-p debug-p))
+               (:heuristic
+                (start-heuristic-synthesis frame language bound
+                                           :library library
+                                           :max-depth (or max-depth 2)
+                                           :priority-predictor priority-predictor
+                                           :deductive-nogoods-p deductive-nogoods-p
+                                           :debug-p debug-p))
+               (:direct
+                (start-synthesis frame language bound
+                                 :decompositions decompositions
+                                 :expand expand
+                                 :max-depth max-depth
+                                 :policy (or policy :heuristic)
+                                 :priority-predictor priority-predictor
+                                 :deductive-nogoods-p deductive-nogoods-p
+                                 :debug-p debug-p)))))
+    (resume-synthesis job budget :stop-on-first stop-on-first)
+    (check (synthesis-job-best job))
+    (let* ((cand (synthesis-job-best job))
+           (expr (candidate-expression cand)))
+      (when (and (eq runner :recursive) self-name require-total-p)
+        (let ((fdef (find-function-definition self-name)))
+          (when fdef (check (function-definition-total-p fdef)))))
+      (check-synthesized-model expr frame
+                               :held-out held-out
+                               :require-total-p require-total-p
+                               :must-call-ops must-call-ops
+                               :max-bits max-bits)
+      (values expr job cand))))
+
+(defun check-library-abstractions-contract
+    (corpus &key (register-p t) rewrite-library (min-gain 0) expected-count held-out-by-name ledger)
+  "Validate `discover-library-abstractions` by compression, typing, totality, and held-out
+semantics rather than brittle de-novo naming order or hardcoded bit-gain integers."
+  (multiple-value-bind (accepted refactored all-candidates out-ledger)
+      (discover-library-abstractions corpus
+                                     :register-p register-p
+                                     :rewrite-library rewrite-library
+                                     :min-gain min-gain
+                                     :ledger ledger)
+    (when expected-count
+      (check (= expected-count (length accepted))))
+    (dolist (abs accepted)
+      (check (library-abstraction-p abs))
+      (check (< (library-abstraction-refactored-bits abs)
+                (library-abstraction-original-bits abs)))
+      (check (> (library-abstraction-gain abs) min-gain))
+      (check (plusp (library-abstraction-work abs)))
+      (check-codec-roundtrip (library-abstraction-body abs)
+                             (library-abstraction-inputs abs))
+      (when register-p
+        (let ((def (find-function-definition (library-abstraction-name abs))))
+          (check def)
+          (check (or (function-definition-total-p def)
+                     (function-definition-conditional-code-params def))))))
+    (when register-p
+      (loop for item in corpus
+            for rdef in refactored
+            for pname = (if (function-definition-p item)
+                            (function-definition-name item)
+                            (getf item :name))
+            for cases = (cdr (assoc pname held-out-by-name :test #'eq))
+            do (check (function-definition-total-p rdef))
+               (check (provably-total-p (function-definition-body rdef)))
+               (check-codec-roundtrip (function-definition-body rdef)
+                                      (function-definition-inputs rdef))
+               (dolist (case-spec cases)
+                 (destructuring-bind (args expected) case-spec
+                   (check (equal expected
+                                 (result (function-definition-body rdef)
+                                         (function-definition-inputs rdef)
+                                         args)))))))
+    (values accepted refactored all-candidates out-ledger)))
+
+;;; ===========================================================================
+;;; 4. Shared Reference Enumerators & Evaluators
+;;; ===========================================================================
 
 (defun reference-node-trees (leaves operators applications)
   "Enumerate by application count, independently of the size-indexed search."
@@ -80,10 +426,42 @@ and verify that `decode-tree-corpus` reconstructs EXPECTED-TREES in exact occurr
           (loop for right in (reference-node-trees leaves operators (- applications 1 left-count)) append
             (loop for operator in operators collect (app operator left right)))))))
 
+(defun reference-typed-trees (leaves operators max-applications &optional (inputs nil) (max-bits nil))
+  "Independent multi-arity typed reference enumerator up to MAX-APPLICATIONS (and optional MAX-BITS)."
+  (let ((by-apps (make-array (1+ max-applications) :initial-element nil)))
+    (setf (aref by-apps 0) (copy-list leaves))
+    (loop for apps from 1 to max-applications do
+      (let ((acc nil))
+        (dolist (op-term operators)
+          (let* ((sort (operator-type op-term))
+                 (arg-types (second sort))
+                 (arity (length arg-types)))
+            (labels ((partitions (rem k)
+                       (cond ((zerop k) (when (zerop rem) (list nil)))
+                             ((= k 1) (list (list rem)))
+                             (t (loop for first from 0 to rem
+                                      append (mapcar (lambda (rest) (cons first rest))
+                                                     (partitions (- rem first) (1- k)))))))
+                     (tuples (counts types)
+                       (if (null counts)
+                           (list nil)
+                           (loop for arg in (aref by-apps (first counts))
+                                 when (equal (expression-type arg inputs) (first types))
+                                 append (mapcar (lambda (rest) (cons arg rest))
+                                                (tuples (rest counts) (rest types)))))))
+              (dolist (counts (partitions (1- apps) arity))
+                (dolist (args (tuples counts arg-types))
+                  (push (apply #'app op-term args) acc))))))
+        (setf (aref by-apps apps) (nreverse acc))))
+    (let ((all (loop for apps from 0 to max-applications append (aref by-apps apps))))
+      (if max-bits
+          (remove-if (lambda (e) (> (description-size e inputs) max-bits)) all)
+          all))))
+
 (defun reference-one-application (domain inputs operators bound)
   "Independent exhaustive reference: this bound permits leaves and ONE binary app."
   (let* ((leaves (append (mapcar (lambda (spec) (var (car spec) (cdr spec))) inputs)
-                          (loop for i below (second domain) collect (lit domain i))))
+                         (loop for i below (second domain) collect (lit domain i))))
          (candidates (copy-list leaves)))
     (dolist (operator operators)
       (dolist (left leaves)
@@ -113,7 +491,177 @@ and verify that `decode-tree-corpus` reconstructs EXPECTED-TREES in exact occurr
          (:+ (+ (first values) (second values)))
          (:* (* (first values) (second values))))))))
 
-;;; 3. Shared Observation & Lifting Fixtures
+;;; ===========================================================================
+;;; 5. Pure-Kernel Propagator, Law, Combinator & Observation Fixtures
+;;; ===========================================================================
+
+(defun checked-law (law)
+  (let ((validation (resume-law-validation (start-law-validation law) 1000000)))
+    (check (eq :validated (law-validation-status validation)))
+    validation))
+
+(defun normalize-for-test (expression inputs validations domain)
+  (let ((state (start-rewriting expression inputs (prepare-rewrite-library validations domain))))
+    (advance-rewriting state 10000000)
+    (check (eq :complete (rewriting-status state)))
+    (rewriting-value state)))
+
+(defun validation-for-equation (validations left right)
+  (or (find-if (lambda (state)
+                 (let ((sides (rest (law-equation (law-validation-law state)))))
+                   (or (equal sides (list left right)) (equal sides (list right left)))))
+               validations)
+      (error "Required identity was not discovered")))
+
+(defun register-kernel-arithmetic-solver (domain name position &key (library *knowledge-library*))
+  "Register a standard arithmetic inverse rule directly via kernel `register-knowledge-solver`
+(without invoking `milestones/algebra-discovery.lisp`). Finite-field rules are exhaustively
+certified; integer rules remain tentative (`:certified-p nil`) with exact uniqueness flags."
+  (let* ((k (var 0 domain))
+         (c (var 1 domain))
+         (zero (lit domain 0))
+         (finite-p (finite-type-p domain)))
+    (multiple-value-bind (witness guard unique-p)
+        (ecase name
+          (:+ (values (app (op :- domain) c k) (lit :bool t) t))
+          (:- (if (zerop position)
+                  ;; z - k = c  =>  z = c + k
+                  (values (app (op :+ domain) c k) (lit :bool t) t)
+                  ;; k - z = c  =>  z = k - c
+                  (values (app (op :- domain) k c) (lit :bool t) t)))
+          (:* (values (app (op :/ domain) c k)
+                      (bool-not (app (op := domain) k zero))
+                      finite-p))
+          (:/ (if (zerop position)
+                  ;; z / k = c  =>  z = c * k (k != 0; non-unique on truncating :int division!)
+                  (values (app (op :* domain) c k)
+                          (bool-not (app (op := domain) k zero))
+                          finite-p)
+                  ;; k / z = c  =>  z = k / c (k != 0 and c != 0 on fields)
+                  (values (app (op :/ domain) k c)
+                          (bool-and (bool-not (app (op := domain) k zero))
+                                    (bool-not (app (op := domain) c zero)))
+                          finite-p))))
+      (let ((entry (register-knowledge-solver
+                    name
+                    :id (intern (format nil "KERNEL-SOLVE-~A-~A-~D"
+                                        (if (consp domain) (second domain) domain) name position)
+                                :keyword)
+                    :domain domain
+                    :inputs (arithmetic-inputs domain)
+                    :target domain
+                    :position position
+                    :witness witness
+                    :guard guard
+                    :certified-p finite-p
+                    :unique-p unique-p
+                    :library library)))
+        (when (and unique-p (not finite-p))
+          (attest-knowledge-entry entry :derived '(:uniqueness))
+          (clrhash (knowledge-library-propagator-libraries library)))
+        entry))))
+
+(defun kernel-propagator-library (domain &key (operators '(:+ :- :* :/)) (positions '(0 1)) ledger)
+  "Construct an isolated `propagator-library` for DOMAIN using only kernel solver registration."
+  (let ((temp-lib (make-knowledge-library)))
+    (dolist (op-name operators)
+      (dolist (pos positions)
+        (register-kernel-arithmetic-solver domain op-name pos :library temp-lib)))
+    (as-propagator-library temp-lib (or ledger (make-ledger)))))
+
+(defun define-standard-int-combinators (&key (which '(:map :foldr :filter)))
+  "Register standard higher-order combinators over `(:seq :int)` in the active library."
+  (let* ((seq-type (sequence-type :int))
+         (xs (var 0 seq-type))
+         (empty-xs (app (op := seq-type) xs (lit seq-type '())))
+         (head-xs (app (op :at seq-type) xs (lit :int 0)))
+         (tail-xs (app (op :tail :int) xs))
+         (unary-code (code-type '((0 . :int)) :int))
+         (binary-code (code-type '((0 . :int) (1 . :int)) :int))
+         (pred-code (code-type '((0 . :int)) :bool)))
+    (when (member :map which)
+      (define-function :map (list (cons 0 seq-type) (cons 1 unary-code)) seq-type
+        (lambda (self)
+          (app (op :if seq-type) empty-xs (lit seq-type '())
+               (app (op :cons :int)
+                    (app (op :code-eval unary-code) (var 1 unary-code) head-xs)
+                    (app self tail-xs (var 1 unary-code)))))))
+    (when (member :foldr which)
+      (define-function :foldr (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
+        (lambda (self)
+          (app (op :if :int) empty-xs (var 1 :int)
+               (app (op :code-eval binary-code) (var 2 binary-code)
+                    head-xs
+                    (app self tail-xs (var 1 :int) (var 2 binary-code)))))))
+    (when (member :foldl which)
+      (define-function :foldl (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
+        (lambda (self)
+          (app (op :if :int) empty-xs (var 1 :int)
+               (app self tail-xs
+                    (app (op :code-eval binary-code) (var 2 binary-code) (var 1 :int) head-xs)
+                    (var 2 binary-code))))))
+    (when (member :filter which)
+      (define-function :filter (list (cons 0 seq-type) (cons 1 pred-code)) seq-type
+        (lambda (self)
+          (app (op :if seq-type) empty-xs (lit seq-type '())
+               (app (op :if seq-type)
+                    (app (op :code-eval pred-code) (var 1 pred-code) head-xs)
+                    (app (op :cons :int) head-xs (app self tail-xs (var 1 pred-code)))
+                    (app self tail-xs (var 1 pred-code)))))))
+    (when (member :map-adjacent which)
+      (define-function :map-adjacent (list (cons 0 seq-type) (cons 1 binary-code)) seq-type
+        (lambda (self)
+          (app (op :if seq-type) empty-xs (lit seq-type '())
+               (app (op :if seq-type)
+                    (app (op := seq-type) tail-xs (lit seq-type '()))
+                    (lit seq-type '())
+                    (app (op :cons :int)
+                         (app (op :code-eval binary-code) (var 1 binary-code)
+                              (app (op :at seq-type) tail-xs (lit :int 0))
+                              head-xs)
+                         (app self tail-xs (var 1 binary-code))))))))))
+
+(defun standard-r4-corpus (&key (self-name :fa))
+  "Build the standard 6-program recursive list corpus (`:copy`, `:inc-all`, `:double-all`,
+`:sum`, `:length`, `:product`) without redundantly re-running 6 synthesis searches."
+  (let* ((seq-type (sequence-type :int))
+         (inputs (list (cons 0 seq-type)))
+         (xs (var 0 seq-type))
+         (empty-xs (app (op := seq-type) xs (lit seq-type '())))
+         (head-x0 (app (op :at seq-type) xs (lit :int 0)))
+         (tail-x0 (app (op :tail :int) xs)))
+    (flet ((entry (name ret build-fn)
+             (let ((body (call-with-temporary-function-names
+                          (list self-name)
+                          (lambda ()
+                            (funcall build-fn (op self-name (code-type inputs ret)))))))
+               (list :name name :inputs inputs :return-type ret :body body :self-name self-name))))
+      (list (entry :copy seq-type
+                   (lambda (self)
+                     (app (op :if seq-type) empty-xs (lit seq-type '())
+                          (app (op :cons :int) head-x0 (app self tail-x0)))))
+            (entry :inc-all seq-type
+                   (lambda (self)
+                     (app (op :if seq-type) empty-xs xs
+                          (app (op :cons :int) (app (op :+ :int) head-x0 (lit :int 1))
+                               (app self tail-x0)))))
+            (entry :double-all seq-type
+                   (lambda (self)
+                     (app (op :if seq-type) empty-xs xs
+                          (app (op :cons :int) (app (op :+ :int) head-x0 head-x0)
+                               (app self tail-x0)))))
+            (entry :sum :int
+                   (lambda (self)
+                     (app (op :if :int) empty-xs (lit :int 0)
+                          (app (op :+ :int) head-x0 (app self tail-x0)))))
+            (entry :length :int
+                   (lambda (self)
+                     (app (op :if :int) empty-xs (lit :int 0)
+                          (app (op :+ :int) (app self tail-x0) (lit :int 1)))))
+            (entry :product :int
+                   (lambda (self)
+                     (app (op :if :int) empty-xs (lit :int 1)
+                          (app (op :* :int) head-x0 (app self tail-x0)))))))))
 
 (defun gf5-fixture (&optional ledger)
   "The oracle generates observations only; neither its syntax nor sketch enters search."
@@ -132,8 +680,7 @@ and verify that `decode-tree-corpus` reconstructs EXPECTED-TREES in exact occurr
             oracle records)))
 
 (defun additive-transition-fixture (domain starts steps shift-b key-prefix ledger)
-  "Record forward transitions T(a,b)=(a+1,b+SHIFT-B). Return the frame and start keys.
-The transition is supplied fixture machinery; no invariant sketch enters search."
+  "Record forward transitions T(a,b)=(a+1,b+SHIFT-B). Return the frame and start keys."
   (check (and (integerp steps) (plusp steps)))
   (let* ((field domain) (state-type (tuple-type field field))
          (inputs (list (cons 0 field) (cons 1 field)))
@@ -173,31 +720,32 @@ The transition is supplied fixture machinery; no invariant sketch enters search.
   "Declared, metered conversion \\iota(t) from :int index T-EXPR into GF(7)."
   (check (and (integerp steps) (plusp steps)))
   (let* ((field (gf 7))
-         (key-type (tuple-type :int))
-         (entry-type (tuple-type key-type field))
+         (entry-type (tuple-type :int field))
          (entries (loop for step below steps
-                        collect (list (list step) (mod step 7))))
+                        collect (list step (mod step 7))))
          (expr (app (op :lookup entry-type)
-                    (app (op :tuple key-type) t-expr)
+                    t-expr
                     (lit (sequence-type entry-type) entries))))
     (charge ledger :construction (syntax-work expr))
     expr))
 
-(defun gf7-lifting-fixture (&key (offsets '(1 3)) (steps 7) (repetitions 1) schedule ledger)
-  "Generate indexed GF(7) sequences y_{j,t} = a_j + \\iota(t) with explicit occurrence
-coordinate r (:int) and index t (:int). Returns:
-  (values frame decoder r-to-j-map row-labels records)"
+(defun domain-lifting-fixture (domain &key (offsets '(1 3)) (steps 7) (repetitions 1) schedule ledger)
+  "Generate indexed sequences y_{j,t} = a_j + step(t) over DOMAIN (`:int` or `(:gf 7)`).
+Returns `(values frame decoder r-to-j-map row-labels records)`."
   (check (and (integerp steps) (plusp steps)))
   (check (and (integerp repetitions) (plusp repetitions)))
-  (let* ((field (gf 7))
-         (seq-tags (or schedule
+  (let* ((seq-tags (or schedule
                        (loop repeat repetitions
                              append (loop for idx below (length offsets) collect idx))))
-         (iota-t (gf7-iota-conversion (var 1 :int) :steps steps :ledger ledger))
-         (decoder (app (op :+ field) iota-t (var 9 field)))
-         (oracle-inputs (list (cons 0 field) (cons 1 :int)))
-         (oracle (app (op :+ field) (var 0 field)
-                      (gf7-iota-conversion (var 1 :int) :steps steps :ledger ledger)))
+         (t-term (if (eq domain :int)
+                     (var 1 :int)
+                     (gf7-iota-conversion (var 1 :int) :steps steps :ledger ledger)))
+         (decoder (app (op :+ domain) t-term (var 9 domain)))
+         (oracle-inputs (list (cons 0 domain) (cons 1 :int)))
+         (oracle (app (op :+ domain) (var 0 domain)
+                      (if (eq domain :int)
+                          (var 1 :int)
+                          (gf7-iota-conversion (var 1 :int) :steps steps :ledger ledger))))
          (records nil)
          (row-labels nil))
     (charge ledger :construction (syntax-work decoder))
@@ -207,257 +755,22 @@ coordinate r (:int) and index t (:int). Returns:
           do (dotimes (step steps)
                (let* ((key (list :seq r step))
                       (run (evaluate oracle oracle-inputs (list offset step) :ledger ledger)))
-                 (check (eq :value (evaluation-status run)))
+                 (check (eq (evaluation-status run) :value))
                  (push tag row-labels)
                  (push (list key r step (evaluation-value run)) records))))
     (setf records (nreverse records)
           row-labels (nreverse row-labels))
-    (let* ((frame (orient-observations (list :int :int field) records '(0 1) '(2)
+    (let* ((frame (orient-observations (list :int :int domain) records '(0 1) '(2)
                                        :lookup-p t :ledger ledger))
            (label-frame (context-label-frame frame row-labels
                                              :bindings (list (cons 0 (var 0 :int)))
-                                             :label-type field
-                                             :ledger ledger))
-           (r-to-j (lookup-model label-frame ledger)))
-      (values frame decoder r-to-j row-labels records))))
-
-(defun integer-lifting-fixture (&key (offsets '(1 3)) (steps 7) (repetitions 1) schedule ledger)
-  "Generate indexed integer sequences y_{j,t} = a_j + t with explicit occurrence
-coordinate r (:int) and index t (:int). Returns:
-  (values frame decoder r-to-j-map row-labels records)"
-  (check (and (integerp steps) (plusp steps)))
-  (check (and (integerp repetitions) (plusp repetitions)))
-  (let* ((domain :int)
-         (seq-tags (or schedule
-                       (loop repeat repetitions
-                             append (loop for idx below (length offsets) collect idx))))
-         (decoder (app (op :+ domain) (var 1 domain) (var 9 domain)))
-         (oracle-inputs (list (cons 0 domain) (cons 1 domain)))
-         (oracle (app (op :+ domain) (var 0 domain) (var 1 domain)))
-         (records nil)
-         (row-labels nil))
-    (charge ledger :construction (syntax-work decoder))
-    (loop for tag in seq-tags
-          for r from 0
-          for offset = (nth tag offsets)
-          do (dotimes (step steps)
-               (let* ((key (list :seq r step))
-                      (run (evaluate oracle oracle-inputs (list offset step) :ledger ledger)))
-                 (check (eq :value (evaluation-status run)))
-                 (push tag row-labels)
-                 (push (list key r step (evaluation-value run)) records))))
-    (setf records (nreverse records)
-          row-labels (nreverse row-labels))
-    (let* ((frame (orient-observations (list domain domain domain) records '(0 1) '(2)
-                                       :lookup-p t :ledger ledger))
-           (label-frame (context-label-frame frame row-labels
-                                             :bindings (list (cons 0 (var 0 domain)))
                                              :label-type domain
                                              :ledger ledger))
            (r-to-j (lookup-model label-frame ledger)))
       (values frame decoder r-to-j row-labels records))))
 
-;;; 4. Shared Law, Guard, and Algebra Helpers
+(defun gf7-lifting-fixture (&rest args)
+  (apply #'domain-lifting-fixture (gf 7) args))
 
-(defun checked-law (law)
-  (let ((validation (resume-law-validation (start-law-validation law) 1000000)))
-    (check (eq :validated (law-validation-status validation)))
-    validation))
-
-(defun normalize-for-test (expression inputs validations domain)
-  (let ((state (start-rewriting expression inputs (prepare-rewrite-library validations domain))))
-    (advance-rewriting state 10000000)
-    (check (eq :complete (rewriting-status state)))
-    (rewriting-value state)))
-
-(defun validation-for-equation (validations left right)
-  (or (find-if (lambda (state)
-                 (let ((sides (rest (law-equation (law-validation-law state)))))
-                   (or (equal sides (list left right)) (equal sides (list right left))))) validations)
-      (error "Required identity was not discovered")))
-
-(defun discover-guarded-field-laws (p)
-  "Joint discovery: enumerate expressions on the FULL field, then synthesize
-one exact Boolean membership program per distinct proper agreement support."
-  (let* ((domain (gf p)) (inputs (list (cons 0 domain)))
-         (frame (make-frame (make-schema :inputs inputs :target domain)
-                            (loop for x below p collect
-                              (make-row :key x :known (list x)
-                                        :requirement (lit :bool t)))))
-         (language (make-language domain inputs :operators (mapcar (lambda (name) (op name domain)) '(:- :/ :*))))
-         (observations (start-observation-search (make-observation-scope frame language) :retain-outcomes t))
-         (bound (+ (header-size inputs domain) 6 (* 2 (body-size (lit domain 0) inputs))))
-         (proposal-work (make-ledger))
-         (guard-language (make-language domain inputs :operators (list (op := domain) (op :if :bool))))
-         (searches nil) (validations nil))
-    (check (eq :bounded-exhaustion (message-claim (resume-observation-search observations bound 2000000))))
-    (let ((problems (propose-guard-problems observations proposal-work)))
-      (dolist (problem problems)
-        (let ((search (start-guard-search problem guard-language)))
-          (check (eq :bounded-exhaustion (message-claim (resume-search search 54 2000000))))
-          (push search searches)
-          (dolist (law (propose-guarded-laws problem search proposal-work))
-            (let ((validation (resume-law-validation (start-law-validation law) 2000000)))
-              (check (eq :validated (law-validation-status validation)))
-              (push validation validations)))))
-      (values (nreverse validations) observations problems (nreverse searches) proposal-work))))
-
-(defun algebra-job-work (job)
-  (etypecase job
-    (search-job (ledger-total (search-job-ledger job)))
-    (propagation-search (ledger-total (propagation-search-ledger job)))
-    (observation-job (ledger-total (observation-job-ledger job)))
-    (law-validation (ledger-total (law-validation-ledger job)))))
-
-(defun arithmetic-parent-fixture (relation position values ledger)
-  "A separate batch hides h(b)=b+1 behind the supplied arithmetic decoder."
-  (let* ((domain (arithmetic-relation-domain relation)) (operator (arithmetic-relation-operator relation))
-         (hidden (app (op :+ domain) (var 1 domain) (lit domain 1)))
-         (oracle (arithmetic-application operator position (var 0 domain) hidden))
-         (job (observe-arithmetic-values domain operator values 100000000 oracle))
-         (records (arithmetic-forward-records job ledger))
-         (parent (orient-observations (list domain domain domain) records '(0 1) '(2) :ledger ledger)))
-    (values parent (arithmetic-application operator position (var 0 domain) (var 9 domain))
-            (list (cons 3 (var 1 domain))) job)))
-
-(defun replay-arithmetic-parent (model frame ledger)
-  (let* ((schema (frame-schema frame))
-         (inputs (schema-inputs schema))
-         (target-type (schema-target schema)))
-    (dolist (row (frame-rows frame))
-      (let ((run (run-algebra-program model inputs (row-known row) ledger :parent-replay)))
-        (check (eq :value (evaluation-status run)))
-        (let ((ok (check-requirement (row-requirement row) (evaluation-value run)
-                                     :ledger ledger :type target-type)))
-          (check (and (eq :value (evaluation-status ok)) (evaluation-value ok))))))))
-
-(defun algebra-search-results (job)
-  (etypecase job (search-job (search-job-results job)) (propagation-search (propagation-search-results job))))
-
-(defun algebra-search-best (job)
-  (etypecase job (search-job (search-job-best job)) (propagation-search (propagation-search-best job))))
-
-(defun algebra-first-work (job)
-  (etypecase job
-    (search-job (when (search-job-results job) (reduce #'min (search-job-results job) :key #'candidate-discovery-work)))
-    (propagation-search (propagation-search-first-work job))))
-
-(defun compare-arithmetic-propagation (discovery values &key library)
-  (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation))
-         (acquisition (make-ledger)) (original-work (make-ledger)) (propagation-work (make-ledger)))
-    (multiple-value-bind (parent decoder bindings observations)
-        (arithmetic-parent-fixture relation (solve-discovery-position discovery) values acquisition)
-      (let* ((original (pullback-frame parent decoder 9 domain bindings original-work))
-             (propagation (propagate-requirements (pullback-frame parent decoder 9 domain bindings propagation-work)
-                                                  (or library discovery) propagation-work))
-             (inputs (schema-inputs (frame-schema original)))
-             (language (make-language domain inputs :operators (list (op :+ domain) (op :* domain))
-                                       :literals (if (eq domain :int) '(-1 0 1) :all)))
-             (plain (start-search original language))
-             (propagated (if (propagation-fallback propagation) (start-propagation-search propagation language)
-                             (start-search (propagation-frame propagation) language)))
-             (bound (+ (header-size inputs domain) 16)))
-        (check (eq :bounded-exhaustion (message-claim (resume-search plain bound 10000000))))
-        (check (eq :bounded-exhaustion (message-claim
-                  (etypecase propagated
-                    (search-job (resume-search propagated bound 10000000))
-                    (propagation-search (resume-propagation-search propagated bound 10000000))))))
-        (check (search-job-best plain))
-        (check (null (set-exclusive-or (search-job-results plain) (algebra-search-results propagated)
-                                       :key #'candidate-expression :test #'equal)))
-        (let* ((composition (make-ledger))
-               (model (compose-model decoder 9 (candidate-expression (algebra-search-best propagated)) bindings composition)))
-          (replay-arithmetic-parent (decode-model (encode-model model (schema-inputs (frame-schema parent)))) parent composition)
-          (values propagation plain propagated original-work propagation-work
-                  (+ (ledger-total acquisition) (algebra-job-work observations)) composition))))))
-
-(defun integer-solver-held-out (discovery)
-  "Fresh forward observations and query checks; no universal integer certificate."
-  (let* ((relation (solve-discovery-relation discovery)) (operator (arithmetic-relation-operator relation))
-         (n (ash 1 64)) (values (list (- n) -17 -1 0 1 17 n))
-         (ledger (make-ledger)) (observations (observe-arithmetic-values :int operator values 100000000))
-         (record (first (observation-job-records observations)))
-         (support (mapcar (lambda (outcome) (eq :value (observation-outcome-status outcome))) (observed-expression-outcomes record)))
-         (definedness (search-membership-frame (support-frame (observation-job-scope observations) support ledger) :int
-                                               :work-limit 100000000 :expressions (list (arithmetic-relation-guard relation))))
-         (fresh (copy-arithmetic-relation relation))
-         (position (solve-discovery-position discovery)))
-    (setf (arithmetic-relation-records fresh) (arithmetic-forward-records observations ledger))
-    (let* ((queries (orient-arithmetic-requirements fresh position values ledger))
-           (samples (remove-duplicates (mapcar #'row-known (frame-rows queries)) :test #'equal))
-           (unique-samples
-             (append (loop for row in (frame-rows (solve-discovery-frame discovery)) append
-                       (loop for z from -4 to 4 collect (append (row-known row) (list z))))
-                     (loop for record in (arithmetic-relation-records fresh)
-                           collect (list (nth (1+ (- 1 position)) record) (fourth record) (nth (1+ position) record))))))
-      (validate-arithmetic-solver discovery :samples samples :uniqueness-samples unique-samples)
-      (check (eq :conjecture (law-validation-status (solve-discovery-validation discovery))))
-      (check (not (certified-solve-discovery-p discovery)))
-      (+ (ledger-total ledger) (algebra-job-work observations) (algebra-job-work definedness)))))
-
-(defun addition-oracle-control (discovery)
-  "An explicitly supplied control, called only AFTER unseeded bootstrap discovery."
-  (let* ((domain (arithmetic-relation-domain (solve-discovery-relation discovery)))
-         (inputs (arithmetic-inputs domain))
-         (oracle (app (op :+ domain) (var 1 domain)
-                      (app (op :* domain) (lit domain (if (eq domain :int) -1 (1- (second domain)))) (var 0 domain))))
-         (job (start-search (solve-discovery-frame discovery) (make-language domain inputs :operators nil :literals nil)
-                            :expressions (list oracle))))
-    (check (eq :replay-complete (message-claim (resume-search job (description-size oracle inputs) 100000000))))
-    (check (search-job-best job))
-    job))
-
-(defun integer-propagation-cost-control (discoveries)
-  "Supplied expensive context a*a; hidden child b*b+1. Same candidate grammar,
-bound and rows on both paths; all inverse and verification work is charged."
-  (let* ((inputs (arithmetic-inputs :int)) (a (var 0 :int)) (b (var 1 :int))
-         (known (app (op :* :int) a a)) (decoder (app (op :+ :int) known (var 9 :int)))
-         (hidden (app (op :+ :int) (app (op :* :int) b b) (lit :int 1)))
-         (oracle (instantiate decoder (list (cons 9 hidden)) :var))
-         (acquisition (make-ledger)) (plain-work (make-ledger)) (guided-work (make-ledger))
-         (probe (make-frame (make-schema :inputs inputs :target :int)
-                            (loop for b from -3 to 3 for key from 0 collect
-                              (make-row :key key :known (list (+ (ash 1 128) key) b)
-                                        :requirement (lit :bool t)))))
-         (observations (start-observation-search
-                        (make-observation-scope probe (make-language :int inputs :operators nil :literals nil))
-                        :expressions (list oracle) :retain-outcomes t)))
-    (finish-observations observations (description-size oracle inputs) 10000000)
-    (let* ((parent (orient-observations '(:int :int :int) (arithmetic-forward-records observations acquisition) '(0 1) '(2)
-                                         :ledger acquisition))
-           (bindings (list (cons 3 b))) (original (pullback-frame parent decoder 9 :int bindings plain-work))
-           (library (prepare-propagator-library discoveries guided-work))
-           (propagation (propagate-requirements (pullback-frame parent decoder 9 :int bindings guided-work)
-                                                library guided-work))
-           (child-inputs (schema-inputs (frame-schema original)))
-           (language (make-language :int child-inputs :operators (list (op :+ :int) (op :* :int)) :literals '(-1 0 1)))
-           (bound (+ (header-size child-inputs :int) 22))
-           (plain (start-search original language)) (guided (start-propagation-search propagation language)))
-      (check (= 7 (propagation-suggested propagation)))
-      (check (eq :bounded-exhaustion (message-claim (resume-search plain bound 100000000))))
-      (check (eq :candidate (message-claim (resume-propagation-search guided bound 100000000 :stop-on-first t))))
-      (let* ((replay (make-ledger)) (model (compose-model decoder 9 (candidate-expression (propagation-search-best guided)) bindings replay)))
-        (replay-arithmetic-parent (decode-model (encode-model model inputs)) parent replay)
-        (check (eq :bounded-exhaustion (message-claim (resume-propagation-search guided bound 100000000))))
-        (check (null (set-exclusive-or (search-job-results plain) (propagation-search-results guided)
-                                       :key #'candidate-expression :test #'equal)))
-        (values plain guided plain-work guided-work
-                (+ (ledger-total acquisition) (algebra-job-work observations)) replay)))))
-
-(defvar *arithmetic-controls* (make-hash-table :test #'equal))
-
-(defun arithmetic-controls (domain)
-  (or (gethash domain *arithmetic-controls*)
-      (setf (gethash domain *arithmetic-controls*)
-            (loop with values = (if (eq domain :int) '(-4 -3 -2 -1 0 1 2 3 4)
-                                    (loop for i below (second domain) collect i))
-                  for name in '(:+ :- :* :/)
-                  for relation = (observe-arithmetic-relation domain name values) append
-                    (loop for position below 2
-                          for discovery = (discover-arithmetic-solver relation position values :literals (if (eq domain :int) '(-1 0 1) :all))
-                          do (if (eq domain :int) (integer-solver-held-out discovery) (validate-arithmetic-solver discovery))
-                          collect discovery)))))
-
-(defun arithmetic-control (domain name position)
-  (find-if (lambda (d) (and (eq name (operator-name (arithmetic-relation-operator (solve-discovery-relation d))))
-                            (= position (solve-discovery-position d)))) (arithmetic-controls domain)))
+(defun integer-lifting-fixture (&rest args)
+  (apply #'domain-lifting-fixture :int args))

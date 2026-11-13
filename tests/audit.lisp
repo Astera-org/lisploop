@@ -262,11 +262,16 @@
     (check (refine-lifted-node-from-counterexample job node candidate))
     (check (eq before (synthesis-node-frame node)))
     (check (= 1 (length (frame-rows before))))
-    (let ((debt (staged-work-debt (synthesis-job-refinement job))))
-      (resume-synthesis job (1- debt))
-      (check (eq before (synthesis-node-frame node)))
-      (resume-synthesis job debt)
-      (check (not (eq before (synthesis-node-frame node)))))
+    ;; Stepping 1 work unit leaves the refinement unpublished while debt remains,
+    ;; and stepping until publication obeys every intermediate limit without mutating `before`.
+    (resume-synthesis job 1)
+    (check (= 1 (ledger-total (synthesis-job-ledger job))))
+    (check (eq before (synthesis-node-frame node)))
+    (loop for limit from 2 to 500
+          until (not (eq before (synthesis-node-frame node)))
+          do (resume-synthesis job limit)
+             (check (<= (ledger-total (synthesis-job-ledger job)) limit)))
+    (check (not (eq before (synthesis-node-frame node))))
     (check (= 1 (length (frame-rows before))))
     (check (= 2 (length (frame-rows (synthesis-node-frame node)))))
     (check (= 1 (synthesis-node-revision node)))
@@ -391,3 +396,33 @@
     (check (eq :search (synthesis-node-phase follower)))
     (check (= 1 (synthesis-node-revision follower)))
     (check (null (synthesis-node-followers descendant)))))
+
+
+(deftest audit-cegar-refinement-obeys-unit-step-budgets
+  ;; Active row x0=2 -> 4 admits constant '4 first; root verification refutes (:map xs '4)
+  ;; on reserve row ((3)) -> (6), triggering budgeted CEGAR refinement before finding (+ x0 x0).
+  (with-clean-kernel-state
+    (define-standard-int-combinators :which '(:map))
+    (let* ((*max-active-lifted-rows* 1)
+           (seq-type (sequence-type :int))
+           (inputs (list (cons 0 seq-type)))
+           (frame (simple-frame seq-type inputs '((((2)) (4)) (((3)) (6)))))
+           (language (make-language :int inputs
+                                    :operators (list (op :map) (op :+ :int))
+                                    :literals '(4)))
+           (batch (check-synthesis-resumption
+                   (lambda ()
+                     (start-heuristic-synthesis frame language 80
+                                                :child-bound 45
+                                                :library-proposals-p t
+                                                :additive-p nil
+                                                :conditional-p nil))
+                   :budget 200000
+                   :stop-on-first t
+                   :exhaustive-p t)))
+      (check (synthesis-job-best batch))
+      (check (some (lambda (n) (plusp (synthesis-node-revision n)))
+                   (synthesis-job-nodes batch)))
+      (check-synthesized-model (candidate-expression (synthesis-job-best batch)) frame
+                               :must-call-ops '(:map)
+                               :held-out '((((5 -2)) (10 -4)))))))

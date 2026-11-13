@@ -1,19 +1,30 @@
-(load (merge-pathnames "../load.lisp" *load-truename*))
-(load (merge-pathnames "support.lisp" *load-truename*))
+(defvar *tests-directory*
+  (make-pathname :name nil :type nil :defaults (or *load-truename* *compile-file-truename*)))
+
+(load (merge-pathnames "../load.lisp" *tests-directory*))
+(load (merge-pathnames "support.lisp" *tests-directory*))
 (in-package #:lisploop)
 
+(defparameter *kernel-test-modules*
+  '("core" "codec" "observations" "laws" "symbolic" "amortization"
+    "lifting" "abstraction" "refactor" "recursion" "library"
+    "higher-order" "audit" "invariants"))
+
+(defparameter *milestone-only-test-modules*
+  '("guards" "compression" "algebra" "propagation" "corpus" "views"))
+
 (defparameter *all-test-modules*
-  '("core" "observations" "codec" "laws" "guards" "compression" "symbolic"
-    "amortization" "algebra" "propagation" "lifting" "abstraction" "views" "refactor"
-    "recursion" "library" "higher-order" "audit"))
+  (append *kernel-test-modules* *milestone-only-test-modules*))
 
 (defparameter *milestone-test-modules*
-  '(("m1" . ("core"))
+  `(("kernel" . ,*kernel-test-modules*)
+    ("milestones" . ,*milestone-only-test-modules*)
+    ("m1" . ("core"))
     ("m2" . ("observations" "codec"))
     ("m3" . ("laws" "guards" "compression" "symbolic" "amortization"))
     ("m4" . ("algebra" "propagation"))
     ("m5" . ("lifting"))
-    ("m6" . ("abstraction"))
+    ("m6" . ("abstraction" "corpus"))
     ("m7" . ("views"))
     ("m8" . ("views" "refactor" "recursion"))
     ("m9" . ("abstraction" "recursion" "library" "higher-order"))
@@ -44,18 +55,51 @@
                   ((member arg *all-test-modules* :test #'string-equal)
                    (pushnew (string-downcase arg) selected :test #'string=))
                   (t
-                   (error "Unknown test module or milestone ~S; expected one of ~S or ~S."
+                   (error "Unknown test module or group ~S; expected one of ~S or ~S."
                           arg *all-test-modules* (mapcar #'car *milestone-test-modules*)))))))))
 
-(dolist (module (resolve-test-modules (cdr sb-ext:*posix-argv*)))
-  (load (merge-pathnames (make-pathname :name module :type "lisp") *load-truename*)))
+(defun assert-pure-kernel-environment ()
+  "Verify that no `milestones/` symbols have been bound before running pure-kernel suites."
+  (dolist (sym-name '("DISCOVER-ARITHMETIC-SOLVER"
+                      "START-GUARD-SEARCH"
+                      "SYNTHESIZE-PARTITION-VIEW"
+                      "SYNTHESIZE-CORPUS-ABSTRACTION"
+                      "SEARCH-DEPENDENCIES"))
+    (let ((sym (find-symbol sym-name '#:lisploop)))
+      (assert (not (and sym (fboundp sym))) ()
+              "Pure-kernel test isolation violated: milestone symbol ~A is bound."
+              sym-name))))
 
-(let ((start (get-internal-real-time)))
-  (dolist (test (reverse *tests*))
-    (format t "~&~A ... " test)
-    (finish-output)
-    (funcall test)
-    (format t "ok~%"))
+(defun run-registered-tests ()
+  (let ((tests (reverse *tests*)))
+    (dolist (test tests (length tests))
+      (format t "~&~A ... " test)
+      (finish-output)
+      (funcall test)
+      (format t "ok~%"))))
+
+(let* ((selected (resolve-test-modules (cdr sb-ext:*posix-argv*)))
+       (kernel-modules (remove-if-not (lambda (m) (member m *kernel-test-modules* :test #'string=))
+                                      selected))
+       (milestone-modules (remove-if-not (lambda (m) (member m *milestone-only-test-modules* :test #'string=))
+                                         selected))
+       (start (get-internal-real-time))
+       (total-tests 0))
+  (when kernel-modules
+    (assert-pure-kernel-environment)
+    (setf *tests* nil)
+    (dolist (module kernel-modules)
+      (load (merge-pathnames (make-pathname :name module :type "lisp") cl-user::*tests-directory*)))
+    (incf total-tests (run-registered-tests)))
+  (when milestone-modules
+    (load (merge-pathnames "../milestones/load.lisp" cl-user::*tests-directory*))
+    (load (merge-pathnames "milestones/support.lisp" cl-user::*tests-directory*))
+    (setf *tests* nil)
+    (dolist (module milestone-modules)
+      (load (merge-pathnames (make-pathname :directory '(:relative "milestones")
+                                            :name module :type "lisp")
+                             cl-user::*tests-directory*)))
+    (incf total-tests (run-registered-tests)))
   (format t "~&~D tests, ~D checks passed in ~,3F s.~%"
-          (length *tests*) *checks*
+          total-tests *checks*
           (/ (- (get-internal-real-time) start) internal-time-units-per-second)))

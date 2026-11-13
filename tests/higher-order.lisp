@@ -1,41 +1,5 @@
 (in-package #:lisploop)
 
-(defun define-standard-int-combinators ()
-  "Register standard `:map`, `:foldr`, and `:filter` combinators over `(:seq :int)`."
-  (let* ((seq-type (sequence-type :int))
-         (xs (var 0 seq-type))
-         (empty-xs (app (op := seq-type) xs (lit seq-type '())))
-         (head-xs (app (op :at seq-type) xs (lit :int 0)))
-         (tail-xs (app (op :tail :int) xs))
-         (unary-code (code-type '((0 . :int)) :int))
-         (binary-code (code-type '((0 . :int) (1 . :int)) :int))
-         (pred-code (code-type '((0 . :int)) :bool)))
-    (define-function :map (list (cons 0 seq-type) (cons 1 unary-code)) seq-type
-      (lambda (self)
-        (app (op :if seq-type)
-             empty-xs
-             (lit seq-type '())
-             (app (op :cons :int)
-                  (app (op :code-eval unary-code) (var 1 unary-code) head-xs)
-                  (app self tail-xs (var 1 unary-code))))))
-    (define-function :foldr (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
-      (lambda (self)
-        (app (op :if :int)
-             empty-xs
-             (var 1 :int)
-             (app (op :code-eval binary-code) (var 2 binary-code)
-                  head-xs
-                  (app self tail-xs (var 1 :int) (var 2 binary-code))))))
-    (define-function :filter (list (cons 0 seq-type) (cons 1 pred-code)) seq-type
-      (lambda (self)
-        (app (op :if seq-type)
-             empty-xs
-             (lit seq-type '())
-             (app (op :if seq-type)
-                  (app (op :code-eval pred-code) (var 1 pred-code) head-xs)
-                  (app (op :cons :int) head-xs (app self tail-xs (var 1 pred-code)))
-                  (app self tail-xs (var 1 pred-code))))))))
-
 (deftest higher-order-h1-polymorphic-retyping-filter-and-lockstep
   "Verify H1:
 1. Polymorphic combinator instantiation (`retype-function-definition`) to nested sequences,
@@ -44,10 +8,8 @@
    `lift-frame`) including duplicate-element rows and `:code-subst` closure capture.
 3. Multi-sequence lockstep structural recursion (`:dot-product`, `:zip-with`, `:fold2`) and
    lifting through binary sequence combinators."
-  (unwind-protect
-       (with-knowledge-library ((make-knowledge-library))
-         (clear-function-definitions)
-         (define-standard-int-combinators)
+  (with-clean-kernel-state
+    (define-standard-int-combinators)
 
          ;; 1. Polymorphic retyping of :map, :foldr, :filter
          (let* ((seq-int (sequence-type :int))
@@ -218,8 +180,7 @@
                (let ((lc-expr (candidate-expression (synthesis-job-best lc-job))))
                  (check (provably-total-p lc-expr))
                  (check (expression-calls-operator-p lc-expr :zip-with))
-                 (check (equal '(21 42 63) (result lc-expr lc-inputs '((10 20 30) (1 2 3))))))))))
-    (clear-function-definitions)))
+                 (check (equal '(21 42 63) (result lc-expr lc-inputs '((10 20 30) (1 2 3)))))))))))
 
 (deftest higher-order-h2-nested-2d-grids-outer-product-matvec-and-filter-map
   "Verify H2:
@@ -230,10 +191,8 @@
 3. Matrix-Vector Product ($(Mv)_i = \\sum_j M_{i,j} v_j$) via `:map` over rows composed with `:dot-product`.
 4. 2D Row/Grid Reductions (`row-sums` and `matrix-sum`).
 5. Filter-Map comprehension (`[2*x + 1 for x in xs if x > 0]`) via `filter-map-decompositions`."
-  (unwind-protect
-       (with-knowledge-library ((make-knowledge-library))
-         (clear-function-definitions)
-         (define-standard-int-combinators)
+  (with-clean-kernel-state
+    (define-standard-int-combinators)
          (let* ((seq-int (sequence-type :int))
                 (seq2-int (sequence-type seq-int))
                 (xs (var 0 seq-int))
@@ -364,24 +323,15 @@
                                                            (op :+ :int) (op :< :int))
                                           :literals '(0 1)
                                           :constants (list (lit seq-int '()))))
-                  (batch-job (start-heuristic-synthesis fm-frame fm-lang 100))
-                  (step-job (start-heuristic-synthesis fm-frame fm-lang 100)))
-             ;; Conservative descriptor pruning retains an additional branch.
-             (resume-synthesis batch-job 60000 :stop-on-first t)
-             (loop for limit from 1 to 60000
-                   until (or (synthesis-finished-p step-job)
-                             (synthesis-job-best step-job))
-                   do (resume-synthesis step-job limit :stop-on-first t))
+                  (batch-job (check-synthesis-resumption
+                              (lambda () (start-heuristic-synthesis fm-frame fm-lang 100))
+                              :budget 60000
+                              :stop-on-first t
+                              :exhaustive-p t)))
              (check (synthesis-job-best batch-job))
-             (check (synthesis-job-best step-job))
-             (let ((expr (candidate-expression (synthesis-job-best batch-job))))
-               (check (equal expr (candidate-expression (synthesis-job-best step-job))))
-               (check (provably-total-p expr))
-               (check-codec-roundtrip expr fm-inputs)
-               (check (expression-calls-operator-p expr :map))
-               (check (expression-calls-operator-p expr :filter))
-               (check (equal '(3 11 21) (result expr fm-inputs '((-4 1 0 5 -2 10)))))))))
-    (clear-function-definitions)))
+             (check-synthesized-model (candidate-expression (synthesis-job-best batch-job)) fm-frame
+                                      :must-call-ops '(:map :filter)
+                                      :held-out '((((-4 1 0 5 -2 10)) (3 11 21))))))))
 
 (deftest higher-order-h3-sampled-fibers-and-cegar-refinement
   "Verify H3:
@@ -392,10 +342,8 @@
    `refine-lifted-node-from-counterexample` promotes the failing fiber row from `reserve-rows`
    into the active child frame, emits a `:cegar-refinement` message, and converges to `(* X0 X0)`
    with a fresh search scope for the revised constraints."
-  (unwind-protect
-       (with-knowledge-library ((make-knowledge-library))
-         (clear-function-definitions)
-         (define-standard-int-combinators)
+  (with-clean-kernel-state
+    (define-standard-int-combinators)
          (let* ((seq-int (sequence-type :int))
                 (inputs (list (cons 0 seq-int)))
                 (xs (var 0 seq-int))
@@ -417,32 +365,22 @@
                (check (= 2 (length (frame-rows lifted))))
                (check (= 2 (length reserve))))
              ;; 2. Full synthesis with `library-expander` under `*max-active-lifted-rows* = 2`:
-             ;;    Child enumerates `(+ X0 X0)` first (since `:+` precedes `:*`), fails root verification
-             ;;    on `(3 5) -> (9 25)`, triggers `:cegar-refinement`, promotes `(3) -> 9`, and finds `(* X0 X0)`.
-             (let ((job (start-synthesis sq-frame sq-lang 60
-                                         :expand (library-expander)
-                                         :max-depth 1))
-                   (unit (start-synthesis sq-frame sq-lang 60
-                                          :expand (library-expander) :max-depth 1)))
-               (resume-synthesis job 30000 :stop-on-first t)
-               (loop for limit from 1 to 30000
-                     until (or (synthesis-finished-p unit) (synthesis-job-best unit))
-                     do (resume-synthesis unit limit :stop-on-first t)
-                        (check (<= (ledger-total (synthesis-job-ledger unit)) limit)))
+             (let ((job (check-synthesis-resumption
+                         (lambda ()
+                           (start-synthesis sq-frame sq-lang 60
+                                            :expand (library-expander)
+                                            :max-depth 1))
+                         :budget 30000
+                         :stop-on-first t
+                         :exhaustive-p t)))
                (check (synthesis-job-best job))
-               (check (synthesis-job-best unit))
-               (check (equal (candidate-expression (synthesis-job-best job))
-                             (candidate-expression (synthesis-job-best unit))))
-               (check (= (ledger-total (synthesis-job-ledger job))
-                         (ledger-total (synthesis-job-ledger unit))))
                (let ((cegar-msg (find :cegar-refinement (synthesis-job-messages job)
                                       :key #'message-claim :test #'eq))
                      (expr (candidate-expression (synthesis-job-best job))))
                  (check cegar-msg)
                  (check (equal '(3) (getf (message-evidence cegar-msg) :promoted-row)))
-                 (check (provably-total-p expr))
-                 (check (equal '(0 4 9 16 25) (result expr inputs '((0 2 3 4 5))))))))))
-    (clear-function-definitions)))
+                 (check-synthesized-model expr sq-frame
+                                          :held-out '((((0 2 3 4 5)) (0 4 9 16 25))))))))))
 
 (deftest higher-order-h4-linear-algebraic-inverses-involutions-and-invariants
   "Verify H4:
@@ -452,27 +390,18 @@
 2. Involution `:law` entries (`(= (reverse (reverse X0)) X0)` and `(= (transpose (transpose X0)) X0)`)
    automatically induce unary `:solver` entries via `induce-involution-solvers`.
 3. `conserved-quantity-frame` discovers algebraic sequence invariants (`sum(shift(xs, d)) = sum(xs) + d * length(xs)`)."
-  (unwind-protect
-       (with-knowledge-library ((make-knowledge-library))
-         (clear-function-definitions)
-         (define-standard-int-combinators)
-         (let* ((gf5 (gf 5))
-                (seq-gf5 (sequence-type gf5))
-                (gf5-elems '(0 1 2 3 4))
-                (gf5-code (code-type (list (cons 0 gf5)) gf5))
-                (bin-gf5-code (code-type (list (cons 0 gf5) (cons 1 gf5)) gf5))
-                (tup-type (tuple-type gf5-code gf5))
-                (subst-type (tuple-type bin-gf5-code tup-type gf5-code)))
-           ;; 1. Register element-level solvers for :+ and :* over GF(5)
-           (let ((add-rel (observe-arithmetic-relation gf5 :+ gf5-elems))
-                 (mul-rel (observe-arithmetic-relation gf5 :* gf5-elems)))
-             (dolist (pos '(0 1))
-               (register-knowledge-solver
-                (discover-arithmetic-solver add-rel pos gf5-elems :operators '(:+ :-))
-                :id (intern (format nil "GF5-ADD-SOLVE-~D" pos) :keyword))
-               (register-knowledge-solver
-                (discover-arithmetic-solver mul-rel pos gf5-elems :operators '(:+ :- :* :/))
-                :id (intern (format nil "GF5-MUL-SOLVE-~D" pos) :keyword))))
+  (with-clean-kernel-state
+    (define-standard-int-combinators)
+    (let* ((gf5 (gf 5))
+           (seq-gf5 (sequence-type gf5))
+           (gf5-code (code-type (list (cons 0 gf5)) gf5))
+           (bin-gf5-code (code-type (list (cons 0 gf5) (cons 1 gf5)) gf5))
+           (tup-type (tuple-type gf5-code gf5))
+           (subst-type (tuple-type bin-gf5-code tup-type gf5-code)))
+      ;; 1. Register element-level solvers for :+ and :* over GF(5)
+      (dolist (pos '(0 1))
+        (register-kernel-arithmetic-solver gf5 :+ pos)
+        (register-kernel-arithmetic-solver gf5 :* pos))
            ;; Retype `:map` to `GF(5)` and define `:shift(xs, d)` and `:scale(xs, c)` via `:map-gf5` + `:code-subst`
            (retype-function-definition :map gf5 :new-name :map-gf5)
            (let ((shift-inputs (list (cons 0 seq-gf5) (cons 1 gf5))))
@@ -694,8 +623,7 @@
                (check (propagation-fallback lag-prop))
                (check (equal '(3)
                              (extract-allowed-values
-                              (row-requirement (first (frame-rows (propagation-frame lag-prop)))))))))))
-    (clear-function-definitions)))
+                              (row-requirement (first (frame-rows (propagation-frame lag-prop))))))))))))
 
 (deftest higher-order-m9-partial-fibers-adjacent-stencils-and-2d-probes
   "Verify M9.1 & M9.2:
@@ -707,10 +635,8 @@
    from a 2-fiber prefix.
 3. Progressive on-demand CEGAR reserve fiber unfolding (`refine-lifted-node-from-counterexample`)
    discovers counterexamples beyond the initial partial fiber window."
-  (unwind-protect
-       (with-knowledge-library ((make-knowledge-library))
-         (clear-function-definitions)
-         (define-standard-int-combinators)
+  (with-clean-kernel-state
+    (define-standard-int-combinators)
          (let* ((seq-type (sequence-type :int))
                 (grid-type (sequence-type seq-type))
                 (unary-code (code-type (list (cons 0 :int)) :int))
@@ -812,5 +738,4 @@
                    (expr (candidate-expression (synthesis-job-best job))))
                (check cegar-msg)
                (check (equal '(3) (getf (message-evidence cegar-msg) :promoted-row)))
-               (check (equal '(0 4 9 16 25) (result expr inputs '((0 2 3 4 5)))))))))
-    (clear-function-definitions)))
+               (check (equal '(0 4 9 16 25) (result expr inputs '((0 2 3 4 5))))))))))
