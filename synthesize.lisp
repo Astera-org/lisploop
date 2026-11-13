@@ -326,19 +326,24 @@ policy score and its number of coupled requirements."
     (heuristic-model (priority-predictor-function (heuristic-program predictor)))
     ((or cons symbol)
      (let* ((arity (1+ (reduce #'max (infer-exprs-inputs (list predictor)) :key #'car :initial-value 3)))
-            (inputs (loop for i from 0 below arity collect (cons i :int))))
+            (inputs (loop for i from 0 below arity collect (cons i :int)))
+            (fast-fn (compile-ast-fn predictor inputs))
+            (cost (max 1 (or (ignore-errors (syntax-work predictor)) 1))))
        (lambda (node frame language h-model ledger)
          (declare (ignore language))
          (if (null h-model)
              most-positive-fixnum
-             (let ((features (append (node-trace-features node frame h-model ledger)
-                                     (list (node-policy-score node)
-                                           (length (synthesis-node-coupled-requirements node))))))
-               (multiple-value-bind (val ok)
-                   (eval-expr-value predictor inputs
-                                    (loop for i from 0 below arity collect (or (nth i features) 0))
-                                    ledger)
-                 (if (and ok (integerp val)) val most-positive-fixnum)))))))))
+             (let* ((features (append (node-trace-features node frame h-model ledger)
+                                      (list (node-policy-score node)
+                                            (length (synthesis-node-coupled-requirements node)))))
+                    (args (loop for i from 0 below arity collect (or (nth i features) 0))))
+               (if fast-fn
+                   (progn
+                     (when ledger (charge ledger :simulation cost))
+                     (let ((val (ignore-errors (funcall fast-fn args))))
+                       (if (integerp val) val most-positive-fixnum)))
+                   (multiple-value-bind (val ok) (eval-expr-value predictor inputs args ledger)
+                     (if (and ok (integerp val)) val most-positive-fixnum))))))))))
 
 (defun node-priority (job node frame language h-model ledger)
   "Lower is better: the job's predictor's score or, without one, the Stage A model composed

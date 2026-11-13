@@ -83,7 +83,8 @@ A kind without a :consume clause is consumed by evaluating its expression on the
   (gain 0 :type fixnum)
   (work 0 :type fixnum)
   edges
-  metadata)
+  metadata
+  executable)
 
 (defstruct (knowledge-library (:constructor %make-knowledge-library))
   (version 0 :type fixnum)
@@ -99,7 +100,6 @@ A kind without a :consume clause is consumed by evaluating its expression on the
   (stored-de-novo-counter 0 :type fixnum)
   (rewrite-libraries (make-hash-table :test #'equal))
   (propagator-libraries (make-hash-table :test #'equal))
-  (descriptors (make-hash-table :test #'eq))
   (compositional-index (make-hash-table :test #'eq))
   priority-predictor
   (entry-counter 0 :type fixnum))
@@ -324,7 +324,6 @@ size of EXPRESSION."
                        (knowledge-library-incoming-edges library)
                        (knowledge-library-rewrite-libraries library)
                        (knowledge-library-propagator-libraries library)
-                       (knowledge-library-descriptors library)
                        (knowledge-library-compositional-index library)))
     (clrhash table))
   (setf (knowledge-library-priority-predictor library) nil))
@@ -347,6 +346,7 @@ size of EXPRESSION."
         (kind (knowledge-entry-kind entry))
         (incoming (knowledge-library-incoming-edges library))
         (addresses (knowledge-library-compositional-index library)))
+    (remhash id (knowledge-library-by-id library))
     (setf (gethash kind (knowledge-library-by-kind library))
           (remove id (gethash kind (knowledge-library-by-kind library)) :key #'knowledge-entry-id))
     (maphash (lambda (target edges)
@@ -358,12 +358,16 @@ size of EXPRESSION."
              addresses)
     (remhash entry *knowledge-entry-owners*)))
 
+(declaim (ftype function sync-entry-executable consume-entry-executable))
+
 (defun install-knowledge-entry (entry library ledger)
-  "Run the install hook of ENTRY's kind, then index any descriptor profile the hook attached."
+  "Run the install hook of ENTRY's kind, synchronize its derived executable cache, and index any
+compositional descriptor addresses attached."
   (let ((spec (find-knowledge-kind-spec (knowledge-entry-kind entry)))
         (*syncing-knowledge-library-p* t))
     (when (and spec (knowledge-kind-spec-install-fn spec))
       (funcall (knowledge-kind-spec-install-fn spec) entry library ledger)))
+  (sync-entry-executable entry)
   (index-knowledge-entry-compositional-address entry library))
 
 (defun rebuild-knowledge-library-indexes (&optional (library *knowledge-library*) ledger)
@@ -402,6 +406,17 @@ An entry with the same ID is replaced in place in the entry list."
         (when (and spec (knowledge-kind-spec-validate-fn spec))
           (funcall (knowledge-kind-spec-validate-fn spec) entry library))
         (cond (existing
+               (when (and (not (eq (knowledge-entry-kind existing) kind))
+                          (member (knowledge-entry-kind existing) '(:function :decoder-template)))
+                 (dolist (edge (copy-list (knowledge-edges-to id :describes library)))
+                   (let ((d (find-knowledge-entry (second edge) library)))
+                     (when (and d (eq :descriptor (knowledge-entry-kind d))
+                                (getf (knowledge-entry-metadata d) :auto-descriptor)
+                                (equal (list (list :describes id))
+                                       (knowledge-edges-from d :describes library)))
+                       (unindex-knowledge-entry d library)
+                       (setf (knowledge-library-entries library)
+                             (delete d (knowledge-library-entries library) :test #'eq))))))
                (unindex-knowledge-entry existing library)
                (when (and (eq :function (knowledge-entry-kind existing)) (not (eq :function kind)))
                  (remhash id *function-definitions*)
@@ -417,18 +432,25 @@ An entry with the same ID is replaced in place in the entry list."
         entry))))
 
 (defun remove-knowledge-entry (id &optional (library *knowledge-library*) ledger)
-  "Remove entry ID from LIBRARY and rebuild its derived indexes."
-  (let ((existing (find-knowledge-entry id library)))
+  "Remove entry ID (and any auto-derived descriptors describing only ID) from LIBRARY."
+  (let* ((kid (canonical-op-name id))
+         (existing (find-knowledge-entry kid library)))
     (when existing
       (setf (knowledge-library-entries library)
-            (remove existing (knowledge-library-entries library) :test #'eq))
+            (remove-if (lambda (e)
+                         (or (eq e existing)
+                             (and (eq :descriptor (knowledge-entry-kind e))
+                                  (getf (knowledge-entry-metadata e) :auto-descriptor)
+                                  (equal (list (list :describes kid))
+                                         (knowledge-edges-from e :describes library)))))
+                       (knowledge-library-entries library)))
       (remhash existing *knowledge-entry-owners*)
       (rebuild-knowledge-library-indexes library ledger)
       t)))
 
 (defun consume-knowledge-entry (entry-or-id context &key (library *knowledge-library*) ledger)
   "Evaluate or consume ENTRY-OR-ID on CONTEXT using its `define-knowledge-kind` `:consume` hook.
-A kind without one is consumed by evaluating the entry's expression on CONTEXT."
+A kind without one is consumed via ENTRY's synchronized executable cache."
   (call-with-knowledge-library library
     (lambda ()
       (let ((entry (if (knowledge-entry-p entry-or-id)
@@ -436,11 +458,9 @@ A kind without one is consumed by evaluating the entry's expression on CONTEXT."
                        (find-knowledge-entry entry-or-id library))))
         (when entry
           (let ((spec (find-knowledge-kind-spec (knowledge-entry-kind entry))))
-            (cond ((and spec (knowledge-kind-spec-consume-fn spec))
-                   (funcall (knowledge-kind-spec-consume-fn spec) entry context ledger))
-                  ((knowledge-entry-expression entry)
-                   (evaluate (knowledge-entry-expression entry) (knowledge-entry-inputs entry)
-                             context :ledger ledger)))))))))
+            (if (and spec (knowledge-kind-spec-consume-fn spec))
+                (funcall (knowledge-kind-spec-consume-fn spec) entry context ledger)
+                (consume-entry-executable entry context ledger))))))))
 
 (defun clear-knowledge-library (&optional (library *knowledge-library*))
   "Reset LIBRARY to an empty knowledge store with an empty function table."

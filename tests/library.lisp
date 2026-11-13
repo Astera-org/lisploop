@@ -738,3 +738,101 @@
                    (check promoted)
                    (check (eq :prepare (synthesis-node-phase promoted)))))))))
     (clear-function-definitions)))
+
+(deftest library-unified-descriptors-and-synchronized-executables
+  (unwind-protect
+       (with-knowledge-library ((make-knowledge-library))
+         (clear-function-definitions)
+         ;; 1. Synchronized `knowledge-entry-executable` fast closure parity, non-persistence, and auto-resync
+         (let ((entry (register-knowledge-entry
+                       (make-knowledge-entry :id :TEST/EXEC-ENTRY
+                                             :kind :descriptor
+                                             :inputs '((0 . (:seq :int)) (1 . (:seq :int)))
+                                             :target :bool
+                                             :guard (bool-not (term `(= ,(var 0 '(:seq :int)) ())))
+                                             :expression (term `(= (length ,(var 0 '(:seq :int)))
+                                                                   (length ,(var 1 '(:seq :int)))))))))
+           (check (entry-executable-p (knowledge-entry-executable entry)))
+           (check (functionp (entry-executable-expr-fn (knowledge-entry-executable entry))))
+           (check (functionp (entry-executable-guard-fn (knowledge-entry-executable entry))))
+           ;; Parity with VM `evaluate` across satisfied, falsified, and `:unresolved` inputs
+           (dolist (args '(((1 2) (3 4)) ((1 2) (3)) (:unresolved (3))))
+             (let ((vm-run (evaluate (knowledge-entry-expression entry)
+                                     (knowledge-entry-inputs entry) args))
+                   (fast-run (consume-knowledge-entry entry args :ledger (make-ledger))))
+               (check (eq (evaluation-status vm-run) (evaluation-status fast-run)))
+               (when (eq :value (evaluation-status vm-run))
+                 (check (equal (evaluation-value vm-run) (evaluation-value fast-run))))))
+           ;; `:executable` is excluded from serialized plists and rebuilt on load
+           (let* ((sexp (serialize-knowledge-library *knowledge-library*))
+                  (entries-plist (getf (rest sexp) :entries))
+                  (saved-entry (find :TEST/EXEC-ENTRY entries-plist :key (lambda (p) (getf p :id))))
+                  (reloaded (deserialize-knowledge-library sexp))
+                  (reloaded-entry (find-knowledge-entry :TEST/EXEC-ENTRY reloaded)))
+             (check saved-entry)
+             (check (null (getf saved-entry :executable)))
+             (check (entry-executable-p (knowledge-entry-executable reloaded-entry)))
+             (check (functionp (entry-executable-expr-fn (knowledge-entry-executable reloaded-entry)))))
+           ;; Mutating an AST slot automatically invalidates and resynchronizes `entry-executable`
+           (setf (knowledge-entry-expression entry)
+                 (term `(< (length ,(var 1 '(:seq :int))) (length ,(var 0 '(:seq :int))))))
+           (multiple-value-bind (val status)
+               (eval-entry-slot entry :expr '((1 2 3) (9)))
+             (check (eq :value status))
+             (check (eq t val))))
+         ;; 2. Observation-synthesized `:descriptor` AST entries and unified `score-entry-by-descriptors`
+         (let* ((seq-type (sequence-type :int))
+                (fn-inputs (list (cons 0 seq-type)))
+                (x0 (var 0 seq-type)))
+           (define-function :shift-up-desc-test fn-inputs seq-type nil)
+           (define-function :shift-up-desc-test fn-inputs seq-type
+             (term `(if (= ,x0 ())
+                        ()
+                        (cons (+ (at ,x0 0) 3)
+                              (:shift-up-desc-test (tail ,x0))))))
+           (let* ((fn-entry (find-knowledge-entry :SHIFT-UP-DESC-TEST *knowledge-library*))
+                  (desc-edges (knowledge-edges-to :SHIFT-UP-DESC-TEST :describes *knowledge-library*))
+                  (descs (mapcar (lambda (e) (find-knowledge-entry (second e) *knowledge-library*))
+                                 desc-edges))
+                  (concepts (mapcar (lambda (d) (getf (knowledge-entry-metadata d) :concept)) descs))
+                  (step-desc (find :DESC/CONSTANT-STEP-DELTA descs
+                                   :key (lambda (d) (getf (knowledge-entry-metadata d) :concept))))
+                  (len-desc (find :DESC/LEN-EQ descs
+                                  :key (lambda (d) (getf (knowledge-entry-metadata d) :concept)))))
+             (check fn-entry)
+             (check (member :DESC/LEN-EQ concepts))
+             (check (member :DESC/EMPTY->EMPTY concepts))
+             (check (member :DESC/CONSTANT-STEP-DELTA concepts))
+             ;; Every descriptor's behavioral predicate is an object-language AST with a compiled closure
+             (check (every (lambda (d)
+                             (and (eq :bool (expression-type (knowledge-entry-expression d)
+                                                             (knowledge-entry-inputs d)))
+                                  (functionp (entry-executable-expr-fn (ensure-entry-executable d)))))
+                           descs))
+             ;; Structurally backed shape invariant is `:necessary`; sampled step-delta is `:empirical`
+             (check (knowledge-evidence-current-p len-desc :necessary))
+             (check (not (knowledge-evidence-current-p step-desc :necessary)))
+             ;; Scoring rewards constant-step frames, stays compatible on non-constant equal-length frames,
+             ;; and soundly prunes length-contracting frames
+             (let ((const-delta-frame (simple-frame seq-type fn-inputs
+                                                    '((((1 4 9)) (6 9 14)))))
+                   (nonconst-frame (simple-frame seq-type fn-inputs
+                                                 '((((1 4 9)) (2 10 99)))))
+                   (contract-frame (simple-frame seq-type fn-inputs
+                                                 '((((1 4 9)) (4))))))
+               (multiple-value-bind (ok1 score1 matched1)
+                   (score-entry-by-descriptors fn-entry const-delta-frame 0)
+                 (check ok1)
+                 (check (< score1 -8))
+                 (check (member :DESC/CONSTANT-STEP-DELTA matched1)))
+               (multiple-value-bind (ok2 _s2 matched2)
+                   (score-entry-by-descriptors fn-entry nonconst-frame 0)
+                 (declare (ignore _s2))
+                 (check ok2)
+                 (check (member :DESC/LEN-EQ matched2))
+                 (check (not (member :DESC/CONSTANT-STEP-DELTA matched2))))
+               (multiple-value-bind (ok3 _s3 _m3)
+                   (score-entry-by-descriptors fn-entry contract-frame 0)
+                 (declare (ignore _s3 _m3))
+                 (check (null ok3)))))))
+    (clear-function-definitions)))

@@ -953,9 +953,7 @@ version-fresh `rewrite-library` for DOMAIN (or NIL if no validated rules exist).
     (declare (ignore entry ledger))
     (clrhash (knowledge-library-rewrite-libraries library)))
   (:consume (entry context ledger)
-    (let ((inputs (knowledge-entry-inputs entry)))
-      (when (= (length context) (length inputs))
-        (evaluate (law-statement (knowledge-entry->law entry)) inputs context :ledger ledger)))))
+    (consume-entry-executable entry context ledger :guarded-p t :guard-default '(t . t))))
 
 (defun solver-positions (position)
   (cond ((eq position :unary) '(0)) ((listp position) position) (t (list position))))
@@ -1101,10 +1099,7 @@ first when its relation is exhaustive and it has not been."
 
 (defun evaluate-guarded-entry (entry context ledger)
   "Evaluate ENTRY's expression on CONTEXT when its guard holds there; nil when it does not."
-  (let* ((inputs (knowledge-entry-inputs entry))
-         (guard (evaluate (knowledge-entry-guard entry) inputs context :ledger ledger)))
-    (when (and (eq :value (evaluation-status guard)) (evaluation-value guard))
-      (evaluate (knowledge-entry-expression entry) inputs context :ledger ledger))))
+  (consume-entry-executable entry context ledger :guarded-p t))
 
 (define-knowledge-kind :solver
   (:priority 35)

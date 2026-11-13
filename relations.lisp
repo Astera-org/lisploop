@@ -146,6 +146,7 @@ RELATION-KIND, when given, must name the kind of table that TABLE is."
                        (knowledge-entry-auxiliary-code entry) expression
                        (knowledge-entry-status entry) :empirical
                        (knowledge-entry-bits entry) bits)
+                 (sync-entry-executable entry)
                  (push entry condensed))))
       ;; Pass 1: Individual relation entries and grouping by signature
       (dolist (entry entries)
@@ -198,10 +199,7 @@ RELATION-KIND, when given, must name the kind of table that TABLE is."
       (when (knowledge-entry-auxiliary-code entry)
         (assert (equal target (expression-type (knowledge-entry-auxiliary-code entry) inputs))))))
   (:consume (entry context ledger)
-    (let ((program (or (knowledge-entry-auxiliary-code entry)
-                       (knowledge-entry-expression entry)))
-          (inputs (knowledge-entry-inputs entry)))
-      (when (and program (= (length context) (length inputs)))
-        (evaluate program inputs context :ledger ledger))))
+    (consume-entry-executable entry context ledger
+                              :slot (if (knowledge-entry-auxiliary-code entry) :aux :expr)))
   (:consolidate (entries library ledger)
     (consolidate-residual-relations entries library ledger)))

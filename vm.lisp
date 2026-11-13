@@ -367,3 +367,185 @@ the work of its arguments, plus what its own traversal, copying or matching can 
              (diagnostic (if (or unpaid (zerop spent)) 1 0)))
         (when (plusp diagnostic) (charge ledger error-category diagnostic))
         (values result (+ spent diagnostic))))))
+
+;;; Derived Fast Executable Closures for Symbolic Library ASTs
+
+(defstruct (entry-executable (:constructor %make-entry-executable))
+  "Derived runtime execution cache for a `knowledge-entry`, kept in sync with its AST slots."
+  expression
+  guard
+  auxiliary
+  inputs
+  (expr-cost 1 :type fixnum)
+  (guard-cost 1 :type fixnum)
+  (aux-cost 1 :type fixnum)
+  expr-fn
+  guard-fn
+  aux-fn)
+
+(defun compile-ast-fn (expression inputs)
+  "Compile a pure, hole-free first-order primitive AST over INPUTS into a zero-allocation
+host closure `(lambda (args) ...)`. Returns NIL when EXPRESSION calls defined functions,
+symbolic `:code-*` operators, or contains holes, so callers fall back to `evaluate`."
+  (let ((norm-inputs (input-alist inputs)))
+    (when (and expression (ignore-errors (expression-type expression norm-inputs)))
+      (labels ((build (node)
+                 (let ((meta (ignore-errors (ensure-ast-meta node))))
+                   (when meta
+                     (case (ast-meta-kind meta)
+                       (:lit
+                        (let ((val (ast-meta-value meta)))
+                          (if (consp val)
+                              (lambda (args) (declare (ignore args)) (copy-tree val))
+                              (lambda (args) (declare (ignore args)) val))))
+                       (:var
+                        (let* ((id (ast-meta-id meta))
+                               (pos (position id norm-inputs :key #'car :test #'eql)))
+                          (when pos
+                            (lambda (args)
+                              (let ((val (nth pos args)))
+                                (when (eq val :unresolved)
+                                  (error 'unresolved-evaluation :name :var :arguments (list id)))
+                                val)))))
+                       (:app
+                        (let* ((operator (first node))
+                               (name (and (operator-p operator) (operator-name operator)))
+                               (type (and name (operator-operand-type operator)))
+                               (subnodes (rest node)))
+                          (unless (or (null name)
+                                      (defined-function-p name)
+                                      (member name '(:code-eval :code-kind :code-child :code-operator
+                                                     :code-apply :code-match :code-bind :code-subst
+                                                     :code-total :code-less)))
+                            (let ((fns (mapcar #'build subnodes)))
+                              (when (every #'identity fns)
+                                (cond
+                                  ((eq name :if)
+                                   (destructuring-bind (cf yf nf) fns
+                                     (lambda (args)
+                                       (if (funcall cf args) (funcall yf args) (funcall nf args)))))
+                                  ((and (eq name :length) (= 1 (length fns)))
+                                   (let ((a1 (first fns)))
+                                     (lambda (args) (length (funcall a1 args)))))
+                                  ((and (eq name :=) (= 2 (length fns)))
+                                   (let ((a1 (first fns)) (a2 (second fns)))
+                                     (lambda (args) (equal (funcall a1 args) (funcall a2 args)))))
+                                  ((and (eq name :<) (= 2 (length fns)))
+                                   (let ((a1 (first fns)) (a2 (second fns)))
+                                     (lambda (args) (< (funcall a1 args) (funcall a2 args)))))
+                                  ((and (eq type :int) (member name '(:+ :- :*)) (= 2 (length fns)))
+                                   (let ((a1 (first fns)) (a2 (second fns)))
+                                     (ecase name
+                                       (:+ (lambda (args) (+ (funcall a1 args) (funcall a2 args))))
+                                       (:- (lambda (args) (- (funcall a1 args) (funcall a2 args))))
+                                       (:* (lambda (args) (* (funcall a1 args) (funcall a2 args)))))))
+                                  ((and (eq name :member) (= 2 (length fns)))
+                                   (let ((a1 (first fns)) (a2 (second fns)))
+                                     (lambda (args)
+                                       (not (null (member (funcall a1 args) (funcall a2 args) :test #'equal))))))
+                                  ((and (eq name :at) (= 2 (length fns)))
+                                   (let ((a1 (first fns)) (a2 (second fns)))
+                                     (lambda (args)
+                                       (let* ((items (funcall a1 args))
+                                              (idx (funcall a2 args)))
+                                         (nth (checked-position idx (length items)) items)))))
+                                  (t
+                                   (lambda (args)
+                                     (execute-primitive
+                                      operator
+                                      (mapcar (lambda (f) (funcall f args)) fns)))))))))))))))
+        (build expression)))))
+
+(defun sync-entry-executable (entry)
+  "Compile and cache synchronized fast closures for ENTRY's symbolic AST slots."
+  (when (knowledge-entry-p entry)
+    (let* ((inputs (knowledge-entry-inputs entry))
+           (expr (knowledge-entry-expression entry))
+           (guard (knowledge-entry-guard entry))
+           (aux (knowledge-entry-auxiliary-code entry)))
+      (setf (knowledge-entry-executable entry)
+            (%make-entry-executable
+             :expression expr
+             :guard guard
+             :auxiliary aux
+             :inputs inputs
+             :expr-cost (if expr (max 1 (or (ignore-errors (syntax-work expr)) 1)) 1)
+             :guard-cost (if guard (max 1 (or (ignore-errors (syntax-work guard)) 1)) 1)
+             :aux-cost (if aux (max 1 (or (ignore-errors (syntax-work aux)) 1)) 1)
+             :expr-fn (compile-ast-fn expr inputs)
+             :guard-fn (compile-ast-fn guard inputs)
+             :aux-fn (compile-ast-fn aux inputs))))))
+
+(defun ensure-entry-executable (entry)
+  "Return ENTRY's `entry-executable`, rebuilding it automatically if uninitialized or if any
+AST/input slot on ENTRY was mutated since compilation."
+  (let ((exec (knowledge-entry-executable entry)))
+    (if (and (entry-executable-p exec)
+             (eq (knowledge-entry-expression entry) (entry-executable-expression exec))
+             (eq (knowledge-entry-guard entry) (entry-executable-guard exec))
+             (eq (knowledge-entry-auxiliary-code entry) (entry-executable-auxiliary exec))
+             (equal (knowledge-entry-inputs entry) (entry-executable-inputs exec)))
+        exec
+        (sync-entry-executable entry))))
+
+(defun eval-entry-slot (entry slot args &key ledger (category :simulation) (check-types-p t))
+  "Evaluate SLOT (`:expr`, `:guard`, or `:aux`) of ENTRY on ARGS via its synchronized
+`entry-executable` closure (falling back to `evaluate` for general/recursive ASTs).
+Returns `(VALUES value status error work)`."
+  (let* ((exec (ensure-entry-executable entry))
+         (inputs (entry-executable-inputs exec)))
+    (multiple-value-bind (ast fn cost)
+        (ecase slot
+          (:expr (values (entry-executable-expression exec)
+                         (entry-executable-expr-fn exec)
+                         (entry-executable-expr-cost exec)))
+          (:guard (values (entry-executable-guard exec)
+                          (entry-executable-guard-fn exec)
+                          (entry-executable-guard-cost exec)))
+          (:aux (values (entry-executable-auxiliary exec)
+                        (entry-executable-aux-fn exec)
+                        (entry-executable-aux-cost exec))))
+      (cond
+        ((null ast) (values nil :empty nil 0))
+        ((and check-types-p
+              (not (and (= (length args) (length inputs))
+                        (every (lambda (spec v) (or (eq v :unresolved) (value-p v (cdr spec))))
+                               inputs args))))
+         (values nil :type-mismatch nil 0))
+        (fn
+         (when ledger (charge ledger category cost))
+         (handler-case
+             (values (funcall fn args) :value nil cost)
+           (unresolved-evaluation (c)
+             (values nil :unresolved (princ-to-string c) cost))
+           (error (c)
+             (values nil :error (princ-to-string c) cost))))
+        (t
+         (let ((run (evaluate ast inputs args :ledger ledger)))
+           (values (evaluation-value run) (evaluation-status run)
+                   (evaluation-error run) (evaluation-work run))))))))
+
+(defun consume-entry-executable (entry context ledger &key (slot :expr) guarded-p guard-default)
+  "Consume ENTRY on CONTEXT using its synchronized `entry-executable` and return an `evaluation`."
+  (let ((inputs (knowledge-entry-inputs entry)))
+    (when (= (length context) (length inputs))
+      (flet ((as-eval (val status err work)
+               (%make-evaluation :status status :value val :error err :work work
+                                 :inputs inputs :values context)))
+        (if (not guarded-p)
+            (multiple-value-bind (val status err work)
+                (eval-entry-slot entry slot context :ledger ledger)
+              (unless (eq status :empty)
+                (as-eval val status err work)))
+            (multiple-value-bind (gval gstatus gerr gwork)
+                (eval-entry-slot entry :guard context :ledger ledger)
+              (cond
+                ((not (eq gstatus :value))
+                 (when guard-default
+                   (as-eval gval gstatus gerr gwork)))
+                (gval
+                 (multiple-value-bind (val status err work)
+                     (eval-entry-slot entry slot context :ledger ledger)
+                   (as-eval val status err (+ gwork work))))
+                (guard-default
+                 (as-eval (cdr guard-default) :value nil gwork)))))))))

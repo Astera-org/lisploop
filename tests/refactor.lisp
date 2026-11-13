@@ -721,3 +721,59 @@
     (check (equalp (synthesis-job-ledger anytime) (synthesis-job-ledger stepped)))
     (check (equal (candidate-expression (synthesis-job-best anytime))
                   (candidate-expression (synthesis-job-best stepped))))))
+
+(deftest heuristic-synthesis-discovers-conserved-quantity-via-dependency-expander
+  ;; y = (x0 + x1)^2 on level sets of x0 + x1. Stage A enumerates (+ x0 x1) while pricing the root,
+  ;; retains its bucket in `heuristic-buckets`, and `dependency-expander` surfaces Z0 = (+ x0 x1) as
+  ;; a collision-consistent sufficient statistic at zero extra `:feature-search` enumeration cost.
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (frame (simple-frame :int inputs
+                              '(((0 2) 4) ((1 1) 4) ((2 0) 4)
+                                ((0 3) 9) ((1 2) 9) ((3 0) 9))))
+         (language (make-language :int inputs :operators (list (op :+ :int) (op :* :int)) :literals nil))
+         ;; Root direct bound stops below (* (+ x0 x1) (+ x0 x1)), forcing decomposition.
+         (root-bound (description-size (term `(+ ,(var 0 :int) ,(var 1 :int))) inputs))
+         (target (term `(* (+ ,(var 0 :int) ,(var 1 :int)) (+ ,(var 0 :int) ,(var 1 :int)))))
+         (child-bound (description-size target inputs))
+         (with-dep (start-heuristic-synthesis frame language root-bound
+                                              :child-bound child-bound
+                                              :additive-p nil :conditional-p nil
+                                              :library-proposals-p nil
+                                              :dependency-proposals-p t
+                                              :heuristic-budget 5000))
+         (without-dep (start-heuristic-synthesis frame language root-bound
+                                                 :child-bound child-bound
+                                                 :additive-p nil :conditional-p nil
+                                                 :library-proposals-p nil
+                                                 :dependency-proposals-p nil
+                                                 :heuristic-budget 5000)))
+    (resume-synthesis without-dep 100000)
+    (check (null (synthesis-job-best without-dep)))
+    (resume-synthesis with-dep 100000)
+    (check (synthesis-job-best with-dep))
+    (check (equal target (candidate-expression (synthesis-job-best with-dep))))
+    ;; Stage A's `heuristic-buckets` supplied the conserved feature (+ x0 x1) directly to expansion.
+    (let ((sum-feature (term `(+ ,(var 0 :int) ,(var 1 :int)))))
+      (check (equal '(2 2 2 3 3 3)
+                    (cdr (assoc sum-feature
+                                (heuristic-buckets (synthesis-node-heuristic (synthesis-job-root with-dep)))
+                                :test #'equal))))
+      (check (some (lambda (n)
+                     (and (synthesis-node-proposal n)
+                          (equal (list :dependency sum-feature)
+                                 (decomposition-name (synthesis-node-proposal n)))))
+                   (synthesis-job-nodes with-dep))))
+    ;; `dependency-expander` also composes cleanly via `combine-expanders` with an explicit feature grammar.
+    (let* ((feat-lang (make-language :int inputs :operators (list (op :+ :int)) :literals nil))
+           (sel-lang (make-language :int inputs :operators (list (op :* :int)) :literals nil))
+           (composed (start-synthesis
+                      frame sel-lang child-bound
+                      :expand (combine-expanders
+                               (dependency-expander :feature-language feat-lang
+                                                    :feature-bound root-bound
+                                                    :child-language sel-lang
+                                                    :child-bound child-bound
+                                                    :sufficient-only-p t)))))
+      (resume-synthesis composed 100000)
+      (check (synthesis-job-best composed))
+      (check (equal target (candidate-expression (synthesis-job-best composed)))))))

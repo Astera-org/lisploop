@@ -13,7 +13,8 @@
   (residual-bits 0 :type fixnum)
   (run-work 0 :type fixnum)
   (score 0)
-  (alternatives nil))
+  (alternatives nil)
+  (buckets nil))
 
 (defun heuristic-model< (a b)
   "Order models by score, then by program bits."
@@ -220,11 +221,24 @@ witness should stay close to."
                        (heuristic-total-p best)
                        (null (heuristic-unresolved-keys best))))))))
 
+(defun observation-feature-buckets (observation)
+  "Return `(expression . values)` pairs for each distinct complete observation bucket in
+enumeration order, keeping the first (smallest) representative expression per bucket."
+  (loop for bucket in (reverse (observation-job-buckets observation))
+        for rec = (car (last (observation-bucket-members bucket)))
+        when rec
+          collect (cons (observed-expression-expression rec)
+                        (observation-bucket-values bucket))))
+
 (defun resume-heuristic-search (job work-limit)
   "Absolute cumulative budget covers observation, checking, residuals, and ranking."
   (assert (and (integerp work-limit) (>= work-limit 0)))
   (loop while (and (< (ledger-total (heuristic-search-ledger job)) work-limit)
                    (not (heuristic-search-complete-p job))) do (heuristic-search-step job))
+  (let ((best (heuristic-search-best job)))
+    (when best
+      (setf (heuristic-buckets best)
+            (observation-feature-buckets (heuristic-search-observation job)))))
   (make-message :claim (if (heuristic-search-complete-p job) :bounded-exhaustion :cutoff)
                 :evidence (list :description-limit (heuristic-search-bound job)
                                 :work (ledger-total (heuristic-search-ledger job))

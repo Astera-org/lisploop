@@ -75,13 +75,17 @@ Returns (VALUES predictor-fn heuristic-model)."
          (program (and h-model (heuristic-program h-model)))
          (predictor-fn
            (when program
-             (lambda (node frame node-lang node-h-model)
-               (declare (ignore node-lang))
-               (if (null node-h-model)
-                   most-positive-fixnum
-                   (let ((features (node-trace-features node frame node-h-model)))
-                     (multiple-value-bind (val ok) (eval-expr-value program inputs features)
-                       (if (and ok (integerp val)) val most-positive-fixnum))))))))
+             (let ((fast-fn (compile-ast-fn program inputs)))
+               (lambda (node frame node-lang node-h-model)
+                 (declare (ignore node-lang))
+                 (if (null node-h-model)
+                     most-positive-fixnum
+                     (let ((features (node-trace-features node frame node-h-model)))
+                       (if fast-fn
+                           (let ((val (ignore-errors (funcall fast-fn features))))
+                             (if (integerp val) val most-positive-fixnum))
+                           (multiple-value-bind (val ok) (eval-expr-value program inputs features)
+                             (if (and ok (integerp val)) val most-positive-fixnum))))))))))
     (values predictor-fn h-model)))
 
 ;;; Library kinds for nogood schemas, DIP features, and priority heuristics.
@@ -134,7 +138,7 @@ them from the keyword arguments."
       (if (pattern-has-holes-p expr)
           (evaluate (lit :bool (clause-expr-matches-known-p expr inputs context ledger))
                     nil nil :ledger ledger)
-          (evaluate expr inputs context :ledger ledger)))))
+          (consume-entry-executable entry context ledger)))))
 
 (defun register-knowledge-dip-feature (expr &key id (library *knowledge-library*) domain inputs target
                                               trigger edges metadata ledger)
@@ -331,20 +335,30 @@ or failed on matching root frames."
                    (entry (and fn-name (find-knowledge-entry fn-name library))))
               (when (and entry (knowledge-entry-descriptor-profile entry))
                 (charge ledger :orientation 1)
-                (cond
-                  ((and win-node (synthesis-descendant-p win-node node))
-                   (dolist (clause (knowledge-entry-descriptor-profile entry))
-                     (when (< (descriptor-clause-weight-bits clause) 12)
-                       (incf (descriptor-clause-weight-bits clause))
-                       (push (knowledge-entry-id entry) updated))))
-                  ((and (eq (synthesis-node-parent node) root)
-                        (eq :done (synthesis-node-phase node))
-                        (null (synthesis-node-search node)))
-                   (dolist (clause (knowledge-entry-descriptor-profile entry))
-                     (when (and (eq :empirical (descriptor-clause-status clause))
-                                (> (descriptor-clause-weight-bits clause) 1))
-                       (decf (descriptor-clause-weight-bits clause))
-                       (push (knowledge-entry-id entry) updated)))))))))))))
+                (flet ((sync-descriptor-weight (cid new-weight)
+                         (dolist (edge (knowledge-edges-to (knowledge-entry-id entry) :describes library))
+                           (let ((d (find-knowledge-entry (second edge) library)))
+                             (when (and d (eq :descriptor (knowledge-entry-kind d))
+                                        (eq cid (getf (knowledge-entry-metadata d) :concept)))
+                               (setf (getf (knowledge-entry-metadata d) :weight-bits) new-weight))))))
+                  (cond
+                    ((and win-node (synthesis-descendant-p win-node node))
+                     (dolist (clause (knowledge-entry-descriptor-profile entry))
+                       (when (< (descriptor-clause-weight-bits clause) 12)
+                         (incf (descriptor-clause-weight-bits clause))
+                         (sync-descriptor-weight (descriptor-clause-id clause)
+                                                 (descriptor-clause-weight-bits clause))
+                         (push (knowledge-entry-id entry) updated))))
+                    ((and (eq (synthesis-node-parent node) root)
+                          (eq :done (synthesis-node-phase node))
+                          (null (synthesis-node-search node)))
+                     (dolist (clause (knowledge-entry-descriptor-profile entry))
+                       (when (and (eq :empirical (descriptor-clause-status clause))
+                                  (> (descriptor-clause-weight-bits clause) 1))
+                         (decf (descriptor-clause-weight-bits clause))
+                         (sync-descriptor-weight (descriptor-clause-id clause)
+                                                 (descriptor-clause-weight-bits clause))
+                         (push (knowledge-entry-id entry) updated))))))))))))))
 
 (defun consolidate-knowledge-library (library &key synthesis-jobs observation-jobs law-validations
                                                    solve-discoveries retype-domains library-names

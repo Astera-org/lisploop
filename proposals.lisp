@@ -95,24 +95,19 @@ parameter (such as a fold base-case accumulator) of a higher-order library combi
         (add-expr (lit param-type (default-value-for-type param-type))))
       (nreverse exprs))))
 
-(defun library-decoder-compatible-with-empty-rows-p (frame seq-input-id decoder child-id child-type bindings ledger
-                                                     &key fn-name extra-fo-specs)
-  "Check that DECODER satisfies any behavioral descriptor (`trigger`) for FN-NAME and does not
-immediately contradict any empty-sequence row of FRAME."
-  (and (or (null fn-name)
-           extra-fo-specs
-           (library-function-descriptor-compatible-p frame seq-input-id fn-name ledger))
-       (let* ((inputs (schema-inputs (frame-schema frame)))
-              (seq-pos (and seq-input-id (position seq-input-id inputs :key #'car :test #'eql)))
-              (empty-rows (when (and seq-pos (seq-type-p (cdr (nth seq-pos inputs))))
-                            (remove-if-not (lambda (row) (empty-sequence-row-p row seq-pos))
-                                           (frame-rows frame)))))
-         (or (null empty-rows)
-             (every (lambda (r)
-                      (not (unsatisfiable-requirement-p
-                            (fold-constants (row-requirement r) :ledger ledger :budget 500))))
-                    (frame-rows (pullback-frame (make-frame (frame-schema frame) empty-rows)
-                                                decoder child-id child-type bindings ledger)))))))
+(defun library-decoder-compatible-with-empty-rows-p (frame seq-input-id decoder child-id child-type bindings ledger)
+  "Check that DECODER does not immediately contradict any empty-sequence row of FRAME."
+  (let* ((inputs (schema-inputs (frame-schema frame)))
+         (seq-pos (and seq-input-id (position seq-input-id inputs :key #'car :test #'eql)))
+         (empty-rows (when (and seq-pos (seq-type-p (cdr (nth seq-pos inputs))))
+                       (remove-if-not (lambda (row) (empty-sequence-row-p row seq-pos))
+                                      (frame-rows frame)))))
+    (or (null empty-rows)
+        (every (lambda (r)
+                 (not (unsatisfiable-requirement-p
+                       (fold-constants (row-requirement r) :ledger ledger :budget 500))))
+               (frame-rows (pullback-frame (make-frame (frame-schema frame) empty-rows)
+                                           decoder child-id child-type bindings ledger))))))
 
 (defun passthrough-bindings (code-type inputs &optional consumed-ids)
   "Bind each parent input not in CONSUMED-IDS to a fresh child variable, numbered after
@@ -341,44 +336,43 @@ through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closur
               (destructuring-bind (primary-spec . extra-fo-specs) fo-specs
                 (dolist (p-spec inputs)
                   (when (equal (cdr p-spec) (cdr primary-spec))
-                    (let* ((p-id (car p-spec))
-                           (extra-options
-                             (mapcar (lambda (espec)
-                                       (candidate-fo-argument-expressions frame language p-id (cdr espec)))
-                                     extra-fo-specs)))
-                      (dolist (extra-tuple (cartesian-product-lists extra-options))
-                        (let* ((fo-alist (acons (car primary-spec) (var p-id (cdr p-spec))
-                                                (mapcar #'cons (mapcar #'car extra-fo-specs) extra-tuple)))
-                               (call-args (loop for spec in fn-inputs
-                                                collect (if (eq spec code-spec)
-                                                            child-var
-                                                            (cdr (assoc (car spec) fo-alist :test #'eql)))))
-                               (decoder (apply #'app (op fn-name) call-args))
-                               (bindings (passthrough-bindings
-                                          code-type inputs
-                                          (loop for arg in call-args
-                                                when (var-p arg) collect (ast-id arg)))))
-                          (when (library-decoder-compatible-with-empty-rows-p
-                                 frame p-id decoder child-id code-type bindings ledger
-                                 :fn-name fn-name :extra-fo-specs extra-fo-specs)
-                            (multiple-value-bind (compat-p policy-score matched-clauses)
-                                (score-entry-by-descriptors fn-name frame p-id
-                                                            :ledger ledger
-                                                            :extra-fo-specs extra-fo-specs)
-                              (when compat-p
-                                (push (lifted-decomposition
-                                       (list* :library fn-name extra-tuple) decoder child-id code-type
-                                       bindings base-lang c-bound solver
-                                       :slack slack
-                                       :policy-score policy-score
-                                       :provenance (when debug-p
-                                                     (list :origin :library-expander
-                                                           :function fn-name
-                                                           :decoder decoder
-                                                           :bindings bindings
-                                                           :policy-score policy-score
-                                                           :matched-descriptors matched-clauses)))
-                                      proposals))))))))))))))
+                    (let ((p-id (car p-spec)))
+                      (multiple-value-bind (compat-p policy-score matched-clauses)
+                          (score-entry-by-descriptors fn-name frame p-id
+                                                      :ledger ledger
+                                                      :extra-fo-specs extra-fo-specs)
+                        (when compat-p
+                          (let ((extra-options
+                                  (mapcar (lambda (espec)
+                                            (candidate-fo-argument-expressions frame language p-id (cdr espec)))
+                                          extra-fo-specs)))
+                            (dolist (extra-tuple (cartesian-product-lists extra-options))
+                              (let* ((fo-alist (acons (car primary-spec) (var p-id (cdr p-spec))
+                                                      (mapcar #'cons (mapcar #'car extra-fo-specs) extra-tuple)))
+                                     (call-args (loop for spec in fn-inputs
+                                                      collect (if (eq spec code-spec)
+                                                                  child-var
+                                                                  (cdr (assoc (car spec) fo-alist :test #'eql)))))
+                                     (decoder (apply #'app (op fn-name) call-args))
+                                     (bindings (passthrough-bindings
+                                                code-type inputs
+                                                (loop for arg in call-args
+                                                      when (var-p arg) collect (ast-id arg)))))
+                                (when (library-decoder-compatible-with-empty-rows-p
+                                       frame p-id decoder child-id code-type bindings ledger)
+                                  (push (lifted-decomposition
+                                         (list* :library fn-name extra-tuple) decoder child-id code-type
+                                         bindings base-lang c-bound solver
+                                         :slack slack
+                                         :policy-score policy-score
+                                         :provenance (when debug-p
+                                                       (list :origin :library-expander
+                                                             :function fn-name
+                                                             :decoder decoder
+                                                             :bindings bindings
+                                                             :policy-score policy-score
+                                                             :matched-descriptors matched-clauses)))
+                                        proposals)))))))))))))))
     (append (filter-map-decompositions frame base-lang defs child-id c-bound solver ledger debug-p)
             (nreverse proposals)
             (partial-library-decompositions frame base-lang defs child-id c-bound solver ledger)
@@ -411,22 +405,113 @@ whose return type matches the node's target as `:lift-p t` decompositions."
           when exp
             append (funcall exp job node frame language h-model ledger))))
 
-(defun dependency-proposals (frame language child-bound &key (features nil features-p) (debug-p *synthesis-debug-mode*))
+(defun dependency-proposals (frame language child-bound &key (features nil features-p) (include-empty-p t)
+                                                             solver (debug-p *synthesis-debug-mode*))
   "Make dependency hypotheses explicit. FEATURES are synthesized DSL expressions;
 the default seed vocabulary is each available coordinate and the empty context.
 Every hypothesis competes with direct synthesis on the full original frame."
   (let* ((inputs-spec (schema-inputs (frame-schema frame)))
          (target (schema-target (frame-schema frame)))
-         (child-id (next-child-id inputs-spec)))
-    (loop for feature in (cons nil (if features-p features
-                                     (mapcar (lambda (spec) (var (car spec) (cdr spec))) inputs-spec)))
+         (child-id (next-child-id inputs-spec))
+         (base-features (if features-p
+                            features
+                            (mapcar (lambda (spec) (var (car spec) (cdr spec))) inputs-spec))))
+    (loop for feature in (if include-empty-p (cons nil base-features) base-features)
           for inputs = (when feature (list (cons 0 (ast-type feature))))
           collect (make-decomposition
                    :name (list :dependency feature) :decoder (var child-id target)
                    :child-id child-id :child-type target :bindings (when feature (list (cons 0 feature)))
                    :language (derive-language language :inputs inputs)
-                   :bound child-bound
+                   :bound child-bound :solver solver
                    :provenance (when debug-p (list :origin :dependency :feature feature))))))
+
+(defun sufficient-statistic-values-p (values constrained)
+  "True when VALUES across CONSTRAINED `(row-idx . output-val)` pairs strictly merge at least
+one fiber (`1 < distinct < |constrained|`) without colliding rows whose required outputs differ."
+  (let* ((vals (coerce values 'vector))
+         (n (length vals))
+         (mapping nil))
+    (loop for (idx . out) in constrained
+          when (>= idx n) do (return-from sufficient-statistic-values-p nil)
+          do (let* ((fval (aref vals idx))
+                    (existing (assoc fval mapping :test #'equal)))
+               (cond ((null existing) (push (cons fval out) mapping))
+                     ((not (equal (cdr existing) out))
+                      (return-from sufficient-statistic-values-p nil)))))
+    (< 1 (length mapping) (length constrained))))
+
+(defun feature-buckets-for-node (node frame language h-model feature-language feature-bound work-limit ledger)
+  "Reuse Stage A's `(expression . values)` feature buckets when compatible, or run a bounded
+`start-observation-search` over `feature-language`."
+  (if (and (null feature-language) (null feature-bound)
+           h-model (heuristic-buckets h-model))
+      (heuristic-buckets h-model)
+      (let* ((schema (frame-schema frame))
+             (f-lang (or feature-language language))
+             (f-bound (or feature-bound (expansion-bound node)
+                          (header-bound (schema-inputs schema) (schema-target schema) 18)))
+             (obs (start-observation-search
+                   (make-observation-scope (unconstrained-frame frame (language-domain f-lang)) f-lang))))
+        (resume-observation-search obs f-bound (remaining-work ledger work-limit))
+        (charge ledger :feature-search (ledger-total (observation-job-ledger obs)))
+        (observation-feature-buckets obs))))
+
+(defun dependency-expander (&key feature-language feature-bound child-language child-bound
+                                 (work-limit 100000) sufficient-only-p)
+  "An `:expand` function that discovers observational feature projections bottom-up (reusing
+Stage A's `heuristic-buckets` at zero enumeration cost when available, or running bounded
+`start-observation-search`) and proposes pulled-back child frames via `dependency-proposals`.
+When SUFFICIENT-ONLY-P is true, only non-trivial collision-consistent features that strictly
+compress multi-input level sets are proposed."
+  (lambda (job node frame language h-model ledger)
+    (let* ((schema (frame-schema frame))
+           (inputs (schema-inputs schema))
+           (target (schema-target schema))
+           (c-lang (if (and child-language (equal (language-inputs child-language) inputs))
+                       child-language
+                       language))
+           (c-bound (or child-bound (expansion-bound node) (header-bound inputs target 24))))
+      (if sufficient-only-p
+          (when (and (>= (length inputs) 2)
+                     (null (synthesis-job-self-name job))
+                     (not (and h-model (heuristic-exact-p h-model)
+                               (null (heuristic-unresolved-keys h-model)))))
+            (let ((constrained
+                    (loop for row in (frame-rows frame)
+                          for idx from 0
+                          for allowed = (extract-allowed-values (row-requirement row))
+                          when (and (consp allowed) (= 1 (length allowed))
+                                    (not (member :unresolved (row-known row))))
+                            collect (cons idx (first allowed)))))
+              (when (and (>= (length constrained) 3)
+                         (< (length (remove-duplicates constrained :key #'cdr :test #'equal))
+                            (length constrained)))
+                (let* ((buckets (feature-buckets-for-node node frame language h-model
+                                                          feature-language feature-bound work-limit ledger))
+                       (candidates (loop for (expr . vals) in buckets
+                                         when (and (not (lit-p expr)) (not (var-p expr))
+                                                   (sufficient-statistic-values-p vals constrained))
+                                           collect expr))
+                       (ordered (stable-sort candidates #'< :key #'syntax-work))
+                       (features (subseq ordered 0 (min 2 (length ordered)))))
+                  (when features
+                    (charge ledger :dependency-proposal
+                            (+ 1 (reduce #'+ features :key #'syntax-work :initial-value 0)))
+                    (dependency-proposals frame c-lang c-bound
+                                          :features features
+                                          :include-empty-p nil
+                                          :solver (synthesis-job-library job)
+                                          :debug-p (synthesis-job-debug-p job)))))))
+          (let* ((buckets (feature-buckets-for-node node frame language h-model
+                                                    feature-language feature-bound work-limit ledger))
+                 (features (mapcar #'car buckets)))
+            (charge ledger :dependency-proposal
+                    (+ 1 (length features) (reduce #'+ features :key #'syntax-work :initial-value 0)))
+            (dependency-proposals frame c-lang c-bound
+                                  :features features
+                                  :include-empty-p t
+                                  :solver (synthesis-job-library job)
+                                  :debug-p (synthesis-job-debug-p job)))))))
 
 (defun selector-decompositions (frame language bound &key fibers dependencies (debug-p *synthesis-debug-mode*))
   (let* ((inputs (schema-inputs (frame-schema frame)))
@@ -448,15 +533,20 @@ Every hypothesis competes with direct synthesis on the full original frame."
 
 (defun heuristic-expander (&key child-language guard-language child-bound guard-bound
                                 (work-limit 20000) (additive-p t) (conditional-p t)
-                                (library-proposals-p t) library-functions)
+                                (library-proposals-p t) library-functions
+                                (dependency-proposals-p t))
   "An `:expand` function: each node turns its own Stage A model into Stage B additive and
-conditional residual branches (plus higher-order library combinator branches when
-LIBRARY-PROPOSALS-P is true and no de novo SELF-NAME is active), so every proposal
-competes under Stage A full-path pricing and the 3:1 reserve schedule."
+conditional residual branches, sufficient-statistic dependency projections (reusing Stage A's
+observation buckets), and higher-order library combinator branches when LIBRARY-PROPOSALS-P
+is true, so every proposal competes under Stage A full-path pricing and the 3:1 reserve schedule."
   (combine-expanders
    (when library-proposals-p
      (library-expander :child-language child-language :child-bound child-bound
                        :functions library-functions))
+   (when dependency-proposals-p
+     (dependency-expander :child-language child-language :child-bound child-bound
+                          :work-limit work-limit
+                          :sufficient-only-p (not (eq dependency-proposals-p :all))))
    (lambda (job node frame language h-model ledger)
      (let ((inputs (schema-inputs (frame-schema frame)))
            (bound (expansion-bound node)))

@@ -2,6 +2,8 @@
 
 ;;; Higher-order library abstraction over function bodies, and the :function kind.
 
+(declaim (ftype function compute-entry-descriptor-profile))
+
 (defun normalize-trees-with-library (trees inputs rewrite-library &key (budget 100000) ledger)
   "Normalize each tree in TREES using validated REWRITE-LIBRARY (or a `knowledge-library`) in the metered VM."
   (let* ((norm-inputs (input-alist inputs))
@@ -534,34 +536,6 @@ recording :REFACTORED-BY and :ABSTRACTS relational edges and refreshing descript
         (let ((*syncing-knowledge-library-p* t))
           (define-function kname inputs target body :oracle-table oracle)))))
 
-(defun attach-function-descriptor (entry definition library)
-  "Give the :function ENTRY its structural descriptor, if it has one, as its trigger, and
-register the descriptor as a :descriptor entry of its own unless a certified one exists."
-  (let ((kname (knowledge-entry-id entry))
-        (descriptor (compute-function-descriptor definition)))
-    (when descriptor
-      (setf (knowledge-entry-trigger entry) descriptor)
-      (let ((descriptor-id (keyword-id "~A/DESCRIPTOR" kname))
-            (seq-spec (find-if #'seq-type-p (knowledge-entry-inputs entry) :key #'cdr)))
-        (unless (let ((existing (find-knowledge-entry descriptor-id library)))
-                  (and existing (knowledge-evidence-current-p existing :necessary)))
-          (register-knowledge-entry
-           (attest-knowledge-entry
-            (make-knowledge-entry :id descriptor-id
-                                  :kind :descriptor
-                                  :domain (knowledge-entry-domain entry)
-                                  :inputs (list (cons 0 (cdr seq-spec))
-                                                (cons 1 (knowledge-entry-target entry)))
-                                  :target :bool
-                                  :expression descriptor
-                                  :status :empirical
-                                  :certificate '(:kind :structural-descriptor)
-                                  :edges (list (list :describes kname))
-                                  :library library)
-            :derived '(:necessary))
-           :library library))
-        (add-knowledge-edge entry :described-by descriptor-id)))))
-
 (defun record-combinator-call (entry library ledger)
   "When the body of the :function ENTRY is a call passing code to another library function,
 link the two with :REFACTORED-BY and :ABSTRACTS edges, keep the code as the entry's auxiliary
@@ -574,9 +548,13 @@ code if there is just one, and refresh the descriptors of the function called."
     (when (and comb-entry (eq :function (knowledge-entry-kind comb-entry)) code-args)
       (when (and (null (rest code-args)) (null (knowledge-entry-auxiliary-code entry)))
         (setf (knowledge-entry-auxiliary-code entry) (first code-args)))
-      (add-knowledge-edge entry :refactored-by comb-name)
-      (add-knowledge-edge comb-entry :abstracts kname)
-      (compute-entry-descriptor-profile comb-entry library ledger))))
+      (let ((already-abstracts-p
+              (some (lambda (edge) (member kname (rest edge)))
+                    (knowledge-edges-from comb-entry :abstracts library))))
+        (add-knowledge-edge entry :refactored-by comb-name)
+        (add-knowledge-edge comb-entry :abstracts kname)
+        (unless already-abstracts-p
+          (compute-entry-descriptor-profile comb-entry library ledger))))))
 
 (define-knowledge-kind :function
   (:priority 10)
@@ -591,15 +569,10 @@ code if there is just one, and refresh the descriptors of the function called."
                    (append *registered-function-names* (list kname)))))
         (assert-entry-expression-type entry))))
   (:install (entry library ledger)
-    (let ((definition (sync-function-definition entry)))
-      (unless (knowledge-entry-trigger entry)
-        (attach-function-descriptor entry definition library))
-      (when (knowledge-entry-trigger entry)
-        (setf (gethash (knowledge-entry-id entry) (knowledge-library-descriptors library))
-              (knowledge-entry-trigger entry)))
-      (record-combinator-call entry library ledger)
-      (unless (knowledge-entry-descriptor-profile entry)
-        (compute-entry-descriptor-profile entry library ledger))))
+    (sync-function-definition entry)
+    (record-combinator-call entry library ledger)
+    (unless (knowledge-entry-descriptor-profile entry)
+      (compute-entry-descriptor-profile entry library ledger)))
   (:consolidate (entries library ledger)
     (mapcar #'library-abstraction-name
             (consolidate-library-functions library :entries entries :ledger ledger

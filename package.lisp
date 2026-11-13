@@ -22,7 +22,7 @@
    #:knowledge-entry-target #:knowledge-entry-expression #:knowledge-entry-guard #:knowledge-entry-trigger
    #:knowledge-entry-residual #:knowledge-entry-auxiliary-code #:knowledge-entry-status
    #:knowledge-entry-certificate #:knowledge-entry-bits #:knowledge-entry-gain #:knowledge-entry-work
-   #:knowledge-entry-edges #:knowledge-entry-metadata
+   #:knowledge-entry-edges #:knowledge-entry-metadata #:knowledge-entry-executable
    #:knowledge-library #:knowledge-library-p #:make-knowledge-library #:*knowledge-library*
    #:knowledge-library-version #:knowledge-library-entries #:knowledge-library-function-names
    #:knowledge-library-priority-predictor
@@ -122,6 +122,7 @@
    #:condense-heuristic #:heuristic-model #:heuristic-model-p
    #:heuristic-program #:heuristic-residual #:heuristic-exact-p #:heuristic-program-bits
    #:heuristic-residual-bits #:heuristic-run-work #:heuristic-score #:heuristic-alternatives
+   #:heuristic-buckets
    ;; 7. laws.lisp — Laws, validation, rewriting, solver discovery, dual-grade propagation
    #:law-type-p #:finite-type-p #:finite-type-cardinality #:law-assignment
    #:law #:make-law #:law-domain #:law-inputs #:law-lhs #:law-rhs #:law-equation #:law-guard #:law-origin #:law-statement
@@ -163,7 +164,7 @@
    #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace
    #:synthesis-node-priority #:synthesis-node-heuristic #:synthesis-node-provenance #:synthesis-node-reserve-rows
    #:lift-inductive-sequence-context #:explain-synthesis-node #:explain-synthesis-job
-   #:library-decompositions #:library-expander #:combine-expanders
+   #:library-decompositions #:library-expander #:dependency-expander #:combine-expanders
    #:heuristic-decompositions #:heuristic-expander #:start-heuristic-synthesis
    #:start-recursive-synthesis
    #:synthesis-job-self-name #:synthesis-job-oracle-table #:synthesis-episode-returns

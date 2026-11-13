@@ -1,14 +1,14 @@
-# Plan 7 — Milestone 9: Partial Fiber Expansions, Compositional Names, and Computed Policy Heuristics
+# Plan 7 -- Milestone 9: Partial Fiber Expansions, Compositional Names, and Computed Policy Heuristics
 
 > [!IMPORTANT]
 > **Governing Principle (`prompt4.md` Alignment)**
-> You do not need to run an entire calculation—or unroll an entire recursive or multi-dimensional structure—to estimate whether a hypothesis holds. A meta-function with $b$ bits of freedom is constrained by $O(b)$ scalar fiber observations. Conversely, an operator, decoder, rewrite, or solver in the knowledge library should not be addressed solely by an opaque symbol (`:fa`, `:DECODER-TEMPLATE-0`), but also by a **secondary compositional address** formed from the **overlapping set of cheap, substance-specialized heuristic descriptors** that trigger and weight its execution.
+> You do not need to run an entire calculation---or unroll an entire recursive or multi-dimensional structure---to estimate whether a hypothesis holds. A meta-function with $b$ bits of freedom is constrained by $O(b)$ scalar fiber observations. Conversely, an operator, decoder, rewrite, or solver in the knowledge library should not be addressed solely by an opaque symbol (`:fa`, `:DECODER-TEMPLATE-0`), but also by a **secondary compositional address** formed from the **overlapping set of cheap, substance-specialized heuristic descriptors** that trigger and weight its execution.
 
 ---
 
 ## 0. Executive Summary & Architectural Diagnosis
 
-Auditing the 16-module Common Lisp kernel after the higher-order (`H1`–`H4`) and modularization (`R1`–`R11`) refactors reveals two tightly coupled bottlenecks that M9 resolves together:
+Auditing the 16-module Common Lisp kernel after the higher-order (`H1`--`H4`) and modularization (`R1`--`R11`) refactors reveals two tightly coupled bottlenecks that M9 resolves together:
 
 1. **Higher-Order Lifting Unfolds Everything Upfront (`frame.lisp`, `requirements.lisp`, `synthesize.lisp`)**:
    * [`lift-frame`](file:///home/tlh24/sandbox/team/tlh/lisploop/frame.lisp#L562-L663) currently runs [`pullback-frame`](file:///home/tlh24/sandbox/team/tlh/lisploop/frame.lisp#L244-L280) and [`fold-constants`](file:///home/tlh24/sandbox/team/tlh/lisploop/requirements.lisp#L276-L315) across **every element of every parent row** before [`select-active-fiber-rows`](file:///home/tlh24/sandbox/team/tlh/lisploop/frame.lisp#L515-L560) truncates the result to `*max-active-lifted-rows*`.
@@ -19,7 +19,7 @@ Auditing the 16-module Common Lisp kernel after the higher-order (`H1`–`H4`) a
    * Library entries carry arbitrary sequential names (`:fa`, `:fb`, `:DECODER-TEMPLATE-0`) and at most a single boolean `knowledge-entry-trigger` produced by [`compute-function-descriptor`](file:///home/tlh24/sandbox/team/tlh/lisploop/factor.lisp#L2278-L2324).
    * [`library-function-descriptor-compatible-p`](file:///home/tlh24/sandbox/team/tlh/lisploop/proposals.lisp#L110-L139) only consults descriptors attested as `:necessary` (as a hard boolean gate) and ignores `:empirical` descriptors altogether.
    * When `:register-templates-p t` is enabled (`R8` in [audit-review.txt](file:///home/tlh24/sandbox/team/tlh/lisploop/audit-review.txt)), every stored `:decoder-template` is unconditionally proposed and fully prepared (`pullback-frame` + `lift-frame` + Stage A), causing warm discovery work on `inc-list` to jump from `19,147` to `48,573`.
-   * Meanwhile, the M8D search-trace predictor ([`node-trace-features`](file:///home/tlh24/sandbox/team/tlh/lisploop/synthesize.lisp#L1109-L1119)) sees only 4 scalar integers `(prog-bits, res-bits, depth, constrained-rows)`—completely blind to frame types, shapes, shape deltas, sampled contents, and operator identity (and suffers from a 4-vs-6 input arity mismatch against [tests/library.lisp](file:///home/tlh24/sandbox/team/tlh/lisploop/tests/library.lisp#L123-L148)).
+   * Meanwhile, the M8D search-trace predictor ([`node-trace-features`](file:///home/tlh24/sandbox/team/tlh/lisploop/synthesize.lisp#L1109-L1119)) sees only 4 scalar integers `(prog-bits, res-bits, depth, constrained-rows)`---completely blind to frame types, shapes, shape deltas, sampled contents, and operator identity (and suffers from a 4-vs-6 input arity mismatch against [tests/library.lisp](file:///home/tlh24/sandbox/team/tlh/lisploop/tests/library.lisp#L123-L148)).
 
 ### Design Decisions
 1. **Compositional Name as Secondary Address**: Primary `knowledge-entry-id` values (`:fa`, `:map`, `:DECODER-TEMPLATE-0`, etc.) remain unchanged for full backward compatibility. Each entry's compositional descriptor name (e.g., `:COMB/SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE`) is exposed as a **secondary address** (`knowledge-entry-compositional-name`, indexed in `knowledge-library-compositional-index` and queryable via `find-knowledge-entries-by-address`).
@@ -74,7 +74,7 @@ Many higher-order hypotheses (index shifts $i \pm s$, discrete derivatives $\Del
 **Design**:
 Update [`correction-packet`](file:///home/tlh24/sandbox/team/tlh/lisploop/frame.lisp#L946-L961), [`apply-correction-packet`](file:///home/tlh24/sandbox/team/tlh/lisploop/frame.lisp#L963-L978), and [`correction-bit-size`](file:///home/tlh24/sandbox/team/tlh/lisploop/frame.lisp#L980-L1002) for `(:seq elem-type)`:
 * When `predicted` and `target` are both lists:
-  * Price the length displacement $\Delta L = \text{len}(\text{target}) - \text{len}(\text{predicted})$ in `(if (zerop ΔL) 1 (1+ (value-bit-size ΔL :int)))` bits.
+  * Price the length displacement $\Delta L = \text{len}(\text{target}) - \text{len}(\text{predicted})$ in `(if (zerop dL) 1 (1+ (value-bit-size dL :int)))` bits.
   * Over the shared prefix $m = \min(\text{len}(\text{predicted}), \text{len}(\text{target}))$: sum `(if (equal p_i t_i) 1 (1+ (correction-bit-size p_i t_i elem-type t)))`.
   * Over any missing suffix of `target` (when $\Delta L > 0$): sum `(value-bit-size t_i elem-type)`.
   * Cap at `(value-bit-size target type)`.
@@ -109,11 +109,11 @@ Every knowledge entry $e$ (`:function`, `:decoder-template`, `:law`, `:solver`, 
 ```
 
 ### 3.2 Five Compositional Facets
-1. **Facet 1 — `:type` (Tier 0)**: Input/output type constructors and higher-order `:code` hole arities (`SEQ->SEQ`, `CODE+SEQ->SEQ`, `SEQ2->GRID`, `SEQ->INT`, `INT->INT`).
-2. **Facet 2 — `:shape-delta` (Tier 1)**: VM-executable boolean descriptors over input/output lengths and inner grid dimensions (`:DESC/LEN-EQ`, `:DESC/LEN-LE`, `:DESC/LEN-DEC-1`, `:DESC/OUTER-SHAPE-2D`, `:DESC/SCALAR-REDUCTION`).
-3. **Facet 3 — `:boundary` (Tier 1)**: Base-case behavior on empty sequences or zero scalars (`:DESC/EMPTY->EMPTY`, `:DESC/EMPTY->ZERO`, `:DESC/EMPTY->ONE`, `:DESC/ZERO->ZERO`).
-4. **Facet 4 — `:sampled-content` (Tier 2)**: Sampled fiber properties evaluated on up to $k_0$ elements (`:DESC/SUBSET-ELEMENTS`, `:DESC/CONSTANT-STEP-DELTA`, `:DESC/RANK1-2X2-MULT-MINOR`, `:DESC/RANK1-2X2-ADD-MINOR`, `:DESC/ADJACENT-DIFF-DEP`, `:DESC/SUM-INVARIANT`).
-5. **Facet 5 — `:algebraic` (Tier 3)**: Relational neighborhood tags (`:DESC/INVOLUTION`, `:DESC/COMMUTATIVE`, `:DESC/ASSOCIATIVE`, `:DESC/FUNCTORIAL-MAP`).
+1. **Facet 1 --- `:type` (Tier 0)**: Input/output type constructors and higher-order `:code` hole arities (`SEQ->SEQ`, `CODE+SEQ->SEQ`, `SEQ2->GRID`, `SEQ->INT`, `INT->INT`).
+2. **Facet 2 --- `:shape-delta` (Tier 1)**: VM-executable boolean descriptors over input/output lengths and inner grid dimensions (`:DESC/LEN-EQ`, `:DESC/LEN-LE`, `:DESC/LEN-DEC-1`, `:DESC/OUTER-SHAPE-2D`, `:DESC/SCALAR-REDUCTION`).
+3. **Facet 3 --- `:boundary` (Tier 1)**: Base-case behavior on empty sequences or zero scalars (`:DESC/EMPTY->EMPTY`, `:DESC/EMPTY->ZERO`, `:DESC/EMPTY->ONE`, `:DESC/ZERO->ZERO`).
+4. **Facet 4 --- `:sampled-content` (Tier 2)**: Sampled fiber properties evaluated on up to $k_0$ elements (`:DESC/SUBSET-ELEMENTS`, `:DESC/CONSTANT-STEP-DELTA`, `:DESC/RANK1-2X2-MULT-MINOR`, `:DESC/RANK1-2X2-ADD-MINOR`, `:DESC/ADJACENT-DIFF-DEP`, `:DESC/SUM-INVARIANT`).
+5. **Facet 5 --- `:algebraic` (Tier 3)**: Relational neighborhood tags (`:DESC/INVOLUTION`, `:DESC/COMMUTATIVE`, `:DESC/ASSOCIATIVE`, `:DESC/FUNCTORIAL-MAP`).
 
 ---
 
@@ -121,7 +121,7 @@ Every knowledge entry $e$ (`:function`, `:decoder-template`, `:law`, `:solver`, 
 
 ### 4.1 Frame-Cached Descriptor Evaluation & Overlapping Policy Scoring
 
-For any frame $\Omega$, `evaluate-frame-descriptors (frame library &key sample-size ledger)` evaluates active Tier 1–2 `:descriptor` entries once on a $k_0$-row/fiber sample and caches the truth status (`:all-true`, `:some-false`, `:indeterminate`).
+For any frame $\Omega$, `evaluate-frame-descriptors (frame library &key sample-size ledger)` evaluates active Tier 1--2 `:descriptor` entries once on a $k_0$-row/fiber sample and caches the truth status (`:all-true`, `:some-false`, `:indeterminate`).
 
 For any candidate entry $e$ with descriptor clauses $\{(d_i, \text{status}_i, w_{e,i})\}$:
 $$\Delta J_{\text{policy}}(e \mid \Omega) = \sum_{i} \begin{cases}

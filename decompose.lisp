@@ -437,7 +437,7 @@ work limit is CONDENSE-BUDGET, and of `start-synthesis`."
                           :work-limit condense-budget :allow-other-keys t keys)
            (remove-keys '(:child-language :child-bound :condense-budget :fibers :dependencies
                           :guard-language :guard-bound :additive-p :conditional-p
-                          :library-proposals-p :library-functions)
+                          :library-proposals-p :library-functions :dependency-proposals-p)
                         keys))))
 
 (defun start-recursive-synthesis (frame language description-limit
