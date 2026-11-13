@@ -3,7 +3,7 @@
 # is left to the TeX installation's default paper.
 PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt
 
-DOCS = plan7.pdf architecture.pdf tests/README.pdf plan7-recursion.pdf plan7-higher-order.pdf plan7-library.pdf plan7-m9-policy.pdf plan8.pdf
+DOCS = plan8.pdf architecture2.pdf tests/README.pdf plan7/plan7-recursion.pdf plan7/plan7-higher-order.pdf plan7/plan7-library.pdf plan7/plan7-m9-policy.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
