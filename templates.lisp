@@ -249,13 +249,13 @@ semantic conclusion independently; a transform is never itself a rewrite law."
 A transformer may declare an output solver operator/position/context in metadata.
 The output is an ordinary conjectural witness, subject to forward replay."
   (let ((created nil))
-    (dolist (transformer (knowledge-entries-of-kind :transformer library) (nreverse created))
+    (dolist (transformer (active-knowledge-entries-of-kind :transformer library) (nreverse created))
       (let* ((meta (knowledge-entry-metadata transformer))
              (operator (getf meta :solver-operator))
              (scope (knowledge-entry-inputs transformer))
              (output (knowledge-entry-target transformer)))
         (when (and operator (= 1 (length scope)) (code-type-p (cdar scope)))
-          (dolist (source (knowledge-entries-of-kind :solver library))
+          (dolist (source (active-knowledge-entries-of-kind :solver library))
             (when (equal (cdar scope) (code-type (knowledge-entry-inputs source) (knowledge-entry-target source)))
               (let* ((id (keyword-id "~A/~A" (knowledge-entry-id transformer) (knowledge-entry-id source)))
                      (run (consume-knowledge-entry transformer (list (knowledge-entry-expression source))

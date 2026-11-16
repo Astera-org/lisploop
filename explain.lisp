@@ -119,21 +119,26 @@ and print a readable report to STREAM when non-NIL."
                                        :incoming-edges (knowledge-edges-to (knowledge-entry-id e)
                                                                            nil library)))))
          (report (list :version (knowledge-library-version library)
+                       :epoch (knowledge-library-epoch library)
                        :total-entries (length entries)
+                       :active-entries (count-if #'active-knowledge-entry-p entries)
                        :counts-by-kind counts-by-kind
                        :total-bits total-bits
                        :total-gain total-gain
                        :priority-predictor (knowledge-library-priority-predictor library)
                        :entries entry-summaries)))
     (when stream
-      (format stream "~&=== Knowledge Library (v~D, ~D entries, ~D bits, gain ~D) ===~%"
-              (getf report :version) (getf report :total-entries) total-bits total-gain)
+      (format stream "~&=== Knowledge Library (v~D, epoch ~D, ~D entries, ~D active, ~D bits, gain ~D) ===~%"
+              (getf report :version) (getf report :epoch)
+              (getf report :total-entries) (getf report :active-entries)
+              total-bits total-gain)
       (format stream "  Counts by kind: ~S~%" counts-by-kind)
       (print-fields stream "  " report '((:priority-predictor "Active Priority Predictor:")))
       (dolist (es entry-summaries)
-        (format stream "  [~S ~S] (~S -> ~S) status=~S bits=~D gain=~D~%"
+        (format stream "  [~S ~S] (~S -> ~S) status=~S active=~S epoch=~D bits=~D gain=~D~%"
                 (getf es :kind) (getf es :id) (getf es :inputs) (getf es :target)
-                (getf es :status) (getf es :bits) (getf es :gain))
+                (getf es :status) (getf es :active-p) (or (getf es :last-used-epoch) 0)
+                (getf es :bits) (getf es :gain))
         ;; A guard that is trivially true says nothing; leave it out of the printout.
         (print-fields stream "    "
                       (if (equal (getf es :guard) (lit :bool t)) (list* :guard nil es) es)

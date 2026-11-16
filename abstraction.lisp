@@ -472,7 +472,7 @@ Returns `(VALUES accepted-abstractions refactored-definitions all-candidates led
                                                 rewrite-library)
   "Discover MDL-positive higher-order combinators across :FUNCTION entries in LIBRARY,
 recording :REFACTORED-BY and :ABSTRACTS relational edges and refreshing descriptors."
-  (let* ((fn-entries (or entries (knowledge-entries-of-kind :function library)))
+  (let* ((fn-entries (or entries (active-knowledge-entries-of-kind :function library)))
          (fdefs (loop for e in fn-entries
                       for fdef = (or (gethash (knowledge-entry-id e) (knowledge-library-functions library))
                                      (find-function-definition (knowledge-entry-id e)))
@@ -571,7 +571,8 @@ code if there is just one, and refresh the descriptors of the function called."
   (:install (entry library ledger)
     (sync-function-definition entry)
     (record-combinator-call entry library ledger)
-    (unless (knowledge-entry-descriptor-profile entry)
+    (when (and (active-knowledge-entry-p entry)
+               (null (knowledge-entry-descriptor-profile entry)))
       (compute-entry-descriptor-profile entry library ledger)))
   (:consolidate (entries library ledger)
     (mapcar #'library-abstraction-name

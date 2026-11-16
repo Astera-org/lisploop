@@ -58,6 +58,8 @@
     (:bits knowledge-entry-bits :data)
     (:gain knowledge-entry-gain :data)
     (:work knowledge-entry-work :data)
+    (:active-p knowledge-entry-active-p :boolean)
+    (:last-used-epoch knowledge-entry-last-used-epoch :data)
     (:edges knowledge-entry-edges :data)
     (:metadata knowledge-entry-metadata :metadata))
   "Each slot of a `knowledge-entry` as (keyword reader encoding). The keyword is both the
@@ -68,7 +70,7 @@ packet key and the `make-knowledge-entry` argument.")
   (loop for (key reader encoding) in +knowledge-entry-slots+
         for value = (funcall reader entry)
         append (list key (ecase encoding
-                           (:data (copy-tree value))
+                           ((:data :boolean) (copy-tree value))
                            (:ast (ast->sexp value))
                            (:hybrid (serialize-hybrid-slot value))
                            (:metadata (convert-descriptor-profile value #'descriptor-clause->plist))))))
@@ -78,19 +80,22 @@ packet key and the `make-knowledge-entry` argument.")
 A slot that is absent from PLIST takes the default of `make-knowledge-entry`."
   (apply #'make-knowledge-entry :library library
          (loop for (key nil encoding) in +knowledge-entry-slots+
-               for value = (let ((stored (getf plist key)))
-                             (ecase encoding
-                               (:data stored)
-                               (:ast (sexp->ast stored))
-                               (:hybrid (deserialize-hybrid-slot stored))
-                               (:metadata (convert-descriptor-profile stored #'plist->descriptor-clause))))
-               when value append (list key value))))
+               for stored = (getf plist key :%missing%)
+               unless (eq stored :%missing%)
+                 append (let ((value (ecase encoding
+                                       ((:data :boolean) stored)
+                                       (:ast (sexp->ast stored))
+                                       (:hybrid (deserialize-hybrid-slot stored))
+                                       (:metadata (convert-descriptor-profile stored #'plist->descriptor-clause)))))
+                          (when (or value (eq encoding :boolean))
+                            (list key value))))))
 
 (defun serialize-knowledge-library (&optional (library *knowledge-library*))
   "Serialize LIBRARY into a self-contained homoiconic S-expression packet."
   (list :knowledge-library
         :encoding-version +encoding-version+
         :version (knowledge-library-version library)
+        :epoch (knowledge-library-epoch library)
         :function-names (copy-list (knowledge-library-function-names library))
         :de-novo-counter (knowledge-library-de-novo-counter library)
         :entry-counter (knowledge-library-entry-counter library)
@@ -133,7 +138,9 @@ installing all entries in priority order (`:function` before `:law`, `:solver`, 
                     for entry = (gethash (canonical-op-name (getf entry-plist :id)) installed)
                     when entry collect entry))))
     (setf (knowledge-library-version library)
-          (or (getf plist :version) (knowledge-library-version library)))
+          (or (getf plist :version) (knowledge-library-version library))
+          (knowledge-library-epoch library)
+          (or (getf plist :epoch) 0))
     library))
 
 (defun save-knowledge-library (pathname &optional (library *knowledge-library*))

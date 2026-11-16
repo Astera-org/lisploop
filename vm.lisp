@@ -375,13 +375,17 @@ the work of its arguments, plus what its own traversal, copying or matching can 
   expression
   guard
   auxiliary
+  residual
   inputs
+  residual-inputs
   (expr-cost 1 :type fixnum)
   (guard-cost 1 :type fixnum)
   (aux-cost 1 :type fixnum)
+  (residual-cost 1 :type fixnum)
   expr-fn
   guard-fn
-  aux-fn)
+  aux-fn
+  residual-fn)
 
 (defun compile-ast-fn (expression inputs)
   "Compile a pure, hole-free first-order primitive AST over INPUTS into a zero-allocation
@@ -462,19 +466,28 @@ symbolic `:code-*` operators, or contains holes, so callers fall back to `evalua
     (let* ((inputs (knowledge-entry-inputs entry))
            (expr (knowledge-entry-expression entry))
            (guard (knowledge-entry-guard entry))
-           (aux (knowledge-entry-auxiliary-code entry)))
+           (aux (knowledge-entry-auxiliary-code entry))
+           (res (knowledge-entry-residual entry))
+           (res-inputs (if (eq :metric-decoder (knowledge-entry-kind entry))
+                           (list (cons 0 (knowledge-entry-target entry))
+                                 (cons 1 (knowledge-entry-target entry)))
+                           inputs)))
       (setf (knowledge-entry-executable entry)
             (%make-entry-executable
              :expression expr
              :guard guard
              :auxiliary aux
+             :residual res
              :inputs inputs
+             :residual-inputs res-inputs
              :expr-cost (if expr (max 1 (or (ignore-errors (syntax-work expr)) 1)) 1)
              :guard-cost (if guard (max 1 (or (ignore-errors (syntax-work guard)) 1)) 1)
              :aux-cost (if aux (max 1 (or (ignore-errors (syntax-work aux)) 1)) 1)
+             :residual-cost (if res (max 1 (or (ignore-errors (syntax-work res)) 1)) 1)
              :expr-fn (compile-ast-fn expr inputs)
              :guard-fn (compile-ast-fn guard inputs)
-             :aux-fn (compile-ast-fn aux inputs))))))
+             :aux-fn (compile-ast-fn aux inputs)
+             :residual-fn (compile-ast-fn res res-inputs))))))
 
 (defun ensure-entry-executable (entry)
   "Return ENTRY's `entry-executable`, rebuilding it automatically if uninitialized or if any
@@ -484,16 +497,19 @@ AST/input slot on ENTRY was mutated since compilation."
              (eq (knowledge-entry-expression entry) (entry-executable-expression exec))
              (eq (knowledge-entry-guard entry) (entry-executable-guard exec))
              (eq (knowledge-entry-auxiliary-code entry) (entry-executable-auxiliary exec))
+             (eq (knowledge-entry-residual entry) (entry-executable-residual exec))
              (equal (knowledge-entry-inputs entry) (entry-executable-inputs exec)))
         exec
         (sync-entry-executable entry))))
 
 (defun eval-entry-slot (entry slot args &key ledger (category :simulation) (check-types-p t))
-  "Evaluate SLOT (`:expr`, `:guard`, or `:aux`) of ENTRY on ARGS via its synchronized
-`entry-executable` closure (falling back to `evaluate` for general/recursive ASTs).
+  "Evaluate SLOT (`:expr`, `:guard`, `:aux`, or `:residual`) of ENTRY on ARGS via its
+synchronized `entry-executable` closure (falling back to `evaluate` for recursive ASTs).
 Returns `(VALUES value status error work)`."
   (let* ((exec (ensure-entry-executable entry))
-         (inputs (entry-executable-inputs exec)))
+         (inputs (if (eq slot :residual)
+                     (entry-executable-residual-inputs exec)
+                     (entry-executable-inputs exec))))
     (multiple-value-bind (ast fn cost)
         (ecase slot
           (:expr (values (entry-executable-expression exec)
@@ -504,7 +520,10 @@ Returns `(VALUES value status error work)`."
                           (entry-executable-guard-cost exec)))
           (:aux (values (entry-executable-auxiliary exec)
                         (entry-executable-aux-fn exec)
-                        (entry-executable-aux-cost exec))))
+                        (entry-executable-aux-cost exec)))
+          (:residual (values (entry-executable-residual exec)
+                             (entry-executable-residual-fn exec)
+                             (entry-executable-residual-cost exec))))
       (cond
         ((null ast) (values nil :empty nil 0))
         ((and check-types-p

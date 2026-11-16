@@ -142,8 +142,8 @@ model code length nor Shannon entropy; an unresolved intersection is not a witne
               (values classes labels
                       (derive-frame frame
                                     :rows refined-rows
-                                    :pairs (or (frame-pairs frame) inferred-pairs)
-                                    :anchors (or (frame-anchors frame) inferred-anchors))
+                                    :edges (or (frame-edges frame)
+                                               (pairs-and-anchors->edges inferred-pairs inferred-anchors nil)))
                       part
                       (make-message
                        :claim :partition-proposal

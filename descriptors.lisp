@@ -2,757 +2,514 @@
 
 ;;; Behavioural descriptors of library entries: structural proofs, profiles, and frame scoring.
 
-(defvar *descriptor-proof-stack* nil
-  "Names of the functions whose recursion shape is being classified; cuts delegation cycles.")
+(defvar *descriptor-proof-stack* nil)
 
 (defun tail-of-var-p (term seq-id)
-  "True when TERM is `(:tail X_SEQ-ID)`."
   (and (app-of-p term :tail) (var-p (second term)) (eql seq-id (ast-id (second term)))))
 
 (defun recursive-tail-call-on-var-p (expr kname seq-id &optional seq-pos)
-  "True when EXPR is a recursive call `(kname ...)` whose argument at SEQ-POS (or, without a
-usable SEQ-POS, any argument) is `(:tail X_SEQ-ID)`."
   (and (app-of-p expr kname)
        (let ((args (rest expr)))
-         (if (and seq-pos (< seq-pos (length args)))
-             (tail-of-var-p (nth seq-pos args) seq-id)
-             (some (lambda (arg) (tail-of-var-p arg seq-id)) args)))))
+         (if (and seq-pos (< seq-pos (length args))) (tail-of-var-p (nth seq-pos args) seq-id)
+             (some (lambda (a) (tail-of-var-p a seq-id)) args)))))
 
 (defun empty-sequence-base (body seq-id)
-  "When BODY is `(if (= X_SEQ-ID '()) base step)` with a literal BASE, return BASE and STEP."
-  (when (and (app-of-p body :if)
-             (eql seq-id (empty-sequence-guard-var-id (second body) (list seq-id)))
+  (when (and (app-of-p body :if) (eql seq-id (empty-sequence-guard-var-id (second body) (list seq-id)))
              (lit-p (third body)))
     (values (third body) (fourth body))))
 
 (defun list-recursion-shape (name body &optional (seq-id 0) seq-pos)
-  "Classify BODY as a structural recursion on the list X_SEQ-ID that maps '() to '().
-:preserving emits one :cons per (:tail X_SEQ-ID) step; :contracting either emits one or
-skips the step, as a filter does; :decrementing also maps singletons to '() and otherwise
-emits one per step, as an adjacent-pair stencil does. A body that hands X_SEQ-ID to another
-function takes that function's shape, except that a decrementing shape is not inherited and
-a preserving one needs every other argument to be a code literal. Anything else is nil."
+  "Classify BODY as `:preserving`, `:contracting`, `:decrementing`, or NIL."
   (unless (member name *descriptor-proof-stack*)
     (let ((*descriptor-proof-stack* (cons name *descriptor-proof-stack*))
           (kname (canonical-op-name name)))
-      (flet ((self-tail-p (expr) (recursive-tail-call-on-var-p expr kname seq-id seq-pos))
-             (seq-var-p (term) (and (var-p term) (eql seq-id (ast-id term)))))
+      (flet ((self-tail-p (e) (recursive-tail-call-on-var-p e kname seq-id seq-pos))
+             (seq-var-p (tm) (and (var-p tm) (eql seq-id (ast-id tm)))))
         (multiple-value-bind (base step) (empty-sequence-base body seq-id)
           (cond
             ((and base (null (ast-value base)))
-             (flet ((emit-p (branch) (and (app-of-p branch :cons) (self-tail-p (third branch)))))
-               (cond
-                 ((emit-p step) :preserving)
-                 ((app-of-p step :if)
-                  (destructuring-bind (guard then else) (rest step)
-                    (cond ((or (and (emit-p then) (self-tail-p else))
-                               (and (emit-p else) (self-tail-p then)))
-                           :contracting)
-                          ((and (lit-p then) (null (ast-value then))
-                                (app-of-p guard :=)
-                                (some (lambda (side) (tail-of-var-p side seq-id)) (rest guard))
-                                (emit-p else))
-                           :decrementing)))))))
+             (flet ((emit-p (b) (and (app-of-p b :cons) (self-tail-p (third b)))))
+               (cond ((emit-p step) :preserving)
+                     ((app-of-p step :if)
+                      (destructuring-bind (g th el) (rest step)
+                        (cond ((or (and (emit-p th) (self-tail-p el)) (and (emit-p el) (self-tail-p th))) :contracting)
+                              ((and (lit-p th) (null (ast-value th)) (app-of-p g :=)
+                                    (some (lambda (s) (tail-of-var-p s seq-id)) (rest g)) (emit-p el))
+                               :decrementing)))))))
             ((and (app-p body) (operator-p (first body)) (>= (length (rest body)) 2))
-             (let* ((args (rest body))
-                    (var-pos (position-if #'seq-var-p args))
-                    (comb-name (operator-name (first body)))
-                    (comb-def (and var-pos (not (eq comb-name kname))
-                                   (find-function-definition comb-name)))
-                    (comb-seq-spec (and comb-def (nth var-pos (function-definition-inputs comb-def)))))
-               (when (and comb-seq-spec (function-definition-body comb-def))
-                 (case (list-recursion-shape comb-name (function-definition-body comb-def)
-                                             (car comb-seq-spec) var-pos)
-                   (:preserving
-                    (and (every (lambda (arg)
-                                  (or (seq-var-p arg) (and (lit-p arg) (code-type-p (ast-type arg)))))
-                                args)
-                         :preserving))
+             (let* ((args (rest body)) (vpos (position-if #'seq-var-p args))
+                    (cname (operator-name (first body)))
+                    (cdef (and vpos (not (eq cname kname)) (find-function-definition cname)))
+                    (cspec (and cdef (nth vpos (function-definition-inputs cdef)))))
+               (when (and cspec (function-definition-body cdef))
+                 (case (list-recursion-shape cname (function-definition-body cdef) (car cspec) vpos)
+                   (:preserving (and (every (lambda (a) (or (seq-var-p a) (and (lit-p a) (code-type-p (ast-type a))))) args)
+                                     :preserving))
                    (:contracting :contracting)))))))))))
 
 (defun function-body-length-preserving-p (name body &optional (seq-id 0) seq-pos)
-  "True when BODY is a length-preserving list recursion on X_SEQ-ID, directly or by handing
-X_SEQ-ID to a length-preserving combinator; see `list-recursion-shape`."
+  "True when BODY is a length-preserving list recursion on `X_SEQ-ID`."
   (eq :preserving (list-recursion-shape name body seq-id seq-pos)))
 
 (defun function-shape-facts (name inputs target body)
-  "Structural facts about the function NAME : INPUTS -> TARGET with BODY, as a plist.
-:seq-spec is the first sequence input; :pure-p holds when every other input is code; :shape
-is the `list-recursion-shape` of BODY on that input when TARGET is a sequence; :base is the
-literal BODY returns on the empty sequence, if that is known; :subset-p holds when a
-contracting BODY emits only the head `(:at seq 0)` of its input."
-  (let* ((seq-spec (find-if #'seq-type-p inputs :key #'cdr))
-         (seq-id (car seq-spec))
+  (let* ((seq-spec (find-if #'seq-type-p inputs :key #'cdr)) (seq-id (car seq-spec))
          (shape (and seq-spec body (seq-type-p target)
                      (list-recursion-shape name body seq-id (position seq-spec inputs :test #'eq)))))
-    (flet ((head-p (term)
-             (and (app-of-p term :at) (var-p (second term)) (eql seq-id (ast-id (second term)))
-                  (lit-p (third term)) (eql 0 (ast-value (third term))))))
-      (list :seq-spec seq-spec
-            :pure-p (and seq-spec
-                         (every (lambda (spec) (or (eq spec seq-spec) (code-type-p (cdr spec))))
-                                inputs))
-            :shape shape
-            :base (and seq-spec body
-                       (or (empty-sequence-base body seq-id) (and shape (lit target nil))))
-            :subset-p (and (eq shape :contracting) (app-of-p body :if)
-                           (some (lambda (branch)
-                                   (and (app-of-p branch :cons) (head-p (second branch))))
-                                 (cddr (fourth body))))))))
+    (list :seq-spec seq-spec
+          :pure-p (and seq-spec (every (lambda (s) (or (eq s seq-spec) (code-type-p (cdr s)))) inputs))
+          :shape shape
+          :base (and seq-spec body (or (empty-sequence-base body seq-id) (and shape (lit target nil))))
+          :subset-p (and (eq shape :contracting) (app-of-p body :if)
+                         (some (lambda (b) (and (app-of-p b :cons) (app-of-p (second b) :at)
+                                                (var-p (second (second b))) (eql seq-id (ast-id (second (second b))))
+                                                (lit-p (third (second b))) (eql 0 (ast-value (third (second b))))))
+                               (cddr (fourth body)))))))
 
 (defun compute-function-descriptor (fdef)
-  "Synthesize a closed VM-executable Boolean descriptor AST over (X0=seq-input, X1=output)
-summarizing invariant I/O behavior of FDEF (such as empty-list base behavior and
-length preservation or contraction)."
+  "Synthesize a closed Boolean descriptor AST over `(X0=seq, X1=out)` for FDEF."
   (when (and (function-definition-p fdef) (function-definition-body fdef))
-    (let ((ret-type (function-definition-return-type fdef)))
+    (let ((ret (function-definition-return-type fdef)))
       (destructuring-bind (&key seq-spec pure-p shape base &allow-other-keys)
           (function-shape-facts (function-definition-name fdef) (function-definition-inputs fdef)
-                                ret-type (function-definition-body fdef))
+                                ret (function-definition-body fdef))
         (when pure-p
-          (let* ((x0 (var 0 (cdr seq-spec)))
-                 (x1 (var 1 ret-type))
-                 (base-check (and base (term `(if (= ,x0 ()) (= ,x1 ,base) t))))
-                 (len-check (case shape
-                              (:preserving (term `(= (length ,x0) (length ,x1))))
-                              (:contracting (bool-not (term `(< (length ,x0) (length ,x1))))))))
-            (if (and base-check len-check)
-                (bool-and base-check len-check)
-                (or len-check base-check))))))))
+          (let* ((x0 (var 0 (cdr seq-spec))) (x1 (var 1 ret))
+                 (base-chk (and base (term `(if (= ,x0 ()) (= ,x1 ,base) t))))
+                 (len-chk (case shape
+                            (:preserving (term `(= (length ,x0) (length ,x1))))
+                            (:contracting (bool-not (term `(< (length ,x0) (length ,x1))))))))
+            (if (and base-chk len-chk) (bool-and base-chk len-chk) (or len-chk base-chk))))))))
 
 (defun signature-facts (seq-in-p target)
-  "The type facts of an entry or a frame: whether a sequence goes in and what comes out."
-  (list (if seq-in-p :seq-in :scalar-in)
-        (if (seq-type-p target) :seq-out :scalar-out)
+  (list (if seq-in-p :seq-in :scalar-in) (if (seq-type-p target) :seq-out :scalar-out)
         (and (seq-type-p target) (seq-type-p (second target)) :seq-2d-out)
         (and (equal target '(:seq :int)) :int-seq-out)))
 
 (defun strip-descriptor-prefix (sym)
-  "Strip leading `DESC/` from SYM's name when building a compositional address."
-  (let ((name (symbol-name sym)))
-    (if (and (>= (length name) 5) (string= "DESC/" name :end2 5))
-        (subseq name 5)
-        name)))
+  (let ((n (symbol-name sym))) (if (and (>= (length n) 5) (string= "DESC/" n :end2 5)) (subseq n 5) n)))
 
 (defun derive-compositional-name (entry &optional (clauses (knowledge-entry-descriptor-profile entry)))
-  "Derive a canonical compositional secondary address symbol for ENTRY from its descriptor
-clause profile across `:type`, `:shape-delta`, `:boundary`, `:sampled-content`, and `:algebraic` facets."
-  (flet ((token (&rest facets)
-           (let ((clause (some (lambda (facet) (find facet clauses :key #'descriptor-clause-facet))
-                               facets)))
-             (if clause (strip-descriptor-prefix (descriptor-clause-id clause)) "ANY"))))
+  "Derive a canonical compositional secondary address symbol for ENTRY from its descriptor clauses."
+  (flet ((tok (&rest facets)
+           (let ((c (some (lambda (f) (find f clauses :key #'descriptor-clause-facet)) facets)))
+             (if c (strip-descriptor-prefix (descriptor-clause-id c)) "ANY"))))
     (keyword-id "~A/~A/~A/~A/~A" (or (knowledge-entry-kind entry) :entry)
-                (token :type) (token :shape-delta) (token :boundary)
-                (token :sampled-content :algebraic))))
+                (tok :type) (tok :shape-delta) (tok :boundary) (tok :sampled-content :algebraic))))
 
 (define-knowledge-kind :descriptor
   (:priority 15)
-  (:validate (entry library)
-    (declare (ignore library))
-    (assert (eq :bool (knowledge-entry-target entry)))
-    (assert-entry-expression-type entry))
-  (:install (entry library ledger)
-    (declare (ignore entry library ledger))
-    nil))
+  (:validate (entry library) (declare (ignore library))
+    (assert (eq :bool (knowledge-entry-target entry))) (assert-entry-expression-type entry))
+  (:install (entry library ledger) (declare (ignore entry library ledger)) nil))
 
 (defun frame-concrete-pairs (frame input-id)
-  "The (input . output) value pairs of the rows of FRAME that fix both the value of input
-INPUT-ID and a single allowed output."
   (let ((pos (position input-id (schema-inputs (frame-schema frame)) :key #'car)))
     (when pos
-      (loop for row in (frame-rows frame)
-            for allowed = (extract-allowed-values (row-requirement row))
-            when (and (consp allowed) (= 1 (length allowed))
-                      (not (member :unresolved (row-known row))))
-              collect (cons (nth pos (row-known row)) (first allowed))))))
+      (loop for r in (frame-rows frame) for a = (extract-allowed-values (row-requirement r))
+            when (and (consp a) (= 1 (length a)) (not (member :unresolved (row-known r))))
+              collect (cons (nth pos (row-known r)) (first a))))))
 
 (defun evaluate-descriptor-entry-on-frame (descriptor frame-facts seq-type target pairs ledger)
-  "Evaluate a `:descriptor` knowledge-entry on PAIRS via its synchronized `entry-executable`.
-Returns `:satisfied`, `:violated`, or `:neutral`."
-  (let* ((meta (knowledge-entry-metadata descriptor))
-         (req-facts (getf meta :frame-facts))
-         (inputs (knowledge-entry-inputs descriptor))
-         (guard (knowledge-entry-guard descriptor))
-         (aux (knowledge-entry-auxiliary-code descriptor))
-         (trivial-guard-p (equal guard (lit :bool t))))
-    (cond
-      ((not (subsetp req-facts frame-facts)) (or (getf meta :mismatch) :neutral))
-      ((not (and (= 2 (length inputs))
-                 (equal seq-type (cdr (first inputs)))
-                 (equal target (cdr (second inputs)))))
-       (when ledger (charge ledger :orientation 1))
-       :neutral)
-      ((null pairs)
-       (when ledger (charge ledger :orientation 1))
-       :neutral)
-      (t
-       (let ((selected (if trivial-guard-p
-                           pairs
-                           (remove-if-not
-                            (lambda (pair)
-                              (multiple-value-bind (val status)
-                                  (eval-entry-slot descriptor :guard (list (car pair) (cdr pair))
-                                                   :ledger ledger :category :orientation
-                                                   :check-types-p nil)
-                                (and (eq status :value) val)))
-                            pairs))))
-         (cond
-           ((null selected) :neutral)
-           ((some (lambda (pair)
-                    (multiple-value-bind (val status)
-                        (eval-entry-slot descriptor :expr (list (car pair) (cdr pair))
-                                         :ledger ledger :category :orientation
-                                         :check-types-p nil)
-                      (and (eq status :value) (null val))))
-                  selected)
-            (or (getf meta :failure) :violated))
-           ((or (null aux)
-                (some (lambda (pair)
-                        (multiple-value-bind (val status)
-                            (eval-entry-slot descriptor :aux (list (car pair) (cdr pair))
-                                             :ledger ledger :category :orientation
-                                             :check-types-p nil)
-                          (and (eq status :value) val)))
-                      selected))
-            :satisfied)
-           (t :neutral)))))))
+  "Evaluate `:descriptor` on PAIRS -> `:satisfied`, `:violated`, or `:neutral`."
+  (let* ((meta (knowledge-entry-metadata descriptor)) (inputs (knowledge-entry-inputs descriptor))
+         (guard (knowledge-entry-guard descriptor)) (aux (knowledge-entry-auxiliary-code descriptor)))
+    (flet ((eval-slot (slot pair)
+             (multiple-value-bind (v st) (eval-entry-slot descriptor slot (list (car pair) (cdr pair))
+                                                          :ledger ledger :category :orientation :check-types-p nil)
+               (and (eq st :value) v))))
+      (cond ((not (subsetp (getf meta :frame-facts) frame-facts)) (or (getf meta :mismatch) :neutral))
+            ((or (null pairs) (not (and (= 2 (length inputs)) (equal seq-type (cdr (first inputs)))
+                                        (equal target (cdr (second inputs))))))
+             (when ledger (charge ledger :orientation 1)) :neutral)
+            (t (let ((sel (if (equal guard (lit :bool t)) pairs
+                              (remove-if-not (lambda (p) (eval-slot :guard p)) pairs))))
+                 (cond ((null sel) :neutral)
+                       ((some (lambda (p) (multiple-value-bind (v st)
+                                              (eval-entry-slot descriptor :expr (list (car p) (cdr p))
+                                                               :ledger ledger :category :orientation :check-types-p nil)
+                                            (and (eq st :value) (null v))))
+                              sel)
+                        (or (getf meta :failure) :violated))
+                       ((or (null aux) (some (lambda (p) (eval-slot :aux p)) sel)) :satisfied)
+                       (t :neutral))))))))
 
 (defun canonical-probe-codes (c-inputs c-sort)
-  "Small closed probe ASTs for a `:code` parameter `(c-inputs -> c-sort)` used to sample a
-higher-order function across non-degenerate behaviors."
   (unless (function-sort-p c-sort)
-    (cond
-      ((or (eq c-sort :int) (gf-type-p c-sort))
-       (let ((one (if (eq c-sort :int) 1 (mod 1 (second c-sort))))
-             (matching (remove-if-not (lambda (s) (equal (cdr s) c-sort)) c-inputs)))
-         (cond
-           ((>= (length matching) 2)
-            (let ((v0 (var (caar matching) c-sort))
-                  (v1 (var (caadr matching) c-sort)))
-              (list (term `(- ,v0 ,v1)) (term `(+ ,v0 ,v1)))))
-           ((= (length matching) 1)
-            (let ((v0 (var (caar matching) c-sort)))
-              (list (term `(+ ,v0 ,(lit c-sort one))) (term `(+ ,v0 ,v0)))))
-           (t (list (lit c-sort 0) (lit c-sort one))))))
-      ((eq c-sort :bool)
-       (let ((first-spec (first c-inputs)))
-         (cond
-           ((and first-spec (eq :int (cdr first-spec)))
-            (list (term `(< 0 ,(var (car first-spec) :int))) (lit :bool nil)))
-           (first-spec
-            (let ((pt (cdr first-spec)))
-              (list (term `(= ,(var (car first-spec) pt) ,(lit pt (default-value-for-type pt))))
-                    (lit :bool nil))))
-           (t (list (lit :bool t) (lit :bool nil))))))
-      (t
-       (let ((same (find c-sort c-inputs :key #'cdr :test #'equal))
-             (def (lit c-sort (default-value-for-type c-sort))))
-         (if same (list (var (car same) c-sort) def) (list def)))))))
+    (cond ((or (eq c-sort :int) (gf-type-p c-sort))
+           (let ((one (if (eq c-sort :int) 1 (mod 1 (second c-sort))))
+                 (m (remove-if-not (lambda (s) (equal (cdr s) c-sort)) c-inputs)))
+             (cond ((>= (length m) 2) (let ((v0 (var (caar m) c-sort)) (v1 (var (caadr m) c-sort)))
+                                        (list (term `(- ,v0 ,v1)) (term `(+ ,v0 ,v1)))))
+                   ((= (length m) 1) (let ((v0 (var (caar m) c-sort)))
+                                       (list (term `(+ ,v0 ,(lit c-sort one))) (term `(+ ,v0 ,v0)))))
+                   (t (list (lit c-sort 0) (lit c-sort one))))))
+          ((eq c-sort :bool)
+           (let ((fs (first c-inputs)))
+             (cond ((and fs (eq :int (cdr fs))) (list (term `(< 0 ,(var (car fs) :int))) (lit :bool nil)))
+                   (fs (let ((pt (cdr fs))) (list (term `(= ,(var (car fs) pt) ,(lit pt (default-value-for-type pt))))
+                                                  (lit :bool nil))))
+                   (t (list (lit :bool t) (lit :bool nil))))))
+          (t (let ((same (find c-sort c-inputs :key #'cdr :test #'equal))
+                   (def (lit c-sort (default-value-for-type c-sort))))
+               (if same (list (var (car same) c-sort) def) (list def)))))))
 
-(defun probe-values-for-type (type)
-  (cond
-    ((eq type :int) '(0 1))
-    ((eq type :bool) '(nil t))
-    ((gf-type-p type) (list 0 (mod 1 (second type))))
-    ((code-type-p type) (canonical-probe-codes (code-inputs type) (code-sort type)))))
+(defun probe-values-for-type (tp)
+  (cond ((eq tp :int) '(0 1)) ((eq tp :bool) '(nil t)) ((gf-type-p tp) (list 0 (mod 1 (second tp))))
+        ((code-type-p tp) (canonical-probe-codes (code-inputs tp) (code-sort tp)))))
 
 (defun probe-sequences-for-type (seq-type)
-  (let ((elem (second seq-type)))
-    (cond
-      ((eq elem :int) '(() (2) (-1 2 5) (10 13 19)))
-      ((gf-type-p elem)
-       (let ((m (second elem)))
-         (list '() (list (mod 1 m)) (list 0 (mod 1 m) (mod 2 m)))))
-      ((eq elem :bool) '(() (t) (nil t nil)))
-      ((seq-type-p elem)
-       (unless (code-type-p (second elem))
-         (let ((d (default-value-for-type (second elem))))
-           (list '() (list (list d)) (list '() (list d d))))))
-      ((not (code-type-p elem))
-       (let ((d (default-value-for-type elem)))
-         (list '() (list d) (list d d)))))))
+  (let ((el (second seq-type)))
+    (cond ((eq el :int) '(() (2) (-1 2 5) (10 13 19)))
+          ((gf-type-p el) (let ((m (second el))) (list '() (list (mod 1 m)) (list 0 (mod 1 m) (mod 2 m)))))
+          ((eq el :bool) '(() (t) (nil t nil)))
+          ((seq-type-p el) (unless (code-type-p (second el))
+                             (let ((d (default-value-for-type (second el))))
+                               (list '() (list (list d)) (list '() (list d d))))))
+          ((not (code-type-p el)) (let ((d (default-value-for-type el))) (list '() (list d) (list d d)))))))
 
 (defun sample-entry-io-pairs (entry seq-spec ledger)
-  "Run a `:function` ENTRY on canonical probe sequences and return observed `(in . out)` pairs."
-  (when (and (eq :function (knowledge-entry-kind entry))
-             seq-spec
-             (knowledge-entry-expression entry))
-    (let* ((inputs (knowledge-entry-inputs entry))
-           (body (knowledge-entry-expression entry))
-           (extra-specs (remove seq-spec inputs :test #'eq))
-           (extra-options (mapcar (lambda (s) (probe-values-for-type (cdr s))) extra-specs))
-           (seqs (and (notany #'null extra-options)
-                      (probe-sequences-for-type (cdr seq-spec)))))
+  (when (and (eq :function (knowledge-entry-kind entry)) seq-spec (knowledge-entry-expression entry))
+    (let* ((inputs (knowledge-entry-inputs entry)) (body (knowledge-entry-expression entry))
+           (extras (remove seq-spec inputs :test #'eq))
+           (opts (mapcar (lambda (s) (probe-values-for-type (cdr s))) extras))
+           (seqs (and (notany #'null opts) (probe-sequences-for-type (cdr seq-spec))))
+           (prods (and seqs (cartesian-product-lists opts))))
       (when seqs
-        (let ((tuples (subseq (cartesian-product-lists extra-options)
-                              0 (min 4 (length (cartesian-product-lists extra-options)))))
-              (pairs nil))
-          (dolist (tuple tuples)
-            (let ((extra-alist (mapcar #'cons (mapcar #'car extra-specs) tuple)))
+        (let (pairs)
+          (dolist (tup (subseq prods 0 (min 4 (length prods))))
+            (let ((alist (mapcar #'cons (mapcar #'car extras) tup)))
               (dolist (seq seqs)
-                (let* ((args (loop for spec in inputs
-                                   collect (if (eq spec seq-spec)
-                                               seq
-                                               (cdr (assoc (car spec) extra-alist :test #'eql)))))
+                (let* ((args (loop for s in inputs collect (if (eq s seq-spec) seq (cdr (assoc (car s) alist :test #'eql)))))
                        (run (evaluate body inputs args :budget 2000 :ledger ledger)))
-                  (when (eq :value (evaluation-status run))
-                    (pushnew (cons seq (evaluation-value run)) pairs :test #'equal))))))
-          (let ((ordered (nreverse pairs)))
-            (when (some #'car ordered)
-              ordered)))))))
+                  (when (eq :value (evaluation-status run)) (pushnew (cons seq (evaluation-value run)) pairs :test #'equal))))))
+          (let ((ordered (nreverse pairs))) (when (some #'car ordered) ordered)))))))
 
 (defun observe-io-search (pairs inputs target &key operators literals constants body-bound domain pair-keys ledger)
-  "Run bounded enumerative observation search over `(in . out)` PAIRS and return the `observation-job`."
-  (let* ((rows (loop for p in pairs for i from 0
-                     collect (make-row :key i :known (list (car p) (cdr p)) :requirement (lit :bool t))))
+  (let* ((rows (loop for p in pairs for i from 0 collect (make-row :key i :known (list (car p) (cdr p)) :requirement (lit :bool t))))
          (schema (make-schema :domain domain :inputs inputs :target target))
-         (frame (make-frame schema rows))
-         (lang (make-language (schema-domain schema) inputs
-                              :operators operators :literals literals :constants constants))
-         (bound (+ 1 (language-header-size lang target) body-bound))
-         (scope (make-observation-scope frame lang :pairs pair-keys))
-         (obs (start-observation-search scope)))
-    (resume-observation-search obs bound 200000)
-    (when ledger
-      (charge ledger :discovery (min 32 (ledger-total (observation-job-ledger obs)))))
+         (lang (make-language (schema-domain schema) inputs :operators operators :literals literals :constants constants))
+         (obs (start-observation-search (make-observation-scope (make-frame schema rows) lang :pairs pair-keys))))
+    (resume-observation-search obs (+ 1 (language-header-size lang target) body-bound) 200000)
+    (when ledger (charge ledger :discovery (min 32 (ledger-total (observation-job-ledger obs)))))
     obs))
 
-(defun obs-expr (obs expr)
-  (let ((rec (find-observation obs expr)))
-    (and rec (observed-expression-expression rec))))
-
-(defun obs-agrees-p (obs left right)
-  (observed-agreement-p (find-observation obs left) (find-observation obs right)))
+(defun obs-expr (obs expr) (let ((r (find-observation obs expr))) (and r (observed-expression-expression r))))
+(defun obs-agrees-p (obs l r) (observed-agreement-p (find-observation obs l) (find-observation obs r)))
 
 (defun synthesize-io-descriptor-specs (entry shape-facts pairs ho-p ledger)
-  "Discover behavioral `:descriptor` AST specifications for ENTRY by running enumerative
-observation search over its sampled I/O PAIRS and certifying specs backed by structural `shape-facts`."
   (let ((seq-spec (getf shape-facts :seq-spec)))
     (when seq-spec
-      (let* ((seq-type (cdr seq-spec))
-             (target (knowledge-entry-target entry))
+      (let* ((seq-type (cdr seq-spec)) (target (knowledge-entry-target entry))
              (body (and (member (knowledge-entry-kind entry) '(:function :decoder-template))
                         (knowledge-entry-expression entry)))
-             (pure-p (getf shape-facts :pure-p))
-             (shape (getf shape-facts :shape))
-             (base (getf shape-facts :base))
-             (subset-p (getf shape-facts :subset-p))
-             (rel-inputs (list (cons 0 seq-type) (cons 1 target)))
-             (x0 (var 0 seq-type))
-             (x1 (var 1 target))
-             (empty-guard (term `(= ,x0 ())))
-             (nonempty-guard (bool-not empty-guard))
-             (empty-pairs (remove-if-not #'null pairs :key #'car))
-             (nonempty-pairs (remove-if #'null pairs :key #'car))
-             (specs nil)
-             (shape-choice nil))
-        (flet ((emit (id facet tier weight cost frame-facts guard holds witness
-                      &key (failure :violated) necessary-p)
+             (pure-p (getf shape-facts :pure-p)) (shape (getf shape-facts :shape))
+             (base (getf shape-facts :base)) (subset-p (getf shape-facts :subset-p))
+             (rel-in (list (cons 0 seq-type) (cons 1 target))) (x0 (var 0 seq-type)) (x1 (var 1 target))
+             (empty-g (term `(= ,x0 ()))) (ne-g (bool-not empty-g))
+             (empty-ps (remove-if-not #'null pairs :key #'car))
+             (ne-ps (remove-if #'null pairs :key #'car))
+             specs shape-choice)
+        (flet ((emit (id facet tier weight cost ffacts guard holds witness &key (failure :violated) necessary-p)
                  (push (list :id id :facet facet :tier tier :weight-bits weight :work-cost cost
-                             :frame-facts frame-facts :guard guard :holds holds :witness witness
+                             :frame-facts ffacts :guard guard :holds holds :witness witness
                              :failure failure :necessary-p (not (null necessary-p)))
                        specs)))
-          ;; 1. Shape-delta facet
           (when (seq-type-p target)
-            (let ((len0 (term `(length ,x0)))
-                  (len1 (term `(length ,x1)))
-                  (dec1 (term `(- (length ,x0) 1))))
+            (let ((l0 (term `(length ,x0))) (l1 (term `(length ,x1))) (d1 (term `(- (length ,x0) 1))))
               (cond
-                (nonempty-pairs
-                 (let* ((len-ops (remove-duplicates
-                                  (list (op :length (second seq-type))
-                                        (op :length (second target))
-                                        (op :- :int))
-                                  :test #'eq))
-                        (obs (observe-io-search nonempty-pairs rel-inputs :int
-                                                :operators len-ops :literals '(1)
-                                                :body-bound (body-size dec1 rel-inputs)
-                                                :ledger ledger))
-                        (empty-ok-p (every (lambda (p) (null (cdr p))) empty-pairs)))
-                   (cond
-                     ((and empty-ok-p (obs-agrees-p obs len1 len0))
-                      (setf shape-choice :DESC/LEN-EQ)
-                      (emit :DESC/LEN-EQ :shape-delta 1 6 2 '(:seq-out)
-                            (lit :bool t)
-                            (term `(= ,(obs-expr obs len0) ,(obs-expr obs len1)))
-                            nonempty-guard
-                            :necessary-p (and pure-p (eq shape :preserving))))
-                     ((and empty-ok-p
-                           (some (lambda (p) (>= (length (car p)) 2)) nonempty-pairs)
-                           (obs-agrees-p obs len1 dec1))
-                      (setf shape-choice :DESC/LEN-DEC-1)
-                      (emit :DESC/LEN-DEC-1 :shape-delta 1 6 2 '(:seq-out)
-                            nonempty-guard
-                            (term `(= ,(obs-expr obs dec1) ,(obs-expr obs len1)))
-                            (term `(< 1 (length ,x0)))
-                            :necessary-p (and pure-p (eq shape :decrementing))))
-                     (t
-                      (let* ((lt-over (term `(< (length ,x0) (length ,x1))))
-                             (lt-under (term `(< (length ,x1) (length ,x0))))
-                             (le-ops (remove-duplicates
-                                      (list (op :length (second seq-type))
-                                            (op :length (second target))
-                                            (op :< :int))
-                                      :test #'eq))
-                             (le-obs (observe-io-search pairs rel-inputs :bool
-                                                        :operators le-ops
-                                                        :constants (list (lit :bool nil))
-                                                        :body-bound (body-size lt-over rel-inputs)
-                                                        :ledger ledger))
-                             (rec-under (find-observation le-obs lt-under)))
-                        (when (and (obs-agrees-p le-obs lt-over (lit :bool nil))
-                                   rec-under
-                                   (eq :complete (observed-expression-status rec-under))
-                                   (some #'identity (observed-expression-values rec-under)))
-                          (setf shape-choice :DESC/LEN-LE)
-                          (emit :DESC/LEN-LE :shape-delta 1 5 2 '(:seq-out)
-                                (lit :bool t)
-                                (bool-not (obs-expr le-obs lt-over))
-                                (observed-expression-expression rec-under)
-                                :necessary-p (and pure-p (eq shape :contracting)))))))))
+                (ne-ps
+                 (let* ((lops (remove-duplicates (list (op :length (second seq-type)) (op :length (second target)) (op :- :int)) :test #'eq))
+                        (obs (observe-io-search ne-ps rel-in :int :operators lops :literals '(1)
+                                                :body-bound (body-size d1 rel-in) :ledger ledger))
+                        (eok (every (lambda (p) (null (cdr p))) empty-ps)))
+                   (cond ((and eok (obs-agrees-p obs l1 l0))
+                          (setf shape-choice :DESC/LEN-EQ)
+                          (emit :DESC/LEN-EQ :shape-delta 1 6 2 '(:seq-out) (lit :bool t)
+                                (term `(= ,(obs-expr obs l0) ,(obs-expr obs l1))) ne-g :necessary-p (and pure-p (eq shape :preserving))))
+                         ((and eok (some (lambda (p) (>= (length (car p)) 2)) ne-ps) (obs-agrees-p obs l1 d1))
+                          (setf shape-choice :DESC/LEN-DEC-1)
+                          (emit :DESC/LEN-DEC-1 :shape-delta 1 6 2 '(:seq-out) ne-g
+                                (term `(= ,(obs-expr obs d1) ,(obs-expr obs l1))) (term `(< 1 (length ,x0)))
+                                :necessary-p (and pure-p (eq shape :decrementing))))
+                         (t (let* ((over (term `(< (length ,x0) (length ,x1)))) (under (term `(< (length ,x1) (length ,x0))))
+                                   (le-ops (remove-duplicates (list (op :length (second seq-type)) (op :length (second target)) (op :< :int)) :test #'eq))
+                                   (le-obs (observe-io-search pairs rel-in :bool :operators le-ops :constants (list (lit :bool nil))
+                                                              :body-bound (body-size over rel-in) :ledger ledger))
+                                   (ru (find-observation le-obs under)))
+                              (when (and (obs-agrees-p le-obs over (lit :bool nil)) ru (eq :complete (observed-expression-status ru))
+                                         (some #'identity (observed-expression-values ru)))
+                                (setf shape-choice :DESC/LEN-LE)
+                                (emit :DESC/LEN-LE :shape-delta 1 5 2 '(:seq-out) (lit :bool t)
+                                      (bool-not (obs-expr le-obs over)) (observed-expression-expression ru)
+                                      :necessary-p (and pure-p (eq shape :contracting)))))))))
                 ((null pairs)
                  (case shape
-                   (:preserving
-                    (setf shape-choice :DESC/LEN-EQ)
-                    (emit :DESC/LEN-EQ :shape-delta 1 6 2 '(:seq-out)
-                          (lit :bool t) (term `(= ,len0 ,len1)) nonempty-guard :necessary-p pure-p))
-                   (:decrementing
-                    (setf shape-choice :DESC/LEN-DEC-1)
-                    (emit :DESC/LEN-DEC-1 :shape-delta 1 6 2 '(:seq-out)
-                          nonempty-guard (term `(= ,dec1 ,len1)) (term `(< 1 ,len0)) :necessary-p pure-p))
-                   (:contracting
-                    (setf shape-choice :DESC/LEN-LE)
-                    (emit :DESC/LEN-LE :shape-delta 1 5 2 '(:seq-out)
-                          (lit :bool t) (bool-not (term `(< ,len0 ,len1))) (term `(< ,len1 ,len0))
-                          :necessary-p pure-p))))))
-            (when (and body (seq-type-p (second target)) (or (null pairs) nonempty-pairs))
-              (emit :DESC/OUTER-SHAPE-2D :shape-delta 1 4 2 '(:seq-2d-out)
-                    nonempty-guard (lit :bool t) nil)))
-          ;; 2. Boundary facet
-          (cond
-            (empty-pairs
-             (when (or (seq-type-p target) (eq target :int))
-               (let* ((base-lit (if (seq-type-p target) (lit target nil) (lit :int 0)))
-                      (b-obs (observe-io-search
-                              empty-pairs rel-inputs target
-                              :literals (when (eq target :int) '(0))
-                              :constants (when (seq-type-p target) (list base-lit))
-                              :body-bound (max (body-size x1 rel-inputs)
-                                               (body-size base-lit rel-inputs))
-                              :ledger ledger)))
-                 (when (obs-agrees-p b-obs x1 base-lit)
-                   (let ((eq-ast (term `(= ,(obs-expr b-obs x1) ,(obs-expr b-obs base-lit)))))
-                     (if (seq-type-p target)
-                         (emit :DESC/EMPTY->EMPTY :boundary 1 4 2 nil empty-guard eq-ast nil
-                               :necessary-p (and pure-p base (null (ast-value base))))
-                         (emit :DESC/EMPTY->ZERO :boundary 1 4 2 nil empty-guard eq-ast nil
-                               :necessary-p (and pure-p base (eql 0 (ast-value base))))))))))
-            ((and (null pairs) base)
-             (cond
-               ((and (seq-type-p target) (null (ast-value base)))
-                (emit :DESC/EMPTY->EMPTY :boundary 1 4 2 nil empty-guard (term `(= ,x1 ())) nil
-                      :necessary-p pure-p))
-               ((and (eq target :int) (eql 0 (ast-value base)))
-                (emit :DESC/EMPTY->ZERO :boundary 1 4 2 nil empty-guard (term `(= ,x1 0)) nil
-                      :necessary-p pure-p)))))
-          ;; 3. Sampled-content facet
+                   (:preserving (setf shape-choice :DESC/LEN-EQ)
+                                (emit :DESC/LEN-EQ :shape-delta 1 6 2 '(:seq-out) (lit :bool t) (term `(= ,l0 ,l1)) ne-g :necessary-p pure-p))
+                   (:decrementing (setf shape-choice :DESC/LEN-DEC-1)
+                                  (emit :DESC/LEN-DEC-1 :shape-delta 1 6 2 '(:seq-out) ne-g (term `(= ,d1 ,l1)) (term `(< 1 ,l0)) :necessary-p pure-p))
+                   (:contracting (setf shape-choice :DESC/LEN-LE)
+                                 (emit :DESC/LEN-LE :shape-delta 1 5 2 '(:seq-out) (lit :bool t)
+                                       (bool-not (term `(< ,l0 ,l1))) (term `(< ,l1 ,l0)) :necessary-p pure-p))))))
+            (when (and body (seq-type-p (second target)) (or (null pairs) ne-ps))
+              (emit :DESC/OUTER-SHAPE-2D :shape-delta 1 4 2 '(:seq-2d-out) ne-g (lit :bool t) nil)))
+          (when (or (seq-type-p target) (eq target :int))
+            (let ((seq-t-p (seq-type-p target)))
+              (cond (empty-ps
+                     (let* ((blit (if seq-t-p (lit target nil) (lit :int 0)))
+                            (b-obs (observe-io-search empty-ps rel-in target :literals (unless seq-t-p '(0))
+                                                      :constants (when seq-t-p (list blit))
+                                                      :body-bound (max (body-size x1 rel-in) (body-size blit rel-in)) :ledger ledger)))
+                       (when (obs-agrees-p b-obs x1 blit)
+                         (emit (if seq-t-p :DESC/EMPTY->EMPTY :DESC/EMPTY->ZERO) :boundary 1 4 2 nil empty-g
+                               (term `(= ,(obs-expr b-obs x1) ,(obs-expr b-obs blit))) nil
+                               :necessary-p (and pure-p base (if seq-t-p (null (ast-value base)) (eql 0 (ast-value base))))))))
+                    ((and (null pairs) base (if seq-t-p (null (ast-value base)) (eql 0 (ast-value base))))
+                     (emit (if seq-t-p :DESC/EMPTY->EMPTY :DESC/EMPTY->ZERO) :boundary 1 4 2 nil empty-g
+                           (term `(= ,x1 ,(if seq-t-p (lit target nil) (lit :int 0)))) nil :necessary-p pure-p)))))
           (when (and ho-p (eq shape-choice :DESC/LEN-EQ))
-            (emit :DESC/POINTWISE-MAP :sampled-content 2 5 6 '(:seq-out)
-                  nonempty-guard (term `(= (length ,x0) (length ,x1))) nil))
-          (when (and body ho-p (not (seq-type-p target)) (or (null pairs) nonempty-pairs))
-            (emit :DESC/SCALAR-REDUCTION :sampled-content 2 5 6 '(:seq-in :scalar-out)
-                  nonempty-guard (lit :bool t) nil))
-          (let ((step-delta-p nil))
-            (when (and (equal seq-type '(:seq :int)) (equal target '(:seq :int))
-                       (eq shape-choice :DESC/LEN-EQ) nonempty-pairs)
-              (let ((elem-pairs nil)
-                    (pair-keys nil)
-                    (idx 0))
-                (dolist (p nonempty-pairs)
+            (emit :DESC/POINTWISE-MAP :sampled-content 2 5 6 '(:seq-out) ne-g (term `(= (length ,x0) (length ,x1))) nil))
+          (when (and body ho-p (not (seq-type-p target)) (or (null pairs) ne-ps))
+            (emit :DESC/SCALAR-REDUCTION :sampled-content 2 5 6 '(:seq-in :scalar-out) ne-g (lit :bool t) nil))
+          (let (step-delta-p)
+            (when (and (equal seq-type '(:seq :int)) (equal target '(:seq :int)) (eq shape-choice :DESC/LEN-EQ) ne-ps)
+              (let (eps pkeys (idx 0))
+                (dolist (p ne-ps)
                   (when (and (>= (length (car p)) 2) (= (length (car p)) (length (cdr p))))
-                    (let ((start idx))
-                      (loop for a in (car p) for b in (cdr p) do
-                        (push (cons a b) elem-pairs)
-                        (incf idx))
-                      (loop for k from start below (1- idx) do
-                        (push (list k (1+ k)) pair-keys)))))
-                (when pair-keys
-                  (let* ((elem-inputs '((0 . :int) (1 . :int)))
-                         (diff-proto (term `(- ,(var 1 :int) ,(var 0 :int))))
-                         (s-obs (observe-io-search (nreverse elem-pairs) elem-inputs :int
-                                                   :operators (list (op :- :int))
-                                                   :body-bound (body-size diff-proto elem-inputs)
-                                                   :pair-keys (nreverse pair-keys)
-                                                   :ledger ledger))
-                         (inv (loop for bucket in (reverse (observation-job-buckets s-obs))
-                                    thereis (and (observation-bucket-invariant-p bucket)
-                                                 (loop for m in (reverse (observation-bucket-members bucket))
-                                                       for expr = (observed-expression-expression m)
-                                                       when (and (member 0 (free-vars expr))
-                                                                 (member 1 (free-vars expr)))
-                                                         return expr)))))
+                    (let ((s idx))
+                      (loop for a in (car p) for b in (cdr p) do (push (cons a b) eps) (incf idx))
+                      (loop for k from s below (1- idx) do (push (list k (1+ k)) pkeys)))))
+                (when pkeys
+                  (let* ((ein '((0 . :int) (1 . :int))) (proto (term `(- ,(var 1 :int) ,(var 0 :int))))
+                         (s-obs (observe-io-search (nreverse eps) ein :int :operators (list (op :- :int))
+                                                   :body-bound (body-size proto ein) :pair-keys (nreverse pkeys) :ledger ledger))
+                         (inv (loop for b in (reverse (observation-job-buckets s-obs))
+                                    thereis (and (observation-bucket-invariant-p b)
+                                                 (loop for m in (reverse (observation-bucket-members b))
+                                                       for e = (observed-expression-expression m)
+                                                       when (and (member 0 (free-vars e)) (member 1 (free-vars e))) return e)))))
                     (when inv
-                      (let ((d0 (instantiate inv (list (cons 0 (term `(at ,x0 0)))
-                                                       (cons 1 (term `(at ,x1 0)))) :var))
-                            (d1 (instantiate inv (list (cons 0 (term `(at ,x0 1)))
-                                                       (cons 1 (term `(at ,x1 1)))) :var)))
-                        (setf step-delta-p t)
-                        (emit :DESC/CONSTANT-STEP-DELTA :sampled-content 2 4 8 '(:int-seq-out)
-                              nonempty-guard
-                              (bool-and (term `(= (length ,x0) (length ,x1)))
-                                        (term `(if (< (length ,x0) 2) t (= ,d0 ,d1))))
-                              (term `(< 1 (length ,x0)))
-                              :failure :neutral)))))))
+                      (setf step-delta-p t)
+                      (emit :DESC/CONSTANT-STEP-DELTA :sampled-content 2 4 8 '(:int-seq-out) ne-g
+                            (bool-and (term `(= (length ,x0) (length ,x1)))
+                                      (term `(if (< (length ,x0) 2) t
+                                                 (= ,(instantiate inv (list (cons 0 (term `(at ,x0 0))) (cons 1 (term `(at ,x1 0)))) :var)
+                                                    ,(instantiate inv (list (cons 0 (term `(at ,x0 1))) (cons 1 (term `(at ,x1 1)))) :var)))))
+                            (term `(< 1 (length ,x0))) :failure :neutral))))))
             (when (and (seq-type-p target) (equal (second seq-type) (second target)) (not step-delta-p))
-              (let* ((elem (second seq-type))
-                     (m0-proto (term `(member (at ,x1 0) ,x0)))
-                     (m1-proto (term `(member (at ,x1 1) ,x0)))
-                     (ne-out1 (remove-if (lambda (p) (null (cdr p))) nonempty-pairs))
-                     (ne-out2 (remove-if (lambda (p) (< (length (cdr p)) 2)) nonempty-pairs)))
-                (flet ((build-subset-ast (m0-expr m1-expr)
-                         (term `(if (= ,x1 ())
-                                    t
-                                    ,(bool-and m0-expr
-                                               (bool-and (term `(member (at ,x1 (- (length ,x1) 1)) ,x0))
-                                                         (term `(if (< 1 (length ,x1)) ,m1-expr t))))))))
-                  (cond
-                    (ne-out1
-                     (let* ((sample (or ne-out2 ne-out1))
-                            (proto (if ne-out2 m1-proto m0-proto))
-                            (m-obs (observe-io-search
-                                    sample rel-inputs :bool
-                                    :operators (list (op :member elem) (op :at target))
-                                    :literals (if ne-out2 '(0 1) '(0))
-                                    :constants (list (lit :bool t))
-                                    :body-bound (body-size proto rel-inputs)
-                                    :ledger ledger))
-                            (m0-ast (and (obs-agrees-p m-obs m0-proto (lit :bool t))
-                                         (obs-expr m-obs m0-proto)))
-                            (m1-ast (if ne-out2
-                                        (and (obs-agrees-p m-obs m1-proto (lit :bool t))
-                                             (obs-expr m-obs m1-proto))
-                                        m1-proto)))
-                       (when (and m0-ast m1-ast)
-                         (let* ((holds-ast (build-subset-ast m0-ast m1-ast))
-                                (probe-desc (make-knowledge-entry
-                                             :kind :descriptor :inputs rel-inputs :target :bool
-                                             :guard nonempty-guard :expression holds-ast)))
-                           (when (eq :satisfied
-                                     (evaluate-descriptor-entry-on-frame
-                                      probe-desc '(:seq-out) seq-type target nonempty-pairs ledger))
-                             (emit :DESC/SUBSET-ELEMENTS :sampled-content 2 (if subset-p 6 4) 8
-                                   '(:seq-out) nonempty-guard holds-ast nil))))))
-                    ((and (null pairs) subset-p)
-                     (emit :DESC/SUBSET-ELEMENTS :sampled-content 2 6 8 '(:seq-out)
-                           nonempty-guard (build-subset-ast m0-proto m1-proto) nil)))))))
+              (let* ((elem (second seq-type)) (m0 (term `(member (at ,x1 0) ,x0))) (m1 (term `(member (at ,x1 1) ,x0)))
+                     (ne1 (remove-if #'null ne-ps :key #'cdr)) (ne2 (remove-if (lambda (p) (< (length (cdr p)) 2)) ne-ps)))
+                (flet ((sub-ast (e0 e1)
+                         (term `(if (= ,x1 ()) t
+                                    ,(bool-and e0 (bool-and (term `(member (at ,x1 (- (length ,x1) 1)) ,x0))
+                                                            (term `(if (< 1 (length ,x1)) ,e1 t))))))))
+                  (cond (ne1 (let* ((s (or ne2 ne1)) (pr (if ne2 m1 m0))
+                                    (m-obs (observe-io-search s rel-in :bool :operators (list (op :member elem) (op :at target))
+                                                              :literals (if ne2 '(0 1) '(0)) :constants (list (lit :bool t))
+                                                              :body-bound (body-size pr rel-in) :ledger ledger))
+                                    (a0 (and (obs-agrees-p m-obs m0 (lit :bool t)) (obs-expr m-obs m0)))
+                                    (a1 (if ne2 (and (obs-agrees-p m-obs m1 (lit :bool t)) (obs-expr m-obs m1)) m1)))
+                               (when (and a0 a1)
+                                 (let* ((hast (sub-ast a0 a1))
+                                        (pd (make-knowledge-entry :kind :descriptor :inputs rel-in :target :bool :guard ne-g :expression hast)))
+                                   (when (eq :satisfied (evaluate-descriptor-entry-on-frame pd '(:seq-out) seq-type target ne-ps ledger))
+                                     (emit :DESC/SUBSET-ELEMENTS :sampled-content 2 (if subset-p 6 4) 8 '(:seq-out) ne-g hast nil))))))
+                        ((and (null pairs) subset-p)
+                         (emit :DESC/SUBSET-ELEMENTS :sampled-content 2 6 8 '(:seq-out) ne-g (sub-ast m0 m1) nil)))))))
           (nreverse specs))))))
 
 (defun type-facet-clause (ho-p seq-in-p target)
-  "The `:type` `descriptor-clause` for an entry's signature."
   (if (not seq-in-p)
-      (make-descriptor-clause :id :DESC/SCALAR->SCALAR :facet :type :tier 1
-                              :status :necessary :weight-bits 1 :work-cost 1)
+      (make-descriptor-clause :id :DESC/SCALAR->SCALAR :facet :type :tier 1 :status :necessary :weight-bits 1 :work-cost 1)
       (make-descriptor-clause
-       :id (cond ((and ho-p (seq-type-p target)) :DESC/HO-SEQ->SEQ)
-                 (ho-p :DESC/HO-SEQ->SCALAR)
-                 ((seq-type-p target) :DESC/SEQ->SEQ)
-                 (t :DESC/SEQ->SCALAR))
+       :id (cond ((and ho-p (seq-type-p target)) :DESC/HO-SEQ->SEQ) (ho-p :DESC/HO-SEQ->SCALAR)
+                 ((seq-type-p target) :DESC/SEQ->SEQ) (t :DESC/SEQ->SCALAR))
        :facet :type :tier 1 :status :necessary :weight-bits 2 :work-cost 1)))
 
 (defun evaluate-structural-clause-on-frame (clause frame-facts pairs)
-  "Evaluate a `:type` or `:algebraic` metadata clause against FRAME-FACTS and PAIRS."
   (ecase (descriptor-clause-facet clause)
-    (:type
-     (ecase (descriptor-clause-id clause)
-       (:DESC/SCALAR->SCALAR
-        (if (subsetp '(:scalar-in :scalar-out) frame-facts) :satisfied :neutral))
-       ((:DESC/HO-SEQ->SEQ :DESC/SEQ->SEQ)
-        (if (subsetp '(:seq-in :seq-out) frame-facts) :satisfied :violated))
-       ((:DESC/HO-SEQ->SCALAR :DESC/SEQ->SCALAR)
-        (if (subsetp '(:seq-in :scalar-out) frame-facts) :satisfied :violated))))
-    (:algebraic
-     (if pairs :satisfied :neutral))))
+    (:type (ecase (descriptor-clause-id clause)
+             (:DESC/SCALAR->SCALAR (if (subsetp '(:scalar-in :scalar-out) frame-facts) :satisfied :neutral))
+             ((:DESC/HO-SEQ->SEQ :DESC/SEQ->SEQ) (if (subsetp '(:seq-in :seq-out) frame-facts) :satisfied :violated))
+             ((:DESC/HO-SEQ->SCALAR :DESC/SEQ->SCALAR) (if (subsetp '(:seq-in :scalar-out) frame-facts) :satisfied :violated))))
+    (:algebraic (if pairs :satisfied :neutral))))
 
 (defun prune-auto-descriptors-for-entry (entry library)
-  "Remove stale `:auto-descriptor` entries previously generated for ENTRY before re-installing."
-  (let* ((kname (knowledge-entry-id entry))
-         (auto-ids (loop for edge in (knowledge-edges-to kname :describes library)
-                         for d = (find-knowledge-entry (second edge) library)
-                         when (and d (eq :descriptor (knowledge-entry-kind d))
-                                   (getf (knowledge-entry-metadata d) :auto-descriptor))
-                           collect (knowledge-entry-id d))))
+  (let ((auto-ids (loop for edge in (knowledge-edges-to (knowledge-entry-id entry) :describes library)
+                        for d = (find-knowledge-entry (second edge) library)
+                        when (and d (eq :descriptor (knowledge-entry-kind d)) (getf (knowledge-entry-metadata d) :auto-descriptor))
+                          collect (knowledge-entry-id d))))
     (when auto-ids
       (dolist (did auto-ids)
         (let ((d (find-knowledge-entry did library)))
-          (when d
-            (unindex-knowledge-entry d library)
-            (setf (knowledge-library-entries library)
-                  (delete d (knowledge-library-entries library) :test #'eq)))))
+          (when d (unindex-knowledge-entry d library)
+                (setf (knowledge-library-entries library) (delete d (knowledge-library-entries library) :test #'eq)))))
       (setf (knowledge-entry-edges entry)
-            (remove-if (lambda (edge)
-                         (and (eq :described-by (first edge))
-                              (null (cddr edge))
-                              (member (second edge) auto-ids :test #'eq)))
+            (remove-if (lambda (e) (and (eq :described-by (first e)) (null (cddr e)) (member (second e) auto-ids :test #'eq)))
                        (knowledge-entry-edges entry))))))
 
 (defun register-entry-io-descriptors (entry io-specs seq-type library)
-  "Install synthesized I/O descriptor specs as `:descriptor` `knowledge-entry` items in LIBRARY."
-  (let* ((kname (knowledge-entry-id entry))
-         (target (knowledge-entry-target entry))
-         (rel-inputs (list (cons 0 seq-type) (cons 1 target)))
-         (primary-id (and (eq :function (knowledge-entry-kind entry))
-                          (keyword-id "~A/DESCRIPTOR" kname)))
-         (primary-claimed-p (and primary-id
-                                 (let ((existing (find-knowledge-entry primary-id library)))
-                                   (and existing
-                                        (not (getf (knowledge-entry-metadata existing) :auto-descriptor))
-                                        (knowledge-evidence-current-p existing :necessary))))))
+  (let* ((kname (knowledge-entry-id entry)) (rel-in (list (cons 0 seq-type) (cons 1 (knowledge-entry-target entry))))
+         (pid (and (eq :function (knowledge-entry-kind entry)) (keyword-id "~A/DESCRIPTOR" kname)))
+         (claimed-p (and pid (let ((ex (find-knowledge-entry pid library)))
+                               (and ex (not (getf (knowledge-entry-metadata ex) :auto-descriptor))
+                                    (knowledge-evidence-current-p ex :necessary))))))
     (prune-auto-descriptors-for-entry entry library)
     (dolist (spec io-specs)
-      (destructuring-bind (&key id facet tier weight-bits work-cost frame-facts
-                                guard holds witness failure necessary-p)
-          spec
-        (let* ((use-primary-p (and primary-id necessary-p (not primary-claimed-p)))
-               (desc-id (if use-primary-p
-                            (progn (setf primary-claimed-p t) primary-id)
-                            (keyword-id "~A/~A" kname id)))
+      (destructuring-bind (&key id facet tier weight-bits work-cost frame-facts guard holds witness failure necessary-p) spec
+        (let* ((use-p (and pid necessary-p (not claimed-p)))
+               (did (if use-p (progn (setf claimed-p t) pid) (keyword-id "~A/~A" kname id)))
                (raw (make-knowledge-entry
-                     :id desc-id
-                     :kind :descriptor
-                     :domain (knowledge-entry-domain entry)
-                     :inputs rel-inputs
-                     :target :bool
-                     :expression holds
-                     :guard (or guard (lit :bool t))
-                     :auxiliary-code witness
-                     :status :empirical
-                     :certificate (when necessary-p '(:kind :structural-descriptor))
-                     :edges (list (list :describes kname))
-                     :metadata (list :auto-descriptor t :concept id :facet facet :tier tier
-                                     :weight-bits weight-bits :work-cost work-cost
-                                     :frame-facts frame-facts :failure failure)
+                     :id did :kind :descriptor :domain (knowledge-entry-domain entry) :inputs rel-in :target :bool
+                     :expression holds :guard (or guard (lit :bool t)) :auxiliary-code witness :status :empirical
+                     :certificate (when necessary-p '(:kind :structural-descriptor)) :edges (list (list :describes kname))
+                     :metadata (list :auto-descriptor t :concept id :facet facet :tier tier :weight-bits weight-bits
+                                     :work-cost work-cost :frame-facts frame-facts :failure failure)
                      :library library)))
-          (register-knowledge-entry
-           (if necessary-p (attest-knowledge-entry raw :derived '(:necessary)) raw)
-           :library library)
-          (add-knowledge-edge entry :described-by desc-id))))))
+          (register-knowledge-entry (if necessary-p (attest-knowledge-entry raw :derived '(:necessary)) raw) :library library)
+          (add-knowledge-edge entry :described-by did))))))
 
 (defun compute-entry-descriptor-profile (entry &optional (library *knowledge-library*) ledger)
-  "Synthesize and register `:descriptor` entries for ENTRY, assemble its `descriptor-clause`
-profile and secondary `compositional-name`, and index them in LIBRARY."
+  "Synthesize and register `:descriptor` entries for ENTRY and index its compositional address."
   (when (knowledge-entry-p entry)
-    (let* ((kname (knowledge-entry-id entry))
-           (kind (knowledge-entry-kind entry))
-           (inputs (knowledge-entry-inputs entry))
-           (target (knowledge-entry-target entry))
-           (body (and (member kind '(:function :decoder-template))
-                      (knowledge-entry-expression entry)))
+    (let* ((kname (knowledge-entry-id entry)) (kind (knowledge-entry-kind entry))
+           (inputs (knowledge-entry-inputs entry)) (target (knowledge-entry-target entry))
+           (body (and (member kind '(:function :decoder-template)) (knowledge-entry-expression entry)))
            (ho-p (not (null (find-if #'code-type-p inputs :key #'cdr))))
-           (shape-facts (function-shape-facts kname inputs target body))
-           (seq-spec (getf shape-facts :seq-spec)))
+           (facts (function-shape-facts kname inputs target body)) (seq-spec (getf facts :seq-spec)))
       (when (and (eq kind :function) (null (knowledge-entry-trigger entry)))
         (let ((fdef (find-function-definition kname)))
-          (when fdef
-            (setf (knowledge-entry-trigger entry) (compute-function-descriptor fdef)))))
+          (when fdef (setf (knowledge-entry-trigger entry) (compute-function-descriptor fdef)))))
       (let* ((pairs (sample-entry-io-pairs entry seq-spec ledger))
-             (io-specs (synthesize-io-descriptor-specs entry shape-facts pairs ho-p ledger))
-             (io-clauses (loop for spec in io-specs
-                               collect (make-descriptor-clause
-                                        :id (getf spec :id)
-                                        :facet (getf spec :facet)
-                                        :tier (getf spec :tier)
-                                        :status (if (getf spec :necessary-p) :necessary :empirical)
-                                        :weight-bits (getf spec :weight-bits)
-                                        :work-cost (getf spec :work-cost))))
-             (alg-clauses
-               (when library
-                 (append
-                  (when (knowledge-edges-from entry :abstracts library)
-                    (list (make-descriptor-clause :id :DESC/ABSTRACTS-FAMILY :facet :algebraic :tier 3
-                                                  :status :empirical :weight-bits 4 :work-cost 4)))
-                  (when (or (knowledge-edges-from entry :functor-laws library)
-                            (knowledge-edges-from entry :laws library))
-                    (list (make-descriptor-clause :id :DESC/ALGEBRAIC-LAW :facet :algebraic :tier 3
-                                                  :status :empirical :weight-bits 4 :work-cost 8))))))
+             (io-specs (synthesize-io-descriptor-specs entry facts pairs ho-p ledger))
              (clauses (append (list (type-facet-clause ho-p (not (null seq-spec)) target))
-                              io-clauses
-                              alg-clauses)))
+                              (loop for s in io-specs
+                                    collect (make-descriptor-clause :id (getf s :id) :facet (getf s :facet) :tier (getf s :tier)
+                                                                    :status (if (getf s :necessary-p) :necessary :empirical)
+                                                                    :weight-bits (getf s :weight-bits) :work-cost (getf s :work-cost)))
+                              (when (and library (knowledge-edges-from entry :abstracts library))
+                                (list (make-descriptor-clause :id :DESC/ABSTRACTS-FAMILY :facet :algebraic :tier 3
+                                                              :status :empirical :weight-bits 4 :work-cost 4)))
+                              (when (and library (or (knowledge-edges-from entry :functor-laws library)
+                                                     (knowledge-edges-from entry :laws library)))
+                                (list (make-descriptor-clause :id :DESC/ALGEBRAIC-LAW :facet :algebraic :tier 3
+                                                              :status :empirical :weight-bits 4 :work-cost 8))))))
         (when (and library seq-spec (eq entry (find-knowledge-entry kname library)))
           (register-entry-io-descriptors entry io-specs (cdr seq-spec) library))
         (setf (knowledge-entry-descriptor-profile entry) clauses
               (knowledge-entry-compositional-name entry) (derive-compositional-name entry clauses))
-        (when library
-          (index-knowledge-entry-compositional-address entry library))
+        (when library (index-knowledge-entry-compositional-address entry library))
         clauses))))
 
 (defun score-entry-by-descriptors (entry-or-id frame seq-input-id
                                    &key (library *knowledge-library*) ledger extra-fo-specs necessary-only-p)
-  "Evaluate the `:descriptor` entries and structural/algebraic profile clauses of ENTRY-OR-ID on FRAME.
-Returns `(VALUES compatible-p policy-delta-bits matched-clause-ids)`; lower delta is better.
-Only current `:necessary`-attested `:descriptor` entries on a unary-FO `:function` can reject an
-entry with `compatible-p = NIL`; uncertified descriptors act purely as soft policy hints."
-  (let* ((fn-name (if (knowledge-entry-p entry-or-id)
-                      (knowledge-entry-id entry-or-id)
-                      (canonical-op-name entry-or-id)))
-         (entry (if (knowledge-entry-p entry-or-id)
-                    entry-or-id
-                    (and library (find-knowledge-entry fn-name library))))
+  "Score ENTRY-OR-ID on FRAME -> `(VALUES compatible-p policy-delta-bits matched-clause-ids)`."
+  (let* ((fn-name (if (knowledge-entry-p entry-or-id) (knowledge-entry-id entry-or-id) (canonical-op-name entry-or-id)))
+         (entry (if (knowledge-entry-p entry-or-id) entry-or-id (and library (find-knowledge-entry fn-name library))))
          (clauses (and entry (not necessary-only-p)
                        (or (knowledge-entry-descriptor-profile entry)
                            (compute-entry-descriptor-profile entry library ledger))))
-         (schema (frame-schema frame))
-         (seq-type (cdr (assoc seq-input-id (schema-inputs schema))))
-         (target (schema-target schema))
-         (frame-facts (signature-facts (seq-type-p seq-type) target))
+         (schema (frame-schema frame)) (seq-type (cdr (assoc seq-input-id (schema-inputs schema))))
+         (target (schema-target schema)) (ffacts (signature-facts (seq-type-p seq-type) target))
          (pairs (frame-concrete-pairs frame seq-input-id))
-         (can-prune-p (and fn-name (null extra-fo-specs)
-                           (or (null entry) (eq :function (knowledge-entry-kind entry)))))
-         (descriptors
-           (when (and fn-name library)
-             (let ((seen nil) (out nil))
-               (dolist (edge (reverse (knowledge-edges-to fn-name :describes library)) (nreverse out))
-                 (let ((did (second edge)))
-                   (unless (member did seen :test #'eq)
-                     (push did seen)
-                     (let ((d (find-knowledge-entry did library)))
-                       (when (and d (eq :descriptor (knowledge-entry-kind d)))
-                         (push d out)))))))))
-         (delta 0)
-         (matched nil))
+         (can-prune-p (and fn-name (null extra-fo-specs) (or (null entry) (eq :function (knowledge-entry-kind entry)))))
+         (descs (when (and fn-name library)
+                  (let (seen out)
+                    (dolist (edge (reverse (knowledge-edges-to fn-name :describes library)) (nreverse out))
+                      (let ((did (second edge)))
+                        (unless (member did seen :test #'eq)
+                          (push did seen)
+                          (let ((d (find-knowledge-entry did library)))
+                            (when (and d (eq :descriptor (knowledge-entry-kind d)) (active-knowledge-entry-p d))
+                              (push d out)))))))))
+         (delta 0) matched)
     (unless necessary-only-p
-      (dolist (clause clauses)
-        (when (member (descriptor-clause-facet clause) '(:type :algebraic))
-          (charge ledger :orientation (descriptor-clause-work-cost clause))
-          (case (evaluate-structural-clause-on-frame clause frame-facts pairs)
-            (:satisfied
-             (decf delta (descriptor-clause-weight-bits clause))
-             (push (descriptor-clause-id clause) matched))
-            (:violated
-             (incf delta (ceiling (descriptor-clause-weight-bits clause) 2)))))))
-    (dolist (desc descriptors)
-      (let ((certified-p (knowledge-evidence-current-p desc :necessary)))
-        (unless (and necessary-only-p (not certified-p))
-          (let ((verdict (evaluate-descriptor-entry-on-frame desc frame-facts seq-type target pairs ledger)))
-            (when (and can-prune-p certified-p (eq verdict :violated))
+      (dolist (c clauses)
+        (when (member (descriptor-clause-facet c) '(:type :algebraic))
+          (charge ledger :orientation (descriptor-clause-work-cost c))
+          (case (evaluate-structural-clause-on-frame c ffacts pairs)
+            (:satisfied (decf delta (descriptor-clause-weight-bits c)) (push (descriptor-clause-id c) matched))
+            (:violated (incf delta (ceiling (descriptor-clause-weight-bits c) 2)))))))
+    (dolist (d descs)
+      (let ((cert-p (knowledge-evidence-current-p d :necessary)))
+        (unless (and necessary-only-p (not cert-p))
+          (let ((v (evaluate-descriptor-entry-on-frame d ffacts seq-type target pairs ledger)))
+            (when (and can-prune-p cert-p (eq v :violated))
               (return-from score-entry-by-descriptors (values nil most-positive-fixnum nil)))
             (unless necessary-only-p
-              (let* ((meta (knowledge-entry-metadata desc))
-                     (cid (getf meta :concept))
-                     (clause (and cid (find cid clauses :key #'descriptor-clause-id)))
-                     (weight (if clause
-                                 (descriptor-clause-weight-bits clause)
-                                 (or (getf meta :weight-bits) 0))))
-                (when (plusp weight)
-                  (case verdict
-                    (:satisfied
-                     (decf delta weight)
-                     (when cid (push cid matched)))
-                    (:violated
-                     (incf delta (ceiling weight 2)))))))))))
+              (let* ((meta (knowledge-entry-metadata d)) (cid (getf meta :concept))
+                     (c (and cid (find cid clauses :key #'descriptor-clause-id)))
+                     (w (if c (descriptor-clause-weight-bits c) (or (getf meta :weight-bits) 0))))
+                (when (plusp w)
+                  (case v (:satisfied (decf delta w) (when cid (push cid matched)))
+                        (:violated (incf delta (ceiling w 2)))))))))))
     (values t delta (nreverse matched))))
 
 (defun library-function-descriptor-compatible-p (frame seq-input-id fn-name ledger)
-  "Only current necessary-condition evidence authorizes descriptor pruning.
-Uncertified descriptors are hints; no function shape implies a hard rejection."
-  (nth-value 0 (score-entry-by-descriptors fn-name frame seq-input-id
-                                           :ledger ledger :necessary-only-p t)))
+  "Only current necessary-condition evidence authorizes descriptor pruning."
+  (nth-value 0 (score-entry-by-descriptors fn-name frame seq-input-id :ledger ledger :necessary-only-p t)))
+
+(defun frame-descriptor-address-clauses (frame seq-input-id)
+  "Infer candidate descriptor clause IDs from FRAME's concrete pairs on SEQ-INPUT-ID."
+  (let* ((schema (frame-schema frame)) (seq-type (and seq-input-id (cdr (assoc seq-input-id (schema-inputs schema)))))
+         (target (schema-target schema))
+         (pairs (and seq-input-id (seq-type-p seq-type) (frame-concrete-pairs frame seq-input-id)))
+         (eps (remove-if-not #'null pairs :key #'car)) (neps (remove-if #'null pairs :key #'car))
+         (eok (every (lambda (p) (null (cdr p))) eps))
+         clauses)
+    (cond ((and (seq-type-p seq-type) (seq-type-p target))
+           (push :DESC/HO-SEQ->SEQ clauses) (push :DESC/SEQ->SEQ clauses)
+           (when (and eps eok) (push :DESC/EMPTY->EMPTY clauses))
+           (when neps
+             (cond ((and eok (every (lambda (p) (and (listp (car p)) (listp (cdr p)) (= (length (car p)) (length (cdr p))))) neps))
+                    (push :DESC/LEN-EQ clauses) (push :DESC/POINTWISE-MAP clauses))
+                   ((and eok (every (lambda (p) (and (listp (car p)) (listp (cdr p)) (>= (length (car p)) 1) (= (length (cdr p)) (1- (length (car p)))))) neps))
+                    (push :DESC/LEN-DEC-1 clauses))
+                   ((every (lambda (p) (and (listp (car p)) (listp (cdr p)) (<= (length (cdr p)) (length (car p))))) neps)
+                    (push :DESC/LEN-LE clauses)
+                    (when (every (lambda (p) (subsetp (cdr p) (car p) :test #'equal)) neps)
+                      (push :DESC/SUBSET-ELEMENTS clauses))))))
+          ((seq-type-p seq-type)
+           (push :DESC/HO-SEQ->SCALAR clauses) (push :DESC/SEQ->SCALAR clauses)
+           (when (and (eq target :int) eps (every (lambda (p) (eql 0 (cdr p))) eps))
+             (push :DESC/EMPTY->ZERO clauses)))
+          (t (push :DESC/SCALAR->SCALAR clauses)))
+    (nreverse (remove-duplicates clauses :test #'eq))))
+
+(defun evaluate-frame-descriptors (frame &key (library *knowledge-library*) seq-input-id kind candidates
+                                     include-inactive-p ledger)
+  "Index FRAME against LIBRARY descriptors and rank candidates -> `(VALUES ranked pruned clauses)`."
+  (let* ((eff-lib (or library *knowledge-library*)) (inputs (schema-inputs (frame-schema frame)))
+         (eff-seq-id (or seq-input-id (car (find-if #'seq-type-p inputs :key #'cdr)) (caar inputs)))
+         (clauses (frame-descriptor-address-clauses frame eff-seq-id))
+         (addr-hits (make-hash-table :test #'eq)) seen cands-list ranked pruned)
+    (flet ((res (c) (let ((e (if (knowledge-entry-p c) c (and eff-lib (find-knowledge-entry c eff-lib)))))
+                      (when (and e (or include-inactive-p (active-knowledge-entry-p e))) e)))
+           (add-cand (e) (unless (member e seen :test #'eq) (push e seen) (push e cands-list))))
+      (let ((allowed (when candidates
+                       (let ((ht (make-hash-table :test #'eq)))
+                         (dolist (c candidates ht) (let ((e (res c))) (when e (setf (gethash e ht) t))))))))
+        (when (and eff-lib clauses)
+          (charge ledger :orientation (length clauses))
+          (dolist (c clauses)
+            (dolist (e (find-knowledge-entries-by-address c eff-lib include-inactive-p))
+              (when (and (or (null kind) (eq kind (knowledge-entry-kind e)))
+                         (or (null allowed) (gethash e allowed)))
+                (pushnew c (gethash e addr-hits) :test #'eq)
+                (add-cand e))))))
+      (cond (candidates (dolist (c candidates) (let ((e (res c))) (when e (add-cand e)))))
+            ((and eff-lib kind) (dolist (e (if include-inactive-p (knowledge-entries-of-kind kind eff-lib)
+                                               (active-knowledge-entries-of-kind kind eff-lib)))
+                                  (add-cand e)))))
+    (dolist (e (nreverse cands-list))
+      (multiple-value-bind (compat-p delta matched)
+          (score-entry-by-descriptors e frame eff-seq-id :library eff-lib :ledger ledger)
+        (if compat-p
+            (push (list :entry e :id (knowledge-entry-id e) :kind (knowledge-entry-kind e) :compatible-p t
+                        :score-delta delta :clauses matched :addresses (reverse (gethash e addr-hits)))
+                  ranked)
+            (push (knowledge-entry-id e) pruned))))
+    (values (stable-sort ranked (lambda (a b) (let ((sa (getf a :score-delta)) (sb (getf b :score-delta)))
+                                              (if (= sa sb) (> (length (getf a :addresses)) (length (getf b :addresses)))
+                                                  (< sa sb)))))
+            (nreverse pruned) clauses)))

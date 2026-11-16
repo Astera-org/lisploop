@@ -92,6 +92,37 @@ Operator holes are quoted operator values, not callable host functions."
         (charge ledger :construction (syntax-work model))
         (values model (nreverse inputs))))))
 
+(defun au-substitutions-frame (pattern substitutions &key keys known known-inputs inputs ledger)
+  "Convert recovered AU SUBSTITUTIONS for PATTERN into an ordinary child frame
+whose target is the tuple of quoted hole values `(:tuple (:code inputs hole-sort) ...)`.
+When KNOWN is omitted, defaults each row's known input to its occurrence coordinate `(idx)`.
+When KNOWN-INPUTS is omitted, defaults each coordinate column to `(:int)`."
+  (let* ((holes (pattern-holes pattern))
+         (hole-code-types (mapcar (lambda (h) (code-type inputs (cdr h))) holes))
+         (target-type (apply #'tuple-type hole-code-types))
+         (effective-known (or known
+                              (loop for i below (length substitutions)
+                                    collect (list i))))
+         (schema-inputs (or known-inputs
+                            (when (first effective-known)
+                              (loop for v in (first effective-known)
+                                    for i from 0
+                                    collect (cons i :int)))))
+         (rows
+           (loop for subst in substitutions
+                 for idx from 0
+                 for key = (if keys (nth idx keys) idx)
+                 for row-known = (nth idx effective-known)
+                 for tuple-val = (mapcar (lambda (h)
+                                           (let ((entry (assoc (car h) subst)))
+                                             (assert entry () "Missing binding for hole ~S" (car h))
+                                             (cdr entry)))
+                                         holes)
+                 for req = (set-requirement target-type (list tuple-val))
+                 do (charge ledger :au-child-frame (syntax-work req))
+                 collect (make-row :key key :known row-known :requirement req))))
+    (make-frame (make-schema :inputs schema-inputs :target target-type :lookup-p t) rows)))
+
 (defun term-references-bound-or-self-p (term bound-vars self-name)
   "True when TERM references any variable ID in BOUND-VARS or calls SELF-NAME."
   (cond

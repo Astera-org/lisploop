@@ -291,35 +291,6 @@ bijection (alpha-renaming) of hole IDs."
       (walk tree nil)
       (nreverse occurrences))))
 
-(defun au-substitutions-frame (pattern substitutions &key keys known inputs ledger)
-  "Convert recovered AU SUBSTITUTIONS for PATTERN into an ordinary child frame
-whose target is the tuple of quoted hole values `(:tuple (:code inputs hole-sort) ...)`.
-When KNOWN is omitted, defaults each row's known input to its occurrence coordinate `(idx)`."
-  (let* ((holes (pattern-holes pattern))
-         (hole-code-types (mapcar (lambda (h) (code-type inputs (cdr h))) holes))
-         (target-type (apply #'tuple-type hole-code-types))
-         (effective-known (or known
-                              (loop for i below (length substitutions)
-                                    collect (list i))))
-         (schema-inputs (when (first effective-known)
-                          (loop for v in (first effective-known)
-                                for i from 0
-                                collect (cons i :int))))
-         (rows
-           (loop for subst in substitutions
-                 for idx from 0
-                 for key = (if keys (nth idx keys) idx)
-                 for row-known = (nth idx effective-known)
-                 for tuple-val = (mapcar (lambda (h)
-                                           (let ((entry (assoc (car h) subst)))
-                                             (assert entry () "Missing binding for hole ~S" (car h))
-                                             (cdr entry)))
-                                         holes)
-                 for req = (set-requirement target-type (list tuple-val))
-                 do (charge ledger :au-child-frame (syntax-work req))
-                 collect (make-row :key key :known row-known :requirement req))))
-    (make-frame (make-schema :inputs schema-inputs :target target-type :lookup-p t) rows)))
-
 (defun make-tree-corpus (trees inputs &key domain sort ledger)
   "Snapshot an ordered sequence of typed ASTs under INPUTS into a standalone bit packet."
   (assert trees)
@@ -503,14 +474,18 @@ Returns (VALUES pos-vec labels-vec representatives residual partition)."
           (dotimes (i n)
             (setf (aref pos-vec i) i))
           (values pos-vec nil nil nil nil))
-        (let* ((indices (loop for i below n collect i))
+        (let* ((key-expr (if (and (knowledge-entry-p locality-key)
+                                  (eq :locality-key (knowledge-entry-kind locality-key)))
+                             (knowledge-entry-expression locality-key)
+                             locality-key))
+               (indices (loop for i below n collect i))
                (labels
                  (loop for i below n
-                       collect (if (functionp locality-key)
+                       collect (if (functionp key-expr)
                                    (progn
                                      (charge ledger :locality-key)
-                                     (funcall locality-key i))
-                                   (let ((run (evaluate locality-key '((0 . :int)) (list i) :ledger ledger)))
+                                     (funcall key-expr i))
+                                   (let ((run (evaluate key-expr '((0 . :int)) (list i) :ledger ledger)))
                                      (unless (eq :value (evaluation-status run))
                                        (error "Locality key evaluation failed on ~D: ~S" i run))
                                      (evaluation-value run)))))

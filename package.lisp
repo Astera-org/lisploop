@@ -5,11 +5,13 @@
    #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-inputs #:code-sort
    #:valid-type-p #:function-sort-p #:value-p #:seq-type-p #:gf-type-p #:tuple-type-p #:input-alist
    #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
+   #:schema-availability #:schema-available-inputs #:expression-respects-availability-p
+   #:schema-maximal-availability-id
    #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:map-ast #:app-of-p
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p
    #:operator-name #:operator-type #:operator-operand-type #:application-overhead
-   #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p
+   #:expression-type #:free-vars #:infer-exprs-inputs #:provably-total-p #:instantiate #:expression-less-p
    #:function-definition #:function-definition-p #:function-definition-name
    #:function-definition-inputs #:function-definition-return-type #:function-definition-code-type
    #:function-definition-body #:function-definition-oracle-table
@@ -26,12 +28,15 @@
    #:knowledge-entry-target #:knowledge-entry-expression #:knowledge-entry-guard #:knowledge-entry-trigger
    #:knowledge-entry-residual #:knowledge-entry-auxiliary-code #:knowledge-entry-status
    #:knowledge-entry-certificate #:knowledge-entry-bits #:knowledge-entry-gain #:knowledge-entry-work
+   #:knowledge-entry-active-p #:knowledge-entry-last-used-epoch
    #:knowledge-entry-edges #:knowledge-entry-metadata #:knowledge-entry-executable
    #:knowledge-entry-compositional-name #:knowledge-entry-descriptor-profile
    #:knowledge-library #:knowledge-library-p #:make-knowledge-library #:*knowledge-library*
-   #:knowledge-library-version #:knowledge-library-entries #:knowledge-library-function-names
+   #:knowledge-library-version #:knowledge-library-epoch #:knowledge-library-entries
+   #:knowledge-library-function-names
    #:knowledge-library-priority-predictor #:knowledge-library-compositional-index
    #:next-knowledge-entry-id #:find-knowledge-entry #:knowledge-entries-of-kind
+   #:active-knowledge-entry-p #:active-knowledge-entries-of-kind
    #:find-knowledge-entries-by-address
    #:knowledge-edges-from #:knowledge-edges-to #:add-knowledge-edge
    #:rebuild-knowledge-library-indexes #:register-knowledge-entry #:remove-knowledge-entry
@@ -70,7 +75,8 @@
    ;; 8. frame.lisp — Frames, pullbacks, 1-to-many lifts, coordinate probes, delta packets
    #:row #:make-row #:row-key #:row-known #:row-requirement
    #:frame #:frame-p #:make-frame #:snapshot-frame
-   #:frame-schema #:frame-rows #:frame-pairs #:frame-anchors
+   #:frame-schema #:frame-rows #:frame-edges #:frame-hard-edges #:frame-soft-edges
+   #:frame-pairs #:frame-anchors #:frame-metric #:normalize-frame-metric
    #:frame-conflict #:frame-conflict-p #:frame-conflict-kind #:frame-conflict-keys #:frame-conflict-known
    #:frame-constrained-row-count #:frame-min-resolved-rows
    #:orient-observations #:transition-probes #:lookup-model #:frame-oracle-table
@@ -81,6 +87,7 @@
    #:partition-pairs-and-anchors #:with-frame-linkage
    #:centered-mod-difference #:correction-packet #:apply-correction-packet
    #:correction-bit-size #:select-closest-witness #:relational-linkage-residual
+   #:library-metric-decoders
    #:quotient-values #:restore-quotient #:quotient-model
 
    ;; 9. enumerate.lisp — Grammars, size-indexed enumerator, bounded search & observation search
@@ -103,14 +110,14 @@
    #:observation-bucket-pair-bits #:observation-bucket-anchor-bits #:observation-bucket-residual-bits
    #:search-job #:start-search #:resume-search #:search-job-results #:search-job-best #:search-job-ledger
    #:search-job-completed-bound #:search-job-messages #:search-job-proposals #:search-job-reused-rejections
-   #:make-observation-scope #:observation-scope-id #:observation-scope-frame #:observation-scope-language
+   #:make-observation-scope #:observation-scope-id #:observation-scope-frame #:observation-scope-language #:observation-scope-library
    #:observation-job #:start-observation-search #:resume-observation-search #:observation-job-records
    #:observation-job-buckets #:observation-job-ledger #:observation-job-completed-bound #:observation-job-messages
    #:find-observation #:observed-agreement-p #:observation-invariants
 
    ;; 10. unify.lisp — Pattern matching, typed anti-unification, AU constructors
-   #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p
-   #:pattern-holes #:term-sort
+   #:match-pattern #:anti-unify #:compile-au-constructor #:au-substitutions-frame
+   #:pattern-has-holes-p #:pattern-holes #:term-sort
 
    ;; 11. fibers.lisp — Hard-EM fiber clustering & linkage extraction
    #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement
@@ -139,6 +146,8 @@
    #:propagation-rejected #:propagation-ambiguous
    #:prepare-propagator-library #:as-propagator-library #:propagate-requirements
    #:as-rewrite-library #:register-knowledge-law #:register-knowledge-solver
+   #:induce-cross-prime-solvers
+   #:conserved-expression-sensitive-p #:solve-equality-symbolically
 
    ;; 13. templates.lisp — Polymorphic retyping, template inference & AST transformations
    #:retype-expr #:retype-law #:retype-knowledge-laws #:retype-function-definition
@@ -146,12 +155,14 @@
    #:learn-knowledge-transformer
 
    ;; 14. bootstrap-inverters.lisp — Functorial & involution solver induction
-   #:induce-functorial-solvers #:induce-involution-solvers
+   #:induce-functorial-solvers #:induce-involution-solvers #:induce-monoid-fold-theories
+   #:register-metric-decoder #:define-standard-metric-decoders #:induce-moment-solvers
 
    ;; 15. condense.lisp — Lossy Stage A heuristic condensation
    #:heuristic-model #:heuristic-model-p #:heuristic-program #:heuristic-residual
-   #:heuristic-exact-p #:heuristic-total-p #:heuristic-program-bits #:heuristic-residual-bits
-   #:heuristic-run-work #:heuristic-score #:heuristic-alternatives #:heuristic-buckets
+   #:heuristic-exact-p #:heuristic-total-p #:heuristic-exhausted-p
+   #:heuristic-program-bits #:heuristic-residual-bits #:heuristic-run-work #:heuristic-work-used
+   #:heuristic-score #:heuristic-metric-decoder #:heuristic-alternatives #:heuristic-buckets
    #:heuristic-search #:start-heuristic-search #:resume-heuristic-search
    #:heuristic-search-best #:heuristic-search-ledger
    #:condense-heuristic
@@ -174,22 +185,24 @@
    #:descriptor-clause-id #:descriptor-clause-facet #:descriptor-clause-tier
    #:descriptor-clause-status #:descriptor-clause-weight-bits #:descriptor-clause-work-cost
    #:derive-compositional-name #:compute-entry-descriptor-profile
-   #:score-entry-by-descriptors #:library-function-descriptor-compatible-p
+   #:score-entry-by-descriptors #:library-function-descriptor-compatible-p #:evaluate-frame-descriptors
 
    ;; 18. relations.lisp — Hybrid parametric/lookup relations & delayed residual consolidation
    #:compose-hybrid-residual-program #:register-knowledge-relation #:consolidate-residual-relations
 
    ;; 19. synthesize.lisp — Anytime hierarchical agenda, decompositions, deferred proposals & CEGAR
-   #:*synthesis-debug-mode* #:candidate-score
+   #:*synthesis-debug-mode* #:*max-eager-proposals-per-node* #:candidate-score
    #:decomposition #:make-decomposition #:decomposition-name
    #:decomposition-decoder #:decomposition-child-id #:decomposition-child-type
    #:decomposition-bindings #:decomposition-language #:decomposition-bound
-   #:decomposition-children #:decomposition-solver #:decomposition-lift-p
+   #:decomposition-children #:decomposition-product-slots #:decomposition-product-pattern
+   #:decomposition-structural-p #:decomposition-solver #:decomposition-lift-p
    #:decomposition-fallback-p #:decomposition-policy-score #:decomposition-provenance
    #:synthesis-node #:synthesis-node-id #:synthesis-node-parent #:synthesis-node-proposal
    #:synthesis-node-frame #:synthesis-node-reserve-rows #:synthesis-node-language
    #:synthesis-node-bound #:synthesis-node-priority #:synthesis-node-heuristic
    #:synthesis-node-search #:synthesis-node-deferred-proposals #:synthesis-node-provenance
+   #:node-depth #:node-computational-depth
    #:synthesis-job #:start-synthesis #:resume-synthesis #:synthesis-finished-p
    #:synthesis-job-root #:synthesis-job-nodes #:synthesis-job-best #:synthesis-job-results
    #:synthesis-job-ledger #:synthesis-job-messages #:synthesis-job-debug-p
@@ -207,17 +220,20 @@
 
    ;; 21. decompose.lisp — Inductive sequence & heuristic residual expanders
    #:lift-inductive-sequence-context #:combine-expanders
-   #:heuristic-decompositions #:heuristic-expander
+   #:make-metric-residual-decoder #:heuristic-decompositions #:heuristic-expander
    #:start-heuristic-synthesis #:start-recursive-synthesis
 
    ;; 22. proposals.lisp — Library, partial-application, template & dependency proposal generators
    #:*library-code-argument-bits* #:*library-code-argument-work* #:*library-partial-proposal-limit*
    #:remember-decoder-template #:learned-decoder-decompositions
+   #:register-knowledge-locality-key #:induce-sort-by-topology
+   #:tuple-projection-decompositions #:product-decompositions #:product-expander
    #:library-decompositions #:library-expander
    #:dependency-proposals #:dependency-expander #:start-selector-search
 
    ;; 23. consolidate.lisp — Trace heuristic learning & continual library consolidation
    #:make-search-trace-frame #:condense-search-heuristic #:register-knowledge-heuristic
+   #:knowledge-entry-net-utility
    #:consolidate-library-functions #:consolidate-policy-descriptors
    #:commit-synthesis-job #:consolidate-knowledge-library
 
