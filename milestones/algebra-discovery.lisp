@@ -2,6 +2,139 @@
 
 ;;; Milestones 3A and 4: guard problems from observed support, and arithmetic solver discovery.
 
+;;; Arithmetic relations, solve discoveries and their propagation rules
+(defstruct arithmetic-relation domain operator observations records guard exhaustive-p)
+
+(defstruct solve-discovery relation position frame observations witness guard ledger
+  validation uniqueness)
+
+(defun arithmetic-application (operator position known unknown)
+  (assert (member position '(0 1)))
+  (if (zerop position) (app operator unknown known) (app operator known unknown)))
+
+(defun literal-conditional (condition yes no)
+  "Only fold literal Boolean conditions; no algebraic identity is supplied."
+  (if (lit-p condition)
+      (if (ast-value condition) yes no)
+      (term `(if ,condition ,yes ,no))))
+
+(defun arithmetic-definedness (relation position known unknown)
+  (let ((args (if (zerop position) (list unknown known) (list known unknown))))
+    (instantiate (arithmetic-relation-guard relation) (list (cons 0 (first args)) (cons 1 (second args))) :var)))
+
+(defun arithmetic-requirement (relation position)
+  "R(k,c,z): a Boolean predicate describing the complete defined forward fiber."
+  (let* ((domain (arithmetic-relation-domain relation))
+         (k (var 0 domain)) (c (var 1 domain)) (z (var 2 domain)))
+    (literal-conditional
+     (arithmetic-definedness relation position k z)
+     (term `(= ,(arithmetic-application (arithmetic-relation-operator relation) position k z) ,c))
+     (lit :bool nil))))
+
+(defun solve-witness-law (discovery)
+  (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation)))
+    (make-law domain (arithmetic-inputs domain)
+              (instantiate (arithmetic-requirement relation (solve-discovery-position discovery))
+                           (list (cons 2 (solve-discovery-witness discovery))) :var)
+              (lit :bool t) :guard (solve-discovery-guard discovery))))
+
+(defun solve-uniqueness-law (discovery)
+  "Under G(k,c), R(k,c,z) iff z=q(k,c): validates the WHOLE fiber, not just a witness."
+  (let* ((relation (solve-discovery-relation discovery)) (domain (arithmetic-relation-domain relation)))
+    (make-law domain (arithmetic-inputs domain 3)
+              (arithmetic-requirement relation (solve-discovery-position discovery))
+              (term `(= ,(var 2 domain) ,(solve-discovery-witness discovery)))
+              :guard (solve-discovery-guard discovery))))
+
+(defun validate-arithmetic-solver (discovery &key (samples nil samples-p)
+                                               (uniqueness-samples nil uniqueness-samples-p)
+                                               (work-limit +completion-work+))
+  (let* ((relation (solve-discovery-relation discovery))
+         (position (solve-discovery-position discovery))
+         (exhaustive-p (finite-type-p (arithmetic-relation-domain relation))))
+    (setf (solve-discovery-validation discovery)
+          (validate-law (solve-witness-law discovery) work-limit (or samples-p (not exhaustive-p))
+                        (cond (samples-p samples)
+                              ((not exhaustive-p)
+                               (remove-duplicates
+                                (mapcar #'row-known (frame-rows (solve-discovery-frame discovery)))
+                                :test #'equal))))
+          (solve-discovery-uniqueness discovery)
+          (validate-law (solve-uniqueness-law discovery) work-limit
+                        (or uniqueness-samples-p (not exhaustive-p))
+                        (cond (uniqueness-samples-p uniqueness-samples)
+                              ((not exhaustive-p)
+                               (loop for record in (arithmetic-relation-records relation)
+                                     collect (list (nth (1+ (- 1 position)) record)
+                                                   (fourth record)
+                                                   (nth (1+ position) record)))))))
+    discovery))
+
+(defun certified-solve-discovery-p (discovery)
+  (and (arithmetic-relation-exhaustive-p (solve-discovery-relation discovery))
+       (loop for state in (list (solve-discovery-validation discovery) (solve-discovery-uniqueness discovery))
+             for expected in (list (solve-witness-law discovery) (solve-uniqueness-law discovery))
+             always (and state (eq :validated (law-validation-status state))
+                         (law-validation-certificate state)
+                         (equalp (getf (law-validation-certificate state) :snapshot)
+                                 (knowledge-statement-snapshot expected))))))
+
+(defun current-witness-conjecture-p (discovery)
+  (let ((validation (solve-discovery-validation discovery)))
+    (and validation (eq :conjecture (law-validation-status validation))
+         (equalp (law-validation-snapshot validation)
+                 (knowledge-statement-snapshot (solve-witness-law discovery))))))
+
+(defun solve-discovery-solver-arguments (discovery)
+  "The operator and keyword arguments with which `make-knowledge-solver` records DISCOVERY.
+Its evidence is its own law validations, so a certified discovery is passed as attested
+instead of being checked again."
+  (let* ((relation (solve-discovery-relation discovery))
+         (domain (arithmetic-relation-domain relation))
+         (certified (certified-solve-discovery-p discovery))
+         (uniqueness (solve-discovery-uniqueness discovery))
+         (ledger (solve-discovery-ledger discovery)))
+    (list (arithmetic-relation-operator relation)
+          :domain domain :inputs (arithmetic-inputs domain) :target domain
+          :position (solve-discovery-position discovery)
+          :witness (solve-discovery-witness discovery) :guard (solve-discovery-guard discovery)
+          :attested-p certified
+          ;; Uniqueness is what licenses narrowing a fiber to one witness without a fallback.
+          :unique-p (or certified
+                        (and uniqueness
+                             (member (law-validation-status uniqueness) '(:conjecture :validated))
+                             t))
+          :work (and ledger (ledger-total ledger)))))
+
+(defun prepare-propagator-library (discoveries ledger)
+  "Freeze certified field rules and current integer witness conjectures, each as a
+`:solver` entry of no library."
+  (make-propagator-library
+   :rules
+   (loop for discovery in discoveries
+         for (operator . arguments) = (solve-discovery-solver-arguments discovery)
+         do (charge ledger :propagator-library
+                    (+ (syntax-work (law-statement (solve-witness-law discovery)))
+                       (syntax-work (law-statement (solve-uniqueness-law discovery)))))
+         when (or (getf arguments :attested-p)
+                  (and (eq :int (getf arguments :domain)) (current-witness-conjecture-p discovery)))
+           collect (let ((entry (apply #'make-knowledge-solver operator :library nil arguments)))
+                     ;; An integer rule's uniqueness rests on its sampled conjecture.
+                     (when (and (getf arguments :unique-p) (not (getf arguments :attested-p)))
+                       (attest-knowledge-entry entry :derived '(:uniqueness)))
+                     (knowledge-entry->propagator-rule entry)))))
+
+(defun discovery-propagator-library (source ledger)
+  "SOURCE as a propagator library, where it or its elements may be solve discoveries;
+anything else is what `as-propagator-library` takes."
+  (let* ((sources (if (listp source) source (list source)))
+         (discoveries (remove-if-not #'solve-discovery-p sources))
+         (others (remove-if #'solve-discovery-p sources)))
+    (cond ((null discoveries) (as-propagator-library source))
+          ((null others) (prepare-propagator-library discoveries ledger))
+          (t (as-propagator-library
+              (append others (list (prepare-propagator-library discoveries ledger))))))))
+
 ;;; Guard Discovery & Support Frames
 (defstruct (guard-problem (:constructor %make-guard-problem)) scope support frame equations)
 

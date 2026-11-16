@@ -5,8 +5,8 @@
 ;;; Bounded proposal grammars, including labelled structural bootstrap proposals.
 (defun candidate-library-definitions (language &key self-name functions frame)
   "Return higher-order `function-definition`s eligible for `library-decompositions`:
-defined functions with a concrete body (excluding SELF-NAME) that take one or more `:code`
-parameter whose return sort is first-order. When FRAME has sequence types not covered by
+defined functions with a concrete body (excluding SELF-NAME and archived entries) that take
+one or more `:code` parameter whose return sort is first-order. When FRAME has sequence types not covered by
 the base definitions, polymorphically instantiates matching combinators via `retype-function-definition`."
   (let* ((ho-op-names (loop for o in (language-operators language)
                             for name = (and (operator-p o) (operator-name o))
@@ -21,9 +21,12 @@ the base definitions, polymorphically instantiates matching combinators via `ret
                  :from-end t))
          (base-defs
            (loop for name in names
+                 for entry = (find-knowledge-entry name)
                  for def = (and (not (eq name self-name))
+                                ;; A function named outright is lifted whatever its standing.
                                 (or (member name functions :test #'eq)
-                                    (not (gethash name *auto-retyped-functions*)))
+                                    (not (or (gethash name *auto-retyped-functions*)
+                                             (and entry (not (knowledge-entry-active-p entry))))))
                                 (find-function-definition name))
                  when (and def
                            (function-definition-body def)
@@ -313,6 +316,7 @@ through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closur
                     24))
          (child-id (next-child-id inputs))
          (defs (candidate-library-definitions language :self-name self-name :functions functions :frame frame))
+         (verdicts nil) ; (input-id . verdicts): the candidates' descriptors, evaluated once per input
          (proposals nil))
     (dolist (def defs)
       (when (and (equal (function-definition-return-type def) target)
@@ -338,9 +342,16 @@ through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closur
                   (when (equal (cdr p-spec) (cdr primary-spec))
                     (let ((p-id (car p-spec)))
                       (multiple-value-bind (compat-p policy-score matched-clauses)
-                          (score-entry-by-descriptors fn-name frame p-id
-                                                      :ledger ledger
-                                                      :extra-fo-specs extra-fo-specs)
+                          (score-entry-by-descriptors
+                           fn-name frame p-id
+                           :ledger ledger
+                           :extra-fo-specs extra-fo-specs
+                           :verdicts (cdr (or (assoc p-id verdicts)
+                                              (first (push (cons p-id
+                                                                 (evaluate-frame-descriptors
+                                                                  frame p-id :ledger ledger
+                                                                  :describing (mapcar #'function-definition-name defs)))
+                                                           verdicts)))))
                         (when compat-p
                           (let ((extra-options
                                   (mapcar (lambda (espec)
@@ -513,6 +524,243 @@ compress multi-input level sets are proposed."
                                   :solver (synthesis-job-library job)
                                   :debug-p (synthesis-job-debug-p job)))))))
 
+;;; Structural proposals: a value built by an injective constructor is posed slot by slot,
+;;; and a tuple among the inputs is offered to the child as its components.
+
+(defparameter *product-arity-limit* 6
+  "The most components a tuple, or holes a constructor, may have to be posed slot by slot.")
+
+(defun component-bindings (inputs)
+  "Bindings for a child that sees each of INPUTS, a small homogeneous tuple being replaced
+by its components `(at X 'j)`. The child's inputs are numbered from 0 in the order of
+INPUTS, whatever ids INPUTS carry. Returns (VALUES bindings projected-types)."
+  (let ((next -1)
+        (projected nil))
+    (values
+     (loop for (id . type) in inputs
+           append (if (and (homogeneous-tuple-type-p type)
+                           (<= (length (rest type)) *product-arity-limit*))
+                      (progn (pushnew type projected :test #'equal)
+                             (loop for index below (length (rest type))
+                                   collect (cons (incf next) (term `(at ,(var id type) ,index)))))
+                      (list (cons (incf next) (var id type)))))
+     projected)))
+
+(defun component-language (language bindings inputs &optional dropped-types)
+  "LANGUAGE over the inputs BINDINGS compute from INPUTS, without the `:at` projections and
+`:tuple` constructors of DROPPED-TYPES, which a structural proposal has already applied."
+  (derive-language language
+                   :inputs (binding-inputs bindings inputs)
+                   :operators (remove-if (lambda (operator)
+                                           (and (operator-p operator)
+                                                (member (operator-name operator) '(:at :tuple))
+                                                (member (operator-operand-type operator) dropped-types
+                                                        :test #'equal)))
+                                         (language-operators language))))
+
+(defun rows-pin-values-p (frame)
+  "True when FRAME constrains some row and each row it constrains to one explicit value."
+  (and (plusp (frame-constrained-row-count frame))
+       (every (lambda (row)
+                (or (not (constrained-row-p row)) (nth-value 1 (row-singleton-value row))))
+              (frame-rows frame))))
+
+(defun product-decompositions (name decoder slots bindings language slack &key solver provenance)
+  "One proposal for each of SLOTS, ((id . type) ...), the variables of the product DECODER.
+All share SLOTS and BINDINGS, so the controller joins their models. Each slot may spend
+SLACK body bits beyond its own header."
+  (loop for (id . type) in slots
+        for index from 0
+        collect (make-decomposition
+                 :name (list name index) :decoder decoder :child-id id :child-type type
+                 :bindings bindings :language language
+                 :bound (header-bound (language-inputs language) type slack)
+                 :slots slots :structural-p t :solver solver
+                 :provenance (and provenance (list* :slot index provenance)))))
+
+(defun structural-decompositions (frame language bound &key solver ledger (debug-p *synthesis-debug-mode*))
+  "Proposals that take FRAME's values apart without computing anything, for a child that
+may spend the body bits BOUND leaves FRAME. A tuple target whose rows pin its value is the
+product of its components. A target of quoted code whose rows pin two or more distinct
+trees is the product of the holes of their anti-unifier. Either way, and for a scalar
+target, small tuples among the inputs are replaced by their components."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target (schema-target schema))
+         (slack (max 18 (- bound (header-size inputs target))))
+         (first-slot (next-child-id inputs))
+         (pinned-p (rows-pin-values-p frame)))
+    (multiple-value-bind (bindings projected) (component-bindings inputs)
+      (flet ((child-language (&optional built)
+               (component-language language bindings inputs (append built projected)))
+             (provenance (origin &rest more)
+               (when debug-p (list* :origin origin :bindings bindings more))))
+        (cond
+          ((and pinned-p (tuple-type-p target) (<= 1 (length (rest target)) *product-arity-limit*))
+           (let ((slots (loop for type in (rest target)
+                              for id from first-slot
+                              collect (cons id type))))
+             (product-decompositions
+              :tuple-product
+              (apply #'app (op :tuple target) (loop for (id . type) in slots collect (var id type)))
+              slots bindings (child-language (list target)) slack
+              :solver solver :provenance (provenance :tuple-product))))
+          ((and pinned-p (expression-code-p target))
+           (let* ((scope (code-inputs target))
+                  (trees (remove-duplicates
+                          (loop for row in (frame-rows frame)
+                                when (constrained-row-p row) collect (row-singleton-value row))
+                          :test #'equal))
+                  (pattern (and (rest trees) (anti-unify trees scope ledger :operator-holes-p nil)))
+                  (holes (and pattern (pattern-holes pattern))))
+             (when (and holes (not (hole-p pattern)) (<= (length holes) *product-arity-limit*))
+               (multiple-value-bind (constructor parameters) (compile-au-constructor pattern scope ledger)
+                 (let ((slots (loop for (nil . type) in parameters
+                                    for id from first-slot
+                                    collect (cons id type))))
+                   (product-decompositions
+                    :constructor-au
+                    ;; The constructor numbers its holes from 0; the slots must not clash with INPUTS.
+                    (instantiate constructor
+                                 (loop for (hole-id . type) in parameters
+                                       for (id . nil) in slots
+                                       collect (cons hole-id (var id type)))
+                                 :var)
+                    slots bindings (child-language) slack
+                    :solver solver :provenance (provenance :constructor-au :pattern pattern)))))))
+          ;; A compound target may need the tuple whole, as an argument or as its own value.
+          ((and projected (or (member target '(:int :bool)) (gf-type-p target)))
+           (list (make-decomposition
+                  :name :components :decoder (var first-slot target) :child-id first-slot
+                  :child-type target :bindings bindings :language (child-language)
+                  :bound (header-bound (binding-inputs bindings inputs) target slack)
+                  :structural-p t :solver solver
+                  :provenance (provenance :components)))))))))
+
+(defun structural-expander (&key child-language child-bound)
+  "An `:expand` function that proposes `structural-decompositions` of the node's frame."
+  (lambda (job node frame language h-model ledger)
+    (declare (ignore h-model))
+    ;; A recursive definition is judged as a whole: its slots could not each call it.
+    (unless (and (synthesis-job-self-name job) (not (node-in-lifted-library-branch-p node)))
+      (let ((inputs (schema-inputs (frame-schema frame))))
+        (structural-decompositions
+         frame
+         (if (and child-language (equal (language-inputs child-language) inputs)) child-language language)
+         (or child-bound (expansion-bound node)
+             (header-bound inputs (schema-target (frame-schema frame)) 24))
+         :solver (synthesis-job-library job)
+         :ledger ledger
+         :debug-p (synthesis-job-debug-p job))))))
+
+;;; Induced row order: a key along which the target varies little gives the rows a topology.
+
+(define-knowledge-kind :locality-key
+  (:priority 50)
+  (:validate (entry library)
+    (declare (ignore library))
+    (assert (eq :int (knowledge-entry-target entry)))
+    (assert-entry-expression-type entry)))
+
+(defun canonical-row-order (rows)
+  "ROWS in an order fixed by what they know and require, whatever order they are stored in."
+  (stable-sort (copy-list rows) #'string<
+               :key (lambda (row)
+                      (prin1-to-string (list (row-known row) (ast->sexp (row-requirement row)))))))
+
+(defun induce-row-order (frame &key buckets ledger)
+  "Look for an integer key k(X) along which FRAME's target varies little. The candidates are
+the integer inputs and the integer features in BUCKETS, ((expression . row-values) ...) as
+Stage A leaves them, so no expression is evaluated. Rows are sorted by each key, ties being
+broken by `canonical-row-order`, and the targets are priced as a chain: the first in full,
+each next one as a correction of the one before, plus the body of the key. A key is induced
+when its chain is cheaper than the targets priced one by one and than their star, every
+target as a correction of the best single one: a star explains targets that are merely
+alike, in no order. Returns nil, or (VALUES key edges chain-bits baseline-bits): EDGES holds
+a :persistence edge for each two neighbours of the chain and a :distinct edge between its
+ends when their targets differ."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target (schema-target schema))
+         (stored (frame-rows frame))
+         (rows (canonical-row-order stored)))
+    (when (and (>= (length rows) 3)
+               (every (lambda (row) (nth-value 1 (row-singleton-value row))) rows))
+      (labels ((chain-bits (ordered)
+                 (+ (value-bit-size (row-singleton-value (first ordered)) target)
+                    (loop for (before after) on ordered
+                          while after
+                          sum (correction-bit-size (row-singleton-value before)
+                                                   (row-singleton-value after) target))))
+               (key-values (values)
+                 ;; (row . value) for values listed in stored order, or nil unless all are integers
+                 (and (= (length values) (length stored))
+                      (every #'integerp values)
+                      (mapcar #'cons stored values))))
+        (let* ((targets (mapcar #'row-singleton-value rows))
+               (independent (loop for value in targets sum (value-bit-size value target)))
+               (star (loop for centre in targets
+                           minimize (+ (value-bit-size centre target)
+                                       (loop for value in targets
+                                             sum (correction-bit-size centre value target)))))
+               (baseline (min independent star))
+               (candidates
+                 (append (loop for (id . type) in inputs
+                               for position from 0
+                               when (eq :int type)
+                                 collect (cons (var id type)
+                                               (key-values (mapcar (lambda (row) (nth position (row-known row)))
+                                                                   stored))))
+                         (loop for (expression . values) in buckets
+                               when (and (eq :int (ast-type expression)) (not (var-p expression))
+                                         (not (lit-p expression)))
+                                 collect (cons expression (key-values values)))))
+               (best nil))              ; (key ordered-rows bits)
+          (loop for (key . by-row) in candidates
+                when (and by-row (rest (remove-duplicates (mapcar #'cdr by-row))))
+                  do (charge ledger :orientation (length rows))
+                     (let* ((ordered (stable-sort (copy-list rows) #'<
+                                                  :key (lambda (row) (cdr (assoc row by-row)))))
+                            (bits (+ (chain-bits ordered) (body-size key inputs))))
+                       (when (or (null best) (< bits (third best))
+                                 (and (= bits (third best)) (expression-less-p key (first best) inputs)))
+                         (setf best (list key ordered bits)))))
+          (when (and best (< (third best) baseline))
+            (destructuring-bind (key ordered bits) best
+              (values key
+                      (append (loop for (before after) on ordered
+                                    while after
+                                    collect (list :persistence (row-key before) (row-key after)))
+                              (let ((first-row (first ordered)) (last-row (car (last ordered))))
+                                (unless (equal (row-singleton-value first-row) (row-singleton-value last-row))
+                                  (list (list :distinct (row-key first-row) (row-key last-row))))))
+                      bits baseline))))))))
+
+(defun with-induced-row-order (frame &key buckets ledger library)
+  "FRAME with its rows stored along the chain of an induced key and the chain's edges
+attached, and the key, as two values; FRAME itself and nil when no key is induced. With
+LIBRARY the key is registered there as a `:locality-key` for later correspondence search."
+  (multiple-value-bind (key edges chain-bits baseline-bits) (induce-row-order frame :buckets buckets :ledger ledger)
+    (if (null key)
+        (values frame nil)
+        (let* ((chain (cons (second (first edges))
+                            (loop for (kind nil after) in edges
+                                  when (eq kind :persistence) collect after)))
+               (inputs (schema-inputs (frame-schema frame))))
+          (when library
+            (register-knowledge-entry
+             (make-knowledge-entry :kind :locality-key :inputs inputs :target :int :expression key
+                                   :gain (- baseline-bits chain-bits) :status :empirical
+                                   :certificate '(:kind :induced-row-order) :library library)
+             :library library :ledger ledger))
+          (values (derive-frame frame
+                                :rows (mapcar (lambda (row-key)
+                                                (snapshot-row (find row-key (frame-rows frame)
+                                                                    :key #'row-key :test #'equal)))
+                                              chain)
+                                :edges (append (frame-edges frame) edges))
+                  key)))))
+
 (defun selector-decompositions (frame language bound &key fibers dependencies (debug-p *synthesis-debug-mode*))
   (let* ((inputs (schema-inputs (frame-schema frame)))
          (target (schema-target (frame-schema frame)))
@@ -534,11 +782,12 @@ compress multi-input level sets are proposed."
 (defun heuristic-expander (&key child-language guard-language child-bound guard-bound
                                 (work-limit 20000) (additive-p t) (conditional-p t)
                                 (library-proposals-p t) library-functions
-                                (dependency-proposals-p t))
+                                (dependency-proposals-p t) (structural-proposals-p t))
   "An `:expand` function: each node turns its own Stage A model into Stage B additive and
 conditional residual branches, sufficient-statistic dependency projections (reusing Stage A's
-observation buckets), and higher-order library combinator branches when LIBRARY-PROPOSALS-P
-is true, so every proposal competes under Stage A full-path pricing and the 3:1 reserve schedule."
+observation buckets), higher-order library combinator branches when LIBRARY-PROPOSALS-P
+is true, and the structural products and projections of its frame when STRUCTURAL-PROPOSALS-P
+is, so every proposal competes under Stage A full-path pricing and the 3:1 reserve schedule."
   (combine-expanders
    (when library-proposals-p
      (library-expander :child-language child-language :child-bound child-bound
@@ -565,7 +814,9 @@ is true, so every proposal competes under Stage A full-path pricing and the 3:1 
                                    :self-name (synthesis-job-self-name job)
                                    :solver (synthesis-job-library job)
                                    :ledger ledger
-                                   :debug-p (synthesis-job-debug-p job)))))))
+                                   :debug-p (synthesis-job-debug-p job)))))
+   (when structural-proposals-p
+     (structural-expander :child-language child-language :child-bound child-bound))))
 
 (defparameter *library-code-argument-bits* 20
   "Body-bit bound for quoted sibling parameters in generic partial applications.")

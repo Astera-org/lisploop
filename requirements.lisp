@@ -246,7 +246,8 @@ it is closed, else apply a structural rule, narrow a literal membership, or unfo
   '((:at (:tuple . fold-at-tuple) (:cons . fold-at-cons))
     (:tail (:cons . fold-tail-cons))
     (:length (:cons . fold-length-cons))
-    (:= (:tuple . fold-equal-tuple) (:cons . fold-equal-cons) (:if . fold-equal-if)))
+    (:= (:tuple . fold-equal-tuple) (:cons . fold-equal-cons) (:if . fold-equal-if)
+        (:code-apply . fold-equal-code-apply)))
   "The structural rules, as (outer-operator (inner-constructor . function) ...): each takes
 a destructor, or an equality with a literal, off a constructor application. The function
 receives the fold state, the whole term, the constructor application and the other operand
@@ -321,6 +322,19 @@ the empty sequence. A refuted head settles it without a visit to the tail."
                          (bool-and head-eq (fold-walk-at-depth
                                             state deeper (term `(= ,(third pair) ',(rest vals)))))))))
          (keep-or-revert state both whole t))))))
+
+(defun fold-equal-code-apply (state whole application literal)
+  "`(= (code-apply f (tuple a0 ... ak)) 'tree)` is `(= f 'op)` and `(= (tuple a0 ... ak)
+'(t0 ... tk))` when TREE is the application `(op t0 ... tk)` of an operator of F's sort, and
+false for any other tree: an application is built from its operator and arguments alone."
+  (declare (ignore whole))
+  (destructuring-bind (operator arguments) (rest application)
+    (let ((tree (ast-value literal))
+          (sort (code-sort (ast-type operator))))
+      (if (and (app-p tree) (operator-p (first tree)) (equal sort (operator-type (first tree))))
+          (fold-walk state (bool-and (term `(= ,operator ',(first tree)))
+                                     (term `(= ,arguments ',(rest tree)))))
+          (lit :bool nil)))))
 
 (defun fold-equal-if (state whole conditional literal)
   "`(= (if c a b) 'v)` on sequences is `(if c (= a 'v) (= b 'v))`, which exposes each branch."

@@ -1,6 +1,6 @@
 (in-package #:lisploop)
 
-;;; Pattern matching, typed anti-unification, and shared-subterm covers.
+;;; Pattern matching, typed anti-unification, substitution frames, and shared-subterm covers.
 
 (defun pattern-has-holes-p (term)
   (not (null (pattern-holes term))))
@@ -71,6 +71,34 @@ application and its source terms; when it returns false one hole stands for the 
                               (match-pattern pattern source inputs ledger)
                             (assert matched)
                             substitution)) sources))))))
+
+(defun au-substitutions-frame (pattern substitutions &key keys known inputs schema-inputs ledger)
+  "The hole fillings that anti-unification recovered, as an ordinary frame: row i requires
+the tuple of quoted values `(:tuple (:code inputs hole-sort) ...)` that SUBSTITUTIONS[i]
+gives the holes of PATTERN, INPUTS being the scope of the unified terms. KEYS names the
+rows, by default their positions. KNOWN holds each row's inputs under SCHEMA-INPUTS,
+((id . type) ...); by default a row knows its position `(i)`, and integers given without a
+schema are numbered from 0."
+  (let* ((holes (pattern-holes pattern))
+         (target-type (apply #'tuple-type
+                             (mapcar (lambda (hole) (code-type inputs (cdr hole))) holes)))
+         (known (or known (loop for i below (length substitutions) collect (list i))))
+         (schema-inputs (or schema-inputs
+                            (loop for i below (length (first known)) collect (cons i :int)))))
+    (make-frame
+     (make-schema :inputs schema-inputs :target target-type :lookup-p t)
+     (loop for substitution in substitutions
+           for index from 0
+           for row-known in known
+           for fillings = (mapcar (lambda (hole)
+                                    (let ((entry (assoc (car hole) substitution)))
+                                      (assert entry () "Missing binding for hole ~S" (car hole))
+                                      (cdr entry)))
+                                  holes)
+           for requirement = (set-requirement target-type (list fillings))
+           do (charge ledger :au-child-frame (syntax-work requirement))
+           collect (make-row :key (if keys (nth index keys) index)
+                             :known row-known :requirement requirement)))))
 
 (defun compile-au-constructor (pattern scope &optional ledger)
   "A DSL program maps quoted hole fillings to the instantiated quoted expression.

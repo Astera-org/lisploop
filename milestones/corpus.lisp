@@ -65,13 +65,13 @@ list of Booleans. Each emitted field is charged as :packet-assembly."
   "Snapshot one domain/schema's ordered statements, including duplicate occurrences.
 Evidence/provenance are not part of this syntax-compression task."
   (assert laws)
-  (let ((domain (law-domain (first laws))) (inputs (law-inputs (first laws))))
-    (assert (every (lambda (law) (and (equal domain (law-domain law))
-                                      (equal inputs (law-inputs law)))) laws))
+  (let ((domain (knowledge-entry-domain (first laws))) (inputs (knowledge-entry-inputs (first laws))))
+    (assert (every (lambda (law) (and (equal domain (knowledge-entry-domain law))
+                                      (equal inputs (knowledge-entry-inputs law)))) laws))
     (let* ((copies (mapcar (lambda (law)
-                             (let ((eq-args (rest (law-equation law))))
+                             (let ((eq-args (rest (knowledge-entry-expression law))))
                                (make-law domain inputs (first eq-args) (second eq-args)
-                                         :guard (law-guard law))))
+                                         :guard (knowledge-entry-guard law))))
                            laws))
            (statements (mapcar #'law-statement copies)))
       (%make-law-corpus :domain (copy-tree domain) :inputs (copy-tree inputs) :sort :bool
@@ -290,35 +290,6 @@ bijection (alpha-renaming) of hole IDs."
                        do (walk child (cons i rev-path))))))
       (walk tree nil)
       (nreverse occurrences))))
-
-(defun au-substitutions-frame (pattern substitutions &key keys known inputs ledger)
-  "Convert recovered AU SUBSTITUTIONS for PATTERN into an ordinary child frame
-whose target is the tuple of quoted hole values `(:tuple (:code inputs hole-sort) ...)`.
-When KNOWN is omitted, defaults each row's known input to its occurrence coordinate `(idx)`."
-  (let* ((holes (pattern-holes pattern))
-         (hole-code-types (mapcar (lambda (h) (code-type inputs (cdr h))) holes))
-         (target-type (apply #'tuple-type hole-code-types))
-         (effective-known (or known
-                              (loop for i below (length substitutions)
-                                    collect (list i))))
-         (schema-inputs (when (first effective-known)
-                          (loop for v in (first effective-known)
-                                for i from 0
-                                collect (cons i :int))))
-         (rows
-           (loop for subst in substitutions
-                 for idx from 0
-                 for key = (if keys (nth idx keys) idx)
-                 for row-known = (nth idx effective-known)
-                 for tuple-val = (mapcar (lambda (h)
-                                           (let ((entry (assoc (car h) subst)))
-                                             (assert entry () "Missing binding for hole ~S" (car h))
-                                             (cdr entry)))
-                                         holes)
-                 for req = (set-requirement target-type (list tuple-val))
-                 do (charge ledger :au-child-frame (syntax-work req))
-                 collect (make-row :key key :known row-known :requirement req))))
-    (make-frame (make-schema :inputs schema-inputs :target target-type :lookup-p t) rows)))
 
 (defun make-tree-corpus (trees inputs &key domain sort ledger)
   "Snapshot an ordered sequence of typed ASTs under INPUTS into a standalone bit packet."

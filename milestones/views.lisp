@@ -124,7 +124,7 @@ is nil when the guard fails to evaluate on some row."
         (solve-parts true-frame false-frame child-language target)
         (when decoder
           (let* ((type (or child-type target))
-                 (library (when solver (as-propagator-library solver ledger)))
+                 (library (when solver (discovery-propagator-library solver ledger)))
                  (parents (loop for truth in '(t nil) collect
                             (make-frame (copy-schema schema)
                                         (loop for row in (frame-rows frame) for label in labels

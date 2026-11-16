@@ -8,7 +8,12 @@
   (domain :int)
   inputs
   target
-  (lookup-p nil))
+  (lookup-p nil)
+  ;; Optional availability preorder: ((input-id . index) ...) and the index of the target.
+  ;; A model of the target may read only the inputs whose index is below the target's; an
+  ;; input without an index is always available. Nothing here names what a column means.
+  (availability nil)
+  (target-availability nil))
 
 (defstruct ast-meta
   kind            ; :var | :lit | :op | :hole | :app
@@ -283,11 +288,24 @@ or element type `tau` (normalized to `(:seq tau)`)."
       (let ((sub (infer-domain-from-types (rest type))))
         (unless (eq sub :int) (return sub))))))
 
-(defun make-schema (&key domain inputs (target :int) lookup-p)
+(defun make-schema (&key domain inputs (target :int) lookup-p availability target-availability)
   (let ((inferred-domain (or domain
                              (infer-domain-from-types (cons target (mapcar #'cdr inputs))))))
+    (assert (every (lambda (entry) (and (assoc (car entry) inputs) (realp (cdr entry)))) availability))
+    (assert (or (null target-availability) (realp target-availability)))
     (%make-schema :domain inferred-domain :inputs (copy-tree inputs)
-                  :target (copy-tree target) :lookup-p lookup-p)))
+                  :target (copy-tree target) :lookup-p lookup-p
+                  :availability (copy-tree availability)
+                  :target-availability target-availability)))
+
+(defun available-inputs (schema)
+  "The inputs of SCHEMA that a model of its target may read: those whose availability index
+is below the target's, and those that have none."
+  (let ((limit (schema-target-availability schema)))
+    (remove-if (lambda (input)
+                 (let ((index (cdr (assoc (car input) (schema-availability schema)))))
+                   (and limit index (not (< index limit)))))
+               (schema-inputs schema))))
 
 ;;; Structural work & bit-size helpers needed at AST construction time
 

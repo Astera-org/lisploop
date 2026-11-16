@@ -290,3 +290,57 @@ involution `:law` entries in LIBRARY to induce second-order `:functor` theories 
   (:consolidate (entries library ledger)
     (declare (ignore entries))
     (induce-functorial-solvers library :ledger ledger)))
+
+;;; A supplied metric decoder for sequences: the delay between a prediction and its target.
+
+(defun install-sequence-shift-metric (&key (library *knowledge-library*) ledger)
+  "Define in LIBRARY the decoder `:shift-seq`, which advances an integer sequence by k
+places and fills the end with zeros, and a heuristic solver for k, `:argmax-corr`: the
+advance at which the prediction correlates best with the target. Register the pair as a
+metric decoder of `(:seq :int)`. The solver is a conjecture and not unique: a delta counts
+only where it replays through the decoder, and a narrowing by it keeps the original
+requirement as a fallback. Returns the solver entry."
+  (with-knowledge-library (library)
+    (let* ((seq (sequence-type :int))
+           (pair (tuple-type :int :int))
+           (xs (var 0 seq)) (ys (var 1 seq)) (k (var 1 :int)) (index (var 2 :int))
+           ;; (let ((rest r) (here c)) (if (< c (at r 0)) r (tuple c k))), an earlier place winning ties
+           (pick-type (code-type (list (cons 0 pair) (cons 1 :int) (cons 2 :int)) pair))
+           (pick (lit pick-type
+                      (term `(if (< ,(var 1 :int) (at ,(var 0 pair) 0))
+                                 ,(var 0 pair)
+                                 (tuple ,(var 1 :int) ,(var 2 :int)))
+                            pair))))
+      (define-function :shift-seq (list (cons 0 seq) (cons 1 :int)) seq
+        (lambda (self)
+          (term `(if (= ,xs ()) ()
+                     (if (< 0 ,k)
+                         (concat (cons (,self (tail ,xs) (- ,k 1)) (cons (cons 0 ()) ())))
+                         ,xs))
+                seq)))
+      (define-function :seq-corr (list (cons 0 seq) (cons 1 seq)) :int
+        (lambda (self)
+          (term `(if (= ,xs ()) 0
+                     (if (= ,ys ()) 0
+                         (+ (* (at ,xs 0) (at ,ys 0)) (,self (tail ,xs) (tail ,ys)))))
+                :int)))
+      ;; The best correlation of a suffix of X0 with X1 and the place it starts, counted from X2.
+      (define-function :best-shift (list (cons 0 seq) (cons 1 seq) (cons 2 :int)) pair
+        (lambda (self)
+          (term `(if (= ,xs ()) (tuple ,(lit :int 0) ,index)
+                     (code-eval ,pick
+                                (,self (tail ,xs) ,ys (+ ,index 1))
+                                (seq-corr ,xs ,ys)
+                                ,index))
+                pair)))
+      (define-function :argmax-corr (list (cons 0 seq) (cons 1 seq)) :int
+        (term `(at (best-shift ,xs ,ys 0) 1) :int))
+      (register-metric-decoder
+       (register-knowledge-solver :shift-seq
+                                  :id :solve-shift-seq-by-correlation
+                                  :position 1
+                                  :witness (term `(argmax-corr ,xs ,ys))
+                                  :unique-p nil
+                                  :library library :ledger ledger)
+       :library library))))
+

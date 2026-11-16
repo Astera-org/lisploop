@@ -73,6 +73,16 @@ registered names, de-novo counter, and knowledge entries) and restore outer stat
             (check (and (eq (evaluation-status ok) :value) (evaluation-value ok))))
           (evaluation-work run))))))
 
+(defun frame-satisfied-by-p (expression frame)
+  "True when EXPRESSION meets every constrained row of FRAME."
+  (let ((inputs (schema-inputs (frame-schema frame))))
+    (every (lambda (row)
+             (or (equal (lit :bool t) (row-requirement row))
+                 (let ((run (evaluate expression inputs (row-known row))))
+                   (and (eq :value (evaluation-status run))
+                        (accepts (row-requirement row) (evaluation-value run))))))
+           (frame-rows frame))))
+
 (defun same-set-p (xs ys &key (key #'identity) (test #'equal))
   "Order-independent set equality under KEY and TEST."
   (and (= (length (remove-duplicates xs :key key :test test))
@@ -233,9 +243,9 @@ without coupling tests to internal hash-table bucket layouts."
               (list (law-validation-status val)
                     (law-validation-counterexample val)
                     (let ((cert (law-validation-certificate val)))
-                      (and cert (list (law-certificate-evidence cert)
-                                      (law-certificate-assignments cert)
-                                      (law-certificate-active cert))))))
+                      (and cert (list (getf cert :method)
+                                      (getf cert :assignments)
+                                      (getf cert :active))))))
    :limits limits
    :exhaustive-p exhaustive-p))
 
@@ -508,7 +518,7 @@ semantics rather than brittle de-novo naming order or hardcoded bit-gain integer
 
 (defun validation-for-equation (validations left right)
   (or (find-if (lambda (state)
-                 (let ((sides (rest (law-equation (law-validation-law state)))))
+                 (let ((sides (rest (knowledge-entry-expression (law-validation-law state)))))
                    (or (equal sides (list left right)) (equal sides (list right left)))))
                validations)
       (error "Required identity was not discovered")))
@@ -563,11 +573,12 @@ certified; integer rules remain tentative (`:certified-p nil`) with exact unique
 
 (defun kernel-propagator-library (domain &key (operators '(:+ :- :* :/)) (positions '(0 1)) ledger)
   "Construct an isolated `propagator-library` for DOMAIN using only kernel solver registration."
+  (declare (ignore ledger))
   (let ((temp-lib (make-knowledge-library)))
     (dolist (op-name operators)
       (dolist (pos positions)
         (register-kernel-arithmetic-solver domain op-name pos :library temp-lib)))
-    (as-propagator-library temp-lib (or ledger (make-ledger)))))
+    (as-propagator-library temp-lib)))
 
 (defun define-standard-int-combinators (&key (which '(:map :foldr :filter)))
   "Register standard higher-order combinators over `(:seq :int)` in the active library."

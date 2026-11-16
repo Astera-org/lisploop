@@ -250,6 +250,11 @@ size of EXPRESSION."
   (when (knowledge-entry-p entry)
     (setf (getf (knowledge-entry-metadata entry) :descriptor-profile) value)))
 
+(defun knowledge-entry-active-p (entry)
+  "False once ENTRY has been archived (`amortize-library-entries`): it stays defined and
+callable, and is no longer proposed."
+  (getf (knowledge-entry-metadata entry) :active-p t))
+
 (defun find-knowledge-entries-by-address (address &optional (library *knowledge-library*))
   "Look up `knowledge-entry` items in LIBRARY by secondary compositional address or descriptor ID."
   (when (and address library)

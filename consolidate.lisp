@@ -306,6 +306,25 @@ them from the keyword arguments."
               (when (and best register-templates-p)
                 (remember-successful-decompositions job library ledger))))))
 
+(defun job-winning-node (job)
+  "The node whose candidate JOB verified as its best, or nil."
+  (let* ((best (synthesis-job-best job))
+         (message (and best
+                       (find-if (lambda (m)
+                                  (and (eq :candidate (message-claim m))
+                                       (eq best (getf (message-evidence m) :candidate))))
+                                (synthesis-job-messages job)))))
+    (and message
+         (find (message-call-id message) (synthesis-job-nodes job) :key #'synthesis-node-id))))
+
+(defun node-library-entry (node library &optional (origins '(:library :library-filter-map)))
+  "The entry of LIBRARY whose function NODE's proposal, one of ORIGINS, lifts; or nil."
+  (let ((name (and (synthesis-node-proposal node)
+                   (decomposition-name (synthesis-node-proposal node)))))
+    (and (consp name)
+         (member (first name) origins)
+         (find-knowledge-entry (second name) library))))
+
 (defun consolidate-policy-descriptors (library synthesis-jobs &key ledger)
   "Update empirical descriptor clause weights across LIBRARY from completed SYNTHESIS-JOBS
 search episodes: reinforce descriptor clauses of library combinators that produced verified
@@ -313,66 +332,331 @@ root candidates, and decay empirical descriptor clauses of sibling combinators t
 or failed on matching root frames."
   (let ((updated nil))
     (dolist (job synthesis-jobs (nreverse (remove-duplicates updated :test #'eq)))
-      (let* ((best (synthesis-job-best job))
-             (root (synthesis-job-root job))
-             (root-frame (and root (synthesis-node-frame root)))
-             (win-msg (and best
-                           (find-if (lambda (m)
-                                      (and (eq :candidate (message-claim m))
-                                           (eq best (getf (message-evidence m) :candidate))))
-                                    (synthesis-job-messages job))))
-             (win-node (and win-msg
-                            (find (message-call-id win-msg)
-                                  (synthesis-job-nodes job)
-                                  :key #'synthesis-node-id))))
-        (when (and best root-frame)
+      (let ((root (synthesis-job-root job))
+            (win-node (job-winning-node job)))
+        (when (and (synthesis-job-best job) root (synthesis-node-frame root))
           (dolist (node (synthesis-job-nodes job))
-            (let* ((prop (synthesis-node-proposal node))
-                   (pname (and prop (decomposition-name prop)))
-                   (fn-name (and (consp pname)
-                                 (member (first pname) '(:library :library-filter-map))
-                                 (second pname)))
-                   (entry (and fn-name (find-knowledge-entry fn-name library))))
+            (let ((entry (node-library-entry node library)))
               (when (and entry (knowledge-entry-descriptor-profile entry))
                 (charge ledger :orientation 1)
-                (flet ((sync-descriptor-weight (cid new-weight)
-                         (dolist (edge (knowledge-edges-to (knowledge-entry-id entry) :describes library))
-                           (let ((d (find-knowledge-entry (second edge) library)))
-                             (when (and d (eq :descriptor (knowledge-entry-kind d))
-                                        (eq cid (getf (knowledge-entry-metadata d) :concept)))
-                               (setf (getf (knowledge-entry-metadata d) :weight-bits) new-weight))))))
-                  (cond
-                    ((and win-node (synthesis-descendant-p win-node node))
-                     (dolist (clause (knowledge-entry-descriptor-profile entry))
-                       (when (< (descriptor-clause-weight-bits clause) 12)
-                         (incf (descriptor-clause-weight-bits clause))
-                         (sync-descriptor-weight (descriptor-clause-id clause)
-                                                 (descriptor-clause-weight-bits clause))
-                         (push (knowledge-entry-id entry) updated))))
-                    ((and (eq (synthesis-node-parent node) root)
-                          (eq :done (synthesis-node-phase node))
-                          (null (synthesis-node-search node)))
-                     (dolist (clause (knowledge-entry-descriptor-profile entry))
-                       (when (and (eq :empirical (descriptor-clause-status clause))
-                                  (> (descriptor-clause-weight-bits clause) 1))
-                         (decf (descriptor-clause-weight-bits clause))
-                         (sync-descriptor-weight (descriptor-clause-id clause)
-                                                 (descriptor-clause-weight-bits clause))
-                         (push (knowledge-entry-id entry) updated))))))))))))))
+                (flet ((adjust (delta)
+                         ;; Move each eligible clause's weight by DELTA, in the profile and
+                         ;; in the descriptor entries that state the clause's concept.
+                         (dolist (clause (knowledge-entry-descriptor-profile entry))
+                           (when (if (plusp delta)
+                                     (< (descriptor-clause-weight-bits clause) 12)
+                                     (and (eq :empirical (descriptor-clause-status clause))
+                                          (> (descriptor-clause-weight-bits clause) 1)))
+                             (incf (descriptor-clause-weight-bits clause) delta)
+                             (dolist (edge (knowledge-edges-to (knowledge-entry-id entry) :describes library))
+                               (let ((d (find-knowledge-entry (second edge) library)))
+                                 (when (and d (eq :descriptor (knowledge-entry-kind d))
+                                            (eq (descriptor-clause-id clause)
+                                                (getf (knowledge-entry-metadata d) :concept)))
+                                   (setf (getf (knowledge-entry-metadata d) :weight-bits)
+                                         (descriptor-clause-weight-bits clause)))))
+                             (push (knowledge-entry-id entry) updated)))))
+                  (cond ((and win-node (synthesis-descendant-p win-node node)) (adjust 1))
+                        ((and (eq (synthesis-node-parent node) root)
+                              (eq :done (synthesis-node-phase node))
+                              (null (synthesis-node-search node)))
+                         (adjust -1))))))))))))
+
+;;; Amortization: a function the library lifts earns the bits it saves the solutions found
+;;; through it and owes the search its failed lifts cost. One that stays in debt is archived.
+
+(defparameter *search-weight* 1/1024
+  "Bits a library entry is charged for each unit of search work a failed lift of it consumed.")
+
+(defparameter *archive-epochs* 3
+  "Workload batches in a row an entry may cost more than it saves before it is archived.")
+
+(defun entry-live-callers (entry library)
+  "The active entries of LIBRARY, other than ENTRY, whose code calls the function ENTRY defines."
+  (let ((name (knowledge-entry-id entry)))
+    (remove-if-not
+     (lambda (other)
+       (and (not (eq other entry))
+            (knowledge-entry-active-p other)
+            (some (lambda (code) (and code (expression-calls-operator-p code name)))
+                  (list (knowledge-entry-expression other) (knowledge-entry-guard other)
+                        (knowledge-entry-auxiliary-code other)))))
+     (knowledge-library-entries library))))
+
+(defun amortize-library-entries (library jobs &key (search-weight *search-weight*) ledger)
+  "Settle the workload JOBS, a batch of finished synthesis jobs, with the functions of
+LIBRARY that they lifted. An entry is credited the body bits a call to it saved each solution
+verified under one of its lifts, and charged one unit of work for each lift proposed plus
+the search every failed lift's subtree consumed, at SEARCH-WEIGHT bits a unit. The balance
+accumulates in its :net-utility; :stale-epochs counts the batches in a row that left it worse
+off. An entry in debt for `*archive-epochs*` such batches, which no active entry calls, is
+archived: marked :active-p nil, so it stays defined and is no longer lifted. Entries that no
+job lifted are untouched, so an empty batch changes nothing. Returns the entries archived."
+  (let ((accounts nil))                 ; (entry saved . work), latest first
+    (dolist (job jobs)
+      (let ((win-node (job-winning-node job)))
+        (dolist (node (synthesis-job-nodes job))
+          (let ((entry (node-library-entry node library
+                                           '(:library :library-filter-map :library-partial))))
+            (when entry
+              (charge ledger :orientation)
+              (let ((account (or (assoc entry accounts) (first (push (list* entry 0 0) accounts)))))
+                (if (and win-node (synthesis-descendant-p win-node node))
+                    (progn (incf (cadr account)
+                                 (max 0 (- (knowledge-entry-bits entry)
+                                           (application-overhead (op (knowledge-entry-id entry))))))
+                           (incf (cddr account)))
+                    (incf (cddr account)
+                          (1+ (loop for other in (synthesis-job-nodes job)
+                                    when (and (synthesis-node-search other)
+                                              (synthesis-descendant-p other node))
+                                      sum (ledger-total
+                                           (search-job-ledger (synthesis-node-search other)))))))))))))
+    (loop for (entry saved . work) in (reverse accounts)
+          for balance = (- saved (ceiling (* search-weight work)))
+          do (incf (getf (knowledge-entry-metadata entry) :net-utility 0) balance)
+             (setf (getf (knowledge-entry-metadata entry) :stale-epochs)
+                   (if (minusp balance)
+                       (1+ (getf (knowledge-entry-metadata entry) :stale-epochs 0))
+                       0))
+          when (and (knowledge-entry-active-p entry)
+                    (minusp (getf (knowledge-entry-metadata entry) :net-utility))
+                    (>= (getf (knowledge-entry-metadata entry) :stale-epochs) *archive-epochs*)
+                    (null (entry-live-callers entry library)))
+            do (setf (getf (knowledge-entry-metadata entry) :active-p) nil)
+            and collect entry)))
+
+(defun lift-field-solvers (library &key ledger)
+  "Lift to :int what LIBRARY's solvers say alike over several prime fields. For each
+primitive operator and position that is inverted over two or more fields: when the witnesses,
+and the guards, read with their field erased anti-unify without a hole, that common reading
+is registered as a solver over :int. It is a conjecture, neither certified nor taken to be
+unique, since the integers are not a field: every witness it gives is replayed, and a
+narrowing by it keeps the original requirement as a fallback. An operator and position
+that already has an :int solver is left alone, so a second call adds nothing.
+Returns the entries added."
+  (let ((solvers (knowledge-entries-of-kind :solver library))
+        (groups nil)                    ; ((name position context-map) entry ...), latest first
+        (added nil))
+    (flet ((signature (entry)
+             (let ((meta (knowledge-entry-metadata entry)))
+               (list (getf meta :operator-name) (getf meta :position) (getf meta :context-map)))))
+      (dolist (entry solvers)
+        (when (and (gf-type-p (knowledge-entry-domain entry))
+                   (member (first (signature entry)) +operator-names+))
+          (let ((group (or (assoc (signature entry) groups :test #'equal)
+                           (first (push (list (signature entry)) groups)))))
+            (push entry (cdr group)))))
+      (dolist (group (reverse groups) (nreverse added))
+        (destructuring-bind ((name position context-map) . entries) group
+          (setf entries (reverse entries))
+          (when (and (rest (remove-duplicates (mapcar #'knowledge-entry-domain entries) :test #'equal))
+                     (notany (lambda (entry)
+                               (and (eq :int (knowledge-entry-domain entry))
+                                    (equal (subseq (signature entry) 0 2) (list name position))))
+                             solvers))
+            (flet ((erased (accessor)
+                     (mapcar (lambda (entry)
+                               (retype-expr (funcall accessor entry) (knowledge-entry-domain entry) :int))
+                             entries)))
+              (let* ((first-entry (first entries))
+                     (inputs (mapcar (lambda (input)
+                                       (cons (car input)
+                                             (retype-type (cdr input) (knowledge-entry-domain first-entry) :int)))
+                                     (knowledge-entry-inputs first-entry)))
+                     (witnesses (erased #'knowledge-entry-expression))
+                     (guards (erased #'knowledge-entry-guard)))
+                (unless (or (pattern-has-holes-p (anti-unify witnesses inputs ledger))
+                            (pattern-has-holes-p (anti-unify guards inputs ledger)))
+                  (push (register-knowledge-solver
+                         (op name :int)
+                         :domain :int :inputs inputs :position position :context-map context-map
+                         :witness (first witnesses) :guard (first guards) :unique-p nil
+                         :edges (list (cons :lifted-from (mapcar #'knowledge-entry-id entries)))
+                         :library library :ledger ledger)
+                        added))))))))))
+
+;;; Theory motifs: functions refactored through one fold whose steps share a star of laws,
+;;; associativity and an identity, are instances of one theory. What is found to hold of the
+;;; fold for them is conjectured of every instance, those that come later included.
+
+(defun law-operator-fact (law)
+  "What `:law` LAW says of a binary operator, as the edge that records it: (:associative
+name) when LAW reads (op (op a b) c) = (op a (op b c)) over variables, (:identity name (e))
+when it reads (op a 'e) = a or (op 'e a) = a; nil otherwise."
+  (flet ((binary-p (term &optional operator)
+           (and (app-p term) (= 3 (length term)) (operator-p (first term))
+                (or (null operator) (eq operator (first term))))))
+    (destructuring-bind (left right) (rest (knowledge-entry-expression law))
+      (loop for (from to) in (list (list left right) (list right left))
+            when (binary-p from)
+              do (destructuring-bind (operator a b) from
+                   (cond ((and (var-p to) (or (and (equal a to) (lit-p b))
+                                              (and (equal b to) (lit-p a))))
+                          (return (list :identity (operator-name operator)
+                                        (list (ast-value (if (lit-p a) a b))))))
+                         ((and (binary-p a operator) (binary-p to operator)
+                               (binary-p (third to) operator)
+                               (every #'var-p (list (second a) (third a) b))
+                               (equal (list (second a) (third a) b)
+                                      (list (second to) (second (third to)) (third (third to)))))
+                          (return (list :associative (operator-name operator))))))))))
+
+(defun fold-signature (entry)
+  "When `:function` ENTRY folds a sequence of tau to a tau, taking a (:seq tau), a base tau
+and a step code of two tau to tau in some order, the positions (sequence base step)."
+  (let* ((inputs (knowledge-entry-inputs entry))
+         (tau (knowledge-entry-target entry))
+         (positions (loop for type in (list (sequence-type tau) tau
+                                            (code-type (list (cons 0 tau) (cons 1 tau)) tau))
+                          collect (position type inputs :key #'cdr :test #'equal))))
+    (and (= 3 (length inputs)) (notany #'null positions) positions)))
+
+(defun fold-call (fold sequence base step)
+  "The call of the fold entry FOLD on the expressions SEQUENCE, BASE and STEP."
+  (let ((arguments (make-list 3)))
+    (loop for position in (fold-signature fold)
+          for argument in (list sequence base step)
+          do (setf (nth position arguments) argument))
+    (apply #'app (op (knowledge-entry-id fold)) arguments)))
+
+(defun monoid-fold-instance (entry library)
+  "When `:function` ENTRY of one sequence input is refactored through a fold as
+(fold X 'e '(op X0 X1)), and LIBRARY's laws make op associative with identity e over the
+element type, returns (fold-entry base step), the two arguments as literals."
+  (let ((body (knowledge-entry-expression entry))
+        (inputs (knowledge-entry-inputs entry)))
+    (loop for (nil name) in (knowledge-edges-from entry :refactored-by library)
+          for fold = (find-knowledge-entry name library)
+          for positions = (and fold (app-of-p body name) (fold-signature fold))
+          when (and positions (= 1 (length inputs)))
+            do (destructuring-bind (sequence base step)
+                   (mapcar (lambda (position) (nth position (rest body))) positions)
+                 (let* ((tau (knowledge-entry-target fold))
+                        (code (and (lit-p step) (ast-value step)))
+                        (operator (and (app-p code) (first code)))
+                        (facts (and operator
+                                    (loop for law in (knowledge-entries-of-kind :law library)
+                                          when (equal tau (knowledge-entry-domain law))
+                                            append (knowledge-edges-from law nil library)))))
+                   (when (and (equal sequence (var (caar inputs) (cdar inputs)))
+                              (lit-p base)
+                              (equal (rest code) (list (var 0 tau) (var 1 tau)))
+                              (member (list :associative (operator-name operator)) facts :test #'equal)
+                              (member (list :identity (operator-name operator) (list (ast-value base)))
+                                      facts :test #'equal))
+                     (return (list fold base step))))))))
+
+(defun induce-fold-motifs (library &key ledger)
+  "Quotient the monoid folds of LIBRARY. Each law that states an operator's associativity
+or identity gets the edge saying so (`law-operator-fact`). Where the instances of two folds
+of one signature (`monoid-fold-instance`) cover two or more operators and each instance's
+step and base give both folds the same value on every probe sequence, the equation of the
+two folds is registered as a `:motif` over the first fold's inputs. Every instance of a
+motif's folds is then conjectured to equal the other fold applied to its step and base: a
+`:law` replayed on the probes and induced by the motif, with no search. Returns the entries
+added; a second call on an unchanged library adds none."
+  (unless (eq library *knowledge-library*)
+    (return-from induce-fold-motifs
+      (with-knowledge-library (library) (induce-fold-motifs library :ledger ledger))))
+  (let ((added nil))
+    (dolist (law (knowledge-entries-of-kind :law library))
+      (let ((fact (and (app-of-p (knowledge-entry-expression law) :=) (law-operator-fact law))))
+        (when fact (apply #'add-knowledge-edge law fact))))
+    (let* ((functions (knowledge-entries-of-kind :function library))
+           (folds (remove-if-not #'fold-signature functions))
+           (instances (loop for entry in functions
+                            for instance = (monoid-fold-instance entry library)
+                            when instance collect (cons entry instance))))
+      (loop for (left . others) on folds do
+        (dolist (right others)
+          (let* ((tau (knowledge-entry-target left))
+                 (probes (and (equal (mapcar #'cdr (knowledge-entry-inputs left))
+                                     (mapcar #'cdr (knowledge-entry-inputs right)))
+                              (probe-sequences-for-type (sequence-type tau))))
+                 (members (remove-if-not (lambda (instance) (member (second instance) (list left right)))
+                                         instances))
+                 (id (keyword-id "~A=~A/MONOID" (knowledge-entry-id left) (knowledge-entry-id right))))
+            (flet ((agree-p (base step)
+                     (every (lambda (probe)
+                              (let ((xs (lit (sequence-type tau) probe)))
+                                (multiple-value-bind (a a-p)
+                                    (eval-expr-value (fold-call left xs base step) nil nil ledger)
+                                  (multiple-value-bind (b b-p)
+                                      (eval-expr-value (fold-call right xs base step) nil nil ledger)
+                                    (and a-p b-p (equal a b))))))
+                            probes)))
+              (when (and probes
+                         (null (find-knowledge-entry id library))
+                         (rest (remove-duplicates members :key #'fourth :test #'equal))
+                         (every (lambda (instance) (agree-p (third instance) (fourth instance))) members))
+                (destructuring-bind (sequence base step)
+                    (mapcar (lambda (position)
+                              (let ((input (nth position (knowledge-entry-inputs left))))
+                                (var (car input) (cdr input))))
+                            (fold-signature left))
+                  (push (register-knowledge-entry
+                         (make-knowledge-entry
+                          :id id :kind :motif :inputs (knowledge-entry-inputs left) :target :bool
+                          :expression (term `(= ,(fold-call left sequence base step)
+                                                ,(fold-call right sequence base step)))
+                          :status :conjecture
+                          :edges (list (list :relates (knowledge-entry-id left) (knowledge-entry-id right))
+                                       (list :requires :associative :identity))
+                          :metadata (list :origin :theory-motif)
+                          :library library)
+                         :library library :ledger ledger)
+                        added)))
+              ;; Transfer: each instance equals the other fold on its own step and base.
+              (when (find-knowledge-entry id library)
+                (loop for (entry fold base step) in members
+                      for other = (if (eq fold left) right left)
+                      for inputs = (knowledge-entry-inputs entry)
+                      for law-id = (keyword-id "~A/VIA-~A" (knowledge-entry-id entry) (knowledge-entry-id other))
+                      do (add-knowledge-edge id :instance (knowledge-entry-id entry))
+                      unless (find-knowledge-entry law-id library)
+                        do (let ((validation
+                                   (validate-law
+                                    (make-law (infer-domain-from-types (list tau)) inputs
+                                              (app (op (knowledge-entry-id entry)) (var (caar inputs) (cdar inputs)))
+                                              (fold-call other (var (caar inputs) (cdar inputs)) base step)
+                                              :origin (list :motif id))
+                                    100000 t (mapcar #'list probes))))
+                             (charge ledger :law-checking (ledger-total (law-validation-ledger validation)))
+                             (when (eq :conjecture (law-validation-status validation))
+                               (push (register-knowledge-law
+                                      validation :id law-id :library library :ledger ledger
+                                      :edges (list (list :induced-by id)))
+                                     added))))))))))
+    (nreverse added)))
+
+(define-knowledge-kind :motif
+  (:priority 45)
+  (:validate (entry library)
+    (declare (ignore library))
+    (assert (eq :bool (knowledge-entry-target entry)))
+    (assert-entry-expression-type entry))
+  (:consolidate (entries library ledger)
+    (declare (ignore entries))
+    (induce-fold-motifs library :ledger ledger)))
 
 (defun consolidate-knowledge-library (library &key synthesis-jobs observation-jobs law-validations
-                                                   solve-discoveries retype-domains library-names
+                                                   retype-domains library-names
                                                    (min-gain 0) (condense-heuristic-p t)
                                                    (ledger (make-ledger)))
-  "Consolidate LIBRARY across accumulated synthesis jobs, law validations, solver discoveries,
-and registered entries:
-1. Ingest SYNTHESIS-JOBS, LAW-VALIDATIONS, SOLVE-DISCOVERIES, and OBSERVATION-JOBS.
+  "Consolidate LIBRARY across accumulated synthesis jobs, law validations and registered
+entries:
+1. Ingest SYNTHESIS-JOBS, LAW-VALIDATIONS and OBSERVATION-JOBS.
 2. Run each registered `define-knowledge-kind` `:consolidate` hook in priority order; for
-   example `:function` discovers higher-order combinators with MDL gain above MIN-GAIN, and
-   `:relation` compresses pooled residual tables into expressions.
-3. Retype validated laws into each of RETYPE-DOMAINS.
-4. Update descriptor weights and condense a priority predictor from the SYNTHESIS-JOBS traces.
-Returns a structured consolidation report plist."
+   example `:function` discovers higher-order combinators with MDL gain above MIN-GAIN,
+   `:relation` compresses pooled residual tables into expressions, and `:motif` quotients
+   the folds whose steps share a star of laws.
+3. Retype validated laws into each of RETYPE-DOMAINS, and lift to :int the solvers that
+   read alike over several prime fields (`lift-field-solvers`).
+4. Settle the SYNTHESIS-JOBS with the functions they lifted (`amortize-library-entries`),
+   update descriptor weights and condense a priority predictor from their traces.
+Without SYNTHESIS-JOBS step 4 does nothing, so consolidating an unchanged library again is
+a fixed point. Returns a structured consolidation report plist."
   (let ((before-version (knowledge-library-version library))
         (ingested nil)
         (consolidated nil)
@@ -384,11 +668,9 @@ Returns a structured consolidation report plist."
           (setf ingested (append ingested (commit-synthesis-job job :library library :ledger ledger))))
         (dolist (validation law-validations)
           (push (register-knowledge-law validation :library library :ledger ledger) ingested))
-        (dolist (discovery solve-discoveries)
-          (push (register-knowledge-solver discovery :library library :ledger ledger) ingested))
         (dolist (observation observation-jobs)
           (dolist (law (propose-observed-laws observation :ledger ledger))
-            (when (finite-type-p (law-domain law))
+            (when (finite-type-p (knowledge-entry-domain law))
               (let ((validation (resume-law-validation (start-law-validation law) 100000)))
                 (when (eq :validated (law-validation-status validation))
                   (push (register-knowledge-law validation :library library :ledger ledger) ingested))))))
@@ -399,6 +681,9 @@ Returns a structured consolidation report plist."
               (note kind (funcall hook (knowledge-entries-of-kind kind library) library ledger)))))
         (dolist (domain retype-domains)
           (note :retyped-laws (retype-knowledge-laws library domain :validate-p t :ledger ledger)))
+        (note :lifted-solvers (lift-field-solvers library :ledger ledger))
+        (when synthesis-jobs
+          (note :archived (amortize-library-entries library synthesis-jobs :ledger ledger)))
         (when (and condense-heuristic-p synthesis-jobs)
           (note :policy-descriptors (consolidate-policy-descriptors library synthesis-jobs :ledger ledger))
           (let ((trace-frame (make-search-trace-frame synthesis-jobs :ledger ledger)))

@@ -5,6 +5,7 @@
    #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-inputs #:code-sort
    #:valid-type-p #:function-sort-p #:value-p #:seq-type-p #:gf-type-p #:tuple-type-p #:input-alist
    #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
+   #:schema-availability #:schema-target-availability #:available-inputs
    #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:map-ast #:app-of-p
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p
@@ -28,6 +29,7 @@
    #:knowledge-entry-certificate #:knowledge-entry-bits #:knowledge-entry-gain #:knowledge-entry-work
    #:knowledge-entry-edges #:knowledge-entry-metadata #:knowledge-entry-executable
    #:knowledge-entry-compositional-name #:knowledge-entry-descriptor-profile
+   #:knowledge-entry-active-p
    #:knowledge-library #:knowledge-library-p #:make-knowledge-library #:*knowledge-library*
    #:knowledge-library-version #:knowledge-library-entries #:knowledge-library-function-names
    #:knowledge-library-priority-predictor #:knowledge-library-compositional-index
@@ -70,17 +72,20 @@
    ;; 8. frame.lisp — Frames, pullbacks, 1-to-many lifts, coordinate probes, delta packets
    #:row #:make-row #:row-key #:row-known #:row-requirement
    #:frame #:frame-p #:make-frame #:snapshot-frame
-   #:frame-schema #:frame-rows #:frame-pairs #:frame-anchors
+   #:frame-schema #:frame-rows #:frame-pairs #:frame-anchors #:frame-edges #:hard-edges
    #:frame-conflict #:frame-conflict-p #:frame-conflict-kind #:frame-conflict-keys #:frame-conflict-known
    #:frame-constrained-row-count #:frame-min-resolved-rows
    #:orient-observations #:transition-probes #:lookup-model #:frame-oracle-table
-   #:pullback-frame #:compose-model
+   #:pullback-frame #:compose-model #:let-call
+   #:product-slot-frame #:compose-product-model
    #:lift-frame #:compose-lifted-model #:*max-active-lifted-rows* #:probe-frame-coordinates
    #:conserved-quantity-frame #:support-frame #:context-label-frame #:shuffle-frame-rows
+   #:orient-available
    #:partition #:partition-positions #:partition-groups #:partition-rows #:reassemble-partition #:partition-model
    #:partition-pairs-and-anchors #:with-frame-linkage
    #:centered-mod-difference #:correction-packet #:apply-correction-packet
    #:correction-bit-size #:select-closest-witness #:relational-linkage-residual
+   #:frame-metric #:metric-inputs #:priced-correction
    #:quotient-values #:restore-quotient #:quotient-model
 
    ;; 9. enumerate.lisp — Grammars, size-indexed enumerator, bounded search & observation search
@@ -109,8 +114,8 @@
    #:find-observation #:observed-agreement-p #:observation-invariants
 
    ;; 10. unify.lisp — Pattern matching, typed anti-unification, AU constructors
-   #:match-pattern #:anti-unify #:compile-au-constructor #:pattern-has-holes-p
-   #:pattern-holes #:term-sort
+   #:match-pattern #:anti-unify #:au-substitutions-frame #:compile-au-constructor
+   #:pattern-has-holes-p #:pattern-holes #:term-sort
 
    ;; 11. fibers.lisp — Hard-EM fiber clustering & linkage extraction
    #:fiber-class #:fiber-class-p #:fiber-class-id #:fiber-class-requirement
@@ -119,26 +124,23 @@
 
    ;; 12. laws.lisp — Algebraic laws, validation, term rewriting, requirement propagation
    #:law-type-p #:finite-type-p #:finite-type-cardinality #:law-assignment #:arithmetic-inputs
-   #:law #:make-law #:law-domain #:law-inputs #:law-lhs #:law-rhs #:law-equation
-   #:law-guard #:law-origin #:law-statement
-   #:law-certificate #:law-certificate-evidence #:law-certificate-assignments
-   #:law-certificate-active #:law-certificate-work
+   #:make-law #:law-statement
    #:law-validation #:start-law-validation #:resume-law-validation #:law-validation-law
    #:law-validation-status #:law-validation-ledger #:law-validation-counterexample #:law-validation-certificate
    #:propose-observed-laws
    #:rewrite-rule #:rewrite-library #:rewrite-library-p #:rewrite-library-rules #:prepare-rewrite-library
    #:rewriting #:start-rewriting #:advance-rewriting
    #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
-   #:arithmetic-relation #:arithmetic-relation-guard #:arithmetic-relation-records
-   #:solve-discovery #:solve-discovery-frame #:solve-discovery-witness #:solve-discovery-guard
-   #:solve-discovery-validation #:solve-discovery-uniqueness
-   #:validate-arithmetic-solver #:certified-solve-discovery-p
    #:propagator-library #:propagator-library-p
    #:propagation #:propagation-frame #:propagation-original #:propagation-fallback
    #:propagation-narrowed #:propagation-suggested #:propagation-retained
    #:propagation-rejected #:propagation-ambiguous
-   #:prepare-propagator-library #:as-propagator-library #:propagate-requirements
-   #:as-rewrite-library #:register-knowledge-law #:register-knowledge-solver
+   #:as-propagator-library #:propagate-requirements
+   #:callable-rules-library
+   #:solve-equality-symbolically #:target-sensitive-p #:orient-conserved-quantity
+   #:as-rewrite-library #:register-knowledge-law
+   #:make-knowledge-solver #:register-knowledge-solver
+   #:register-metric-decoder #:metric-decoders #:metric-delta
 
    ;; 13. templates.lisp — Polymorphic retyping, template inference & AST transformations
    #:retype-expr #:retype-law #:retype-knowledge-laws #:retype-function-definition
@@ -146,7 +148,7 @@
    #:learn-knowledge-transformer
 
    ;; 14. bootstrap-inverters.lisp — Functorial & involution solver induction
-   #:induce-functorial-solvers #:induce-involution-solvers
+   #:induce-functorial-solvers #:induce-involution-solvers #:install-sequence-shift-metric
 
    ;; 15. condense.lisp — Lossy Stage A heuristic condensation
    #:heuristic-model #:heuristic-model-p #:heuristic-program #:heuristic-residual
@@ -175,6 +177,7 @@
    #:descriptor-clause-status #:descriptor-clause-weight-bits #:descriptor-clause-work-cost
    #:derive-compositional-name #:compute-entry-descriptor-profile
    #:score-entry-by-descriptors #:library-function-descriptor-compatible-p
+   #:evaluate-frame-descriptors #:frame-addressed-entries
 
    ;; 18. relations.lisp — Hybrid parametric/lookup relations & delayed residual consolidation
    #:compose-hybrid-residual-program #:register-knowledge-relation #:consolidate-residual-relations
@@ -186,6 +189,7 @@
    #:decomposition-bindings #:decomposition-language #:decomposition-bound
    #:decomposition-children #:decomposition-solver #:decomposition-lift-p
    #:decomposition-fallback-p #:decomposition-policy-score #:decomposition-provenance
+   #:decomposition-slots #:decomposition-structural-p
    #:synthesis-node #:synthesis-node-id #:synthesis-node-parent #:synthesis-node-proposal
    #:synthesis-node-frame #:synthesis-node-reserve-rows #:synthesis-node-language
    #:synthesis-node-bound #:synthesis-node-priority #:synthesis-node-heuristic
@@ -196,6 +200,7 @@
    #:synthesis-job-nogoods #:synthesis-job-reused-subproblems #:synthesis-job-trace
    #:synthesis-job-self-name #:synthesis-job-oracle-table
    #:promote-next-deferred-proposal #:synthesis-episode-returns
+   #:*max-eager-proposals-per-node* #:eager-proposals #:stage-a-budget #:node-price
 
    ;; 20. nogoods.lisp — Deductive leaf nogoods, UIP generalization & DIP context repair
    #:nogood-clause #:nogood-clause-p #:nogood-clause-parent-id #:nogood-clause-kind
@@ -208,6 +213,8 @@
    ;; 21. decompose.lisp — Inductive sequence & heuristic residual expanders
    #:lift-inductive-sequence-context #:combine-expanders
    #:heuristic-decompositions #:heuristic-expander
+   #:make-metric-residual-decoder #:metric-residual-decompositions
+   #:feature-pair-predicates #:*feature-guard-bits*
    #:start-heuristic-synthesis #:start-recursive-synthesis
 
    ;; 22. proposals.lisp — Library, partial-application, template & dependency proposal generators
@@ -215,11 +222,14 @@
    #:remember-decoder-template #:learned-decoder-decompositions
    #:library-decompositions #:library-expander
    #:dependency-proposals #:dependency-expander #:start-selector-search
+   #:*product-arity-limit* #:component-bindings #:structural-decompositions #:structural-expander
+   #:canonical-row-order #:induce-row-order #:with-induced-row-order
 
    ;; 23. consolidate.lisp — Trace heuristic learning & continual library consolidation
    #:make-search-trace-frame #:condense-search-heuristic #:register-knowledge-heuristic
    #:consolidate-library-functions #:consolidate-policy-descriptors
-   #:commit-synthesis-job #:consolidate-knowledge-library
+   #:commit-synthesis-job #:consolidate-knowledge-library #:lift-field-solvers
+   #:induce-fold-motifs #:amortize-library-entries #:*search-weight* #:*archive-epochs*
 
    ;; 24. explain.lisp — Read-only synthesis & library inspection reports
    #:explain-synthesis-node #:explain-synthesis-job #:explain-knowledge-library))

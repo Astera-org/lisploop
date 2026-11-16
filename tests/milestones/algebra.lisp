@@ -85,7 +85,7 @@
                                         (make-row :key :none :known '(1 2) :requirement (set-requirement domain nil)))))
               (bindings (list (cons 3 (var 1 domain))))
               (raw (pullback-frame parent decoder 9 domain bindings))
-              (result (propagate-requirements raw discovery (make-ledger)))
+              (result (propagate-requirements raw (discovery-propagator-library discovery (make-ledger)) (make-ledger)))
               (rows (frame-rows (propagation-frame result))))
         (check (= 1 (propagation-narrowed result)))
         (check (= 4 (propagation-retained result)))

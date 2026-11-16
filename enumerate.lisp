@@ -222,7 +222,9 @@ and evaluate each one on the rows of a frame. DEBT is staged host work not yet c
 (defstruct (search-job (:include row-job) (:constructor %make-search-job))
   proposals (resolved-rows 0) predicted (run-work 0) (results nil) best (run-weight 0) row-budget
   (rejected 0) diagnostics library rewriting normal-form
-  (reused-rejections 0) (rejection-cache (make-hash-table :test #'equal)))
+  (reused-rejections 0) (rejection-cache (make-hash-table :test #'equal))
+  hard-edges ; the frame's :equal and :distinct edges, which every candidate must satisfy
+  values)    ; (row-key . value) of the candidate on the rows visited, kept only for those edges
 
 (defvar *next-call-id* 0)
 
@@ -337,6 +339,7 @@ absolute cumulative WORK-LIMIT. Record and return a message whose evidence ends 
   "Use the canonical enumerator, or check a declared list of complete proposals.
 Listed proposals use the same construction, VM, checker and objective."
   (assert (equal (schema-inputs (frame-schema frame)) (language-inputs language)))
+  (assert-inputs-available frame)
   (assert (and (realp run-weight) (>= run-weight 0)))
   (assert (or (null row-budget) (and (integerp row-budget) (plusp row-budget))))
   (setf frame (snapshot-frame frame) language (snapshot-language language))
@@ -348,6 +351,7 @@ Listed proposals use the same construction, VM, checker and objective."
                                 :queue queue :proposals (copy-list queue)
                                 :run-weight run-weight :row-budget row-budget
                                 :library library :diagnostics diagnostics
+                                :hard-edges (hard-edges frame)
                                 :completed-bound
                                 (language-header-size language (schema-target (frame-schema frame))))))
     (if supplied-p
@@ -399,7 +403,8 @@ Listed proposals use the same construction, VM, checker and objective."
 has laws, and drop any other."
   (cond ((not (equal type (row-job-target job))) :enumerate)
         (t (setf (search-job-resolved-rows job) 0
-                 (search-job-run-work job) 0)
+                 (search-job-run-work job) 0
+                 (search-job-values job) nil)
            (if (search-job-library job) :rewrite-start :row))))
 
 (defun consume-search-outcome (job state)
@@ -420,9 +425,36 @@ reject the candidate on an error or once it exhausts the row budget."
          (reject-candidate job))))))
 
 (defun finish-search-candidate (job)
-  (if (>= (search-job-resolved-rows job) (frame-min-resolved-rows (search-job-frame job)))
-      (accept-candidate job)
-      (reject-candidate job)))
+  "Accept a candidate that resolved enough rows, by way of its hard edges when the frame has any."
+  (cond ((< (search-job-resolved-rows job) (frame-min-resolved-rows (search-job-frame job)))
+         (reject-candidate job))
+        ((search-job-hard-edges job)
+         (setf (search-job-phase job) :edges
+               (search-job-debt job) (length (search-job-hard-edges job))))
+        (t (accept-candidate job))))
+
+(defun violated-edge (job)
+  "The first hard edge of the frame that the candidate's row values contradict, or nil. An
+edge to a row the candidate left unresolved is not judged."
+  (find-if (lambda (edge)
+             (destructuring-bind (kind left right) edge
+               (let ((a (assoc left (search-job-values job) :test #'equal))
+                     (b (assoc right (search-job-values job) :test #'equal)))
+                 (and a b (eq (eq kind :distinct) (equal (cdr a) (cdr b)))))))
+           (search-job-hard-edges job)))
+
+(defun settle-candidate-edges (job)
+  "Accept the candidate whose rows have all been visited unless it violates a hard edge."
+  (let ((violated (violated-edge job)))
+    (cond ((null violated) (accept-candidate job))
+          (t (when (search-job-diagnostics job)
+               (push (make-message :call-id (search-job-call-id job) :claim :counterexample
+                                   :evidence (list :edge violated
+                                                   :expression (search-job-expression job)
+                                                   :phase :edges))
+                     (search-job-messages job)))
+             (incf (search-job-rejected job))
+             (setf (search-job-phase job) :enumerate)))))
 
 (defun rewrite-filter-step (job budget)
   "Advance the filter that precedes row checks when the job has rewrite laws: pay for the library
@@ -463,6 +495,9 @@ normal form was already refuted by a row."
        (pay-debt (search-job-debt job) budget ledger :proposal-setup)
        (when (zerop (search-job-debt job)) (enter-rule-setup job)))
       ((:rule-setup :rewrite-start :rewrite :reuse) (rewrite-filter-step job budget))
+      (:edges
+       (pay-debt (search-job-debt job) budget ledger :checking)
+       (when (zerop (search-job-debt job)) (settle-candidate-edges job)))
       (:requirement
        (charge ledger :scheduling)
        (setf (search-job-evaluation job)
@@ -478,6 +513,8 @@ normal form was already refuted by a row."
            (:value
             (cond ((eq t (evaluation-value state))
                    (when (constrained-row-p row) (incf (search-job-resolved-rows job)))
+                   (when (search-job-hard-edges job)
+                     (push (cons (row-key row) (search-job-predicted job)) (search-job-values job)))
                    (next-row job))
                   (t (reject-candidate job t)))))))
       (t
@@ -540,10 +577,13 @@ normal form was already refuted by a row."
 (defstruct observation-bucket scope type values members invariant-p informative-p counterexample
   (pair-bits 0) (anchor-bits 0) (residual-bits 0))
 
-(defun relational-linkage-residual (frame outcomes &key row-residuals (type (schema-target (frame-schema frame))))
+(defun relational-linkage-residual (frame outcomes &key row-residuals (type (schema-target (frame-schema frame)))
+                                                       decoders ledger)
   "Price relational obligations from (frame-pairs frame) and (frame-anchors frame) in bits
 over OUTCOMES (either a list of `observation-outcome` structs or a list of raw values)
-after applying any unary ROW-RESIDUALS ((row-key . witness) ...).
+after applying any unary ROW-RESIDUALS ((row-key . witness) ...). A pair's drift is priced
+by `priced-correction` under the frame's metric, when TYPE is its target type, and the
+metric DECODERS, whose programs are charged to LEDGER.
 Returns (VALUES entries total-bits pair-bits anchor-bits)."
   (let ((pairs (frame-pairs frame))
         (anchors (frame-anchors frame)))
@@ -583,17 +623,16 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
                  (destructuring-bind (idx-b corr-b valid-b val-b) info-b
                    (declare (ignore idx-b corr-b))
                    (unless (and valid-a valid-b (equal val-a val-b))
-                     (let ((step-bits
-                             (cond
-                               ((and valid-a valid-b)
-                                (correction-bit-size val-a val-b type t))
-                               (valid-a (value-bit-size val-a type))
-                               (valid-b (value-bit-size val-b type))
-                               (t (1+ (type-bit-size type)))))
-                           (packet
-                             (if (and valid-a valid-b)
-                                 (correction-packet val-a val-b type t)
-                                 :error)))
+                     (multiple-value-bind (packet step-bits)
+                         (cond
+                           ((and valid-a valid-b)
+                            (priced-correction val-a val-b type
+                                               :metric (and (equal type (schema-target (frame-schema frame)))
+                                                            (frame-metric frame))
+                                               :decoders decoders :ledger ledger))
+                           (valid-a (values :error (value-bit-size val-a type)))
+                           (valid-b (values :error (value-bit-size val-b type)))
+                           (t (values :error (1+ (type-bit-size type)))))
                        (setf (gethash (second pair) charged-keys) t)
                        (unless valid-a
                          (setf (gethash (first pair) charged-keys) t))

@@ -238,19 +238,13 @@ Returns (VALUES uip-clause pattern substitutions)."
                                      (nth-value 0 (anti-unify unique-parent-exprs
                                                               (infer-exprs-inputs unique-parent-exprs)
                                                               ledger))))
-                   (uip (make-nogood-clause
-                         :parent-id (nogood-clause-parent-id first-ng)
-                         :kind :uip-clause
-                         :keys (nogood-clause-keys first-ng)
-                         :known (nogood-clause-known first-ng)
-                         :bindings (copy-tree (nogood-clause-bindings first-ng))
-                         :decoder (copy-tree (nogood-clause-decoder first-ng))
-                         :child-id (nogood-clause-child-id first-ng)
-                         :child-type (copy-tree (nogood-clause-child-type first-ng))
-                         :parent-incompatible-p (every #'nogood-clause-parent-incompatible-p compatible)
-                         :clause-expr pattern
-                         :parent-clause-expr (or parent-pattern
-                                                 (nogood-clause-parent-clause-expr first-ng)))))
+                   (uip (copy-nogood-clause first-ng)))
+              (setf (nogood-clause-kind uip) :uip-clause
+                    (nogood-clause-parent-incompatible-p uip)
+                    (every #'nogood-clause-parent-incompatible-p compatible)
+                    (nogood-clause-clause-expr uip) pattern
+                    (nogood-clause-parent-clause-expr uip)
+                    (or parent-pattern (nogood-clause-parent-clause-expr first-ng)))
               (values uip pattern substitutions))))))))
 
 (defun clause-expr-matches-known-p (clause-expr scope-inputs known ledger)

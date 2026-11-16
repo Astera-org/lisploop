@@ -23,6 +23,49 @@
                             part-type)))
       (app (op :+ type) base-expr residual-var)))
 
+(defun make-metric-residual-decoder (operator base-expr residual-var)
+  "Construct outer decoder d(X, Z) = OPERATOR(base(X), Z) for a metric decoder of the library."
+  (app operator base-expr residual-var))
+
+(defun metric-residual-decompositions (frame program residual language bound solver ledger debug-p)
+  "Stage B for the library's metric decoders: for each decoder d of the target type that
+describes the witness of some row in RESIDUAL, ((row-key . witness) ...), from what PROGRAM
+predicts there, propose Y = d(PROGRAM(X), Z). The child predicts the delta; the decoder's
+own solver, added to SOLVER, turns each pulled-back requirement into the delta it replays,
+and where it has none the requirement stays as it is."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target (schema-target schema))
+         (child-id (next-child-id inputs))
+         (slack (max 18 (- bound (header-size inputs target))))
+         (proposals nil))
+    (dolist (decoder (metric-decoders target) (nreverse proposals))
+      (destructuring-bind (operator entry tag-bits delta-type) decoder
+        (declare (ignore tag-bits))
+        (when (and (not (and (eq :+ (operator-name operator)) (additive-residual-type-p target)))
+                   (some (lambda (row)
+                           (let ((miss (assoc (row-key row) residual :test #'equal)))
+                             (and miss
+                                  (multiple-value-bind (predicted ok)
+                                      (eval-expr-value program inputs (row-known row) ledger)
+                                    (and ok (metric-delta decoder predicted (cdr miss) target ledger))))))
+                         (frame-rows frame)))
+          (push (make-decomposition
+                 :name (list :heuristic-metric (operator-name operator) program)
+                 :decoder (make-metric-residual-decoder operator program (var child-id delta-type))
+                 :child-id child-id
+                 :child-type delta-type
+                 :bindings (identity-bindings inputs)
+                 :language language
+                 :bound (header-bound inputs delta-type slack)
+                 :solver (as-propagator-library (list solver (metric-decoder-library decoder)))
+                 :provenance (when debug-p
+                               (list :origin :stage-b-metric
+                                     :base-program program
+                                     :decoder (operator-name operator)
+                                     :solver (knowledge-entry-id entry))))
+                proposals))))))
+
 (defun row-active-for-guard-p (row heuristic-model)
   "True when ROW is a constrained row whose outcome under HEURISTIC-MODEL is resolved,
 or when HEURISTIC-MODEL has no concrete residuals and ROW is an unresolved constrained row."
@@ -78,12 +121,45 @@ expression of each distinct Boolean behaviour found, the latest behaviour first.
             collect (cons (observed-expression-expression (car (last (observation-bucket-members bucket))))
                           (observation-bucket-values bucket)))))
 
+(defparameter *feature-guard-bits* 32
+  "Body-bit bound on an exception guard that compares two Stage A features.")
+
+(defun feature-pair-predicates (buckets inputs row-count bound ledger)
+  "Comparisons of two Stage A features as guard candidates ((expression . row-values) ...):
+`=` of two features of one type and `<` of two integer features either way, of at most
+BOUND body bits. BUCKETS, ((expression . row-values) ...), already hold every feature's
+value on each of the ROW-COUNT rows, so a comparison is priced by one unit of guard search
+and no expression is evaluated."
+  (let ((features (loop for (expression . values) in buckets
+                        when (= row-count (length values))
+                          collect (list expression (ast-type expression)
+                                        (body-size expression inputs) values)))
+        (predicates nil))
+    (flet ((offer (predicate values)
+             (charge ledger :guard-search)
+             (when (<= (body-size predicate inputs) bound)
+               (push (cons predicate values) predicates))))
+      (loop for ((left left-type left-bits left-values) . others) on features do
+        (loop for (right right-type right-bits right-values) in others
+              ;; A comparison costs more than its operands; one of two literals says nothing.
+              when (and (equal left-type right-type)
+                        (< (+ left-bits right-bits) bound)
+                        (not (and (lit-p left) (lit-p right)))) do
+                (offer (term `(= ,left ,right)) (mapcar #'equal left-values right-values))
+                (when (eq :int left-type)
+                  (offer (term `(< ,left ,right)) (mapcar #'< left-values right-values))
+                  (offer (term `(< ,right ,left)) (mapcar #'< right-values left-values))))))
+    (nreverse predicates)))
+
 (defun find-sound-exception-guard (frame hit-mask guard-language guard-bound work-limit ledger
-                                   &key active-mask)
+                                   &key active-mask buckets (feature-bound *feature-guard-bits*))
   "Synthesize a Boolean guard G(X) separating hit and miss rows.
 Returns (VALUES guard invert-p): when INVERT-P is NIL, G(X) is T only on hits; when
 INVERT-P is T, G(X) is NIL only on hits. Guards are grouped observationally; the most
-covering sound one wins (an exact separator covers every hit), then the shortest."
+covering sound one wins (an exact separator covers every hit), then the shortest.
+When the guard grammar holds no exact separator within GUARD-BOUND, the comparisons of two
+of the Stage A features in BUCKETS compete too, up to FEATURE-BOUND body bits
+(`feature-pair-predicates`)."
   (let* ((predicates (observed-predicates (support-frame frame hit-mask ledger)
                                           guard-language guard-bound work-limit ledger))
          (inputs (schema-inputs (frame-schema frame)))
@@ -92,21 +168,30 @@ covering sound one wins (an exact separator covers every hit), then the shortest
                          (let ((constrained (mapcar #'constrained-row-p rows)))
                            (if (some #'identity constrained)
                                constrained
-                               (make-list (length rows) :initial-element t))))))
-    (flet ((sound-guard (expr vals)
-             ;; (expr invert-p covered-hits bits) when EXPR, in one polarity, holds on hits only.
-             (let ((sound-hit-p t) (sound-miss-p t) (hits 0) (inv-hits 0))
-               (loop for v in vals for h in hit-mask for active-p in eff-active
-                     when active-p do
-                       (if h (if v (incf hits) (incf inv-hits))
-                           (if v (setf sound-hit-p nil) (setf sound-miss-p nil))))
-               (when (or (and sound-hit-p (plusp hits)) (and sound-miss-p (plusp inv-hits)))
-                 (let ((use-inv-p (and sound-miss-p (or (not sound-hit-p) (> inv-hits hits)))))
-                   (list expr use-inv-p (if use-inv-p inv-hits hits) (description-size expr inputs)))))))
-      (let ((best (best-by (loop for (expr . vals) in predicates
-                                 for guard = (sound-guard expr vals)
-                                 when guard collect guard)
-                           (list :desc #'third) #'fourth)))
+                               (make-list (length rows) :initial-element t)))))
+         (active-hits (loop for h in hit-mask for active-p in eff-active count (and h active-p))))
+    (labels ((sound-guard (expr vals)
+               ;; (expr invert-p covered-hits bits) when EXPR, in one polarity, holds on hits only.
+               (let ((sound-hit-p t) (sound-miss-p t) (hits 0) (inv-hits 0))
+                 (loop for v in vals for h in hit-mask for active-p in eff-active
+                       when active-p do
+                         (if h (if v (incf hits) (incf inv-hits))
+                             (if v (setf sound-hit-p nil) (setf sound-miss-p nil))))
+                 (when (or (and sound-hit-p (plusp hits)) (and sound-miss-p (plusp inv-hits)))
+                   (let ((use-inv-p (and sound-miss-p (or (not sound-hit-p) (> inv-hits hits)))))
+                     (list expr use-inv-p (if use-inv-p inv-hits hits) (description-size expr inputs))))))
+             (best-guard (candidates)
+               (best-by (loop for (expr . vals) in candidates
+                              for guard = (sound-guard expr vals)
+                              when guard collect guard)
+                        (list :desc #'third) #'fourth)))
+      (let ((best (best-guard predicates)))
+        (when (and buckets (not (and best (= active-hits (third best)))))
+          (setf best (best-by (remove nil (list best
+                                                (best-guard (feature-pair-predicates
+                                                             buckets inputs (length rows)
+                                                             feature-bound ledger))))
+                              (list :desc #'third) #'fourth)))
         (values (first best) (second best))))))
 
 (defun find-oracle-operator-name (language)
@@ -346,6 +431,12 @@ Returns (VALUES proposals heuristic-model)."
                                    :stage-a-score (heuristic-score h-model)
                                    :stage-a-residual (heuristic-residual h-model))))
               proposals))
+      ;; Path B1 again, with a metric decoder of the library in place of addition.
+      (when (and additive-p (heuristic-total-p h-model) (some #'null hit-mask)
+                 (not (and eff-self empty-seq-frame-p)))
+        (dolist (proposal (metric-residual-decompositions frame program (heuristic-residual h-model)
+                                                          c-lang c-bound solver ledger debug-p))
+          (push proposal proposals)))
       ;; Path B2: Conditional exception-patching decoder d(X, Z) = (if G pi_hat Z) or (if G_miss Z pi_hat)
       (when (and conditional-p
                  (or (not empty-seq-frame-p)
@@ -380,7 +471,9 @@ Returns (VALUES proposals heuristic-model)."
                     (multiple-value-bind (guard invert-p)
                         (find-sound-exception-guard frame cand-hit-mask g-lang g-bound
                                                     (max 1 (- work-limit condense-budget)) ledger
-                                                    :active-mask cand-active-mask)
+                                                    :active-mask cand-active-mask
+                                                    :buckets (or (heuristic-buckets cand-model)
+                                                                 (heuristic-buckets h-model)))
                       (when guard
                         (multiple-value-bind (eff-bindings eff-lang seq-id)
                             (lift-inductive-sequence-context guard invert-p inputs language c-lang child-id eff-self)
@@ -437,7 +530,8 @@ work limit is CONDENSE-BUDGET, and of `start-synthesis`."
                           :work-limit condense-budget :allow-other-keys t keys)
            (remove-keys '(:child-language :child-bound :condense-budget :fibers :dependencies
                           :guard-language :guard-bound :additive-p :conditional-p
-                          :library-proposals-p :library-functions :dependency-proposals-p)
+                          :library-proposals-p :library-functions :dependency-proposals-p
+                          :structural-proposals-p)
                         keys))))
 
 (defun start-recursive-synthesis (frame language description-limit

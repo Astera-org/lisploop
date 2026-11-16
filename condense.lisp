@@ -38,7 +38,9 @@ Return the best completed model and an informative completion/cutoff message."
 (defstruct (heuristic-search (:constructor %make-heuristic-search))
   observation bound (ledger (make-ledger)) (phase :prepare) (debt 0) record rows outcomes
   (resolved-rows 0) evaluation (index 0) residual (unresolved nil) (residual-bits 0) best (models nil) (run-weight 0)
-  (stop-on-exact-p nil))
+  (stop-on-exact-p nil)
+  decoders ; the library's metric decoders for the target type, frozen when the search starts
+  staged)  ; a result computed ahead of its payment: a row's (witness bits), or a model
 
 (defun frame-has-empty-sequence-row-p (frame)
   "True when FRAME has a sequence input Xi whose value is empty ('()) on some constrained row."
@@ -77,54 +79,65 @@ and unverified oracle functions from Stage A unconditional observation."
               (loop for row in (frame-rows frame) sum (syntax-work (row-requirement row))))
      :bound (or description-limit (header-bound (schema-inputs (frame-schema frame))
                                                 (schema-target (frame-schema frame)) 18))
+     :decoders (metric-decoders (schema-target (frame-schema frame)))
      :run-weight run-weight
      :stop-on-exact-p stop-on-exact-p)))
 
-(defun price-row-witness (job values type &optional outcome)
-  "Add to JOB's residual bits the cost of naming the current row and correcting it to the closest
-witness among VALUES, and return that witness. OUTCOME, when given, is the observed outcome the
-witness should stay close to."
-  (multiple-value-bind (witness bits)
-      (select-closest-witness (and outcome (observation-outcome-value outcome)) values type
-                              (and outcome (eq :value (observation-outcome-status outcome))))
-    (incf (heuristic-search-residual-bits job)
-          (+ (positive-bit-size (1+ (heuristic-search-index job))) bits))
-    witness))
+(defun closest-row-witness (job frame values type &optional outcome ledger)
+  "The witness among VALUES closest to OUTCOME, the candidate's observed outcome on the
+current row if it has one, and its correction bits, as two values. The frame's metric and
+the library's metric decoders run in the VM and are charged to LEDGER."
+  (select-closest-witness (and outcome (observation-outcome-value outcome)) values type
+                          (and outcome (eq :value (observation-outcome-status outcome)))
+                          :metric (frame-metric frame)
+                          :decoders (heuristic-search-decoders job)
+                          :ledger ledger))
 
-(defun note-unresolved-row (job row type)
+(defun charge-row-witness (job bits)
+  "Add to JOB's residual bits the cost of naming the current row and of a correction of BITS."
+  (incf (heuristic-search-residual-bits job)
+        (+ (positive-bit-size (1+ (heuristic-search-index job))) bits)))
+
+(defun note-unresolved-row (job frame row type)
   "Record that the candidate leaves ROW unresolved, pricing a witness for it when one is listed."
   (when (constrained-row-p row)
     (push (row-key row) (heuristic-search-unresolved job))
     (let ((values (extract-allowed-values (row-requirement row))))
-      (when (consp values) (price-row-witness job values type)))))
+      (when (consp values)
+        (charge-row-witness job (nth-value 1 (closest-row-witness job frame values type)))))))
 
-(defun record-heuristic-model (job frame type)
-  "Turn the candidate whose rows have all been visited into a priced model and keep the best one."
+(defun price-heuristic-model (job frame type ledger)
+  "The priced model of the candidate whose rows have all been visited. The metric programs
+that price its relational residual are charged to LEDGER."
   (let* ((record (heuristic-search-record job))
          (program (observed-expression-expression record))
          (bits (description-size program (schema-inputs (frame-schema frame))))
          (row-residual (nreverse (heuristic-search-residual job))))
     (multiple-value-bind (rel-entries rel-bits)
         (relational-linkage-residual frame (observed-expression-outcomes record)
-                                     :row-residuals row-residual :type type)
+                                     :row-residuals row-residual :type type
+                                     :decoders (heuristic-search-decoders job) :ledger ledger)
       (let* ((residual (append row-residual rel-entries))
              ;; Residual length is encoded, too; exact synthesis needs no correction packet.
              (residual-bits (+ (heuristic-search-residual-bits job)
                                rel-bits
                                (if residual (positive-bit-size (1+ (length residual))) 0)))
-             (run-work (observed-expression-run-work record))
-             (model (make-heuristic-model
-                     :program program :residual residual
-                     :unresolved-keys (nreverse (copy-list (heuristic-search-unresolved job)))
-                     :exact-p (null residual)
-                     :total-p (not (null (member (observed-expression-status record)
-                                                 '(:complete :unresolved))))
-                     :program-bits bits :residual-bits residual-bits :run-work run-work
-                     :score (+ bits residual-bits (* (heuristic-search-run-weight job) run-work))))
-             (old (heuristic-search-best job)))
-        (push model (heuristic-search-models job))
-        (when (or (null old) (heuristic-model< model old))
-          (setf (heuristic-search-best job) model))))))
+             (run-work (observed-expression-run-work record)))
+        (make-heuristic-model
+         :program program :residual residual
+         :unresolved-keys (nreverse (copy-list (heuristic-search-unresolved job)))
+         :exact-p (null residual)
+         :total-p (not (null (member (observed-expression-status record)
+                                     '(:complete :unresolved))))
+         :program-bits bits :residual-bits residual-bits :run-work run-work
+         :score (+ bits residual-bits (* (heuristic-search-run-weight job) run-work)))))))
+
+(defun record-heuristic-model (job model)
+  "Keep MODEL among the job's models, and as its best when it is."
+  (let ((old (heuristic-search-best job)))
+    (push model (heuristic-search-models job))
+    (when (or (null old) (heuristic-model< model old))
+      (setf (heuristic-search-best job) model))))
 
 (defun settle-heuristic-row (job row satisfied-p)
   "Count ROW, whose check gave a definite verdict, as resolved; a failing row needs a witness."
@@ -163,11 +176,15 @@ witness should stay close to."
        (charge ledger :heuristic-checking)
        (cond ((null row)
               (if (>= (heuristic-search-resolved-rows job) (frame-min-resolved-rows frame))
-                  (setf (heuristic-search-phase job) :score
-                        (heuristic-search-debt job)
-                        (+ (syntax-work (observed-expression-expression (heuristic-search-record job)))
-                           (length (frame-pairs frame))
-                           (length (frame-anchors frame))))
+                  ;; The model is priced now and published once its ranking is paid for.
+                  (let ((private (make-ledger)))
+                    (setf (heuristic-search-staged job) (price-heuristic-model job frame type private)
+                          (heuristic-search-phase job) :score
+                          (heuristic-search-debt job)
+                          (+ (syntax-work (observed-expression-expression (heuristic-search-record job)))
+                             (length (frame-pairs frame))
+                             (length (frame-anchors frame))
+                             (ledger-total private))))
                   (setf (heuristic-search-phase job) :observe)))
              ((eq :value (observation-outcome-status outcome))
               (setf (heuristic-search-evaluation job)
@@ -175,7 +192,7 @@ witness should stay close to."
                                       (list (observation-outcome-value outcome)))
                     (heuristic-search-phase job) :check))
              ((eq :unresolved (observation-outcome-status outcome))
-              (note-unresolved-row job row type)
+              (note-unresolved-row job frame row type)
               (setf (heuristic-search-phase job) :next))
              (t (settle-heuristic-row job row nil))))
       (:check
@@ -184,7 +201,7 @@ witness should stay close to."
          (case (evaluation-status run)
            (:unknown)  ; the check needs more work
            (:unresolved
-            (note-unresolved-row job row type)
+            (note-unresolved-row job frame row type)
             (setf (heuristic-search-phase job) :next))
            (t (settle-heuristic-row job row (and (eq :value (evaluation-status run))
                                                  (eq t (evaluation-value run))))))))
@@ -195,11 +212,27 @@ witness should stay close to."
            (setf (heuristic-search-phase job)
                  (cond ((not (constrained-row-p row)) :next)
                        ((consp values)
-                        (push (cons (row-key row) (price-row-witness job values type outcome))
-                              (heuristic-search-residual job))
-                        :next)
+                        ;; The witness is chosen now; a metric program that ran to price it
+                        ;; is paid for before the choice counts.
+                        (let ((private (make-ledger)))
+                          (multiple-value-bind (witness bits)
+                              (closest-row-witness job frame values type outcome private)
+                            (cond ((zerop (ledger-total private))
+                                   (charge-row-witness job bits)
+                                   (push (cons (row-key row) witness) (heuristic-search-residual job))
+                                   :next)
+                                  (t (setf (heuristic-search-staged job) (list witness bits)
+                                           (heuristic-search-debt job) (ledger-total private))
+                                     :witness)))))
                        ;; No available correction witness; do not call an unresolved predicate false.
                        (t :observe))))))
+      (:witness
+       (pay-debt (heuristic-search-debt job) 1 ledger :heuristic-metric)
+       (when (zerop (heuristic-search-debt job))
+         (destructuring-bind (witness bits) (heuristic-search-staged job)
+           (charge-row-witness job bits)
+           (push (cons (row-key row) witness) (heuristic-search-residual job)))
+         (setf (heuristic-search-phase job) :next)))
       (:next
        (charge ledger :heuristic-checking)
        (pop (heuristic-search-rows job)) (pop (heuristic-search-outcomes job))
@@ -207,7 +240,7 @@ witness should stay close to."
       (:score
        (pay-debt (heuristic-search-debt job) 1 ledger :heuristic-ranking)
        (when (zerop (heuristic-search-debt job))
-         (record-heuristic-model job frame type)
+         (record-heuristic-model job (heuristic-search-staged job))
          (setf (heuristic-search-phase job) :observe))))))
 
 (defun heuristic-search-complete-p (job)

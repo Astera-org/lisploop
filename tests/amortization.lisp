@@ -147,7 +147,7 @@
           (check (equal x (rewriting-value other-warm)))
           (check (< (rewriting-work other-warm) (rewriting-work other-cold)))))
       ;; Frozen rules are insulated from both original evidence and inspection copies.
-      (setf (law-guard (law-validation-law law)) (lit :bool nil))
+      (setf (knowledge-entry-guard (law-validation-law law)) (lit :bool nil))
       (setf (rewrite-rule-replacement (first (rewrite-library-rules library))) (lit domain 4))
       (check (equal x (rewriting-value (advance-rewriting (start-rewriting expression inputs library) 1000000))))
       (let ((other-scope (list (cons 0 domain))))

@@ -87,7 +87,7 @@
     (values (propose-observed-laws job) job)))
 
 (defun find-equation (laws left right)
-  (find-if (lambda (law) (let ((sides (rest (law-equation law))))
+  (find-if (lambda (law) (let ((sides (rest (knowledge-entry-expression law))))
                            (or (equal sides (list left right)) (equal sides (list right left)))))
            laws))
 
@@ -99,8 +99,8 @@
       (check (find-equation laws (app plus a (lit domain 0)) a))
       (dolist (law laws)
         (let ((validation (checked-law law)))
-          (check (= (* p p) (law-certificate-assignments (law-validation-certificate validation))))
-          (check-codec-roundtrip (law-statement law) (law-inputs law)))))))
+          (check (= (* p p) (getf (law-validation-certificate validation) :assignments)))
+          (check-codec-roundtrip (law-statement law) (knowledge-entry-inputs law)))))))
 
 (deftest law-scope-counterexamples-and-cutoffs
   (let* ((domain (gf 5)) (inputs (list (cons 0 domain))) (x (var 0 domain))
@@ -128,9 +128,9 @@
       (check (eq :vacuous (law-validation-status
                            (resume-law-validation (start-law-validation vacuous) 100000)))))
     ;; Validation owns a copy, and its certificate is bound to exact DSL data.
-    (setf (law-guard law) (lit :bool nil))
+    (setf (knowledge-entry-guard law) (lit :bool nil))
     (check (prepare-rewrite-library (list five) domain))
-    (setf (law-guard (law-validation-law five)) (lit :bool nil))
+    (setf (knowledge-entry-guard (law-validation-law five)) (lit :bool nil))
     (raises (prepare-rewrite-library (list five) domain))))
 
 (deftest guarded-rewrites-preserve-errors-and-terminate
@@ -207,7 +207,7 @@
     (check (null (law-validation-certificate state)))
     (raises (prepare-rewrite-library (list state) domain))
     (resume-law-validation state 100000)
-    (check (= 4 (law-certificate-active (law-validation-certificate state))))
+    (check (= 4 (getf (law-validation-certificate state) :active)))
     (let ((bad-guard (make-law domain inputs x x :guard
                                (app (op := domain) (app (op :/ domain) x (lit domain 0)) x))))
       (check (eq :refuted (law-validation-status
@@ -337,10 +337,10 @@
            (checked-proj0 (checked-law proj0-law))
            (checked-eta (checked-law eta-law))
            (checked-guarded (checked-law guarded-tuple-law)))
-      (check (= 9 (law-certificate-assignments (law-validation-certificate checked-proj0))))
-      (check (= 9 (law-certificate-assignments (law-validation-certificate checked-eta))))
-      (check (= 9 (law-certificate-assignments (law-validation-certificate checked-guarded))))
-      (check (= 6 (law-certificate-active (law-validation-certificate checked-guarded))))
+      (check (= 9 (getf (law-validation-certificate checked-proj0) :assignments)))
+      (check (= 9 (getf (law-validation-certificate checked-eta) :assignments)))
+      (check (= 9 (getf (law-validation-certificate checked-guarded) :assignments)))
+      (check (= 6 (getf (law-validation-certificate checked-guarded) :active)))
       (multiple-value-bind (batch)
           (check-law-validation-resumption (lambda () (start-law-validation guarded-tuple-law))
                                            :limits '(0 1 15 60 250 1000 50000))
@@ -356,8 +356,8 @@
                                   (var 0 pair5)))
              (lit-law-3 (retype-law lit-law-5 d3))
              (checked-lit-3 (checked-law lit-law-3)))
-        (check (= 25 (law-certificate-assignments (law-validation-certificate checked-eta-5))))
-        (check (= 9 (law-certificate-assignments (law-validation-certificate checked-lit-3)))))
+        (check (= 25 (getf (law-validation-certificate checked-eta-5) :assignments)))
+        (check (= 9 (getf (law-validation-certificate checked-lit-3) :assignments))))
       (let* ((library (prepare-rewrite-library
                        (list checked-proj0 checked-eta checked-guarded)
                        d3))

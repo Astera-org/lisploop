@@ -10,10 +10,10 @@
     (decode-law-corpus (evaluation-value run))))
 
 (defun same-law-syntax-p (left right)
-  (and (equal (law-domain left) (law-domain right))
-       (equal (law-inputs left) (law-inputs right))
-       (equal (law-equation left) (law-equation right))
-       (equal (law-guard left) (law-guard right))))
+  (and (equal (knowledge-entry-domain left) (knowledge-entry-domain right))
+       (equal (knowledge-entry-inputs left) (knowledge-entry-inputs right))
+       (equal (knowledge-entry-expression left) (knowledge-entry-expression right))
+       (equal (knowledge-entry-guard left) (knowledge-entry-guard right))))
 
 (deftest au-law-repeated-expression-and-operator-holes
   (let* ((laws (loop for n in '(2 3 4) for name in '(:+ :* :-) collect
@@ -49,7 +49,7 @@
           (check (= 1 (search-job-rejected job)))))
       ;; No template/generalization receives a certificate by being reconstructed.
       (let ((decoded (compression-replay (third models))))
-        (check (every (lambda (law) (equal '(:decoded-syntax) (law-origin law))) decoded))
+        (check (every (lambda (law) (equal '(:decoded-syntax) (getf (knowledge-entry-metadata law) :origin))) decoded))
         (check (eq :unknown (law-validation-status (start-law-validation (first decoded)))))))))
 
 (deftest au-law-corpus-occurrences-isolation-and-type-boundaries
@@ -66,8 +66,8 @@
           (check (every #'same-law-syntax-p laws decoded))
           (check (every (lambda (law) (eq :validated (law-validation-status (checked-law law)))) decoded))))
       (let ((saved (encode-model (third models))))
-        (setf (law-guard a) (lit :bool nil))
-        (check (equal (lit :bool t) (law-guard (second (law-corpus-laws corpus)))))
+        (setf (knowledge-entry-guard a) (lit :bool nil))
+        (check (equal (lit :bool t) (knowledge-entry-guard (second (law-corpus-laws corpus)))))
         (setf (law-corpus-packet corpus) nil (law-corpus-laws corpus) nil)
         (check (= 5 (length (compression-replay (decode-model saved)))))))
     (raises (make-law-corpus (list b (retype-law b (gf 7)))))

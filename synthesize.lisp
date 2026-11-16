@@ -7,14 +7,26 @@
 
 (defstruct decomposition
   name decoder child-id child-type bindings language bound children
-  (fiber-p nil) (lift-p nil) (solver nil) (fallback-p nil) (policy-score 0 :type fixnum) (provenance nil))
+  (fiber-p nil) (lift-p nil) (solver nil) (fallback-p nil) (policy-score 0 :type fixnum) (provenance nil)
+  ;; A product: DECODER has one variable for each of SLOTS, ((id . type) ...), and this
+  ;; proposal poses the slot CHILD-ID. The proposals of one product share the same SLOTS
+  ;; list and BINDINGS, and their models are joined into one model of the parent.
+  (slots nil)
+  ;; True when the decoder only takes values apart or puts them together: such a step is
+  ;; not counted against the depth limit.
+  (structural-p nil))
 
 (defstruct synthesis-node
   id parent proposal frame language bound search (phase :prepare)
   staged ; the `staged-work` of a preparation or an expansion that is being paid for
   priority heuristic followers reused-from (revision 0) (reserve-rows nil) (coupled-requirements nil)
   ;; Lazy expansion: nil (not yet), :paying (branches staged, debt owed), or :done.
-  expansion (deferred-proposals nil) (provenance nil))
+  expansion (deferred-proposals nil) (provenance nil)
+  join) ; the `product-join` this node shares with the other slots of its product, or nil
+
+;; The AND-join of a product's slots: MODELS holds (slot-id expression size) for the
+;; smallest model each slot has found so far.
+(defstruct product-join models)
 
 ;; Privately staged result of `prepare-synthesis-node`, published once its debt is paid.
 (defstruct node-preparation
@@ -113,9 +125,20 @@ messages describe computation. Parents may consume these without trusting a heur
     (push message (synthesis-job-messages job)) message))
 
 (defun add-synthesis-node (job parent proposal)
-  (let ((node (make-synthesis-node :id (prog1 (synthesis-job-next-id job)
-                                       (incf (synthesis-job-next-id job)))
-                                   :parent parent :proposal proposal)))
+  "Add a node that poses PROPOSAL under PARENT. The slots of one product, which share their
+`decomposition-slots` list, share one join."
+  (let* ((slots (and proposal (decomposition-slots proposal)))
+         (sibling (and slots
+                       (find-if (lambda (other)
+                                  (and (eq parent (synthesis-node-parent other))
+                                       (synthesis-node-join other)
+                                       (eq slots (decomposition-slots (synthesis-node-proposal other)))))
+                                (synthesis-job-nodes job))))
+         (node (make-synthesis-node :id (prog1 (synthesis-job-next-id job)
+                                          (incf (synthesis-job-next-id job)))
+                                    :parent parent :proposal proposal
+                                    :join (cond (sibling (synthesis-node-join sibling))
+                                                (slots (make-product-join))))))
     (setf (synthesis-job-nodes job) (append (synthesis-job-nodes job) (list node))) node))
 
 (defun start-synthesis (frame language description-limit
@@ -134,6 +157,7 @@ proposes further branches below a prepared node shallower than MAX-DEPTH, root i
 Expansion is a scheduled action, chosen like search by the node's full-path price; with
 MAX-DEPTH nil the tree grows for as long as the budget lasts (an anytime search)."
   (assert (and (integerp quantum) (plusp quantum) (realp run-weight) (>= run-weight 0)))
+  (assert-inputs-available frame)
   (assert (member policy '(:round-robin :heuristic)))
   (assert (or (null max-depth) (and (integerp max-depth) (>= max-depth 0))))
   (let* ((root (make-synthesis-node :id 0 :frame (snapshot-frame frame)
@@ -156,7 +180,7 @@ MAX-DEPTH nil the tree grows for as long as the budget lasts (an anytime search)
                                    :deductive-nogoods-p deductive-nogoods-p
                                    :debug-p debug-p)))
     (activate-job-oracle job)
-    (setf (synthesis-job-library job) (as-propagator-library library (synthesis-job-ledger job)))
+    (setf (synthesis-job-library job) (as-propagator-library library))
     (dolist (proposal decompositions) (add-synthesis-node job root (copy-decomposition-tree proposal)))
     job))
 
@@ -164,8 +188,11 @@ MAX-DEPTH nil the tree grows for as long as the budget lasts (an anytime search)
   (or (eq :heuristic (synthesis-job-policy job)) (synthesis-job-priority-predictor job)))
 
 (defun node-depth (node)
-  (loop for parent = (synthesis-node-parent node) then (synthesis-node-parent parent)
-        while parent count t))
+  "The number of decompositions between NODE and the root, structural ones aside: taking a
+value apart or putting one together is not a step of computation."
+  (loop for cur = node then (synthesis-node-parent cur)
+        while (synthesis-node-parent cur)
+        count (not (decomposition-structural-p (synthesis-node-proposal cur)))))
 
 (defun node-may-expand-p (job node)
   "True when the job expands and NODE lies above the depth limit, if there is one."
@@ -203,34 +230,60 @@ MAX-DEPTH nil the tree grows for as long as the budget lasts (an anytime search)
           (canonical-constraint-rows (frame-rows frame) inputs)
           (canonical-constraint-rows reserve inputs)
           ;; Observation linkage carries occurrence semantics; do not quotient it away.
-          (when (or (frame-pairs frame) (frame-anchors frame))
-            (copy-tree (list (mapcar #'row-key (frame-rows frame)) (frame-pairs frame) (frame-anchors frame))))
+          (when (or (frame-pairs frame) (frame-anchors frame) (frame-edges frame))
+            (copy-tree (list (mapcar #'row-key (frame-rows frame)) (frame-pairs frame) (frame-anchors frame)
+                             (frame-edges frame))))
           (copy-tree (language-domain language))
           (copy-tree (language-inputs language))
           (mapcar #'ast->sexp (language-operators language))
           (copy-tree (language-literals language))
           (mapcar #'ast->sexp (language-constants language)))))
 
-(defun compose-through (proposal expression ledger)
-  "EXPRESSION, a model of PROPOSAL's child frame, composed into a model of the parent frame."
-  (if (decomposition-lift-p proposal)
-      (compose-lifted-model (decomposition-decoder proposal) (decomposition-child-id proposal)
-                            (decomposition-child-type proposal) expression
-                            (decomposition-bindings proposal) ledger)
-      (compose-model (decomposition-decoder proposal) (decomposition-child-id proposal)
-                     expression (decomposition-bindings proposal) ledger)))
+(defun slot-models (node expression)
+  "A model for every slot of the product NODE is a slot of: EXPRESSION for its own, the best
+found so far for another, and a default literal for a slot that has none yet."
+  (let ((proposal (synthesis-node-proposal node))
+        (found (product-join-models (synthesis-node-join node))))
+    (loop for (id . type) in (decomposition-slots proposal)
+          collect (cons id (cond ((eql id (decomposition-child-id proposal)) expression)
+                                 ((second (assoc id found)))
+                                 (t (lit type (default-value-for-type type))))))))
+
+(defun compose-through (node expression ledger)
+  "EXPRESSION, a model of NODE's frame, composed into a model of its parent's frame. A slot
+of a product is composed with the models of the other slots (`slot-models`)."
+  (let* ((proposal (synthesis-node-proposal node))
+         (parent-frame (synthesis-node-frame (synthesis-node-parent node)))
+         (inputs (and parent-frame (schema-inputs (frame-schema parent-frame)))))
+    (cond ((synthesis-node-join node)
+           (compose-product-model (decomposition-decoder proposal) (slot-models node expression)
+                                  (decomposition-bindings proposal) ledger inputs))
+          ((decomposition-lift-p proposal)
+           (compose-lifted-model (decomposition-decoder proposal) (decomposition-child-id proposal)
+                                 (decomposition-child-type proposal) expression
+                                 (decomposition-bindings proposal) ledger))
+          (t
+           (compose-model (decomposition-decoder proposal) (decomposition-child-id proposal)
+                          expression (decomposition-bindings proposal) ledger inputs)))))
 
 (defun pull-through (proposal parent-frame ledger &rest lift-limits)
   "PARENT-FRAME lifted or pulled back through PROPOSAL into the child's frame. A lift also
-returns its coupled requirements and reserve rows, and takes the LIFT-LIMITS of `lift-frame`."
-  (apply (if (decomposition-lift-p proposal) #'lift-frame #'pullback-frame)
-         parent-frame (decomposition-decoder proposal) (decomposition-child-id proposal)
-         (decomposition-child-type proposal) (decomposition-bindings proposal) ledger lift-limits))
+returns its coupled requirements and reserve rows, and takes the LIFT-LIMITS of `lift-frame`;
+a slot of a product returns the requirements that couple it to another slot."
+  (cond ((decomposition-slots proposal)
+         (product-slot-frame parent-frame (decomposition-decoder proposal)
+                             (decomposition-slots proposal) (decomposition-child-id proposal)
+                             (decomposition-bindings proposal) ledger))
+        (t
+         (apply (if (decomposition-lift-p proposal) #'lift-frame #'pullback-frame)
+                parent-frame (decomposition-decoder proposal) (decomposition-child-id proposal)
+                (decomposition-child-type proposal) (decomposition-bindings proposal) ledger
+                lift-limits))))
 
 (defun reconstruct-candidate-to-ancestor (node target-ancestor expression ledger)
   "Reconstruct EXPRESSION from NODE up to TARGET-ANCESTOR (without walking above TARGET-ANCESTOR)."
   (loop until (or (null node) (eq node target-ancestor) (null (synthesis-node-parent node)))
-        do (setf expression (compose-through (synthesis-node-proposal node) expression ledger)
+        do (setf expression (compose-through node expression ledger)
                  node (synthesis-node-parent node)))
   expression)
 
@@ -263,23 +316,46 @@ returns its coupled requirements and reserve rows, and takes the LIFT-LIMITS of 
 
 (defun valid-job-node-candidate-p (job node expr)
   "When JOB is synthesizing a recursive definition for SELF-NAME, any candidate must call SELF-NAME
-unless NODE is inside a lifted higher-order library combinator branch that encapsulates the recursion."
+unless NODE is inside a lifted higher-order library combinator branch that encapsulates the recursion.
+A slot of a product is judged once it is joined: another slot may make the call."
   (let ((self-name (and job (synthesis-job-self-name job))))
     (or (null self-name)
         (node-in-lifted-library-branch-p node)
+        (synthesis-node-join node)
         (expression-calls-operator-p
          (reconstruct-synthesis-candidate node expr)
          self-name))))
 
+(defun structural-node-p (node)
+  "True when NODE's proposal only takes values apart or puts them together."
+  (let ((proposal (synthesis-node-proposal node)))
+    (and proposal (decomposition-structural-p proposal))))
+
+(defun stage-a-budget (job node frame)
+  "The work NODE's Stage A condensation of FRAME may spend, or nil for none: the job's
+heuristic budget, doubled for a lifted frame and for the child of a recursive definition.
+A lifted frame also receives the parent inputs its decoder does not consume, and each one
+both adds its combinations to every tier of the grammar and makes a variable reference
+dearer than a small literal, which puts the combinations of two inputs later. Its budget is
+therefore multiplied by the square of its number of inputs beyond the first, the least
+multiplier that keeps those combinations within reach as inputs are added (plan 8, probe 2).
+Stage A stops at an exact model in a lifted branch, so the larger budget is spent in full
+only where there is none."
+  (let ((base (synthesis-job-heuristic-budget job))
+        (lifted-p (lifted-node-p node)))
+    (when (and (integerp base) (plusp base))
+      (* base
+         (if (or lifted-p (and (synthesis-job-self-name job) (synthesis-node-parent node))) 2 1)
+         (if lifted-p
+             (expt (max 1 (1- (length (schema-inputs (frame-schema frame))))) 2)
+             1)))))
+
 (defun node-stage-a-model (job node frame language ledger)
   "Stage A: a budgeted heuristic condensation of NODE's own (pulled-back) frame.
 Its residual is priced in the node's representation, not the root's."
-  (let* ((base-budget (synthesis-job-heuristic-budget job))
-         (rec-child-p (and job (synthesis-job-self-name job) (synthesis-node-parent node)))
-         (budget (if (and (integerp base-budget) (or (lifted-node-p node) rec-child-p))
-                     (* 2 base-budget)
-                     base-budget)))
-    (when (and (integerp budget) (plusp budget))
+  (let ((budget (stage-a-budget job node frame))
+        (rec-child-p (and job (synthesis-job-self-name job) (synthesis-node-parent node))))
+    (when budget
       (condense-heuristic frame language
                           :description-limit (or (synthesis-job-heuristic-bound job)
                                                  (synthesis-node-bound node)
@@ -359,13 +435,13 @@ through every ancestor and priced at the root, plus its residual bits."
           (* (synthesis-job-run-weight job) (heuristic-run-work h-model))))
       (t most-positive-fixnum))))
 
-(defun node-library (job proposal ledger)
+(defun node-library (job proposal)
   "The job's learned propagators plus any supplied with PROPOSAL; none on a fallback branch."
   (unless (and proposal (decomposition-fallback-p proposal))
     (let ((shared (and job (synthesis-job-library job)))
           (local (and proposal (decomposition-solver proposal))))
       (if local
-          (as-propagator-library (if shared (list shared local) local) ledger)
+          (as-propagator-library (if shared (list shared local) local))
           shared))))
 
 (defun node-dip-repairs (job parent proposal nogoods ledger)
@@ -413,42 +489,50 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
                        (+ (syntax-work (row-requirement row))
                           (loop for value in (row-known row) for spec in (language-inputs language)
                                 sum (value-work value (cdr spec)))))))
-        (multiple-value-bind (conflict folded) (frame-conflict-p frame :ledger ledger)
-          (let ((library (and parent (null conflict) (node-library job proposal ledger)))
-                (fallback-p nil))
-            (when library
-              (let ((propagation (propagate-requirements folded library ledger)))
-                ;; A narrowing without uniqueness evidence may drop witnesses: keep the original.
-                (setf fallback-p (plusp (propagation-ambiguous propagation)))
-                (when (plusp (+ (propagation-narrowed propagation) (propagation-suggested propagation)))
-                  (multiple-value-setq (conflict folded)
-                    (frame-conflict-p (propagation-frame propagation) :ledger ledger)))))
-            (let* ((effective (if conflict frame folded))
-                   (priced-p (and job (null conflict) (or parent (node-may-expand-p job node))
-                                  (or (heuristic-routing-p job) (node-may-expand-p job node))))
-                   (h-model (when priced-p (node-stage-a-model job node effective language ledger)))
-                   (record-nogood-p (and job (synthesis-job-deductive-nogoods-p job)
-                                         conflict
-                                         (eq :incompatible-rows (frame-conflict-kind conflict))
-                                         parent
-                                         (or (pure-projection-decomposition-p proposal)
-                                             (and proposal (decomposition-lift-p proposal)))
-                                         (>= (length (frame-conflict-keys conflict)) 2)))
-                   (new-nogoods (when record-nogood-p
-                                  (collect-frame-nogood-clauses parent proposal frame conflict ledger)))
-                   (uip-nogood (when (and new-nogoods (decomposition-lift-p proposal))
-                                 (nth-value 0 (anti-unify-nogood-clauses
-                                               (append new-nogoods (synthesis-job-nogoods job))
-                                               ledger))))
-                   (dip-repairs (node-dip-repairs job parent proposal new-nogoods ledger)))
-              (stage :frame effective :conflict conflict :fallback-p fallback-p
-                     :heuristic h-model
-                     :priority (when (and priced-p (heuristic-routing-p job))
-                                 (node-priority job node effective language h-model ledger))
-                     :nogoods new-nogoods
-                     :uip-nogood uip-nogood
-                     :dip-repairs dip-repairs
-                     :reserve-rows reserve-rows))))))))
+        ;; A rule that inverts a defined function sees the requirement before folding can
+        ;; unfold the call it would recognise.
+        (let* ((callable (let ((library (and parent (node-library job proposal))))
+                           (and library (callable-rules-library library))))
+               (early (and callable (propagate-requirements frame callable ledger)))
+               (early-ambiguous-p (and early (plusp (propagation-ambiguous early)))))
+          (when (and early (plusp (+ (propagation-narrowed early) (propagation-suggested early))))
+            (setf frame (propagation-frame early)))
+          (multiple-value-bind (conflict folded) (frame-conflict-p frame :ledger ledger)
+            (let ((library (and parent (null conflict) (node-library job proposal)))
+                  (fallback-p early-ambiguous-p))
+              (when library
+                (let ((propagation (propagate-requirements folded library ledger)))
+                  ;; A narrowing without uniqueness evidence may drop witnesses: keep the original.
+                  (setf fallback-p (or fallback-p (plusp (propagation-ambiguous propagation))))
+                  (when (plusp (+ (propagation-narrowed propagation) (propagation-suggested propagation)))
+                    (multiple-value-setq (conflict folded)
+                      (frame-conflict-p (propagation-frame propagation) :ledger ledger)))))
+              (let* ((effective (if conflict frame folded))
+                     (priced-p (and job (null conflict) (or parent (node-may-expand-p job node))
+                                    (or (heuristic-routing-p job) (node-may-expand-p job node))))
+                     (h-model (when priced-p (node-stage-a-model job node effective language ledger)))
+                     (record-nogood-p (and job (synthesis-job-deductive-nogoods-p job)
+                                           conflict
+                                           (eq :incompatible-rows (frame-conflict-kind conflict))
+                                           parent
+                                           (or (pure-projection-decomposition-p proposal)
+                                               (and proposal (decomposition-lift-p proposal)))
+                                           (>= (length (frame-conflict-keys conflict)) 2)))
+                     (new-nogoods (when record-nogood-p
+                                    (collect-frame-nogood-clauses parent proposal frame conflict ledger)))
+                     (uip-nogood (when (and new-nogoods (decomposition-lift-p proposal))
+                                   (nth-value 0 (anti-unify-nogood-clauses
+                                                 (append new-nogoods (synthesis-job-nogoods job))
+                                                 ledger))))
+                     (dip-repairs (node-dip-repairs job parent proposal new-nogoods ledger)))
+                (stage :frame effective :conflict conflict :fallback-p fallback-p
+                       :heuristic h-model
+                       :priority (when (and priced-p (heuristic-routing-p job))
+                                   (node-priority job node effective language h-model ledger))
+                       :nogoods new-nogoods
+                       :uip-nogood uip-nogood
+                       :dip-repairs dip-repairs
+                       :reserve-rows reserve-rows)))))))))
 
 (defun start-root-verification (job node model child-expression)
   "Start checking MODEL, the root composition of NODE's CHILD-EXPRESSION, on the root frame."
@@ -465,16 +549,38 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
                         :diagnostics t
                         :expressions (list model)))))
 
-(defun enqueue-node-candidate (job node expression candidate-obj)
-  "Compose EXPRESSION, a model of NODE's frame, to the root and queue it for verification there."
-  (let* ((private (make-ledger))
-         (model (reconstruct-synthesis-candidate node expression private)))
-    (when candidate-obj
-      (synthesis-message job node :child-candidate (list :candidate candidate-obj :scope :child-frame)))
-    (setf (synthesis-job-pending job)
-          (append (synthesis-job-pending job)
-                  (list (stage-work node private :composition
-                                    (lambda () (start-root-verification job node model expression))))))))
+(defun join-slot-candidate (job node expression ledger)
+  "Record EXPRESSION as a model of NODE's slot. Return its product with the best model of
+every other slot, a model of the parent's frame, or nil while some slot has none."
+  (let* ((proposal (synthesis-node-proposal node))
+         (join (synthesis-node-join node))
+         (id (decomposition-child-id proposal))
+         (size (description-size expression (schema-inputs (frame-schema (synthesis-node-frame node)))))
+         (entry (assoc id (product-join-models join))))
+    (cond ((null entry) (push (list id expression size) (product-join-models join)))
+          ((< size (third entry)) (setf (cdr entry) (list expression size))))
+    (when (every (lambda (slot) (assoc (car slot) (product-join-models join)))
+                 (decomposition-slots proposal))
+      (let ((product (compose-through node expression ledger)))
+        (and (valid-job-node-candidate-p job (synthesis-node-parent node) product)
+             product)))))
+
+(defun enqueue-node-candidate (job node expression candidate-obj &optional (private (make-ledger)))
+  "Compose EXPRESSION, a model of NODE's frame, to the root and queue it for verification there.
+A model of one slot of a product is first joined with the other slots' models into a model
+of their parent's frame, which is queued in its place; it waits while a slot has none.
+The work of composing is staged on PRIVATE."
+  (when candidate-obj
+    (synthesis-message job node :child-candidate (list :candidate candidate-obj :scope :child-frame)))
+  (if (synthesis-node-join node)
+      (let ((product (join-slot-candidate job node expression private)))
+        (when product
+          (enqueue-node-candidate job (synthesis-node-parent node) product nil private)))
+      (let ((model (reconstruct-synthesis-candidate node expression private)))
+        (setf (synthesis-job-pending job)
+              (append (synthesis-job-pending job)
+                      (list (stage-work node private :composition
+                                        (lambda () (start-root-verification job node model expression)))))))))
 
 (defun exact-heuristic-program (node &optional job)
   "The node's own Stage A program when it already satisfies every row, else nil."
@@ -640,11 +746,31 @@ deferred proposal recorded on any node."
   "Agenda actions are a node (prepare or search it) or (:expand . node)."
   (if (consp action) (cdr action) action))
 
+(defun slot-satisfied-p (node)
+  "True when NODE is a slot of a product that already holds a model for it."
+  (let ((join (synthesis-node-join node)))
+    (and join (assoc (decomposition-child-id (synthesis-node-proposal node))
+                     (product-join-models join)))))
+
+(defun node-price (node)
+  "NODE's full-path price: its Stage A model composed through every ancestor and priced at
+the root, plus its residual. A structural node poses its parent's problem in another form,
+so it is worth at least what its parent is."
+  (let ((own (or (synthesis-node-priority node) most-positive-fixnum)))
+    (if (structural-node-p node)
+        (min own (node-price (synthesis-node-parent node)))
+        own)))
+
 (defun action-priority (action)
-  "Full-path price: the node's Stage A model composed through every ancestor and priced
-at the root, plus its residual. Expansion wins ties: it is the cheaper lookahead."
-  (let ((price (or (synthesis-node-priority (action-node action)) most-positive-fixnum)))
-    (if (consp action) (- price 1/2) price)))
+  "The full-path price of the action's node. Expansion wins ties: it is the cheaper
+lookahead. A structural node's search wins ties with its parent's, whose candidates of that
+form it finds sooner; but a slot that already has a model waits for those that have none."
+  (let* ((node (action-node action))
+         (price (node-price node)))
+    (cond ((consp action) (- price 1/2))
+          ((slot-satisfied-p node) most-positive-fixnum)
+          ((structural-node-p node) (- price 1/4))
+          (t price))))
 
 (defun reserved-turn-p (turn)
   "One turn in four is held back from the preferred lane and given out in rotation."
@@ -722,17 +848,40 @@ selection for round-robin."
       (setf (synthesis-job-active job) chosen
             (synthesis-job-remaining job) (synthesis-job-quantum job)))))
 
+(defparameter *max-eager-proposals-per-node* nil
+  "The most primary proposals one expansion materializes at once, or nil for no limit. Every
+materialized proposal is prepared and priced by Stage A before the agenda can rank it, so
+the limit bounds what an expansion commits; the proposals beyond it wait with the fallbacks.")
+
+(defun eager-proposals (primaries)
+  "The proposals of PRIMARIES, which are in policy-score order, to materialize at once: the
+first `*max-eager-proposals-per-node*`, and with any slot of a product all its other slots,
+which are of no use apart."
+  (let ((limit *max-eager-proposals-per-node*))
+    (if (or (null limit) (<= (length primaries) limit))
+        primaries
+        (let ((head (subseq primaries 0 limit)))
+          (remove-if-not (lambda (proposal)
+                           (or (member proposal head)
+                               (and (decomposition-slots proposal)
+                                    (member (decomposition-slots proposal) head
+                                            :key #'decomposition-slots))))
+                         primaries)))))
+
 (defun publish-node-expansion (job node proposals)
-  "Materialize NODE's PROPOSALS in policy-score order: every primary one now, or failing any
-the first fallback. The other fallbacks wait in `(synthesis-node-deferred-proposals node)`
-until nothing else is left to do."
+  "Materialize NODE's PROPOSALS in policy-score order: the primary ones now, up to
+`*max-eager-proposals-per-node*`, or failing any the first fallback. The others wait in
+`(synthesis-node-deferred-proposals node)`, primaries first, until nothing else is left to do."
   (let* ((ordered (stable-sort (copy-list proposals) #'< :key #'decomposition-policy-score))
          (primaries (remove-if #'decomposition-fallback-p ordered))
-         (fallbacks (remove-if-not #'decomposition-fallback-p ordered)))
-    (dolist (proposal (or primaries (and fallbacks (list (first fallbacks)))))
+         (fallbacks (remove-if-not #'decomposition-fallback-p ordered))
+         (eager (eager-proposals primaries)))
+    (dolist (proposal (or eager (and fallbacks (list (first fallbacks)))))
       (add-synthesis-node job node proposal))
     (setf (synthesis-node-deferred-proposals node)
-          (append (synthesis-node-deferred-proposals node) (if primaries fallbacks (rest fallbacks))))
+          (append (synthesis-node-deferred-proposals node)
+                  (remove-if (lambda (proposal) (member proposal eager)) primaries)
+                  (if primaries fallbacks (rest fallbacks))))
     (synthesis-message job node :expanded
                        (list :proposals (mapcar #'decomposition-name ordered)
                              :deferred-proposals (mapcar #'decomposition-name

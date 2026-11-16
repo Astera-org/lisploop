@@ -364,7 +364,7 @@
       (let ((replacement (as-propagator-library *knowledge-library*)))
         (check (not (eq prepared replacement)))
         (check (not (propagator-certified-current-p (first (propagator-library-rules prepared)))))
-        (check (not (arithmetic-propagator-certified-p (first (propagator-library-rules replacement)))))))))
+        (check (not (propagator-certified-current-p (first (propagator-library-rules replacement)))))))))
 
 (deftest audit-pooled-residuals-charge-every-executable-copy
   (with-knowledge-library ((make-knowledge-library))

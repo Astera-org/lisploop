@@ -184,6 +184,115 @@ The following open problems are cleanly separated from Core Plan 8 so the kernel
 
 ---
 
+## 6. Implementation Record & Departures from the Plan
+
+This section records what was built for `P8.1`–`P8.4`, what each gate measured, and where the code departs from §3–§4. The Lisp source remains authoritative; file and function names below are the ones to grep for. `make test` is green throughout (kernel + milestones).
+
+### 6.1 Corrections to the Plan Text Found on Audit
+
+- `plan8-2.md` (§1.1, §5.5) is not in the repository or its history.
+- The kernel at `54acfa3` is `12,472` lines over the 25 files of `load.lisp`, not `12,481`.
+- `frame-pairs` and `frame-anchors` were already keyed by `row-key`. Only their Stage A *price* (the unpermuted baseline) depended on position, so §3.4.1's "replace positional-index `pairs`/`anchors`" overstated the problem.
+- `heuristic-buckets` holds features of the frame's observation language, so the features available to pair in §3.2.3 and to sort by in §3.4.2 are those the node's Stage A reached within its own budget. Neither mechanism evaluates anything further.
+- Every line reference checked matched the source, and Appendix A reproduced exactly.
+
+### 6.2 Status by Phase
+
+| Phase | Delivered | Not Delivered |
+| :--- | :--- | :--- |
+| **`P8.1`** | `:code-eval` let-sharing in `compose-model` (`let-call`, `bind-model`); product slots with an AND-join (`product-join`, `product-slot-frame`, `compose-product-model`) for `:tuple` targets and Constructor-AU; `component-bindings` for tuple inputs; `feature-pair-predicates` guards; `au-substitutions-frame` promoted to `unify.lisp` | `:decoder-template` AU |
+| **`P8.2`** | `stage-a-budget` arity scaling; `*max-eager-proposals-per-node*`; `frame-metric`; `(:metric-decoder d q tag-bits)` edges priced in Stage A (`priced-correction`) and pulled back in Stage B (`metric-residual-decompositions`); `:shift-seq` / `:argmax-corr` (`install-sequence-shift-metric`); AU `code-edit` corrections; `evaluate-frame-descriptors` + `frame-addressed-entries` | Moment-difference solvers; Stage B pullback for `:code` edits (the `:code` metric is pricing only) |
+| **`P8.3`** | `solve-equality-symbolically`, `target-sensitive-p`, `orient-conserved-quantity`; hard `frame-edges` checked in exact search (`:edges` phase, `violated-edge`) and at root verification; `schema-availability` + `orient-available`; `induce-row-order` + `:locality-key` | `:recurrence` edges; Stage A pricing of `:persistence` edges; edge canonicalization in `nogood-clause`; calling `with-induced-row-order` from node expansion |
+| **`P8.4`** | Monoid fold motifs (`induce-fold-motifs`, kind `:motif`); cross-prime solver lifting (`lift-field-solvers`); net-utility archiving (`amortize-library-entries`, `:active-p nil`); laws and their certificates stored as `knowledge-entry` values; M4 discovery harness moved out of the kernel | Net kernel LOC decrease; learned `(source, target)` transformers in place of `bootstrap-inverters.lisp`; retiring `rewrite-library` / `propagator-library` (see §6.6) |
+
+New kernel test modules: `tests/structural.lisp`, `tests/metrics.lisp`, `tests/topology.lisp`, `tests/theories.lisp`. `make test` runs 168 kernel and 39 milestone tests (148 and 39 at `54acfa3`).
+
+### 6.3 Gate Measurements
+
+| Gate | Before | After | Verdict |
+| :--- | :--- | :--- | :--- |
+| Probe 2, irrelevant-input `:scan` (< `80,000` work) | `158,461` | `34,067` (4 inputs `44,425`; 5 inputs `62,706`) | Met |
+| Probe 5, conditional `:tuple` scan | Fails at `800k` and `4M` | Solves at ~`698,000` work with `:heuristic-budget 16000`, unit-step resumption identical | Met only with an explicit budget: unsolved at the default `:heuristic-budget 2000`, because the second slot's Stage A needs ~`16,000`–`20,000` work to reach the two features its guard compares |
+| Probe 4, symmetric `:tuple` scan (not a gate) | `80,212` | `112,979` | Regressed: a lifted proposal with a wrong initial-state guess now spends a quadrupled Stage A budget in full |
+| Shifted sequences price and pull back | — | `(shift-seq X0 X1)` at ~`180,000` work with `:heuristic-budget 60000` | Met; metric VM work is large beside the default Stage A budget |
+| Hard edges prune; shuffled tables recover the same key and size; noise induces no edges | — | `tests/topology.lisp` | Met |
+| `reverse` index map from `I + j - (n-1) = 0` | — | `tests/topology.lisp` | Met |
+| Repeated consolidation + `serialize`/`deserialize` is a fixed point | Held | Holds for the general library (`tests/invariants.lisp`) and, each tested on its own, for motifs and archived entries (`tests/theories.lisp`) and lifted solvers (`tests/topology.lisp`) | Met |
+| Monoid motif transfers `:foldr <-> :foldl` | — | A third instance gets its `:foldr = :foldl` law in under `2,000` work, no search (`tests/theories.lisp`) | Met |
+| `GF(5)/GF(7)` solvers lift to `:int` | — | `tests/topology.lisp` | Met |
+| Planted decoy entries demote to `:active-p nil` | — | Archived on the third workload batch; a decoy with a live caller is kept (`tests/theories.lisp`) | Met |
+| Net `load.lisp` kernel LOC decreases vs. `54acfa3` | `12,472` | `13,771` (`+1,299`) | **Not met** (§6.6) |
+
+### 6.4 Departures, with Reasons
+
+**`P8.1`**
+
+1. *Product slots are sibling nodes sharing a join, not a mode on one node.* §3.2.2 asks for a `product-slots` mode on `synthesis-node`. Each slot is instead an ordinary child node whose `decomposition` carries the shared `slots` list and `structural-p`; `add-synthesis-node` gives proposals with an `eq` slots list one `product-join`, and `join-slot-candidate` enqueues the composed product at the parent once every slot has a model. This reuses the agenda, ledger, and resumption machinery unchanged, which is what makes unit-step `check-anytime-resumption` hold without special cases.
+2. *Structural nodes inherit their parent's price.* `node-depth` skips structural proposals as planned, but that was not enough: the parent's own monolithic search kept outbidding its slots. `node-price` gives a structural node the minimum of its own and its parent's price, and `action-priority` parks a slot that is already satisfied.
+3. *Constructor-AU slot frames come from folding, not from `au-substitutions-frame`.* A new fold rule in `requirements.lisp` (`fold-equal-code-apply`) splits `(= (code-apply f (tuple ...)) 'tree)` by injectivity, so `product-slot-frame` handles `:tuple` and Constructor-AU products by one path. `au-substitutions-frame` is promoted as planned and `tests/structural.lisp` checks the two constructions agree.
+4. *`component-bindings` renumbers the child's inputs from 0* in the order of `schema-inputs`, whatever ids the parent carries. This keeps alpha-renaming invariance, and it is limited to homogeneous tuples of at most `*product-arity-limit*` (6) components. The `:components` projection is proposed only for scalar targets, since a compound target may need the tuple whole.
+5. *Guard discovery runs the grammar search first.* §3.2.3 says to pair feature buckets *before* `observed-predicates`. Pairs-first displaced the `(= Xi '())` guard that the inductive sequence lift depends on, so `find-sound-exception-guard` consults `feature-pair-predicates` only when the grammar finds no exact separator. The plan's "zero redundant VM evaluations" still holds for the pairs themselves.
+6. *Let-sharing has one rule beyond §3.2.1:* the quoted body must be `provably-total-p` by itself. Otherwise totality that the inline form derived from an enclosing guard is lost once the body sits behind `:code-eval`. Sharing is chosen on strict size improvement (ties stay inline), and a child the decoder uses several times is shared the same way as a binding.
+
+**`P8.2`**
+
+7. *Arity scaling applies only to lifted nodes.* `stage-a-budget` is base × 2 (lifted or recursive child) × `(max 1 (1- arity))²`, the last factor for lifted nodes alone. Scaling every node broke `recursion-r4-insert-and-sort-synthesis` and Probe 5 by starving exact search.
+8. *A metric decoder is an ordinary `:solver` entry* that inverts a binary decoder at its second argument, marked by a `(:metric-decoder d q tag-bits)` edge (`register-metric-decoder`). There is no separate registry, and `metric-decoders` reads the top entries by type.
+9. *Rules for defined functions are applied before folding.* `prepare-synthesis-node` propagates with `callable-rules-library` first, because folding unfolds a defined-function decoder call and the solver would then have nothing to match.
+10. *Witness selection became a staged `:witness` phase* in `heuristic-search`, charging metric VM work to category `:heuristic-metric`, so that work is metered and resumable like the rest of Stage A.
+11. *`:shift-seq`'s solver is registered as a non-unique conjecture* (`:solve-shift-seq-by-correlation`), so it is used tentatively under the existing 3:1 `propagation-fallback`, as §3.1.2 intends.
+12. *`derive-frame` keeps a metric only when the target type is unchanged.*
+
+**`P8.3`**
+
+13. *`frame-edges` sit alongside `pairs`/`anchors`* rather than replacing them (see §6.1). `pairs` and `anchors` still carry the soft linkage price; `edges` add hard `:equal`/`:distinct` checks and record `:persistence` chains.
+14. *A pullback drops hard edges unless its decoder is the identity,* as do the other target-changing transforms. An edge is a statement about the parent's target values and does not transfer to a child of another type.
+15. *`:persistence` edges are recorded but not priced in Stage A.* Pricing them through the existing pair residual penalized exact models whose targets legitimately differ along the chain.
+16. *`induce-row-order` compares the chain against two baselines,* the targets priced independently and their star (every target as a correction of the best single one). Without the star, targets that are merely alike in no order induced a spurious key. The key is charged its `body-size`.
+17. *`solve-equality-symbolically` requires unique rules* and returns `(values solution guards certified-p)`; `orient-conserved-quantity` falls back to the numeric `conserved-quantity-frame` when the symbolic route does not close.
+18. *Behaviour change:* `start-search` and `start-synthesis` call `assert-inputs-available` and refuse a frame offering inputs its availability preorder withholds. Callers apply `orient-available` first.
+
+### 6.5 Budget Sensitivity
+
+Three results above depend on budgets the defaults do not supply, and should be read as "the mechanism works" rather than "the policy finds it":
+
+- Probe 5 needs `:heuristic-budget 16000` (§6.3).
+- The shifted-sequence task needs `:heuristic-budget 60000`; each metric evaluation runs the solver on the VM.
+- Arity scaling trades Probe 2's gain for Probe 4's regression. A budget that grows only while Stage A is still finding new features would likely keep the former without the latter; that is untried.
+
+### 6.6 `P8.4`: What Was Built, and Why the LOC Gate Is Not Met
+
+**Delivered**
+
+- *Monoid fold motifs* (`consolidate.lisp`, `induce-fold-motifs`, run as the `:consolidate` hook of the new kind `:motif`). Each `:law` that states an operator's associativity or identity gets the edge saying so (`(:associative op)`, `(:identity op (e))`). A function refactored through a fold as `(fold X 'e '(op X0 X1))` whose operator has both edges is an instance. When the instances of two folds of one signature cover two or more operators and agree on probe sequences, the equation of the two folds is registered as a `:motif`, a relation the VM decides. Every instance, including ones that arrive later, then gets the law `F(X) = other-fold(X, e, step)` as a sampled conjecture induced by the motif.
+- *Cross-prime solver lifting* (`lift-field-solvers`). `:solver` entries of one operator and position over two or more prime fields whose witnesses and guards anti-unify without a hole, once the field is erased, give `:int` the same solver as a conjecture that is neither certified nor unique (edge `:lifted-from`).
+- *Net-utility archiving* (`amortize-library-entries`). A lifted function is credited the body bits a call to it saved each verified solution and charged `*search-weight*` (`1/1024`) bits per unit of search its failed lifts consumed, plus one unit per lift proposed. `:net-utility` accumulates; `:stale-epochs` counts consecutive batches that left it worse off. An entry in debt for `*archive-epochs*` (3) batches that no active entry calls is marked `:active-p nil`: still defined and callable, liftable when named outright, no longer proposed by `candidate-library-definitions`.
+- *Cleanup.* A law is now an unregistered `:law` `knowledge-entry` (`make-law`), its certificate is the entry's own (`attest-knowledge-entry`, with `:assignments`, `:active` and `:work`), and `register-knowledge-law` copies it into a library. The structs `law` and `law-certificate`, `law-snapshot`, and `knowledge-entry->law` are gone. A propagation rule is always a prepared `:solver` entry; the separate discovery-made rule and its evidence flags are gone, and `make-knowledge-solver` builds an entry without registering it. The M4 discovery harness (`arithmetic-relation`, `solve-discovery`, `validate-arithmetic-solver`, `prepare-propagator-library`, about 120 lines) moved to `milestones/algebra-discovery.lisp`, since only milestone drivers use it; the kernel no longer mentions `solve-discovery`. The shape and boundary facets of `synthesize-io-descriptor-specs` are driven by one table instead of six emit sites.
+
+**Departures**
+
+19. *Motif transfer emits a sampled law, not a rewrite rule.* A sequence law cannot be validated exhaustively, so the `:foldr = :foldl` equation is a `:conjecture` and `as-rewrite-library` will not use it. It licenses a proposal; it does not rewrite. The motif relates folds of identical input types and steps that read `(op X0 X1)` exactly; `:scan` is not covered.
+20. *Motif formation needs two operators, transfer needs none.* One instance is recorded but forms nothing; once a motif exists, a new instance inherits its law on the next consolidation.
+21. *Archiving covers functions the library lifts,* which is where dispatch and failed-lift work arise. Solvers, descriptors and other kinds are not amortized. The ledger does not attribute propagator dispatch to individual rules.
+22. *Epochs are per entry and advance only for entries a batch lifted.* An entry no job touched is unchanged, so an empty batch is exactly a no-op and the fixed-point gate holds.
+23. *Live callers are found by scanning active entries' code* for calls (`entry-live-callers`); there is no `:depends-on` edge in the kernel to follow.
+24. *The exchange rate is a free parameter.* `*search-weight*` is linear as §3.5.3 states. At `1/1024` a failed lift that burns `10,000` work costs about 10 bits against roughly 110 bits saved per win of `:map`. A string of expensive unsolved tasks can still put a useful, caller-less combinator in debt; a logarithmic charge (`log2` of failed work, as in Levin's `Kt`) would be scale-free and is untried.
+25. *Removed API:* `consolidate-knowledge-library` no longer takes `:solve-discoveries`, `as-propagator-library` no longer takes a ledger or solve discoveries (milestone code calls `discovery-propagator-library`), and `register-knowledge-solver` no longer accepts a `solve-discovery`. No test or driver used the first and last.
+
+**The LOC gate**
+
+The kernel is `13,771` lines against `12,472` at `54acfa3`. `P8.4`'s own balance is about `-230` for the cleanup and `+255` for motifs and archiving. Two things account for the gap:
+
+- The four phases added about `1,530` lines (`1,274` in `P8.1`–`P8.3`, `255` in `P8.4`) where §2.2 budgeted `550–650`.
+- §2.2's `800–1,050` removable lines are not there to remove at this commit. A reachability scan from the kernel tests finds no dead definition and one milestone-only one (`fiber-pairs-and-anchors`, 12 lines); a clone scan finds a single repeated five-line window in the kernel, the validators of two `define-knowledge-kind` forms. Item by item:
+  1. *Structs in `laws.lisp`* (`350–450` estimated, `177` realized, of which about `120` moved to `milestones/`). `rewrite-library` and `propagator-library` are prepared views that hold compiled programs and caches, not duplicates of an entry, so they stay. `certify-solver-entry` and law validation both check finite domains exhaustively but treat a forward error differently (not a solution vs. a refutation), so they were not merged.
+  2. *Declarative rules in `bootstrap-inverters.lisp` and `descriptors.lisp`* (`250–350` estimated, `32` realized). The builders already use `term` templates. Replacing them with transformers learned from `(source, target)` pairs is a research change, not a cleanup: the one transformer the tests learn is `(code-child X0 0)`, within `20,000` work, and the inverters are `:code-match` / `:code-bind` / `:code-subst` trees many times that size. Whether enumeration can reach them was not measured.
+  3. *One frame constructor and unified nogoods* (`200–250` estimated, `6` realized). `derive-frame` already is the parameterized constructor, and a UIP clause already is a `nogood-clause`.
+
+Meeting the gate as written would take retiring a whole mechanism, for example serving Path B1's additive residual through metric decoders or dropping `filter-map-decompositions` in favour of general lifts. Both change search behaviour and budgets, and neither was attempted.
+
+---
+
 ## Appendix A. Self-Contained Pure-Kernel Diagnostic Probes at Commit `54acfa3`
 
 Run directly via `sbcl --script` from repository root at commit `54acfa3` (uses only pure `load.lisp`, zero `milestones/` dependencies):

@@ -44,6 +44,8 @@ bindings, row status breakdown, Stage A heuristic model, conflicts/nogoods, and 
                  (when target (ignore-errors (reconstruct-synthesis-candidate node (hole 0 target))))
                  :bindings (when proposal (decomposition-bindings proposal))
                  :lift-p (when proposal (decomposition-lift-p proposal))
+                 :slots (when proposal (decomposition-slots proposal))
+                 :slot-model (when (synthesis-node-join node) (second (slot-satisfied-p node)))
                  :proposal-provenance (when proposal (decomposition-provenance proposal))
                  :node-provenance (synthesis-node-provenance node)
                  :priority (synthesis-node-priority node)

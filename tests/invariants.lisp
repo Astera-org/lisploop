@@ -409,7 +409,7 @@ are idempotent."
                                                      distractor-ops)
                                   :literals '(1 3)
                                   :constants (list (lit seq-type '()))))
-             (prop-lib (as-propagator-library *knowledge-library* (make-ledger))))
+             (prop-lib (as-propagator-library *knowledge-library*)))
         (multiple-value-bind (expr job)
             (check-synthesis-task target-frame lang 75
                                   :budget 60000

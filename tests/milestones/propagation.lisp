@@ -14,7 +14,7 @@
                (decoder (arithmetic-application operator position known (var 99 domain)))
                (raw (pullback-frame parent decoder 99 domain nil work))
                (cold (make-ledger))
-               (prop (propagate-requirements raw controls cold)))
+               (prop (propagate-requirements raw (discovery-propagator-library controls cold) cold)))
           (check (= 1 (+ (propagation-narrowed prop) (propagation-suggested prop))))
           (check (listp (extract-allowed-values (row-requirement (first (frame-rows (propagation-frame prop)))))))
           (let* ((warm (make-ledger))
@@ -56,7 +56,7 @@
     ;; Fits k=0, but fails on the new k=1 row. No stale certificate is used.
     (setf (solve-discovery-witness discovery) (var 1 :int) (solve-discovery-guard discovery) (lit :bool t))
     (validate-arithmetic-solver discovery :samples '((0 2)) :uniqueness-samples '((0 2 2)))
-    (let ((propagation (propagate-requirements raw discovery work)))
+    (let ((propagation (propagate-requirements raw (discovery-propagator-library discovery work) work)))
       (check (= 1 (propagation-suggested propagation))) (check (= 1 (propagation-rejected propagation)))
       (check (= 1 (propagation-retained propagation))) (check (propagation-fallback propagation))
       (check (equal '(2) (extract-allowed-values (row-requirement (first (frame-rows (propagation-frame propagation)))))))
@@ -66,7 +66,7 @@
     (setf (solve-discovery-witness discovery) (app (op :/ :int) (var 1 :int)
                                                    (app (op :- :int) (var 0 :int) (lit :int 1))))
     (validate-arithmetic-solver discovery :samples '((0 0)) :uniqueness-samples '((0 0 0)))
-    (let ((propagation (propagate-requirements raw discovery (make-ledger))))
+    (let ((propagation (propagate-requirements raw (discovery-propagator-library discovery (make-ledger)) (make-ledger))))
       (check (zerop (propagation-suggested propagation)))
       (check (equalp (propagation-original propagation) (propagation-frame propagation))))))
 
@@ -77,7 +77,7 @@
          (ledger (make-ledger))
          (raw (pullback-frame parent (app (op :/ :int) (var 9 :int) (var 0 :int))
                               9 :int (list (cons 3 (var 1 :int))) ledger))
-         (propagation (propagate-requirements raw discovery ledger))
+         (propagation (propagate-requirements raw (discovery-propagator-library discovery ledger) ledger))
          (inputs (schema-inputs (frame-schema (propagation-frame propagation))))
          (language (make-language :int inputs :operators nil :literals '(0 1 2 3 4))))
     (when corrupt
