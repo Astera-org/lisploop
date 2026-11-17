@@ -124,24 +124,41 @@ expression of each distinct Boolean behaviour found, the latest behaviour first.
 (defparameter *feature-guard-bits* 32
   "Body-bit bound on an exception guard that compares two Stage A features.")
 
+(defun language-admits-expression-p (expression language)
+  "True when EXPRESSION is written in LANGUAGE: over its inputs, with its operators, and with
+literals that are its constants or, in its domain, among its literals when it lists any."
+  (let ((inputs (language-inputs language))
+        (literals (language-literals language))
+        (domain (language-domain language)))
+    (labels ((admitted-p (node)
+               (ecase (ast-kind node)
+                 (:var (and (member (cons (ast-id node) (ast-type node)) inputs :test #'equal) t))
+                 (:lit (or (and (member node (language-constants language) :test #'equal) t)
+                           (and (equal (ast-type node) domain)
+                                (or (not (listp literals))
+                                    (and (member (ast-value node) literals :test #'equal) t)))))
+                 (:app (and (member (first node) (language-operators language) :test #'equal)
+                            (every #'admitted-p (rest node)))))))
+      (admitted-p expression))))
+
 (defun feature-pair-predicates (buckets inputs row-count bound ledger &optional guard-language)
   "Comparisons of two Stage A features as guard candidates ((expression . row-values) ...):
 `=` of two features of one type and `<` of two integer features either way, of at most
-BOUND body bits (restricted to comparison operators present in GUARD-LANGUAGE when supplied).
-BUCKETS, ((expression . row-values) ...), already hold every feature's value on each of the
-ROW-COUNT rows, so a comparison is priced by one unit of guard search and no expression is
-evaluated."
-  (let* ((ops (and guard-language (language-operators guard-language)))
-         (allow-eq-p (or (null guard-language) (find := ops :key #'operator-name)))
-         (allow-lt-p (or (null guard-language) (find :< ops :key #'operator-name)))
-         (features (loop for (expression . values) in buckets
+BOUND body bits and, when GUARD-LANGUAGE is supplied, written in it
+(`language-admits-expression-p`): its comparison at the features' type over features of its
+own. BUCKETS, ((expression . row-values) ...), already hold every feature's value on each of
+the ROW-COUNT rows, so a comparison is priced by one unit of guard search and no expression
+is evaluated."
+  (let* ((features (loop for (expression . values) in buckets
                          when (= row-count (length values))
                            collect (list expression (ast-type expression)
                                          (body-size expression inputs) values)))
          (predicates nil))
     (flet ((offer (predicate values)
              (charge ledger :guard-search)
-             (when (<= (body-size predicate inputs) bound)
+             (when (and (<= (body-size predicate inputs) bound)
+                        (or (null guard-language)
+                            (language-admits-expression-p predicate guard-language)))
                (push (cons predicate values) predicates))))
       (loop for ((left left-type left-bits left-values) . others) on features do
         (loop for (right right-type right-bits right-values) in others
@@ -149,9 +166,8 @@ evaluated."
               when (and (equal left-type right-type)
                         (< (+ left-bits right-bits) bound)
                         (not (and (lit-p left) (lit-p right)))) do
-                (when allow-eq-p
-                  (offer (term `(= ,left ,right)) (mapcar #'equal left-values right-values)))
-                (when (and allow-lt-p (eq :int left-type)
+                (offer (term `(= ,left ,right)) (mapcar #'equal left-values right-values))
+                (when (and (eq :int left-type)
                            (every #'integerp left-values) (every #'integerp right-values))
                   (offer (term `(< ,left ,right)) (mapcar #'< left-values right-values))
                   (offer (term `(< ,right ,left)) (mapcar #'< right-values left-values))))))

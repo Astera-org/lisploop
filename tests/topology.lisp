@@ -129,15 +129,16 @@ the rows are stored, and a composed candidate is held to the root's edges."
     (raises (make-frame schema rows :edges '((:near :a :b))))))
 
 (deftest availability-preorder-withholds-later-inputs
-  "A schema may preorder its columns (`tau(X_i) <= tau(Y)`). A model of the target reads only
-earlier or contemporaneous columns, whatever they are called; later or incomparable columns are
-withheld, and search refuses an unoriented frame."
+  "A schema may preorder its columns. A model of the target reads only the columns strictly
+before it (`tau(X_i) < tau(Y)`), whatever they are called; a column at the target's own rank,
+later, or incomparable is withheld, and search refuses an unoriented frame."
   (dolist (ids '((0 1) (7 3)))
     (destructuring-bind (early late) ids
       (let* ((inputs (list (cons early :int) (cons late :int)))
-             ;; The later column happens to equal the target: read, it would be the whole model.
+             ;; The other column shares the target's rank and happens to equal the target:
+             ;; read, it would be the whole model.
              (schema (make-schema :inputs inputs :target :int
-                                  :availability (list (cons early 0) (cons late 2))
+                                  :availability (list (cons early 0) (cons late 1))
                                   :target-availability 1))
              (frame (make-frame schema
                                 (loop for (x y) in '((1 2) (5 6) (9 10)) for key from 0
@@ -158,23 +159,35 @@ withheld, and search refuses an unoriented frame."
           (check (= 13 (result (candidate-expression (search-job-best job)) oriented-inputs '(12)))))
         ;; An invariant may still be sought across every column.
         (check (make-observation-scope frame language))
-        ;; Contemporaneous equal-rank inputs (`<=`) and unranked columns are available.
-        (check (equal (list (cons early :int))
-                      (available-inputs (make-schema :inputs inputs :target :int
-                                                     :availability (list (cons early 1) (cons late 2))
-                                                     :target-availability 1))))
+        ;; An equal index is not earlier; a column without one precedes every ranked target.
+        (check (null (available-inputs (make-schema :inputs inputs :target :int
+                                                    :availability (list (cons early 1) (cons late 1))
+                                                    :target-availability 1))))
         (check (equal inputs (available-inputs (make-schema :inputs inputs :target :int
                                                             :target-availability 0))))
-        ;; Symbolic DAG preorders withhold both strictly later and incomparable columns.
-        (let* ((dag-inputs (list (cons early :int) (cons late :int) (cons 99 :int)))
+        (check (null (available-inputs (make-schema :inputs inputs :target :int
+                                                    :target-availability :bottom))))
+        ;; Symbolic DAG preorders withhold columns at the target's own rank, strictly later
+        ;; ones, and incomparable ones.
+        (let* ((dag-inputs (list (cons early :int) (cons late :int) (cons 98 :int) (cons 99 :int)))
                (dag-schema (make-schema :inputs dag-inputs :target :int
                                         :availability (list :ranks (list (cons early :past)
                                                                          (cons late :future)
+                                                                         (cons 98 :present)
                                                                          (cons 99 :side-branch))
                                                             :target :present
                                                             :le '((:past . :present)
                                                                   (:present . :future))))))
-          (check (equal (list (cons early :int)) (available-inputs dag-schema))))
+          (check (equal (list (cons early :int)) (available-inputs dag-schema)))
+          (check (expression-respects-availability-p (var early :int) dag-schema))
+          (check (not (expression-respects-availability-p (var 98 :int) dag-schema))))
+        ;; Strict precedence: reflexivity and cycles of the order do not count.
+        (check (rank-lt-p 0 1))
+        (check (not (rank-lt-p 1 1)))
+        (check (rank-lt-p :bottom 0))
+        (check (not (rank-lt-p :bottom :bottom)))
+        (check (rank-lt-p :a :c '((:a . :b) (:b . :c))))
+        (check (not (rank-lt-p :a :b '((:a . :b) (:b . :a)))))
         ;; The order belongs to this target: a child with another target starts unordered.
         (check (null (schema-target-availability
                       (frame-schema (pullback-frame oriented (term `(if ,(var 9 :bool) ,(var early :int) 0) :int)
@@ -314,13 +327,31 @@ and row shuffles."
                        (make-row :key :b :known '(2) :requirement (term `(= (+ ,z 2) 7)))
                        (make-row :key :c :known '(3) :requirement (term `(= (+ ,z 3) 9)))))
            (frame (make-frame (make-schema :inputs inputs :target :int) rows
-                              :pairs '((:a . :b)) :anchors '(:c)
+                              :pairs '((:a :b)) :anchors '(:b :c)
                               :edges '((:equal :a :b) (:persistence :b :c))))
            (lang (make-language :int inputs :operators (list (op :+ :int)) :literals '(0 1)))
            (prop (propagate-requirements frame (kernel-propagator-library :int) (make-ledger))))
       (check (equal (frame-edges frame) (frame-edges (propagation-frame prop))))
       (check (equal (child-scope-signature frame lang)
-                    (child-scope-signature (shuffle-frame-rows frame '(2 0 1)) lang))))))
+                    (child-scope-signature (shuffle-frame-rows frame '(2 0 1)) lang)))
+      ;; The signature names rows by their place, not their key: the same frame under other
+      ;; keys has the same one. A pair's direction is priced, so reversing it is another scope.
+      (flet ((relinked (keys pairs)
+               (destructuring-bind (a b c) keys
+                 (make-frame (make-schema :inputs inputs :target :int)
+                             (loop for row in rows for key in keys
+                                   collect (make-row :key key :known (row-known row)
+                                                     :requirement (row-requirement row)))
+                             :pairs pairs :anchors (list b c)
+                             :edges (list (list :equal a b) (list :persistence b c))))))
+        (check (equal (child-scope-signature frame lang)
+                      (child-scope-signature (relinked '(:p :q :r) '((:p :q))) lang)))
+        (check (equal (child-scope-signature frame lang)
+                      (child-scope-signature (relinked '((:row 2) (:row 0) (:row 1)) '(((:row 2) (:row 0)))) lang)))
+        (check (not (equal (child-scope-signature frame lang)
+                           (child-scope-signature (relinked '(:a :b :c) '((:b :a))) lang)))))
+      ;; A pair is a two-element list of row keys.
+      (raises (make-frame (make-schema :inputs inputs :target :int) rows :pairs '((:a . :b)))))))
 
 (deftest truncating-integer-division-does-not-lift-from-prime-fields
   "Multiplication's prime-field inverse `(/ y c)` does not replay over the integers because `/`
@@ -339,4 +370,190 @@ sound lifts; archived field solvers are ignored as well."
         (when (= prime 7)
           (setf (getf (knowledge-entry-metadata entry) :active-p) nil))))
     (check (null (lift-field-solvers *knowledge-library*)))))
+
+(deftest availability-orders-compose-and-reach-their-first-column
+  "Real and symbolic ranks order one another through the pairs that relate them, in either
+direction; a malformed availability is refused, not read as none; and a target that nothing
+precedes is oriented onto no inputs at all, where its model is a constant."
+  ;; 1. A path may pass from a real rank to a greater one and along an order pair, in any order.
+  (check (rank-le-p 0 :present '((1 . :present))))
+  (check (rank-lt-p 0 :present '((1 . :present))))
+  (check (rank-le-p :a :b '((:a . 1) (2 . :b))))
+  (check (not (rank-le-p :b :a '((:a . 1) (2 . :b)))))
+  (check (not (rank-le-p 2 :present '((1 . :present)))))
+  (let* ((inputs '((0 . :int) (1 . :int) (2 . :int)))
+         (schema (make-schema :inputs inputs :target :int
+                              :availability (list :ranks '((0 . 0) (1 . 1) (2 . :later))
+                                                  :target :present
+                                                  :le '((1 . :present) (:present . :later))))))
+    (check (equal '((0 . :int) (1 . :int)) (available-inputs schema)))
+    (check (eql 2 (schema-maximal-availability-id schema)))
+    ;; 2. Neither a misspelt key nor an input ranked twice passes for an availability.
+    (raises (make-schema :inputs inputs :target :int :availability '(:rank ((0 . 1)) :target 1)))
+    (raises (make-schema :inputs inputs :target :int :availability '((0 . 1) (0 . 2)))))
+  ;; 3. Every input is later than the target: the oriented frame has none, and is searched.
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (frame (make-frame (make-schema :inputs inputs :target :int
+                                         :availability '((0 . 1) (1 . 2)) :target-availability 0)
+                            (loop for (x y) in '((1 2) (5 6) (9 10)) for key from 0
+                                  collect (make-row :key key :known (list x y)
+                                                    :requirement (singleton-requirement :int 7)))))
+         (oriented (orient-available frame))
+         (constants (make-language :int nil :operators nil :literals '(7))))
+    (check (null (schema-inputs (frame-schema oriented))))
+    (check (equal '(nil nil nil) (mapcar #'row-known (frame-rows oriented))))
+    (check (eq oriented (orient-available oriented)))
+    (let ((job (start-search oriented constants)))
+      (resume-search job (header-bound nil :int 16) 10000)
+      (check (= 7 (result (candidate-expression (search-job-best job))))))
+    ;; 4. A column the schema does not rank is at the bottom of an order that ranks others:
+    ;;    predicting it from the columns that come later is refused, however the frame's own
+    ;;    target is ranked.
+    (with-clean-kernel-state
+      (let* ((library (kernel-propagator-library :int))
+             (inputs '((0 . :int) (1 . :int) (2 . :int)))
+             (rows (loop for (a b c) in '((4 1 3) (7 2 5) (3 4 -1)) for key from 0
+                         collect (make-row :key key :known (list a b c) :requirement (lit :bool t))))
+             (conserved (term `(- ,(var 0 :int) (+ ,(var 1 :int) ,(var 2 :int))))))
+        (dolist (target-rank '(nil 1 9))
+          (let ((frame (make-frame (make-schema :inputs inputs :target :int
+                                                :availability '((1 . 1) (2 . 2))
+                                                :target-availability target-rank)
+                                   rows)))
+            (multiple-value-bind (oriented kind) (orient-conserved-quantity frame 0 conserved 0 :library library)
+              (check (eq :numeric kind))
+              (check (null (schema-inputs (frame-schema oriented)))))))))))
+
+(deftest a-claim-of-uniqueness-authorises-nothing-without-evidence
+  "A solver's :unique-p is a claim. Symbolic unwinding uses a rule only when the uniqueness
+has evidence, of whatever grade; a certification that refutes the claim withdraws it; a
+solver lifted from prime fields carries the record of the samples it survived, which lets
+it unwind an equation as a conjecture and never drops a requirement; and lifting neither
+fails on a solver of another type nor passes one the samples refute."
+  (with-clean-kernel-state
+    (let* ((k (var 0 :int)) (c (var 1 :int))
+           (y (var 0 :int)) (x (var 1 :int))
+           (equation (term `(+ ,y ,x)))
+           (claimed (register-knowledge-solver :+ :domain :int :position 0
+                                               :witness (term `(- ,c ,k)) :unique-p t)))
+      (flet ((solve ()
+               (clrhash (knowledge-library-propagator-libraries *knowledge-library*))
+               (multiple-value-list
+                (solve-equality-symbolically equation (lit :int 3) 0 :library *knowledge-library*))))
+        ;; 1. The flag alone: no evidence, no unwinding.
+        (check (getf (knowledge-entry-metadata claimed) :unique-p))
+        (check (null (knowledge-entry-certificate claimed)))
+        (check (null (first (solve))))
+        ;; 2. A sample test of the uniqueness, once recorded, licenses a conjecture.
+        (attest-knowledge-entry claimed :sampled '(:uniqueness))
+        (check (knowledge-evidence-tested-p claimed :uniqueness))
+        (check (not (knowledge-evidence-current-p claimed :uniqueness)))
+        (destructuring-bind (solution guards certified-p) (solve)
+          (check (= 1 (result solution '((0 . :int) (1 . :int)) '(0 2))))
+          (check (null guards))
+          (check (not certified-p)))
+        ;; 3. The record is of the statement tested: change the statement and it lapses.
+        (setf (knowledge-entry-expression claimed) (term `(+ ,c ,k)))
+        (check (not (knowledge-evidence-tested-p claimed :uniqueness)))
+        (check (null (first (solve)))))))
+  ;; 4. A certification that finds a second solution withdraws the claim and keeps the witness.
+  (with-clean-kernel-state
+    (let* ((field (gf 5))
+           (k (var 0 field)) (c (var 1 field))
+           (entry (register-knowledge-solver
+                   :* :domain field :position 0
+                   ;; At k = 0 and c = 0 every value solves (* z 0) = 0.
+                   :witness (term `(if (= ,k 0) ,(lit field 0) (/ ,c ,k)) field)
+                   :guard (term `(if (= ,k 0) (= ,c 0) ,(lit :bool t)))
+                   :certified-p t :unique-p t)))
+      (check (not (getf (knowledge-entry-metadata entry) :unique-p)))
+      (check (knowledge-evidence-current-p entry :witness))
+      (check (not (knowledge-evidence-tested-p entry :uniqueness)))
+      (check (null (solve-equality-symbolically (term `(* ,(var 0 field) ,(var 1 field))) (lit field 0) 0
+                                                :library *knowledge-library*)))))
+  ;; 5. What lifting records, and what the record is good for.
+  (with-clean-kernel-state
+    (dolist (prime '(5 7))
+      (register-kernel-arithmetic-solver (gf prime) :+ 0)
+      (register-kernel-arithmetic-solver (gf prime) :/ 0))
+    (let* ((lifted (lift-field-solvers *knowledge-library*))
+           (sum (find :+ lifted :key (lambda (entry) (getf (knowledge-entry-metadata entry) :operator-name))))
+           (quotient (find :/ lifted :key (lambda (entry) (getf (knowledge-entry-metadata entry) :operator-name)))))
+      (check (= 2 (length lifted)))
+      (dolist (entry lifted)
+        (check (eq :sampled (getf (knowledge-entry-certificate entry) :method)))
+        (check (plusp (getf (knowledge-entry-certificate entry) :active)))
+        (check (knowledge-evidence-tested-p entry :witness))
+        (check (not (knowledge-evidence-current-p entry :witness))))
+      ;; Addition has one solution at every offset tried; (z / k) = c has several.
+      (check (getf (knowledge-entry-metadata sum) :unique-p))
+      (check (knowledge-evidence-tested-p sum :uniqueness))
+      (check (not (getf (knowledge-entry-metadata quotient) :unique-p)))
+      (check (not (knowledge-evidence-tested-p quotient :uniqueness)))
+      (let ((y (var 0 :int)) (x (var 1 :int)))
+        (multiple-value-bind (solution guards certified-p)
+            (solve-equality-symbolically (term `(+ ,y ,x)) (lit :int 10) 0 :library *knowledge-library*)
+          (check (= 6 (result solution '((0 . :int) (1 . :int)) '(0 4))))
+          (check (null guards))
+          (check (not certified-p)))
+        (check (null (solve-equality-symbolically (term `(/ ,y ,x)) (lit :int 3) 0
+                                                  :library *knowledge-library*))))
+      ;; The evidence survives persistence, and an archived solver proposes nothing.
+      (let ((restored (deserialize-knowledge-library (serialize-knowledge-library *knowledge-library*))))
+        (check (knowledge-evidence-tested-p (find-knowledge-entry (knowledge-entry-id sum) restored)
+                                            :uniqueness)))
+      (let* ((z (var 0 :int))
+             (frame (make-frame (make-schema :inputs nil :target :int)
+                                (list (make-row :key 0 :known nil :requirement (term `(= (+ ,z 4) 10)))))))
+        (check (= 1 (propagation-suggested (propagate-requirements frame *knowledge-library* (make-ledger)))))
+        (setf (getf (knowledge-entry-metadata sum) :active-p) nil)
+        (check (zerop (propagation-suggested (propagate-requirements frame *knowledge-library* (make-ledger))))))))
+  ;; 6. A solver of a Boolean unknown is replayed as one, and lifted.
+  (with-clean-kernel-state
+    (dolist (prime '(5 7))
+      (let* ((field (gf prime)) (a (var 0 field)) (b (var 1 field)) (c (var 2 field)))
+        ;; (if z a b) = c with a /= b and c one of them: z = (c = a).
+        (register-knowledge-solver
+         (op :if field) :domain field :position 0
+         :witness (term `(= ,c ,a))
+         :guard (term `(if (= ,a ,b) ,(lit :bool nil) (if (= ,c ,a) ,(lit :bool t) (= ,c ,b))))
+         :certified-p t :unique-p t)))
+    (let ((lifted (lift-field-solvers *knowledge-library*)))
+      (check (= 1 (length lifted)))
+      (check (eq :bool (knowledge-entry-target (first lifted))))
+      (check (knowledge-evidence-tested-p (first lifted) :uniqueness))
+      (check (getf (consolidate-knowledge-library *knowledge-library*) :library)))))
+
+(deftest row-order-keys-are-read-off-compound-inputs-by-the-enumerator
+  "A key that is a component of a tuple input is found beside an unrelated integer column:
+the kernel's enumerator writes the accessors and the VM evaluates them, for work that is
+charged. A key the library already keeps for these inputs is a candidate as well."
+  (with-clean-kernel-state
+    (let* ((pair (tuple-type :int :int))
+           (inputs (list (cons 0 pair) (cons 1 :int)))
+           ;; ((time other) noise): 24 rows stored out of order, whose target drifts with
+           ;; time by steps small enough for the chain to repay a key that costs an accessor.
+           (times (loop for index below 24 collect (1+ (mod (* 7 index) 24))))
+           (frame (make-frame (make-schema :inputs inputs :target :int)
+                              (loop for time in times for key from 0
+                                    collect (make-row :key key
+                                                      :known (list (list time (mod (* 5 key) 11))
+                                                                   (mod (* 3 key) 7))
+                                                      :requirement (singleton-requirement
+                                                                    :int (+ 1000 (* 37 time)))))))
+           (ledger (make-ledger))
+           (key (induce-row-order frame :ledger ledger)))
+      (check (equal (term `(at ,(var 0 pair) 0)) key))
+      (check (plusp (ledger-total ledger)))
+      ;; The accessors are a language like any other: nothing but what the inputs' types offer.
+      (check (equal (list (op :at pair)) (language-operators (projection-language inputs))))
+      (check (null (projection-language '((0 . :int) (1 . :bool)))))
+      ;; Remembered, the key is offered again without being searched for.
+      (multiple-value-bind (ordered ordered-key) (with-induced-row-order frame :library *knowledge-library*)
+        (check (equal key ordered-key))
+        (check (equal (loop for time from 1 to 24 collect time)
+                      (mapcar (lambda (row) (first (first (row-known row)))) (frame-rows ordered)))))
+      (check (equal (list key) (mapcar #'car (stored-row-keys frame *knowledge-library* nil))))
+      (let ((*projection-key-work* 1))
+        (check (equal key (induce-row-order frame)))))))
 

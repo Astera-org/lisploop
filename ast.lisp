@@ -11,9 +11,9 @@
   (lookup-p nil)
   ;; Optional availability preorder: ((input-id . rank) ...), the rank of the target, and
   ;; optional DAG order pairs ((low . high) ...). A model of the target may read only inputs
-  ;; whose rank is at or before the target's (`rank-le-p`, so contemporaneous inputs are
-  ;; available); an input without an explicit rank defaults to `:bottom` (always available).
-  ;; Nothing here names what a column means.
+  ;; whose rank strictly precedes the target's (`rank-lt-p`): an input at the target's own
+  ;; rank, later, or incomparable is withheld. An input without an explicit rank has rank
+  ;; `:bottom`, which precedes every other rank. Nothing here names what a column means.
   (availability nil)
   (target-availability nil)
   (availability-order nil))
@@ -296,28 +296,35 @@ or element type `tau` (normalized to `(:seq tau)`)."
 
 (defun rank-le-p (low high &optional order)
   "True when availability rank LOW precedes or equals HIGH under ORDER (`((u . v) ...)`):
-reflexive (`<=` on reals), universal bounds `:bottom` / `:top`, and transitive reachability
-along ORDER."
-  (cond ((equal low high) t)
-        ((eq low :bottom) t)
-        ((eq high :top) t)
-        ((or (eq low :top) (eq high :bottom)) nil)
-        ((and (realp low) (realp high)) (<= low high))
-        (order
-         (let ((queue (list low))
-               (visited (list low)))
-           (loop while queue
-                 for cur = (pop queue)
-                 do (dolist (edge order)
-                      (when (equal (car edge) cur)
-                        (let ((next (cdr edge)))
-                          (when (or (equal next high)
-                                    (and (realp next) (realp high) (<= next high)))
-                            (return-from rank-le-p t))
-                          (unless (member next visited :test #'equal)
-                            (push next visited)
-                            (push next queue)))))
-                 finally (return nil))))))
+reflexive, with the universal bounds `:bottom` and `:top`, `<=` between real ranks, and the
+transitive closure of these with ORDER: a path may follow a pair of ORDER or pass from one
+real rank to a greater one, in any alternation."
+  (flet ((at-or-before-p (from to) ; without consulting ORDER
+           (or (equal from to) (and (realp from) (realp to) (<= from to)))))
+    (cond ((at-or-before-p low high) t)
+          ((eq low :bottom) t)
+          ((eq high :top) t)
+          ((or (eq low :top) (eq high :bottom)) nil)
+          (order
+           (let ((queue (list low))
+                 (visited (list low)))
+             (loop while queue
+                   do (let ((current (pop queue)))
+                        (dolist (edge order)
+                          (when (at-or-before-p current (car edge))
+                            (let ((next (cdr edge)))
+                              (when (at-or-before-p next high)
+                                (return-from rank-le-p t))
+                              (unless (member next visited :test #'equal)
+                                (push next visited)
+                                (setf queue (append queue (list next))))))))
+                   finally (return nil)))))))
+
+(defun rank-lt-p (low high &optional order)
+  "True when availability rank LOW strictly precedes HIGH under ORDER: LOW is at or before
+HIGH (`rank-le-p`) and HIGH is not at or before LOW. Equal ranks do not precede one another,
+nor do ranks that a cycle of ORDER makes equivalent."
+  (and (rank-le-p low high order) (not (rank-le-p high low order))))
 
 (defun make-schema (&key domain inputs (target :int) lookup-p
                          availability target-availability availability-order)
@@ -327,6 +334,13 @@ along ORDER."
          (order (or availability-order (and plist-p (getf availability :le))))
          (inferred-domain (or domain
                               (infer-domain-from-types (cons target (mapcar #'cdr inputs))))))
+    (assert (or (not plist-p)
+                (loop for (key nil) on availability by #'cddr
+                      always (member key '(:ranks :target :le))))
+            () "Availability ~S is neither an alist ((input-id . rank) ...) nor a plist of :ranks, :target and :le."
+            availability)
+    (assert (= (length ranks) (length (remove-duplicates ranks :key #'car :test #'equal)))
+            () "Availability ranks ~S name an input more than once." ranks)
     (assert (every (lambda (entry)
                      (and (consp entry)
                           (assoc (car entry) inputs :test #'equal)
@@ -346,7 +360,10 @@ along ORDER."
 
 (defun available-inputs (schema)
   "The inputs of SCHEMA that a model of its target may read: those whose availability rank
-is at or before the target's (`rank-le-p`), and those without an explicit rank (`:bottom`)."
+strictly precedes the target's (`rank-lt-p`). An input at the target's own rank is withheld,
+since it may be the target under another name. An input without an explicit rank has rank
+`:bottom` and is available to every target except one that is itself ranked `:bottom`. A
+schema without a target rank withholds nothing."
   (let ((limit (schema-target-availability schema))
         (ranks (schema-availability schema))
         (order (schema-availability-order schema)))
@@ -354,7 +371,7 @@ is at or before the target's (`rank-le-p`), and those without an explicit rank (
         (schema-inputs schema)
         (remove-if-not (lambda (input)
                          (let ((entry (assoc (car input) ranks :test #'equal)))
-                           (rank-le-p (if entry (cdr entry) :bottom) limit order)))
+                           (rank-lt-p (if entry (cdr entry) :bottom) limit order)))
                        (schema-inputs schema)))))
 
 (defun expression-respects-availability-p (expression schema)

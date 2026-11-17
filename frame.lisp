@@ -188,6 +188,8 @@ of that signature) into an :int AST, asserting that it is well-typed and provabl
   (let ((row-keys (mapcar #'row-key rows))
         (norm-metric (normalize-frame-metric metric (schema-target schema))))
     (assert (= (length rows) (length (remove-duplicates row-keys :test #'equal))))
+    (assert (every (lambda (pair) (and (consp pair) (consp (cdr pair)) (null (cddr pair)))) pairs)
+            () "Frame pairs are two-element lists (key-a key-b): ~S" pairs)
     (assert (every (lambda (edge)
                      (and (= 3 (length edge))
                           (member (first edge) '(:equal :distinct :persistence))
@@ -443,25 +445,85 @@ DEAD-ROW-P, the row constraining nothing, and is an error otherwise."
 (defun partial-bindings-p (bindings)
   (some (lambda (binding) (not (provably-total-p (cdr binding)))) bindings))
 
-(defun cartesian-tuple-member-slot (conjunct slot-ids child-id child-type)
-  "When CONJUNCT is `(member (tuple s0 ... sk) 'tuples)` over distinct slot variables in
-SLOT-IDS and the distinct tuples form an exact Cartesian product of their marginals, return
-the exact `set-requirement` for CHILD-ID (or nil if the set is coupled across slots)."
-  (when (and (app-of-p conjunct :member)
-             (app-of-p (second conjunct) :tuple)
-             (lit-p (third conjunct)))
-    (let* ((parts (rest (second conjunct)))
-           (pos (position child-id parts :key (lambda (p) (and (var-p p) (ast-id p))))))
-      (when (and pos
-                 (every (lambda (p) (and (var-p p) (member (ast-id p) slot-ids))) parts)
-                 (= (length parts) (length (remove-duplicates parts :key #'ast-id)))
-                 (ast-value (third conjunct)))
-        (let* ((uniq (remove-duplicates (ast-value (third conjunct)) :test #'equal))
-               (marginals (loop for j below (length parts)
-                                collect (remove-duplicates (mapcar (lambda (tup) (nth j tup)) uniq)
-                                                           :test #'equal))))
-          (when (= (length uniq) (reduce #'* marginals :key #'length :initial-value 1))
-            (set-requirement child-type (nth pos marginals))))))))
+(defparameter *metric-invariance-rows* 3
+  "The most rows, and the most distinct target values, on which a frame's metric is replayed
+to see whether it is invariant under a decoder (`metric-invariant-under-decoder-p`).")
+
+(defun metric-invariant-under-decoder-p (parent decoder child-id ledger)
+  "True when PARENT's metric, replayed on PARENT's own rows, gives two values of the child the
+price it gives the two targets DECODER makes of them: M(d(x, a), d(x, b)) = M(a, b) for the
+inputs x of up to `*metric-invariance-rows*` rows and every two of as many distinct target
+values the rows pin. The child has the target's type. This is evidence from a sample, enough
+to price a search by and never recorded; with no row or no two values to replay it is false."
+  (let* ((schema (frame-schema parent))
+         (inputs (schema-inputs schema))
+         (target (schema-target schema))
+         (metric (frame-metric parent))
+         (scope (metric-inputs target))
+         (limit *metric-invariance-rows*)
+         (rows (loop for row in (frame-rows parent)
+                     unless (member :unresolved (row-known row)) collect row into resolved
+                     finally (return (subseq resolved 0 (min limit (length resolved))))))
+         (values (loop for row in (frame-rows parent)
+                       for (value pinned-p) = (multiple-value-list (row-singleton-value row))
+                       when (and pinned-p (not (member value found :test #'equal)))
+                         collect value into found
+                       finally (return (subseq found 0 (min limit (length found)))))))
+    (flet ((price (a b)
+             (multiple-value-bind (bits known-p) (eval-expr-value metric scope (list a b) ledger)
+               (and known-p (list bits))))
+           (decoded (row value)
+             (multiple-value-bind (result known-p)
+                 (eval-expr-value decoder (acons child-id target inputs)
+                                  (cons value (row-known row)) ledger)
+               (and known-p (list result)))))
+      (and rows (rest values)
+           (every (lambda (row)
+                    (every (lambda (a)
+                             (every (lambda (b)
+                                      (let ((da (decoded row a)) (db (decoded row b))
+                                            (plain (price a b)))
+                                        (and da db plain
+                                             (equal plain (price (first da) (first db))))))
+                                    values))
+                           values))
+                  rows)))))
+
+(defun pulled-back-metric (parent decoder child-id child-type &optional ledger)
+  "PARENT's metric as one on the values of the child CHILD-ID of DECODER, or nil where the
+child has none. A metric prices two values of the target, so it carries over to the child:
+unchanged, where the child is the target itself (the identity decoder) or is the target on
+every row that constrains it (a conditional that passes the child through on one branch);
+composed with the decoder, M(d(z), d(z')), where the decoder reads nothing but the child and
+the composition is provably total; and unchanged again, for a child of the target's type,
+where replaying it on the rows shows it invariant under the decoder
+(`metric-invariant-under-decoder-p`), as a metric that prices a difference is under an
+added term. A decoder that reads the row's inputs otherwise gives the child a price that
+depends on the row, which a metric of two values cannot state."
+  (let ((metric (frame-metric parent))
+        (target (schema-target (frame-schema parent))))
+    (flet ((child-p (node) (and (var-p node) (eql child-id (ast-id node))))
+           (free-of-child-p (node) (not (member child-id (free-vars node)))))
+      (cond ((null metric) nil)
+            ((child-p decoder) metric)
+            ((and (app-of-p decoder :if)
+                  (destructuring-bind (guard consequent alternative) (rest decoder)
+                    (and (free-of-child-p guard)
+                         (or (and (child-p consequent) (free-of-child-p alternative))
+                             (and (child-p alternative) (free-of-child-p consequent))))))
+             metric)
+            ((equal (list child-id) (free-vars decoder))
+             (let ((composed (instantiate
+                              metric
+                              (loop for (id . nil) in (metric-inputs child-type)
+                                    collect (cons id (instantiate decoder
+                                                                  (list (cons child-id (var id child-type)))
+                                                                  :var)))
+                              :var)))
+               (and (provably-total-p composed) composed)))
+            ((and (equal child-type target)
+                  (metric-invariant-under-decoder-p parent decoder child-id ledger))
+             metric)))))
 
 (defun pullback-frame (parent decoder child-id child-type bindings &optional ledger)
   "B(z)=A(d(c,z)). BINDINGS is an alist of child input IDs to parent expressions.
@@ -479,9 +541,10 @@ bindings. No inverse values are enumerated."
     (derive-frame
      parent
      :domain nil :inputs child-inputs :target child-type :lookup-p nil
-     ;; Only the identity decoder gives the child the parent's own values to relate or price.
+     ;; Only the identity decoder gives the child the parent's own values to relate. The
+     ;; parent's metric goes to the child where it still prices the child's values.
      :edges (and identity-decoder-p (frame-edges parent))
-     :metric (and identity-decoder-p (frame-metric parent))
+     :metric (pulled-back-metric parent decoder child-id child-type ledger)
      :rows
      (loop for row in (frame-rows parent) collect
        (let* ((constants (literal-bindings inputs (row-known row)))
@@ -504,7 +567,8 @@ bindings. No inverse values are enumerated."
   "The frame of one slot of a product. DECODER is an expression over PARENT's inputs and the
 variables SLOTS, ((id . type) ...), of which CHILD-ID names this slot. A row keeps the
 conjuncts of the folded parent requirement A(d(c, z_0 ... z_m)) that mention this slot
-alone (including exact Cartesian tuple-membership factorings). Through an injective
+alone; folding has already split a membership of the slots' tuple in a set that is the
+product of its places (`fold-member-tuple`). Through an injective
 constructor the requirement is the conjunction of such conjuncts over the slots; elsewhere a
 dropped conjunct only weakens it, so no slot of a valid product is rejected. A row whose
 requirement folds to false stays false in every slot. Pairs carry over, a product being
@@ -541,14 +605,8 @@ Returns (VALUES frame coupled), the conjuncts that tie this slot to another as
                (own (unless (unsatisfiable-requirement-p folded)
                       (loop for conjunct in (extract-conjuncts folded)
                             for mentioned = (intersection slot-ids (free-vars conjunct))
-                            for cartesian = (and (member child-id mentioned)
-                                                 (rest mentioned)
-                                                 (cartesian-tuple-member-slot
-                                                  conjunct slot-ids child-id child-type))
                             if (equal mentioned (list child-id))
                               collect (instantiate conjunct rename :var)
-                            else if cartesian
-                              collect cartesian
                             else if (member child-id mentioned)
                                    do (push (cons (row-key row) conjunct) coupled)
                             ;; A closed conjunct that did not fold away still has to hold.
@@ -647,25 +705,102 @@ by substitution or, when a binding that is not a leaf is mentioned more than onc
                (and shared (< (scoped-bits shared width) (scoped-bits inline width)) shared)))
         inline)))
 
+(defparameter *shared-subterm-limit* 8
+  "The most repeated subterms `share-repeated-subterms` considers binding at once.")
+
+(defun repeated-subterms (expression)
+  "The compound subterms EXPRESSION computes more than once outside quoted code, as
+((subterm . count) ...) in order of first occurrence."
+  (let ((counts (make-hash-table :test #'equal))
+        (ordered nil))
+    (labels ((walk (node)
+               (when (app-p node)
+                 (unless (eq node expression)
+                   (when (= 1 (incf (gethash node counts 0))) (push node ordered)))
+                 (mapc #'walk (rest node)))))
+      (walk expression))
+    (loop for node in (nreverse ordered)
+          for count = (gethash node counts)
+          when (> count 1) collect (cons node count))))
+
+(defun share-repeated-subterms (expression width)
+  "EXPRESSION with compound subterms that it computes more than once evaluated once each and
+passed to quoted code (`let-call`), where that is smaller at WIDTH bits a variable
+reference; EXPRESSION itself otherwise. The let has the value and the definedness of
+EXPRESSION by the rules of `let-call`: its body is provably total by itself, and a subterm
+that is not is demanded on every path. A let has a price of its own that one subterm may
+not repay and two may, so the search starts from the `*shared-subterm-limit*` subterms
+whose repetitions cost most, all bound at once, and gives up one at a time for as long as
+that makes the model smaller. A subterm nested in another that is bound is shared only
+where it also stands outside it."
+  (let ((repeated (repeated-subterms expression)))
+    (if (null repeated)
+        expression
+        (let* ((variables (expression-variables expression))
+               (next-id (1+ (reduce #'max variables :key #'car :initial-value -1)))
+               (ranked (stable-sort (copy-list repeated) #'>
+                                    :key (lambda (entry)
+                                           (* (1- (cdr entry)) (scoped-bits (car entry) width)))))
+               (current (loop for (subterm . nil) in (subseq ranked 0 (min *shared-subterm-limit*
+                                                                           (length ranked)))
+                              for id from next-id
+                              collect (cons subterm id)))
+               (best expression)
+               (best-bits (scoped-bits expression width))
+               (current-bits nil))
+          (labels ((shared (subterms)
+                     (let-call (map-ast (lambda (node meta)
+                                          (declare (ignore meta))
+                                          (let ((hit (assoc node subterms :test #'equal)))
+                                            (and hit (var (cdr hit) (ast-type node)))))
+                                        expression :root-first t)
+                               (append (loop for (subterm . id) in subterms collect (cons id subterm))
+                                       (loop for (id . type) in variables collect (cons id (var id type))))))
+                   (consider (subterms)
+                     ;; The bits of SUBTERMS bound under a let, or nil when there is no such let.
+                     (let ((form (and subterms (shared subterms))))
+                       (when form
+                         (let ((bits (scoped-bits form width)))
+                           (when (< bits best-bits) (setf best form best-bits bits))
+                           bits)))))
+            (setf current-bits (consider current))
+            (loop while (rest current)
+                  do (let ((next nil) (next-bits nil))
+                       (dolist (item current)
+                         (let* ((subset (remove item current :test #'eq))
+                                (bits (consider subset)))
+                           (when (and bits (or (null next-bits) (< bits next-bits)))
+                             (setf next subset next-bits bits))))
+                       (cond ((and next-bits (or (null current-bits) (< next-bits current-bits)))
+                              (setf current next current-bits next-bits))
+                             ;; No let binds all of these: let go of the one that saves least.
+                             ((null current-bits)
+                              (setf current (butlast current))
+                              (setf current-bits (consider current)))
+                             (t (return)))))
+            best)))))
+
 (defun compose-model (decoder child-id child-model bindings &optional ledger inputs)
   "DECODER with the model of its child in place of the variable CHILD-ID, the child's inputs
 being computed by BINDINGS. A value is substituted where it is used. A binding the child
-model mentions more than once, or a child the decoder mentions more than once, is instead
-evaluated once and passed to quoted code by `:code-eval`, when that is smaller and keeps the
-model's definedness (`let-call`). INPUTS, the scope of the result, prices variable
-references; without it the variables the result mentions stand in for the scope."
-  (let* ((width (reference-width
-                 inputs
-                 (unless inputs
-                   (instantiate decoder
-                                (list (cons child-id (instantiate child-model bindings :var))) :var))))
+model mentions more than once, a child the decoder mentions more than once, or any other
+compound subterm the composed model computes more than once is instead evaluated once and
+passed to quoted code by `:code-eval`, when that is smaller and keeps the model's
+definedness (`let-call`, `share-repeated-subterms`). INPUTS, the scope of the result,
+prices variable references; without it the variables the result mentions stand in for the
+scope."
+  (let* ((inline (instantiate decoder
+                              (list (cons child-id (instantiate child-model bindings :var))) :var))
+         (width (reference-width inputs (unless inputs inline)))
          (child (bind-model child-model bindings width))
          (variables (expression-variables decoder))
          ;; The decoder as a let of its child, whose other arguments are its own variables.
-         (model (bind-model decoder
+         (bound (bind-model decoder
                             (loop for (id . type) in variables
                                   collect (cons id (if (eql id child-id) child (var id type))))
-                            width)))
+                            width))
+         (shared (share-repeated-subterms inline width))
+         (model (if (< (scoped-bits shared width) (scoped-bits bound width)) shared bound)))
     (charge ledger :composition (syntax-work model))
     model))
 
@@ -673,14 +808,12 @@ references; without it the variables the result mentions stand in for the scope.
   "DECODER with SLOT-MODELS, ((slot-id . model) ...) over the ids of BINDINGS, in place of its
 slot variables. When the decoder mentions nothing but its slots, the product is one
 expression over the bindings, which are then bound around all of it at once; otherwise each
-slot model is bound by itself. Sharing follows `compose-model`."
-  (let* ((width (reference-width
-                 inputs
-                 (unless inputs
-                   (instantiate decoder
-                                (loop for (id . model) in slot-models
-                                      collect (cons id (instantiate model bindings :var)))
-                                :var))))
+slot model is bound by itself. Sharing follows `compose-model`, repeated subterms included."
+  (let* ((inline (instantiate decoder
+                              (loop for (id . model) in slot-models
+                                    collect (cons id (instantiate model bindings :var)))
+                              :var))
+         (width (reference-width inputs (unless inputs inline)))
          (variables (expression-variables decoder)))
     (flet ((product (models)
              ;; The decoder over MODELS for its slots and itself for its other variables.
@@ -688,15 +821,32 @@ slot model is bound by itself. Sharing follows `compose-model`."
                          (loop for (id . type) in variables
                                collect (cons id (or (cdr (assoc id models)) (var id type))))
                          width)))
-      (let ((model (if (subsetp (mapcar #'car variables) (mapcar #'car slot-models))
-                       (bind-model (product slot-models) bindings width)
-                       (product (loop for (id . model) in slot-models
-                                      collect (cons id (bind-model model bindings width)))))))
+      (let* ((bound (if (subsetp (mapcar #'car variables) (mapcar #'car slot-models))
+                        (bind-model (product slot-models) bindings width)
+                        (product (loop for (id . model) in slot-models
+                                       collect (cons id (bind-model model bindings width))))))
+             (shared (share-repeated-subterms inline width))
+             (model (if (< (scoped-bits shared width) (scoped-bits bound width)) shared bound)))
         (charge ledger :composition (syntax-work model))
         model))))
 
+(defun default-operator-for-sort (sort)
+  "The first operator whose signature is the function sort SORT, (:fn (argument-types)
+return-type): a primitive in opcode order at one of the types SORT mentions, else a
+registered function. Nil when there is none, and so no value of that sort."
+  (let ((types (remove-duplicates (cons (third sort) (second sort)) :test #'equal)))
+    (or (loop for name in +operator-names+
+              thereis (loop for type in types
+                            for operator = (ignore-errors (op name type))
+                            thereis (and operator (equal sort (operator-type operator)) operator)))
+        (loop for name in *registered-function-names*
+              for operator = (ignore-errors (op name))
+              thereis (and operator (equal sort (operator-type operator)) operator)))))
+
 (defun default-value-for-type (type)
-  "Construct a canonical witness value belonging to TYPE."
+  "Construct a canonical witness value belonging to TYPE. Quoted code of a value sort is
+the literal of that sort's own default; quoted code of a function sort is an operator of
+that signature (`default-operator-for-sort`)."
   (case type
     (:int 0)
     (:bool nil)
@@ -705,7 +855,12 @@ slot model is bound by itself. Sharing follows `compose-model`."
        (:gf 0)
        (:tuple (mapcar #'default-value-for-type (rest type)))
        (:seq nil)
-       (:code (lit (code-sort type) (default-value-for-type (code-sort type))))))))
+       (:code (let ((sort (code-sort type)))
+                (if (function-sort-p sort)
+                    (or (default-operator-for-sort sort)
+                        (error "No operator has the signature ~S, so the type ~S has no value."
+                               sort type))
+                    (lit sort (default-value-for-type sort)))))))))
 
 (defun collect-code-eval-calls (expr code-var)
   "Return (VALUES ground-calls non-ground-p) for all (:code-eval CODE-VAR ...) subterms in EXPR."
@@ -1151,9 +1306,13 @@ requirements and linkage are kept. Search for a conserved quantity may read ever
 a model of one column is searched on the oriented frame."
   (let* ((schema (frame-schema frame))
          (available (available-inputs schema)))
-    (if (= (length available) (length (schema-inputs schema)))
-        frame
-        (project-frame-rows frame (identity-bindings available) ledger))))
+    (cond ((= (length available) (length (schema-inputs schema))) frame)
+          (available (project-frame-rows frame (identity-bindings available) ledger))
+          ;; Nothing precedes the target: its model reads no input at all.
+          (t (charge ledger :orientation (length (frame-rows frame)))
+             (derive-frame frame :inputs nil
+                                 :rows (mapcar (lambda (row) (derive-row row :known nil))
+                                               (frame-rows frame)))))))
 
 (defun assert-inputs-available (frame)
   "Signal an error when FRAME offers a model an input its availability preorder withholds."
@@ -1423,7 +1582,8 @@ child paths in PREDICTED and `ast->sexp` fillings."
 (defun priced-correction (predicted target type &key (predicted-p t) metric decoders ledger)
   "`correction` under what the problem and the library know of TYPE, as (VALUES packet bits).
 A frame's METRIC, an :int expression over `metric-inputs`, prices the correction by itself
-(clamping non-negative misses to at least 1 bit); its packet is TARGET. Otherwise each of
+(clamping non-negative misses to at least 1 bit); the packet stays the built-in one, from
+which `apply-correction-packet` rebuilds TARGET. Otherwise each of
 DECODERS, from `metric-decoders`, competes with the built-in packet: a decoder d whose solver
 gives a delta with d(PREDICTED, delta) = TARGET describes TARGET by that delta, for its tag
 and the bits of the delta. The programs run in the VM and are charged to LEDGER."
@@ -1435,8 +1595,7 @@ and the bits of the delta. The programs run in the VM and are charged to LEDGER.
              (when (and (eq :value (evaluation-status run))
                         (integerp (evaluation-value run))
                         (>= (evaluation-value run) 0))
-               (setf packet target
-                     bits (max 1 (evaluation-value run))))))
+               (setf bits (max 1 (evaluation-value run))))))
           (t
            (dolist (decoder decoders)
              (multiple-value-bind (delta delta-bits) (metric-delta decoder predicted target type ledger)

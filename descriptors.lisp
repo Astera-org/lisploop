@@ -147,6 +147,8 @@ clause profile across `:type`, `:shape-delta`, `:boundary`, `:sampled-content`, 
 
 (define-knowledge-kind :descriptor
   (:priority 15)
+  ;; A descriptor probes the functions it names; it is not a use of them.
+  (:passive t)
   (:validate (entry library)
     (declare (ignore library))
     (assert (eq :bool (knowledge-entry-target entry)))

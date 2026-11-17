@@ -57,3 +57,16 @@ statement snapshot, for a caller that has already taken it."
          (member obligation (getf certificate :obligations))
          (equalp (getf certificate :snapshot)
                  (or snapshot (knowledge-statement-snapshot entry))))))
+
+(defun knowledge-evidence-tested-p (entry obligation &optional snapshot)
+  "True when ENTRY carries evidence of OBLIGATION, of any grade, for the statement it makes
+now: checked evidence (`knowledge-evidence-current-p`), or a :sampled certificate, the record
+that the obligation was tested on samples and none refuted it. Sampled evidence licenses a
+conjecture that is replayed or verified where it is used. It never authorises eliminating an
+alternative: for that, ask `knowledge-evidence-current-p`."
+  (let ((certificate (knowledge-entry-certificate entry)))
+    (and (listp certificate)
+         (member (getf certificate :method) '(:exhaustive :derived :trusted-axiom :sampled))
+         (member obligation (getf certificate :obligations))
+         (equalp (getf certificate :snapshot)
+                 (or snapshot (knowledge-statement-snapshot entry))))))

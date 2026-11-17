@@ -291,6 +291,42 @@ The kernel is `13,771` lines against `12,472` at `54acfa3`. `P8.4`'s own balance
 
 Meeting the gate as written would take retiring a whole mechanism, for example serving Path B1's additive residual through metric decoders or dropping `filter-map-decompositions` in favour of general lifts. Both change search behaviour and budgets, and neither was attempted.
 
+### 6.7 Merge with `main` and Audit (16–17 November 2026)
+
+Commit `2484d19` hand-ported behaviour from `main`'s independent implementation of this plan (`67c015c`) into the one recorded above, and an audit of the result followed. This subsection records what changed and supersedes the statements of §6.2–§6.6 it names. `make test` runs 182 kernel and 40 milestone tests.
+
+**Ported from `main`, as audited**
+
+- *Hard edges are checked row by row* (`settle-row-edges`): a candidate is rejected at the first row whose incident edge it breaks. It accepts exactly what a brute-force filter does.
+- *Stage A budget scaling covers every node inside a lifted branch* (`stage-a-budget`), not only the lifted node. Supersedes §6.4.7. Probe 5 now solves at the default budget in `264,353` work; passing `:heuristic-budget 16000`, which §6.3 and §6.5 recommend, now leaves it unsolved at `1,000,000`.
+- *Constructor-AU proposes operator holes and lowered literal holes* (`constructor-au-decompositions`), `:code` edits are portable packets (`apply-code-edit`), `let-call` renumbers its parameters canonically, and `fold-equal-code-subst` folds an equality with a `:code-subst`.
+- *Availability may be a DAG of symbolic ranks* (`schema-availability-order`, `rank-le-p`), and `orient-conserved-quantity` takes `:auto` and respects availability.
+- *The reserve turn reaches unprepared fallback siblings* (`select-agenda-action`). This one-line change of `main`'s was missed by the port and restored by the audit: without it an ambiguous tentative narrowing was never rescued (unsolved at `3,000,000` work, solved at `367,081` with it).
+
+**Decided in the audit**
+
+- *Availability is strict* (`rank-lt-p`), as §3.4.3 says: a column at the target's own rank is withheld. The port had made it non-strict.
+- *A frame metric goes to a child where it still prices the child's values* (`pulled-back-metric`): unchanged under the identity and on the live branch of a conditional; composed with the decoder, as an expression, when the decoder reads nothing but the child; and unchanged for a child of the target's type when replay on the rows shows it invariant under the decoder (`metric-invariant-under-decoder-p`). Supersedes §6.4.12.
+- *Coupled products are searched, within a bound.* A requirement that ties slots together is kept on the join (`product-join-coupled`). Each coupled slot pools `*max-coupled-slot-candidates*` (4) models; a combination that falsifies a coupling conjunct on its row is dropped at the join for the price of evaluating the conjunct, and a product tests at most `*max-coupled-combinations*` (256) combinations. On a one-row product whose pools hold no model, four slots cost `68,602` work where they cost `387,378`, and five stop at the bound after `83,663` where they cost `6,096,924`; a model that only the 257th combination or a later one would reach is not found.
+- *Replay licenses a proposal; a recorded law needs evidence.* A validation on samples now leaves a `:sampled` certificate. `knowledge-evidence-tested-p` accepts it, `knowledge-evidence-current-p` does not, so sampled evidence can propose and never eliminates. Motif premises must be tested laws (`usable-motif-law-p`); an identity stated on one side has its other side validated and recorded as a law (`record-other-identity`), or its failure recorded as an edge. Supersedes the probe check of the port.
+
+**Evidence and the library**
+
+- *A solver's `:unique-p` is a claim.* `solve-equality-symbolically` uses a rule only when its uniqueness has evidence (`propagator-tested-p`), and prefers checked evidence. A certification that refutes the claim withdraws it. Supersedes the reading of §6.4.17 under which a flag sufficed.
+- *Lifted solvers carry what they were tested on* (`lift-field-solvers`, `sampled-solver-validations`): the witness law, and a uniqueness law at offsets around the witness, are validated by the VM on the fields' own residues and attested `:sampled`. Supersedes §6.6's "neither certified nor unique": a lifted `+` is tested unique, and a narrowing by it still keeps its fallback.
+- *Derived decoders are stored.* The decoder a motif's transfer law licenses (`remember-motif-decoder`) and the anti-unifier of observed templates (`generalize-decoder-templates`, the `:consolidate` hook of `:decoder-template`) are `:decoder-template` entries with edges to their sources, retrieved, capped, scored and credited like any other. Delivers the `:decoder-template` AU that §6.2 lists as not delivered, and replaces §6.6.19's proposal-time transfer.
+- *Archiving cascades and credits.* A kind may be declared `:passive`; a passive entry does not keep a function alive, and the templates that call an archived function are archived with it. A solution found through a template credits the functions it calls.
+
+**Homoiconic repairs**
+
+- Symbolic simplification is `fold-constants` plus the library's rewrite laws (`simplify-symbolic-expr`); the host-coded identities are gone.
+- Row-order keys read off compound inputs are enumerated by the kernel's enumerator and evaluated in the VM (`projection-row-keys`); stored `:locality-key` entries are candidates.
+- The factoring of a tuple membership into its places is a fold rule (`fold-member-tuple`).
+- A composed model shares any compound subterm it repeats (`share-repeated-subterms`): Probe 5's model is `253` bits where it was `264`, within its bound of `260`.
+- Probe values come from the library's one table (`probe-values-for-type`).
+
+**Still absent, from `main`:** the `(:* ↔ :/)` metric decoder, moment solvers, the rotating `:shift-seq`, certified transfer laws, and the `:metric` keyword on the search entry points. The kernel is `15,154` lines; `main`'s is `11,906`, and the LOC gate of §6.6 is further off than it was.
+
 ---
 
 ## Appendix A. Self-Contained Pure-Kernel Diagnostic Probes at Commit `54acfa3`

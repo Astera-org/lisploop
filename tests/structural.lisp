@@ -403,7 +403,8 @@ product slots explore multiple slot candidates until a valid tuple combination j
     (check (some (lambda (entry) (app-of-p (car entry) :<))
                  (feature-pair-predicates buckets inputs 3 *feature-guard-bits* nil with-lt))))
   ;; 2. Product-slot proposals are skipped by `remember-decoder-template`, whereas two ordinary
-  ;;    templates differing at one constant anti-unify into a `:learned-template-au` proposal.
+  ;;    templates that differ in one place are anti-unified, at consolidation, into a template
+  ;;    the library keeps.
   (with-clean-kernel-state
     (let* ((pair (tuple-type :int :int))
            (inputs '((0 . :int)))
@@ -416,18 +417,50 @@ product slots explore multiple slot candidates until a valid tuple combination j
       (check (null (knowledge-entries-of-kind :decoder-template))))
     (let* ((inputs '((0 . :int)))
            (frame (simple-frame :int inputs '(((1) 13) ((2) 23) ((3) 33))))
-           (lang (make-language :int inputs :operators (list (op :+ :int) (op :* :int)) :literals '(3 10))))
-      (dolist (branch (list (var 9 :int) (term `(+ ,(var 9 :int) 1))))
-        (let ((prop (make-decomposition :name (list :branch branch)
-                                        :decoder (term `(if (= ,(var 0 :int) 0) ,branch 10) :int)
-                                        :child-id 9 :child-type :int
-                                        :bindings (identity-bindings inputs)
-                                        :language lang :bound 40)))
-          (check (remember-decoder-template prop inputs))))
-      (let ((au-proposals (learned-decoder-decompositions frame lang 40 *knowledge-library*)))
-        (check (find :learned-template-au au-proposals
-                     :key (lambda (p) (and (consp (decomposition-name p))
-                                           (first (decomposition-name p)))))))))
+           (lang (make-language :int inputs :operators (list (op :+ :int) (op :* :int)) :literals '(3 10)))
+           (x (var 0 :int)) (z (var 9 :int)))
+      (flet ((remember (branch)
+               (remember-decoder-template
+                (make-decomposition :name (list :branch branch)
+                                    :decoder (term `(if (= ,x 0) ,branch 10) :int)
+                                    :child-id 9 :child-type :int
+                                    :bindings (identity-bindings inputs)
+                                    :language lang :bound 40)
+                inputs))
+             (retrieved ()
+               (mapcar (lambda (proposal) (second (decomposition-name proposal)))
+                       (learned-decoder-decompositions frame lang 40 nil nil))))
+        (let ((sources (list (remember (term `(+ ,z 1))) (remember (term `(* ,z 3))))))
+          (check (every #'identity sources))
+          ;; Nothing is generalised while templates are being retrieved: that is consolidation's.
+          (check (= 2 (length (retrieved))))
+          (let* ((added (generalize-decoder-templates *knowledge-library*))
+                 (general (first added)))
+            ;; The shared decoder becomes a template of its own, whose child is what differed,
+            ;; linked to the two it came from.
+            (check (= 1 (length added)))
+            (check (eq :template-generalization (getf (knowledge-entry-metadata general) :origin)))
+            (check (equal (term `(if (= ,(var 1 :int) 0) ,(var 0 :int) 10) :int)
+                          (knowledge-entry-expression general)))
+            (check (equal (list (cons :generalizes (mapcar #'knowledge-entry-id sources)))
+                          (knowledge-edges-from general :generalizes)))
+            ;; It is retrieved like any other template, once, and a second pass adds nothing.
+            (check (= 1 (count (knowledge-entry-id general) (retrieved))))
+            (check (= 3 (length (retrieved))))
+            (check (null (generalize-decoder-templates *knowledge-library*)))
+            (consolidate-knowledge-library *knowledge-library*)
+            (check (= 3 (length (knowledge-entries-of-kind :decoder-template))))
+            ;; It survives persistence with its origin and its sources.
+            (let ((restored (deserialize-knowledge-library (serialize-knowledge-library *knowledge-library*))))
+              (check (= 3 (length (knowledge-entries-of-kind :decoder-template restored))))
+              (check (knowledge-edges-from (find-knowledge-entry (knowledge-entry-id general) restored)
+                                           :generalizes restored)))))
+        ;; A template whose child already stands where the others differ is that decoder:
+        ;; generalising over it would only repeat it.
+        (with-knowledge-library ((make-knowledge-library))
+          (remember z)
+          (remember (term `(+ ,z 1)))
+          (check (null (generalize-decoder-templates *knowledge-library*)))))))
   ;; 3. Coupled non-Cartesian product join: `(member Y '((0 1) (1 0)))` rejects `(0 0)` (each
   ;;    slot's first literal) and joins once a second candidate (`1`) arrives.
   (let* ((pair (tuple-type :int :int))
@@ -445,3 +478,155 @@ product slots explore multiple slot candidates until a valid tuple combination j
     (check (synthesis-job-best job))
     (check (member (result (candidate-expression (synthesis-job-best job)))
                    '((0 1) (1 0)) :test #'equal))))
+
+(deftest coupled-product-join-is-complete-filtered-and-bounded
+  "Where a requirement couples two slots of a product, the join combines the models the slots
+have pooled whichever slot reports last, a slot the coupling does not name included; a
+combination that falsifies the coupling is dropped at the join and never verified at the
+root; the join's work is charged once; and a product stops combining at its bound."
+  (let* ((triple (tuple-type :int :int :int))
+         (y (var 0 triple))
+         (slots '((0 . :int) (1 . :int) (2 . :int)))
+         ;; z0 + z1 = 1 couples slots 0 and 1; slot 2 stands alone and must be 2.
+         (requirement (term `(if (= (+ (at ,y 0) (at ,y 1)) 1) (= (at ,y 2) 2) ,(lit :bool nil)) :bool))
+         (frame (make-frame (make-schema :inputs nil :target triple)
+                            (list (make-row :key 0 :known nil :requirement requirement))))
+         (literals (make-language :int nil :operators nil :literals '(0 1)))
+         ;; Slot 2 has to build its 2, so it is the last slot to report a model.
+         (sums (make-language :int nil :operators (list (op :+ :int)) :literals '(1)))
+         (root-language (make-language :int nil :operators nil :literals nil))
+         (decoder (term `(tuple ,(var 0 :int) ,(var 1 :int) ,(var 2 :int)))))
+    (flet ((start ()
+             (start-synthesis frame root-language 60
+                              :decompositions (product-decompositions
+                                               :coupled decoder slots nil literals 24
+                                               :slot-languages (list literals literals sums)))))
+      (let ((job (check-synthesis-resumption #'start :budget 100000 :stop-on-first t)))
+        (check (synthesis-job-best job))
+        (check (member (result (candidate-expression (synthesis-job-best job)))
+                       '((0 1 2) (1 0 2)) :test #'equal))
+        ;; (0 0 2) and (1 1 2) falsify the coupling: neither reached the root.
+        (check (null (remove :rejected (synthesis-job-messages job) :key #'message-claim :test-not #'eq))))))
+  ;; The only model is the last of the sixteen combinations of two pools of four.
+  (let* ((pair (tuple-type :int :int))
+         (slots '((0 . :int) (1 . :int)))
+         (frame (make-frame (make-schema :inputs nil :target pair)
+                            (list (make-row :key 0 :known nil
+                                            :requirement (set-requirement pair '((3 3) (9 9)))))))
+         (literals (make-language :int nil :operators nil :literals '(0 1 2 3)))
+         (root-language (make-language :int nil :operators nil :literals nil)))
+    (flet ((run ()
+             (let ((job (start-synthesis frame root-language 60
+                                         :decompositions (product-decompositions
+                                                          :coupled (term `(tuple ,(var 0 :int) ,(var 1 :int)))
+                                                          slots nil literals 24))))
+               (resume-synthesis job 100000 :stop-on-first t)
+               job)))
+      (let ((job (run)))
+        (check (equal '(3 3) (result (candidate-expression (synthesis-job-best job)))))
+        ;; Fifteen combinations were dropped at the join and one was verified.
+        (check (= 16 (product-join-examined (synthesis-node-join (second (synthesis-job-nodes job))))))
+        (check (null (remove :rejected (synthesis-job-messages job) :key #'message-claim :test-not #'eq)))
+        (check (= 1 (length (synthesis-job-results job)))))
+      (let ((*max-coupled-combinations* 4))
+        (let ((job (run)))
+          (check (null (synthesis-job-best job)))
+          (check (synthesis-finished-p job))
+          (check (= 4 (product-join-examined (synthesis-node-join (second (synthesis-job-nodes job)))))))))))
+
+(deftest constructor-au-proposes-operator-and-expression-holes-without-losing-either
+  "A product with an operator slot beside another slot is priced and solved: a slot that has
+no model yet is stood in for by an operator of its signature. An operator hole whose
+operators the slot could neither quote nor read off an input is not proposed, and where the
+anti-unifier with operator holes and the one without differ both are, so that adding an
+operator to the language does not take a solution away."
+  (let* ((scope '((0 . :int)))
+         (code (code-type scope :int))
+         (x (var 0 :int)))
+    ;; 1. `(+ x 0)` and `(* x 1)`: an operator slot and a lowered literal slot.
+    (let ((binary (code-type scope '(:fn (:int :int) :int))))
+      (check (operator-p (default-value-for-type binary)))
+      (check (equal '(:fn (:int :int) :int) (operator-type (default-value-for-type binary)))))
+    (let* ((inputs '((0 . :int)))
+           (frame (simple-frame code inputs (list (list '(0) (term `(+ ,x 0)))
+                                                  (list '(1) (term `(* ,x 1))))))
+           (language (make-language :int inputs
+                                    :operators (list (op := :int) (op :if :int) (op :+ :int) (op :* :int))
+                                    :literals '(0 1)))
+           (job (start-heuristic-synthesis frame language 200)))
+      (check (= 2 (length (remove :constructor-au-operators
+                                  (structural-decompositions frame language 200)
+                                  :key (lambda (proposal) (first (decomposition-name proposal)))
+                                  :test-not #'eq))))
+      (resume-synthesis job 200000 :stop-on-first t)
+      (check (synthesis-job-best job))
+      (check-synthesized-model (candidate-expression (synthesis-job-best job)) frame))
+    ;; 2. Source trees whose operators the language cannot all quote: the operator slot is
+    ;;    not proposed, the expression slot is, and it is read off the input as before.
+    (let* ((inputs (list (cons 0 code)))
+           (examples (list (list (term `(- (+ ,x 1) 5)) (term `(* (+ ,x 1) 2)))
+                           (list (term `(- (* ,x 1) 5)) (term `(* (* ,x 1) 2)))
+                           (list (term `(- (- ,x 1) 5)) (term `(* (- ,x 1) 2)))))
+           (frame (make-frame (make-schema :inputs inputs :target code)
+                              (loop for (source target) in examples for key from 0
+                                    collect (make-row :key key :known (list source)
+                                                      :requirement (singleton-requirement code target))))))
+      (dolist (operators (list (list (op :code-child (tuple-type code code)))
+                               (list (op :code-child (tuple-type code code)) (op :* :int))))
+        (let* ((language (make-language :int inputs :operators operators :literals '(0 1)))
+               (job (start-heuristic-synthesis frame language 220)))
+          (check (equal '(:constructor-au)
+                        (remove-duplicates
+                         (mapcar (lambda (proposal) (first (decomposition-name proposal)))
+                                 (structural-decompositions frame language 220)))))
+          (resume-synthesis job 200000 :stop-on-first t)
+          (check (synthesis-job-best job))
+          (check-synthesized-model (candidate-expression (synthesis-job-best job)) frame
+                                   :require-total-p nil))))))
+
+(deftest repeated-subterms-are-shared-and-tuple-memberships-fold-by-place
+  "A composed model computes a subterm it repeats once, under a let, when that is smaller,
+though no single subterm repays the let; and a membership of a tuple in a set that is the
+product of its places folds into one membership per place."
+  (let* ((pair (tuple-type :int :int))
+         (inputs (list (cons 0 pair) (cons 1 :int)))
+         (x0 (var 0 pair)) (x1 (var 1 :int)) (z (var 9 :int))
+         (second-part (term `(at ,x0 1)))
+         (decoder (term `(tuple ,z (if (= ,z ,second-part) (+ ,second-part ,x1) ,second-part)) pair))
+         (child (term `(+ (at ,x0 0) ,x1)))
+         (inline (instantiate decoder (list (cons 9 child)) :var))
+         (model (compose-model decoder 9 child (identity-bindings inputs) nil inputs)))
+    (check (app-of-p model :code-eval))
+    (check (< (description-size model inputs) (description-size inline inputs)))
+    (dolist (values '(((1 2) 1) ((0 5) 3) ((-4 -4) 0)))
+      (check (equal (result inline inputs values) (result model inputs values))))
+    ;; Each subterm alone costs more under a let than it saves.
+    (let ((width (reference-width inputs inline)))
+      (dolist (subterm (list child second-part))
+        (let ((alone (let-call (map-ast (lambda (node meta)
+                                          (declare (ignore meta))
+                                          (and (equal node subterm) (var 20 (ast-type node))))
+                                        inline :root-first t)
+                               (acons 20 subterm (identity-bindings inputs)))))
+          (check (> (scoped-bits alone width) (scoped-bits inline width)))))))
+  (let* ((a (var 0 :int)) (b (var 1 :int))
+         (tuple (term `(tuple ,a ,b))))
+    (flet ((folded (set) (fold-constants (term `(member ,tuple ',set))))
+           (same-set-p (expression set)
+             ;; EXPRESSION accepts exactly the pairs of SET.
+             (loop for x from -1 to 6
+                   always (loop for y from -1 to 6
+                                always (eq (and (member (list x y) set :test #'equal) t)
+                                           (result expression '((0 . :int) (1 . :int)) (list x y)))))))
+      (dolist (set '(((0 4) (0 5) (1 4) (1 5)) ((3 4) (3 5) (3 4)) ((2 2))))
+        (let ((expression (folded set)))
+          (check (same-set-p expression set))
+          ;; One requirement on each place: the tuple is gone.
+          (check (not (expression-calls-operator-p expression :tuple)))
+          (check (equal '((0) (1)) (mapcar #'free-vars (extract-conjuncts expression))))))
+      ;; A set that ties its places together is left whole.
+      (let ((expression (folded '((0 1) (1 0)))))
+        (check (same-set-p expression '((0 1) (1 0))))
+        (check (app-of-p expression :member))
+        (check (equal tuple (second expression)))))))
+

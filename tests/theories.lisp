@@ -38,20 +38,31 @@ as a replayed conjecture without any search; a step without the laws inherits no
                                     (second (rest (knowledge-entry-expression (find-knowledge-entry name))))
                                     (third (rest (knowledge-entry-expression (find-knowledge-entry name)))))))))
         ;; 1. One operator is not a theory: its star is recorded and nothing is quotiented.
+        ;;    The identity was stated on the right only, so its left side is put to the
+        ;;    test and recorded as a law of its own, with the evidence the test earned.
         (fold-function :sum (op :+ :int) 0)
         (associativity (op :+ :int))
         (identity-law (op :+ :int) 0)
+        (let ((added (induce-fold-motifs *knowledge-library*)))
+          (check (equal '(:law) (mapcar #'knowledge-entry-kind added)))
+          (check (equal '((:identity :+ (0) :left)) (knowledge-edges-from (first added) :identity)))
+          (check (equal '((:implied-with :law-1)) (knowledge-edges-from (first added) :implied-with)))
+          (check (knowledge-evidence-tested-p (first added) :equivalence))
+          (check (not (knowledge-evidence-current-p (first added) :equivalence))))
         (check (null (induce-fold-motifs *knowledge-library*)))
         (check (null (knowledge-entries-of-kind :motif)))
         (check (equal '((:associative :+)) (knowledge-edges-from :law-0 :associative)))
-        (check (equal '((:identity :+ (0))) (knowledge-edges-from :law-1 :identity)))
+        (check (equal '((:identity :+ (0) :right)) (knowledge-edges-from :law-1 :identity)))
         ;; 2. A second operator with the same star forms the motif and transfers it to both.
         (fold-function :product (op :* :int) 1)
         (associativity (op :* :int))
         (identity-law (op :* :int) 1)
         (let* ((added (induce-fold-motifs *knowledge-library*))
                (motif (first (knowledge-entries-of-kind :motif))))
-          (check (equal '(:motif :law :law) (mapcar #'knowledge-entry-kind added)))
+          ;; The other side of the second identity, the motif, and for each instance its
+          ;; conjecture and the decoder the conjecture licenses.
+          (check (equal '(:law :motif :law :decoder-template :law :decoder-template)
+                        (mapcar #'knowledge-entry-kind added)))
           (check (eq :foldr=foldl/monoid (knowledge-entry-id motif)))
           (check (eq :conjecture (knowledge-entry-status motif)))
           (check (equal '((:instance :sum) (:instance :product)) (knowledge-edges-from motif :instance)))
@@ -81,15 +92,26 @@ as a replayed conjecture without any search; a step without the laws inherits no
           (identity-law (op :shift-add) -1)
           (let* ((work (make-ledger))
                  (transferred (induce-fold-motifs *knowledge-library* :ledger work)))
-            (check (equal '(:shifted-sum/via-foldl) (mapcar #'knowledge-entry-id transferred)))
+            (check (equal '(:law :law :decoder-template) (mapcar #'knowledge-entry-kind transferred)))
+            (check (eq :shifted-sum/via-foldl (knowledge-entry-id (second transferred))))
+            (check (equal '((:licensed-by :shifted-sum/via-foldl))
+                          (knowledge-edges-from (third transferred) :licensed-by)))
             (check (member '(:instance :shifted-sum) (knowledge-edges-from motif :instance) :test #'equal))
             (check (apply #'= 11 (folds :shifted-sum '(4 2 3))))
-            (check (< (ledger-total work) 2000)))
+            ;; Checking two laws on the probes, the identity's other side and the transfer;
+            ;; no search.
+            (check (< (ledger-total work) 3000)))
           ;; 5. Subtraction has an identity on one side and is not associative: no transfer,
-          ;;    and rightly, since the two folds of it differ.
+          ;;    and rightly, since the two folds of it differ. That its identity fails on the
+          ;;    left is found once and recorded on the law that states the right.
           (fold-function :alternating (op :- :int) 0)
-          (identity-law (op :- :int) 0)
-          (check (null (induce-fold-motifs *knowledge-library*)))
+          (let ((right-identity (identity-law (op :- :int) 0)))
+            (check (null (induce-fold-motifs *knowledge-library*)))
+            (check (equal '((:no-identity :- (0) :left))
+                          (knowledge-edges-from right-identity :no-identity)))
+            (let ((work (make-ledger)))
+              (check (null (induce-fold-motifs *knowledge-library* :ledger work)))
+              (check (zerop (ledger-total work)))))
           (check (null (find-knowledge-entry :alternating/via-foldl)))
           (check (not (apply #'= (folds :alternating '(3 4 5)))))
           ;; 6. The motif and what it induced survive persistence, and the restored library
@@ -169,8 +191,24 @@ entry calls is kept, and a batch without jobs changes nothing."
         (let ((before (copy-tree (knowledge-entry-metadata (find-knowledge-entry :map-twice)))))
           (consolidate-knowledge-library *knowledge-library*)
           (check (equal before (knowledge-entry-metadata (find-knowledge-entry :map-twice)))))
-        ;; 3. The third batch archives the decoy nothing calls, and only it.
-        (check (equal '(:map-twice) (mapcar #'knowledge-entry-id (batch (solve (lambda (x) (+ x x)))))))
+        ;; 3. The third batch archives the decoy nothing uses, and only it. A decoder template
+        ;;    that calls the decoy mentions it without using it, does not keep it, and is
+        ;;    archived with it: it could no longer be proposed.
+        (let ((template (remember-decoder-template
+                         (make-decomposition :name :through-decoy
+                                             :decoder (app (op :map-twice) (var 9 seq)
+                                                           (lit unary (term `(+ ,(var 0 :int) 1))))
+                                             :child-id 9 :child-type seq
+                                             :bindings (identity-bindings inputs)
+                                             :language (language) :bound 40)
+                         inputs)))
+          (check (null (entry-live-callers (find-knowledge-entry :map-twice) *knowledge-library*)))
+          (check (equal (list :map-twice (knowledge-entry-id template))
+                        (mapcar #'knowledge-entry-id (batch (solve (lambda (x) (+ x x)))))))
+          (check (not (knowledge-entry-active-p template)))
+          (check (equal '((:archived-with :map-twice)) (knowledge-edges-from template :archived-with)))
+          (check (null (learned-decoder-decompositions
+                        (simple-frame seq inputs '((((1 2)) (3 4)))) (language) 60 nil nil))))
         (check (not (knowledge-entry-active-p (find-knowledge-entry :map-twice))))
         (check (knowledge-entry-active-p (find-knowledge-entry :map-again)))
         (check (equal '(:uses-map-again)
@@ -231,7 +269,15 @@ rewrite libraries while proposing tentative fold decompositions in `proposals.li
                      (term `(+ (+ ,a ,b) ,c)) (term `(+ ,a (+ ,b ,c))))
         (sampled-law (arithmetic-inputs :int 1)
                      (term `(+ ,a 0)) a)
-        (check (null (induce-fold-motifs *knowledge-library*)))
+        (induce-fold-motifs *knowledge-library*)
+        (check (null (knowledge-entries-of-kind :motif)))
+        ;; A law nobody has tested is no premise either: its fact is not even recorded.
+        (let ((untested (register-knowledge-law
+                         (make-law :int (arithmetic-inputs :int 3)
+                                   (term `(* (* ,a ,b) ,c)) (term `(* ,a (* ,b ,c))))
+                         :status :conjecture)))
+          (induce-fold-motifs *knowledge-library*)
+          (check (null (knowledge-edges-from untested :associative))))
         ;; Add `:shifted-sum` with genuine monoid laws so the motif forms and transfers `:shifted-sum/via-foldl`.
         (define-function :shift-add (arithmetic-inputs :int) :int (term `(+ (+ ,a ,b) 1)))
         (fold-fn :shifted-sum (op :shift-add) -1)
@@ -243,10 +289,15 @@ rewrite libraries while proposing tentative fold decompositions in `proposals.li
         (induce-fold-motifs *knowledge-library*)
         (check (null (find-knowledge-entry :bad-sub/via-foldl)))
         (check (find-knowledge-entry :shifted-sum/via-foldl))
-        ;; Never an active rewrite rule:
-        (check (notany (lambda (law) (expression-calls-operator-p (law-equation law) :shifted-sum))
-                       (as-rewrite-library *knowledge-library* :domain :int)))
-        ;; Consumed by `transferred-law-decompositions` to solve `(shifted-sum (cons 4 xs))` via `:foldl`
+        ;; Never an active rewrite rule: the transferred equation is a conjecture, and no
+        ;; rule of the library's rewrite library, should it have one, mentions it.
+        (check (eq :conjecture (knowledge-entry-status (find-knowledge-entry :shifted-sum/via-foldl))))
+        (let ((rewrites (as-rewrite-library *knowledge-library* :domain :int)))
+          (check (notany (lambda (rule)
+                           (or (expression-calls-operator-p (rewrite-rule-pattern rule) :shifted-sum)
+                               (expression-calls-operator-p (rewrite-rule-replacement rule) :shifted-sum)))
+                         (and rewrites (rewrite-library-rules rewrites)))))
+        ;; The decoder the law licenses is kept as a template: it solves `(shifted-sum (cons 4 xs))` via `:foldl`
         ;; in a sequence-only grammar that has neither `:shifted-sum` nor `:shift-add` nor `-1`!
         (let* ((inputs (list (cons 0 seq)))
                (frame (simple-frame :int inputs
@@ -267,7 +318,16 @@ rewrite libraries while proposing tentative fold decompositions in `proposals.li
             (let ((expr (candidate-expression (synthesis-job-best job))))
               (check (expression-calls-operator-p expr :foldl))
               (check-synthesized-model expr frame
-                                       :held-out '((((1 2 3)) 13)))))))))
+                                       :held-out '((((1 2 3)) 13))))
+            ;; The solution came through the template the law licenses, and the fold the
+            ;; template calls is credited with it, although its own lift in this job failed.
+            (let ((winner (decomposition-name (synthesis-node-proposal (job-winning-node job)))))
+              (check (eq :learned-template (first winner)))
+              (check (equal '((:licensed-by :shifted-sum/via-foldl))
+                            (knowledge-edges-from (second winner) :licensed-by))))
+            (amortize-library-entries *knowledge-library* (list job))
+            (check (plusp (getf (knowledge-entry-metadata (find-knowledge-entry :foldl)) :net-utility)))
+            (check (zerop (getf (knowledge-entry-metadata (find-knowledge-entry :foldl)) :stale-epochs))))))))
   ;; 2. Passive `:decoder-template` metadata referencing a decoy does not count as a live caller.
   (with-clean-kernel-state
     (let* ((seq (sequence-type :int))

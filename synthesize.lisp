@@ -24,9 +24,14 @@
   expansion (deferred-proposals nil) (provenance nil)
   join) ; the `product-join` this node shares with the other slots of its product, or nil
 
-;; The AND-join of a product's slots: MODELS holds (slot-id expression size) for the
-;; smallest model each slot has found so far.
-(defstruct product-join models)
+;; The AND-join of a product's slots. MODELS holds (slot-id expression size pool) for every
+;; slot that has a model: its smallest, and in POOL, ((expression . size) ...) smallest first,
+;; the few it keeps for combination when a requirement couples it to another slot. COUPLED
+;; holds each requirement that ties slots together, once, as (row-key . conjunct) over the
+;; slot variables. VALUES remembers what a slot model evaluates to on those rows, and
+;; EXAMINED counts the combinations of pooled models tested against COUPLED so far.
+(defstruct product-join
+  models coupled (examined 0) (values (make-hash-table :test #'equal)))
 
 ;; Privately staged result of `prepare-synthesis-node`, published once its debt is paid.
 (defstruct node-preparation
@@ -225,27 +230,26 @@ value apart or putting one together is not a step of computation."
         :key (lambda (item) (with-standard-io-syntax (prin1-to-string item)))))
 
 (defun canonical-linkage-signature (frame)
-  "Order-independent signature of FRAME's pairs, anchors, and edges, mapping row keys through
-`canonical-row-order` so physical row permutations (`shuffle-frame-rows`) share one signature."
+  "The signature of FRAME's pairs, anchors and edges with every row key replaced by the
+row's place in `canonical-row-order`, so it depends neither on the order the rows are
+stored in nor on what they are called. Pairs and anchors keep their direction and their
+order in the list, both of which Stage A prices (`relational-linkage-residual`); :equal and
+:distinct edges are unordered, and edges are listed in canonical order."
   (when (or (frame-pairs frame) (frame-anchors frame) (frame-edges frame))
-    (let* ((ordered (canonical-row-order (frame-rows frame)))
+    (let* ((ordered (canonical-row-order frame))
            (ranks (loop for row in ordered for idx from 0 collect (cons (row-key row) idx))))
-      (labels ((rk (key) (or (cdr (assoc key ranks :test #'equal)) key))
-               (canon-pair (a b symmetric-p)
-                 (let ((ra (rk a)) (rb (rk b)))
-                   (if (and symmetric-p
-                            (string< (with-standard-io-syntax (prin1-to-string rb))
-                                     (with-standard-io-syntax (prin1-to-string ra))))
-                       (list rb ra)
-                       (list ra rb))))
-               (sort-sexps (items)
-                 (sort (copy-list items) #'string<
-                       :key (lambda (item) (with-standard-io-syntax (prin1-to-string item))))))
-        (list (sort-sexps (loop for (a . b) in (frame-pairs frame)
-                                collect (canon-pair a b t)))
-              (sort-sexps (mapcar #'rk (frame-anchors frame)))
-              (sort-sexps (loop for (kind a b) in (frame-edges frame)
-                                collect (cons kind (canon-pair a b (not (eq kind :persistence)))))))))))
+      (labels ((place (key) (or (cdr (assoc key ranks :test #'equal)) key))
+               (printed (item) (with-standard-io-syntax (prin1-to-string item)))
+               (unordered (a b)
+                 (let ((pa (place a)) (pb (place b)))
+                   (if (string< (printed pb) (printed pa)) (list pb pa) (list pa pb)))))
+        (list (loop for (a b) in (frame-pairs frame) collect (list (place a) (place b)))
+              (mapcar #'place (frame-anchors frame))
+              (sort (loop for (kind a b) in (frame-edges frame)
+                          collect (cons kind (if (eq kind :persistence)
+                                                 (list (place a) (place b))
+                                                 (unordered a b))))
+                    #'string< :key #'printed))))))
 
 (defun child-scope-signature (frame language &optional reserve)
   "Frozen constraint identity, independent of occurrence names/order; keep linkage contexts distinct."
@@ -506,6 +510,10 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
               (pull-through proposal (synthesis-node-frame parent) ledger)
               (synthesis-node-frame node))
         (setf (synthesis-node-coupled-requirements node) coupled)
+        (when (synthesis-node-join node)
+          ;; A requirement that couples two slots reaches the join from each of them.
+          (dolist (requirement coupled)
+            (pushnew requirement (product-join-coupled (synthesis-node-join node)) :test #'equal)))
         (when (and proposal (decomposition-fiber-p proposal))
           (let ((refined (nth-value 2 (infer-fibers frame ledger))))
             (when refined (setf frame refined))))
@@ -575,60 +583,119 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
                         :expressions (list model)))))
 
 (defparameter *max-coupled-slot-candidates* 4
-  "Maximum distinct candidate expressions retained per product slot for coupled joins.")
+  "The most models a slot keeps for combination when a requirement couples it to another slot.")
+
+(defparameter *max-coupled-combinations* 256
+  "The most combinations of pooled slot models one product may test against the requirements
+that couple its slots. Combining is exponential in the number of coupled slots: the bound
+covers four slots of `*max-coupled-slot-candidates*` models each, and a product that
+reaches it combines no further.")
+
+(defun slot-model-row-value (join node slot-id expression row-key ledger)
+  "The value EXPRESSION, a model of the slot SLOT-ID, takes on the row ROW-KEY of the slots'
+frames, as (VALUES value known-p). Every slot of a product reads the same inputs, so NODE,
+any slot of JOIN, supplies the row. Evaluated once on LEDGER and remembered in JOIN."
+  (let* ((key (list slot-id expression row-key))
+         (cached (gethash key (product-join-values join))))
+    (unless cached
+      (let* ((frame (synthesis-node-frame node))
+             (row (find row-key (frame-rows frame) :key #'row-key :test #'equal)))
+        (setf cached
+              (or (and row (not (member :unresolved (row-known row)))
+                       (multiple-value-bind (value known-p)
+                           (eval-expr-value expression (schema-inputs (frame-schema frame))
+                                            (row-known row) ledger)
+                         (and known-p (list value t))))
+                  (list nil nil))
+              (gethash key (product-join-values join)) cached)))
+    (values (first cached) (second cached))))
+
+(defun coupled-combination-admissible-p (join node models ledger)
+  "False when MODELS, ((slot-id . expression) ...) for every slot of NODE's product, give some
+requirement that couples the slots a definite false on its row. The requirement is a
+conjunct of what the parent requires of the product there, so such a combination cannot be
+a model of the parent. One that cannot be decided here is left to verification."
+  (let ((slots (decomposition-slots (synthesis-node-proposal node))))
+    (every (lambda (requirement)
+             (destructuring-bind (row-key . conjunct) requirement
+               (let ((values (loop for (slot-id . nil) in slots
+                                   collect (multiple-value-bind (value known-p)
+                                               (slot-model-row-value
+                                                join node slot-id (cdr (assoc slot-id models))
+                                                row-key ledger)
+                                             (if known-p value (return nil))))))
+                 (or (null values)
+                     (not (subsetp (free-vars conjunct) (mapcar #'car slots)))
+                     (let ((run (evaluate conjunct slots values :ledger ledger :budget 2000)))
+                       (not (and (eq :value (evaluation-status run))
+                                 (null (evaluation-value run)))))))))
+           (product-join-coupled join))))
 
 (defun join-slot-candidates (job node expression ledger)
-  "Record EXPRESSION as a model of NODE's slot (retaining up to `*max-coupled-slot-candidates*`
-distinct models by size). Return joined product models for the parent's frame once every slot
-has at least one model: the best-per-slot join for uncoupled slots, or combinations across
-retained sibling candidates when NODE carries coupled cross-slot requirements."
+  "Record EXPRESSION as a model of NODE's slot and return the models of the parent's frame it
+completes, once every slot has a model. Where no requirement couples the slots that is the
+product of EXPRESSION with the smallest model of every other slot. Where one does, each
+slot it names keeps its `*max-coupled-slot-candidates*` smallest models, and EXPRESSION is
+combined with every choice among the other slots' models, smallest first: a combination
+that falsifies a coupling requirement on its row is dropped here, for the price of
+evaluating that conjunct on LEDGER, and the others are composed. A product tests at most
+`*max-coupled-combinations*` combinations in all."
   (let* ((proposal (synthesis-node-proposal node))
          (join (synthesis-node-join node))
          (id (decomposition-child-id proposal))
          (size (description-size expression (schema-inputs (frame-schema (synthesis-node-frame node)))))
+         (capacity (if (synthesis-node-coupled-requirements node) *max-coupled-slot-candidates* 1))
          (entry (assoc id (product-join-models join))))
-    (cond
-      ((null entry)
-       (push (list id expression size (list (cons expression size))) (product-join-models join)))
-      (t
-       (let ((pool (fourth entry)))
-         (unless (assoc expression pool :test #'equal)
-           (setf pool (stable-sort (copy-list (cons (cons expression size) pool)) #'< :key #'cdr))
-           (when (> (length pool) *max-coupled-slot-candidates*)
-             (setf pool (subseq pool 0 *max-coupled-slot-candidates*)))
-           (setf (fourth entry) pool)))
-       (when (< size (third entry))
-         (setf (second entry) expression
-               (third entry) size))))
-    (when (every (lambda (slot) (assoc (car slot) (product-join-models join)))
-                 (decomposition-slots proposal))
-      (if (null (synthesis-node-coupled-requirements node))
-          (let ((product (compose-through node expression ledger)))
-            (when (valid-job-node-candidate-p job (synthesis-node-parent node) product)
-              (list product)))
-          (let* ((other-slots
-                   (loop for (sid . nil) in (decomposition-slots proposal)
-                         unless (eql sid id)
-                           collect (let ((e (assoc sid (product-join-models join))))
-                                     (mapcar (lambda (pair) (cons sid (car pair)))
-                                             (or (fourth e) (list (cons (second e) (third e))))))))
-                 (products nil))
-            (dolist (combo (cartesian-product-lists other-slots) (nreverse products))
-              (let ((product (compose-through node expression ledger combo)))
-                (when (and (not (member product products :test #'equal))
-                           (valid-job-node-candidate-p job (synthesis-node-parent node) product))
-                  (push product products)))))))))
+    (if (null entry)
+        (push (list id expression size (list (cons expression size))) (product-join-models join))
+        (let ((pool (fourth entry)))
+          (unless (assoc expression pool :test #'equal)
+            (setf pool (stable-sort (cons (cons expression size) (copy-list pool)) #'< :key #'cdr)
+                  (fourth entry) (subseq pool 0 (min capacity (length pool)))))
+          (when (< size (third entry))
+            (setf (second entry) expression
+                  (third entry) size))))
+    (flet ((product (others)
+             (let ((model (compose-through node expression ledger others)))
+               (and (valid-job-node-candidate-p job (synthesis-node-parent node) model)
+                    model))))
+      (when (every (lambda (slot) (assoc (car slot) (product-join-models join)))
+                   (decomposition-slots proposal))
+        (if (null (product-join-coupled join))
+            (let ((model (product nil)))
+              (and model (list model)))
+            (let ((pools (loop for (slot-id . nil) in (decomposition-slots proposal)
+                               unless (eql slot-id id)
+                                 collect (loop for (model . nil) in (fourth (assoc slot-id (product-join-models join)))
+                                               collect (cons slot-id model))))
+                  (products nil))
+              (dolist (others (cartesian-product-lists pools) (nreverse products))
+                (when (>= (product-join-examined join) *max-coupled-combinations*)
+                  (return (nreverse products)))
+                (incf (product-join-examined join))
+                (when (coupled-combination-admissible-p join node (acons id expression others) ledger)
+                  (let ((model (product others)))
+                    (when (and model (not (member model products :test #'equal)))
+                      (push model products)))))))))))
 
 (defun enqueue-node-candidate (job node expression candidate-obj &optional (private (make-ledger)))
   "Compose EXPRESSION, a model of NODE's frame, to the root and queue it for verification there.
 A model of one slot of a product is first joined with the other slots' models into model(s)
 of their parent's frame, which are queued in its place; it waits while a slot has none.
-The work of composing is staged on PRIVATE."
+The work of composing is staged on PRIVATE: that of the join with the first model it
+yields, and each further model's own."
   (when candidate-obj
     (synthesis-message job node :child-candidate (list :candidate candidate-obj :scope :child-frame)))
   (if (synthesis-node-join node)
-      (dolist (product (join-slot-candidates job node expression private))
-        (enqueue-node-candidate job (synthesis-node-parent node) product nil private))
+      (let ((products (join-slot-candidates job node expression private)))
+        (dolist (product products)
+          (enqueue-node-candidate job (synthesis-node-parent node) product nil private)
+          (setf private (make-ledger)))
+        ;; The combinations a join tested are paid for even when none of them survives.
+        (when (and (null products) (plusp (ledger-total private)))
+          (setf (synthesis-job-pending job)
+                (append (synthesis-job-pending job)
+                        (list (stage-work node private :composition nil))))))
       (let ((model (reconstruct-synthesis-candidate node expression private)))
         (setf (synthesis-job-pending job)
               (append (synthesis-job-pending job)
@@ -806,16 +873,18 @@ deferred proposal recorded on any node."
                      (product-join-models join)))))
 
 (defun slot-waiting-p (node)
-  "True when NODE is a satisfied product slot that should yield to other work: always for an
-uncoupled slot, while a sibling slot still lacks its first model, or once its coupled candidate
-pool is full."
-  (let ((entry (slot-satisfied-p node)))
+  "True when NODE is a product slot that has a model and should yield to other work. A slot
+that no requirement couples to another needs no second model. One that is coupled keeps
+looking for the models it may pool, but not before every slot has a first model, nor once
+its pool is full or the product has spent its combinations."
+  (let ((entry (slot-satisfied-p node))
+        (join (synthesis-node-join node)))
     (and entry
          (or (null (synthesis-node-coupled-requirements node))
              (>= (length (fourth entry)) *max-coupled-slot-candidates*)
-             (let ((join (synthesis-node-join node)))
-               (notevery (lambda (slot) (assoc (car slot) (product-join-models join)))
-                         (decomposition-slots (synthesis-node-proposal node))))))))
+             (>= (product-join-examined join) *max-coupled-combinations*)
+             (notevery (lambda (slot) (assoc (car slot) (product-join-models join)))
+                       (decomposition-slots (synthesis-node-proposal node)))))))
 
 (defun node-price (node)
   "NODE's full-path price: its Stage A model composed through every ancestor and priced at
@@ -848,7 +917,7 @@ form it finds sooner; but a slot that already has enough models waits for those 
 (defun select-agenda-action (job actions)
   "Round-robin over ACTIONS or, under :heuristic or priority-predictor routing: prepare
 unprepared primary nodes first, then take the lowest full-path price, reserving every 4th
-selection for round-robin."
+selection for round-robin over all of ACTIONS."
   (flet ((next-cursor ()
            (prog1 (synthesis-job-cursor job) (incf (synthesis-job-cursor job))))
          (rotate (pool index)
@@ -863,11 +932,9 @@ selection for round-robin."
           (t
            (let ((turn (next-cursor)))
              (if (reserved-turn-p turn)
-                 (rotate (or (remove-if (lambda (action)
-                                          (and (atom action) (eq :prepare (synthesis-node-phase action))))
-                                        actions)
-                             actions)
-                         (floor turn 4))
+                 ;; The reserve reaches every action, unprepared fallback siblings included:
+                 ;; they are the un-narrowed alternatives it exists to keep alive.
+                 (rotate actions (floor turn 4))
                  (best-by actions #'action-priority)))))))
 
 (defun select-synthesis-lane (job)

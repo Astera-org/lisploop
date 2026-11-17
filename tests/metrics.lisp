@@ -279,7 +279,10 @@ the frame for as long as the target type does."
          (plain (simple-frame :int inputs examples))
          (scored (make-frame (frame-schema plain) (frame-rows plain) :metric zero-one))
          (language (make-language :int inputs :operators nil :literals '(0))))
-    (check (equal '(1000 1) (multiple-value-list (priced-correction 4 1000 :int :metric zero-one))))
+    ;; The metric sets the price of a miss; the packet is still one that rebuilds the target.
+    (multiple-value-bind (packet bits) (priced-correction 4 1000 :int :metric zero-one)
+      (check (= 1 bits))
+      (check (= 1000 (apply-correction-packet 4 packet :int))))
     (check (equal '(0 0) (multiple-value-list (priced-correction 7 7 :int :metric zero-one))))
     (let ((plain-model (condense-heuristic plain language :work-limit 20000))
           (scored-model (condense-heuristic scored language :work-limit 20000)))
@@ -289,15 +292,37 @@ the frame for as long as the target type does."
       (check (< (heuristic-residual-bits scored-model) (heuristic-residual-bits plain-model)))
       (check (equal (heuristic-residual scored-model) (heuristic-residual plain-model))))
     (check-heuristic-search-resumption (lambda () (start-heuristic-search scored language)) :budget 20000)
-    ;; The metric belongs to the target coordinate: kept by a snapshot or identity pullback,
-    ;; dropped when the target coordinate or type changes.
+    ;; The metric prices values of the target. A snapshot keeps it; a pullback hands it to
+    ;; the child where it still prices the child's values (`pulled-back-metric`).
     (check (equal zero-one (frame-metric (snapshot-frame scored))))
-    (check (equal zero-one (frame-metric (pullback-frame scored (var 9 :int)
-                                                         9 :int (identity-bindings inputs)))))
-    (check (null (frame-metric (pullback-frame scored (term `(+ ,(var 0 :int) ,(var 9 :int)))
-                                               9 :int (identity-bindings inputs)))))
-    (check (null (frame-metric (pullback-frame scored (term `(if ,(var 9 :bool) ,(var 0 :int) 0) :int)
-                                               9 :bool (identity-bindings inputs)))))
+    (flet ((child-metric (frame decoder child-type)
+             (frame-metric (pullback-frame frame decoder 9 child-type (identity-bindings inputs)))))
+      (let* ((x (var 0 :int)) (z (var 9 :int))
+             (a (var 0 :int)) (b (var 1 :int))
+             ;; The absolute difference: unchanged by an added term, scaled by a factor.
+             (distance (term `(if (< ,a ,b) (- ,b ,a) (- ,a ,b)) :int))
+             (measured (make-frame (frame-schema plain) (frame-rows plain) :metric distance)))
+        ;; The child is the target: under the identity, and on the live branch of a conditional.
+        (check (equal zero-one (child-metric scored z :int)))
+        (check (equal zero-one (child-metric scored (term `(if (= ,x 4) ,z ,x) :int) :int)))
+        (check (equal zero-one (child-metric scored (term `(if (= ,x 4) ,x ,z) :int) :int)))
+        ;; A decoder that reads nothing but the child composes with the metric, whatever the
+        ;; child's type.
+        (check (equal (term `(if (= (+ ,a 1) (+ ,b 1)) 0 1) :int)
+                      (child-metric scored (term `(+ ,z 1)) :int)))
+        (flet ((as-int (flag) (term `(if ,flag 1 0) :int)))
+          (check (equal (term `(if (= ,(as-int (var 0 :bool)) ,(as-int (var 1 :bool))) 0 1) :int)
+                        (child-metric scored (as-int (var 9 :bool)) :bool))))
+        ;; A decoder that reads the row keeps the metric where replay on the rows shows it
+        ;; invariant, as both metrics are under an added term, and drops it otherwise.
+        (check (equal zero-one (child-metric scored (term `(+ ,x ,z)) :int)))
+        (check (equal distance (child-metric measured (term `(+ ,x ,z)) :int)))
+        (check (null (child-metric measured (term `(* ,x ,z)) :int)))
+        (check (null (child-metric scored (term `(if ,(var 9 :bool) ,x 0) :int) :bool)))
+        ;; Without two pinned targets there is nothing to replay.
+        (check (null (child-metric (make-frame (frame-schema plain) (list (first (frame-rows plain)))
+                                               :metric distance)
+                                   (term `(+ ,x ,z)) :int)))))
     (raises (make-frame (frame-schema plain) (frame-rows plain) :metric (lit :bool t)))))
 
 (deftest frame-descriptors-are-evaluated-once-and-address-entries
@@ -366,8 +391,9 @@ through `prin1`/`read` with no uninterned AST symbols."
                           :metric (term `(/ ,(var 0 :int) ,(var 1 :int)))))
       ;; 2. Seminorm clamping: equal values cost 0 bits, unequal values cost >= 1 bit even if metric returns 0.
       (check (equal '(0 0) (multiple-value-list (priced-correction 7 7 :int :metric seminorm))))
+      ;; The metric sets the price; the packet still rebuilds the target.
       (multiple-value-bind (packet bits) (priced-correction 4 1000 :int :metric seminorm)
-        (check (= 1000 packet))
+        (check (= 1000 (apply-correction-packet 4 packet :int)))
         (check (= 1 bits)))
       ;; 3. `propagate-requirements` preserves `frame-metric`.
       (let* ((z (var 0 :int))
@@ -399,4 +425,33 @@ through `prin1`/`read` with no uninterned AST symbols."
                           (apply-correction-packet '(3 1 4 1 5) (roundtrip-sexp packet) seq))))
           (setf (getf (knowledge-entry-metadata entry) :active-p) nil)
           (check (null (metric-decoders seq))))))))
+
+(deftest an-ambiguous-narrowing-is-rescued-by-its-fallback
+  "A tentative solver may suggest a witness that replays and is still the wrong one: here
+the shift of an all-zero row, which any shift explains. The narrowed child then has no
+model, and the proposal's fallback sibling, posed without the solver, has to be reached
+while other nodes are still open: the reserve turns reach unprepared fallbacks too."
+  (with-clean-kernel-state
+    (install-sequence-shift-metric)
+    (let* ((seq (sequence-type :int))
+           (inputs (list (cons 0 seq)))
+           (frame (simple-frame seq inputs '((((0 0 0 0)) (0 0 0 0))
+                                             (((3 1 4 1 5)) (4 1 5 0 0))
+                                             (((6 2 9 3 7)) (9 3 7 0 0)))))
+           (language (make-language :int inputs :operators (list (op :+ :int)) :literals '(0 1 2)))
+           (job (start-heuristic-synthesis frame language 120 :heuristic-budget 60000)))
+      ;; The solver reads shift 0 off the all-zero row and shift 2 off the others.
+      (check (equal '(0 2 2)
+                    (loop for row in (frame-rows frame)
+                          collect (metric-delta (first (metric-decoders seq))
+                                                (first (row-known row)) (row-singleton-value row)
+                                                seq nil))))
+      (resume-synthesis job 600000 :stop-on-first t)
+      (check (synthesis-job-best job))
+      (check-synthesized-model (candidate-expression (synthesis-job-best job)) frame
+                               :held-out '((((1 2 3 4)) (3 4 0 0))))
+      ;; The model was found under the fallback.
+      (check (loop for node = (job-winning-node job) then (synthesis-node-parent node)
+                   while (and node (synthesis-node-proposal node))
+                   thereis (decomposition-fallback-p (synthesis-node-proposal node)))))))
 

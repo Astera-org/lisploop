@@ -298,12 +298,14 @@ composed `(:map (:filter X_p pred) Z_mapper)` `:lift-p t` decompositions."
     (nreverse proposals)))
 
 (defun library-decompositions (frame language &key child-language child-bound
-                                                   self-name functions solver ledger
+                                                   self-name functions solver knowledge ledger
                                                    (debug-p *synthesis-debug-mode*))
   "Propose registered higher-order library definitions (`:fa`, `:fb`, ...) whose return type
 matches FRAME's target as `:lift-p t` decompositions. Function-typed (`:code`) parameters
 become lifted child frames via `lift-frame`, while unconsumed parent inputs are passed
-through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closures."
+through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closures. The
+decoder templates proposed with them are read from KNOWLEDGE, the knowledge library of the
+job, or from the active one when there is none."
   (let* ((schema (frame-schema frame))
          (inputs (schema-inputs schema))
          (target (schema-target schema))
@@ -387,10 +389,8 @@ through `bindings` so `compose-lifted-model` can synthesize `:code-subst` closur
     (append (filter-map-decompositions frame base-lang defs child-id c-bound solver ledger debug-p)
             (nreverse proposals)
             (partial-library-decompositions frame base-lang defs child-id c-bound solver ledger)
-            (transferred-law-decompositions frame base-lang c-bound solver
-                                            :self-name self-name :functions functions
-                                            :ledger ledger :debug-p debug-p)
-            (learned-decoder-decompositions frame base-lang c-bound solver ledger))))
+            (learned-decoder-decompositions frame base-lang c-bound solver ledger
+                                            :library (or knowledge *knowledge-library*)))))
 
 (defun expansion-bound (node)
   "The description bound NODE was searched under: its own, or else its proposal's."
@@ -409,6 +409,7 @@ whose return type matches the node's target as `:lift-p t` decompositions."
                             :self-name (synthesis-job-self-name job)
                             :functions functions
                             :solver (synthesis-job-library job)
+                            :knowledge (synthesis-job-knowledge job)
                             :ledger ledger
                             :debug-p (synthesis-job-debug-p job))))
 
@@ -613,70 +614,94 @@ expression holes when ENRICH-ATOMS-P is true, adds quoted inner variables and li
                      :constants (remove-duplicates (append extra-consts (language-constants base-lang))
                                                    :test #'equal))))
 
-(defun language-supports-fn-hole-p (slot-lang raw-ct)
-  "True when SLOT-LANG has at least one input, constant, or operator producing RAW-CT."
-  (or (some (lambda (spec) (equal (cdr spec) raw-ct)) (language-inputs slot-lang))
-      (some (lambda (c) (equal (ast-type c) raw-ct)) (language-constants slot-lang))
-      (some (lambda (o)
-              (and (operator-p o)
-                   (not (eq :if (operator-name o)))
-                   (equal (third (operator-type o)) raw-ct)))
+(defun operator-slot-feasible-p (slot-lang raw-ct fillings)
+  "True when a slot of the operator-code type RAW-CT can take every one of FILLINGS, the
+operators that fill its hole in the target trees: each is a constant SLOT-LANG can quote,
+or SLOT-LANG has an operator that computes a value of RAW-CT, by which an operator may be
+read off an input."
+  (or (every (lambda (operator)
+               (member (lit raw-ct operator) (language-constants slot-lang) :test #'equal))
+             fillings)
+      (some (lambda (operator)
+              (let ((signature (and (operator-p operator) (operator-type operator))))
+                (and signature
+                     (equal raw-ct (third signature))
+                     ;; A selector that only passes one of its arguments on computes nothing.
+                     (notany (lambda (argument) (equal raw-ct argument)) (second signature)))))
             (language-operators slot-lang))))
+
+(defun constructor-au-product (trees scope inputs bindings base-lang slack operator-holes-p
+                               &key solver ledger provenance)
+  "The product of the holes of the anti-unifier of TREES in SCOPE, with operator holes when
+OPERATOR-HOLES-P, as (VALUES proposals pattern); nil when the anti-unifier has no hole, is
+one, has more than `*product-arity-limit*`, or has an operator hole no slot could fill
+(`operator-slot-feasible-p`). A hole that every tree fills with a literal is lowered to a
+slot of the literal's own type when no input of INPUTS is code."
+  (let ((outer-code-p (some (lambda (spec) (code-type-p (cdr spec))) inputs))
+        (first-slot (next-child-id inputs)))
+    (multiple-value-bind (pattern substitutions)
+        (anti-unify trees scope ledger :operator-holes-p operator-holes-p)
+      (let ((holes (and pattern (pattern-holes pattern))))
+        (when (and holes (not (hole-p pattern)) (<= (length holes) *product-arity-limit*))
+          (multiple-value-bind (constructor parameters) (compile-au-constructor pattern scope ledger)
+            (let ((slots nil) (slot-langs nil) (decoder-subst nil))
+              (loop for (hole-id . raw-ct) in parameters
+                    for slot-id from first-slot
+                    for hsort = (code-sort raw-ct)
+                    for fillings = (remove-duplicates
+                                    (loop for substitution in substitutions
+                                          for filling = (cdr (assoc hole-id substitution))
+                                          when filling collect filling)
+                                    :test #'equal)
+                    do (cond
+                         ((and (not (function-sort-p hsort)) (not outer-code-p) fillings
+                               (every (lambda (filling)
+                                        (and (lit-p filling) (equal hsort (ast-type filling))))
+                                      fillings))
+                          (push (cons slot-id hsort) slots)
+                          (push base-lang slot-langs)
+                          (push (cons hole-id
+                                      (term `(code-subst ,(lit (code-type (list (cons 0 hsort)) hsort)
+                                                               (var 0 hsort))
+                                                         (tuple ,(var slot-id hsort)))
+                                            raw-ct))
+                                decoder-subst))
+                         (t
+                          (let ((slot-lang (code-slot-child-language
+                                            base-lang raw-ct :enrich-atoms-p (not outer-code-p))))
+                            (when (and (function-sort-p hsort)
+                                       (not (operator-slot-feasible-p slot-lang raw-ct fillings)))
+                              (return-from constructor-au-product nil))
+                            (push (cons slot-id raw-ct) slots)
+                            (push slot-lang slot-langs)
+                            (push (cons hole-id (var slot-id raw-ct)) decoder-subst)))))
+              (values
+               (product-decompositions
+                (if operator-holes-p :constructor-au-operators :constructor-au)
+                ;; The constructor numbers its holes from 0; the slots must not clash with INPUTS.
+                (instantiate constructor (nreverse decoder-subst) :var)
+                (nreverse slots) bindings base-lang slack
+                :slot-languages (nreverse slot-langs)
+                :solver solver
+                :provenance (and provenance (append provenance (list :pattern pattern))))
+               pattern))))))))
 
 (defun constructor-au-decompositions (trees scope inputs bindings base-lang slack
                                       &key solver ledger provenance)
-  "Build Constructor-AU product decompositions for TREES in SCOPE: tries `:operator-holes-p t`
-first (falling back to `:operator-holes-p nil` when an operator hole has no matching operators
-in BASE-LANG), and lowers value-literal holes to scalar slots when outer INPUTS are not `:code`."
-  (let ((outer-code-p (some (lambda (spec) (code-type-p (cdr spec))) inputs))
-        (first-slot (next-child-id inputs)))
-    (dolist (op-holes-p '(t nil))
-      (multiple-value-bind (pattern substitutions)
-          (anti-unify trees scope ledger :operator-holes-p op-holes-p)
-        (let ((holes (and pattern (pattern-holes pattern))))
-          (when (and holes (not (hole-p pattern)) (<= (length holes) *product-arity-limit*))
-            (multiple-value-bind (constructor parameters)
-                (compile-au-constructor pattern scope ledger)
-              (let ((slots nil)
-                    (slot-langs nil)
-                    (decoder-subst nil)
-                    (feasible-p t))
-                (loop for (hole-id . raw-ct) in parameters
-                      for slot-id from first-slot
-                      for hsort = (code-sort raw-ct)
-                      for fn-p = (function-sort-p hsort)
-                      for lower-lit-p = (and (not fn-p)
-                                             (not outer-code-p)
-                                             substitutions
-                                             (every (lambda (sub)
-                                                      (let ((v (cdr (assoc hole-id sub))))
-                                                        (and v (lit-p v) (equal hsort (ast-type v)))))
-                                                    substitutions))
-                      do (if lower-lit-p
-                             (let ((wrap-ct (code-type (list (cons 0 hsort)) hsort)))
-                               (push (cons slot-id hsort) slots)
-                               (push base-lang slot-langs)
-                               (push (cons hole-id
-                                           (term `(code-subst ,(lit wrap-ct (var 0 hsort))
-                                                              (tuple ,(var slot-id hsort)))
-                                                 raw-ct))
-                                     decoder-subst))
-                             (let ((slang (code-slot-child-language base-lang raw-ct
-                                                                    :enrich-atoms-p (not outer-code-p))))
-                               (when (and fn-p (not (language-supports-fn-hole-p slang raw-ct)))
-                                 (setf feasible-p nil))
-                               (push (cons slot-id raw-ct) slots)
-                               (push slang slot-langs)
-                               (push (cons hole-id (var slot-id raw-ct)) decoder-subst))))
-                (when feasible-p
-                  (return-from constructor-au-decompositions
-                    (product-decompositions
-                     :constructor-au
-                     (instantiate constructor (nreverse decoder-subst) :var)
-                     (nreverse slots) bindings base-lang slack
-                     :slot-languages (nreverse slot-langs)
-                     :solver solver
-                     :provenance (and provenance (append provenance (list :pattern pattern))))))))))))))
+  "The Constructor-AU products of TREES in SCOPE: the one whose anti-unifier aligns
+applications of different operators under an operator hole, when its slots can be filled,
+and the one that puts a whole expression there. Both are proposed when they differ, since
+either may be the one a child can solve: an operator is quoted or read off an input, an
+expression is built or is a subterm of an input."
+  (multiple-value-bind (with-operators operator-pattern)
+      (constructor-au-product trees scope inputs bindings base-lang slack t
+                              :solver solver :ledger ledger :provenance provenance)
+    (multiple-value-bind (plain plain-pattern)
+        (constructor-au-product trees scope inputs bindings base-lang slack nil
+                                :solver solver :ledger ledger :provenance provenance)
+      (append with-operators
+              (unless (and with-operators (equal operator-pattern plain-pattern))
+                plain)))))
 
 (defun structural-decompositions (frame language bound &key solver ledger (debug-p *synthesis-debug-mode*))
   "Proposals that take FRAME's values apart without computing anything, for a child that
@@ -750,67 +775,100 @@ inputs are replaced by their components."
     (assert (eq :int (knowledge-entry-target entry)))
     (assert-entry-expression-type entry)))
 
-(defun portable-datum (datum)
-  "Convert any embedded AST nodes inside DATUM into portable S-expressions."
-  (cond ((and datum (or (symbolp datum) (consp datum)) (ignore-errors (ensure-ast-meta datum)))
-         (ast->sexp datum))
-        ((consp datum) (cons (portable-datum (car datum)) (portable-datum (cdr datum))))
-        (t datum)))
+(defun canonical-row-order (frame)
+  "FRAME's rows in an order fixed by what they know and require, whatever order they are
+stored in; rows that know and require the same are ordered by their keys. A known value is
+written by its declared type, as `canonical-constraint-rows` writes it."
+  (let ((inputs (schema-inputs (frame-schema frame))))
+    (flet ((printed (row)
+             (with-standard-io-syntax
+               (prin1-to-string
+                (list (loop for value in (row-known row)
+                            for (nil . type) in inputs
+                            collect (if (eq value :unresolved)
+                                        :unresolved
+                                        (ast->sexp (lit type value))))
+                      (ast->sexp (row-requirement row))
+                      (row-key row))))))
+      (mapcar #'cdr (stable-sort (mapcar (lambda (row) (cons (printed row) row)) (frame-rows frame))
+                                 #'string< :key #'car)))))
 
-(defun canonical-row-order (rows)
-  "ROWS in an order fixed by what they know and require (breaking identical ties by row key),
-whatever order they are stored in."
-  (stable-sort (copy-list rows) #'string<
-               :key (lambda (row)
-                      (with-standard-io-syntax
-                        (prin1-to-string (list (portable-datum (row-known row))
-                                               (ast->sexp (row-requirement row))
-                                               (portable-datum (row-key row))))))))
+(defparameter *projection-key-slack* 40
+  "Body bits a row-order key read off a compound input may take beyond its header.")
 
-(defun fallback-row-order-keys (inputs stored)
-  "1-step integer projections of compound INPUTS when no direct `:int` input or Stage A bucket exists."
-  (loop for (id . type) in inputs
-        for position from 0
-        append
-        (cond
-          ((and (homogeneous-tuple-type-p type) (eq :int (second type)))
-           (loop for j below (length (rest type))
-                 collect (cons (term `(at ,(var id type) ,j))
-                               (mapcar (lambda (row)
-                                         (let ((tup (nth position (row-known row))))
-                                           (and (listp tup) (nth j tup))))
-                                       stored))))
-          ((seq-type-p type)
-           (cons (cons (term `(length ,(var id type)))
-                       (mapcar (lambda (row)
-                                 (let ((s (nth position (row-known row))))
-                                   (and (listp s) (length s))))
-                               stored))
-                 (when (and (eq :int (second type))
-                            (every (lambda (row)
-                                     (let ((s (nth position (row-known row))))
-                                       (and (consp s) (integerp (first s)))))
-                                   stored))
-                   (list (cons (term `(at ,(var id type) 0))
-                               (mapcar (lambda (row) (first (nth position (row-known row))))
-                                       stored)))))))))
+(defparameter *projection-key-work* 20000
+  "The most work `projection-row-keys` spends observing the accessors of a frame's inputs.")
 
-(defun induce-row-order (frame &key buckets ledger)
+(defparameter *row-order-star-centres* 8
+  "The most targets tried as the centre of the star baseline of `induce-row-order` when a
+metric or a metric decoder prices each correction by running a program.")
+
+(defun projection-language (inputs)
+  "A language of nothing but the accessors of the compound types among INPUTS: a component
+of a tuple, the length and an element of a sequence, and the small literals that index them.
+Nil when no input is compound."
+  (let ((operators nil) (indices (list 0)))
+    (loop for (nil . type) in inputs
+          do (cond ((tuple-type-p type)
+                    (pushnew (op :at type) operators)
+                    (loop for index from 1 below (length (rest type)) do (pushnew index indices)))
+                   ((seq-type-p type)
+                    (pushnew (op :length type) operators)
+                    (pushnew (op :at type) operators))))
+    (when operators
+      (make-language :int inputs :operators (nreverse operators) :literals (sort indices #'<)))))
+
+(defun projection-row-keys (frame ledger)
+  "Integer features of FRAME's compound inputs in the form of Stage A buckets,
+((expression . row-values) ...): what a short observation search over the inputs' own
+accessors (`projection-language`) finds. The kernel's enumerator writes the expressions and
+the VM evaluates them on every row, for work charged to LEDGER; an accessor that fails on a
+row, like the first element of an empty sequence, is no feature."
+  (let* ((inputs (schema-inputs (frame-schema frame)))
+         (language (projection-language inputs)))
+    (when language
+      (let ((job (start-observation-search
+                  (make-observation-scope (unconstrained-frame frame :int) language))))
+        (resume-observation-search job (header-bound inputs :int *projection-key-slack*)
+                                   *projection-key-work*)
+        (charge ledger :row-order (ledger-total (observation-job-ledger job)))
+        (observation-feature-buckets job)))))
+
+(defun stored-row-keys (frame library ledger)
+  "The `:locality-key` entries LIBRARY keeps for FRAME's inputs, each evaluated on FRAME's
+rows in the VM on LEDGER, as ((expression . row-values) ...); a key that has no value on
+some row is left out."
+  (let ((inputs (schema-inputs (frame-schema frame))))
+    (loop for entry in (and library (knowledge-entries-of-kind :locality-key library))
+          for key = (knowledge-entry-expression entry)
+          when (and (knowledge-entry-active-p entry)
+                    (equal inputs (knowledge-entry-inputs entry)))
+            append (let ((values (loop for row in (frame-rows frame)
+                                       collect (multiple-value-bind (value known-p)
+                                                   (and (not (member :unresolved (row-known row)))
+                                                        (eval-expr-value key inputs (row-known row) ledger))
+                                                 (if known-p value (return nil))))))
+                     (and values (list (cons key values)))))))
+
+(defun induce-row-order (frame &key buckets ledger (library *knowledge-library*))
   "Look for an integer key k(X) along which FRAME's target varies little. The candidates are
-the integer inputs and the integer features in BUCKETS, ((expression . row-values) ...) as
-Stage A leaves them (or 1-step projections of compound inputs when neither supplies an integer
-candidate). Rows are sorted by each key, ties being broken by `canonical-row-order`, and the
-targets are priced as a chain: the first in full, each next one as a correction of the one
-before, plus the body of the key. A key is induced when its chain is cheaper than the targets
-priced one by one and than their star, every target as a correction of the best single one.
-Returns nil, or (VALUES key edges chain-bits baseline-bits)."
+the integer inputs, which cost nothing to read; the integer features in BUCKETS,
+((expression . row-values) ...) as Stage A leaves them, or without BUCKETS the features a
+short search over the accessors of the compound inputs observes (`projection-row-keys`);
+and the keys LIBRARY remembers for these inputs (`stored-row-keys`). Rows are sorted by each
+key, ties being broken by `canonical-row-order`, and the targets are priced as a chain: the
+first in full, each next one as a correction of the one before, plus the body of the key.
+A key is induced when its chain is cheaper than the targets priced one by one and than
+their star, every target as a correction of the best single one. Where a frame metric or a
+metric decoder prices a correction by running a program, the star tries at most
+`*row-order-star-centres*` centres. Returns nil, or (VALUES key edges chain-bits baseline-bits)."
   (let* ((schema (frame-schema frame))
          (inputs (schema-inputs schema))
          (target (schema-target schema))
          (metric (frame-metric frame))
-         (decoders (unless metric (metric-decoders target)))
+         (decoders (unless metric (metric-decoders target (or library *knowledge-library*))))
          (stored (frame-rows frame))
-         (rows (canonical-row-order stored)))
+         (rows (canonical-row-order frame)))
     (when (and (>= (length rows) 3)
                (every (lambda (row) (nth-value 1 (row-singleton-value row))) rows))
       (labels ((step-bits (before after)
@@ -830,26 +888,29 @@ Returns nil, or (VALUES key edges chain-bits baseline-bits)."
                       (mapcar #'cons stored values))))
         (let* ((targets (mapcar #'row-singleton-value rows))
                (independent (loop for value in targets sum (value-bit-size value target)))
-               (star (loop for centre in targets
+               (centres (if (or metric decoders)
+                            (subseq targets 0 (min *row-order-star-centres* (length targets)))
+                            targets))
+               (star (loop for centre in centres
                            minimize (+ (value-bit-size centre target)
                                        (loop for value in targets
                                              sum (step-bits centre value)))))
                (baseline (min independent star))
-               (direct-candidates
-                 (append (loop for (id . type) in inputs
-                               for position from 0
-                               when (eq :int type)
-                                 collect (cons (var id type)
-                                               (key-values (mapcar (lambda (row) (nth position (row-known row)))
-                                                                   stored))))
-                         (loop for (expression . values) in buckets
-                               when (and (eq :int (ast-type expression)) (not (var-p expression))
-                                         (not (lit-p expression)))
-                                 collect (cons expression (key-values values)))))
                (candidates
-                 (or direct-candidates
-                     (loop for (expr . vals) in (fallback-row-order-keys inputs stored)
-                           collect (cons expr (key-values vals)))))
+                 (remove-duplicates
+                  (append (loop for (id . type) in inputs
+                                for position from 0
+                                when (eq :int type)
+                                  collect (cons (var id type)
+                                                (key-values (mapcar (lambda (row) (nth position (row-known row)))
+                                                                    stored))))
+                          (loop for (expression . values)
+                                  in (append (or buckets (projection-row-keys frame ledger))
+                                             (stored-row-keys frame library ledger))
+                                when (and (eq :int (ast-type expression)) (not (var-p expression))
+                                          (not (lit-p expression)))
+                                  collect (cons expression (key-values values))))
+                  :key #'car :test #'equal :from-end t))
                (best nil))              ; (key ordered-rows bits)
           (loop for (key . by-row) in candidates
                 when (and by-row (rest (remove-duplicates (mapcar #'cdr by-row))))
@@ -875,7 +936,8 @@ Returns nil, or (VALUES key edges chain-bits baseline-bits)."
   "FRAME with its rows stored along the chain of an induced key and the chain's edges
 attached, and the key, as two values; FRAME itself and nil when no key is induced. With
 LIBRARY the key is registered there once as a `:locality-key` for later correspondence search."
-  (multiple-value-bind (key edges chain-bits baseline-bits) (induce-row-order frame :buckets buckets :ledger ledger)
+  (multiple-value-bind (key edges chain-bits baseline-bits)
+      (induce-row-order frame :buckets buckets :ledger ledger :library (or library *knowledge-library*))
     (if (null key)
         (values frame nil)
         (let* ((chain (cons (second (first edges))
@@ -1034,13 +1096,18 @@ primary parent input. All siblings remain explicit ASTs and are replayed at root
 
 (define-knowledge-kind :decoder-template
   (:priority 40)
+  ;; A template mentions the functions its decoder calls without being a use of them.
+  (:passive t)
   (:validate (entry library)
     (declare (ignore library))
     (assert-entry-expression-type entry))
   (:install (entry library ledger)
     (declare (ignore ledger))
     (unless (knowledge-entry-descriptor-profile entry)
-      (compute-entry-descriptor-profile entry library))))
+      (compute-entry-descriptor-profile entry library)))
+  (:consolidate (entries library ledger)
+    (declare (ignore entries))
+    (generalize-decoder-templates library :ledger ledger)))
 
 (defun remember-decoder-template (proposal parent-inputs &key (library *knowledge-library*) ledger work)
   "Store an observed single-child decomposition as typed library syntax, not a family tag.
@@ -1068,73 +1135,117 @@ Multi-slot product proposals are skipped; remembered templates remain empirical 
                                :library library)
          :library library :ledger ledger))))
 
-(defun type-mentions-seq-of-p (type elem-type)
-  "True when TYPE is or contains `(:seq ELEM-TYPE)`."
-  (or (equal type (sequence-type elem-type))
+(defun register-derived-decoder-template (decoder child-id child-type parameters origin edges
+                                          &key requires-input (library *knowledge-library*) ledger)
+  "Register DECODER, an expression over its child CHILD-ID of CHILD-TYPE and PARAMETERS,
+((id . type) ...), as a `:decoder-template` the library derived from what it holds, not one
+a solved task was seen to use. Its child reads every input of the frame it is posed in
+(:bindings :identity). EDGES say what it was derived from, ORIGIN how. REQUIRES-INPUT, a
+type, keeps it for frames with an input that is or holds that type. Returns the entry, or
+nil when LIBRARY already holds this template."
+  (let ((inputs (acons child-id child-type parameters)))
+    (unless (find-if (lambda (entry)
+                       (and (equal inputs (knowledge-entry-inputs entry))
+                            (equal decoder (knowledge-entry-expression entry))
+                            (eq :identity (getf (knowledge-entry-metadata entry) :bindings))))
+                     (knowledge-entries-of-kind :decoder-template library))
+      (register-knowledge-entry
+       (make-knowledge-entry :kind :decoder-template :inputs inputs :target (ast-type decoder)
+                             :expression decoder :status :empirical :edges edges
+                             :metadata (list :origin origin :child-id child-id
+                                             :dependencies (expression-dependencies (list decoder))
+                                             :lift-p nil :bindings :identity
+                                             :requires-input requires-input)
+                             :library library)
+       :library library :ledger ledger))))
+
+(defun remember-motif-decoder (law decoder child-id &key (library *knowledge-library*) ledger)
+  "Keep the decoder that LAW, a conjecture a motif induced, licenses: DECODER is the side of
+its equation that computes a function's value by another fold from the sequence CHILD-ID,
+so a frame of that value may be posed as the search for such a sequence. The template is
+`:licensed-by` LAW and proposed only while LAW stands (`decoder-template-live-p`). The law
+stays a conjecture and rewrites nothing; what a proposal built on it yields is verified
+like any other. Returns the template, or nil when LIBRARY already holds it."
+  (let ((child-type (cdr (assoc child-id (knowledge-entry-inputs law)))))
+    (register-derived-decoder-template
+     decoder child-id child-type nil :motif-transfer
+     (list (list :licensed-by (knowledge-entry-id law)))
+     :requires-input child-type :library library :ledger ledger)))
+
+(defun generalize-decoder-templates (library &key ledger)
+  "Anti-unify the decoder templates LIBRARY has observed. Templates of pulled-back children
+of one type, over parameters of the same types, whose decoders differ in exactly one place
+and mention their child nowhere else, share the decoder around that place: it is registered
+as a template of its own whose child is what stood there, with the parameters it still
+mentions, and the edge (:generalizes ...) to the templates it came from. One that only
+repeats a template whose child already stood there is not. Returns the entries added; the
+templates it derives are not generalised again, so a second call adds none."
+  (let ((groups nil)                    ; ((child-type parameter-types) (entry parameters decoder) ...)
+        (added nil))
+    (dolist (entry (knowledge-entries-of-kind :decoder-template library))
+      (let* ((meta (knowledge-entry-metadata entry))
+             (child-id (getf meta :child-id))
+             (child-type (cdr (assoc child-id (knowledge-entry-inputs entry)))))
+        (when (and (knowledge-entry-active-p entry)
+                   (eq :observed-decomposition (getf meta :origin))
+                   (not (getf meta :lift-p))
+                   child-type
+                   (decoder-template-live-p entry library))
+          ;; The child is variable 0; the parameters follow, ordered by type.
+          (let* ((ordered (stable-sort (remove child-id (copy-list (knowledge-entry-inputs entry)) :key #'car)
+                                       #'string<
+                                       :key (lambda (parameter)
+                                              (with-standard-io-syntax (prin1-to-string (cdr parameter))))))
+                 (parameters (loop for (nil . type) in ordered for id from 1 collect (cons id type)))
+                 (decoder (instantiate (knowledge-entry-expression entry)
+                                       (acons child-id (var 0 child-type)
+                                              (loop for (old . type) in ordered
+                                                    for (new . nil) in parameters
+                                                    collect (cons old (var new type))))
+                                       :var))
+                 (key (list child-type (mapcar #'cdr parameters)))
+                 (group (or (assoc key groups :test #'equal)
+                            (first (push (list key) groups)))))
+            (push (list entry parameters decoder) (cdr group))))))
+    (dolist (group (reverse groups) (nreverse added))
+      (destructuring-bind ((child-type parameter-types) . members) group
+        (declare (ignore parameter-types))
+        (let* ((members (reverse members))
+               (parameters (second (first members)))
+               (decoders (remove-duplicates (mapcar #'third members) :test #'equal)))
+          (when (rest decoders)
+            (let* ((pattern (anti-unify decoders (acons 0 child-type parameters) ledger
+                                        :operator-holes-p nil))
+                   (holes (and pattern (pattern-holes pattern))))
+              (when (and holes (null (rest holes)) (not (hole-p pattern))
+                         (not (member 0 (free-vars pattern)))
+                         (valid-type-p (cdr (first holes))))
+                (let* ((type (cdr (first holes)))
+                       (decoder (instantiate pattern (list (cons (car (first holes)) (var 0 type))) :hole))
+                       (entry (and (not (member decoder decoders :test #'equal))
+                                   (register-derived-decoder-template
+                                    decoder 0 type
+                                    (remove-if-not (lambda (parameter)
+                                                     (member (car parameter) (free-vars decoder)))
+                                                   parameters)
+                                    :template-generalization
+                                    (list (cons :generalizes
+                                                (mapcar (lambda (member) (knowledge-entry-id (first member)))
+                                                        members)))
+                                    :library library :ledger ledger))))
+                  (when entry (push entry added)))))))))))
+
+(defun type-mentions-p (type part)
+  "True when TYPE is PART or is a tuple or sequence that holds it."
+  (or (equal type part)
       (and (consp type)
            (member (first type) '(:tuple :seq))
-           (some (lambda (part) (type-mentions-seq-of-p part elem-type)) (rest type)))))
+           (some (lambda (inner) (type-mentions-p inner part)) (rest type)))))
 
-(defun transferred-law-decompositions (frame language bound solver
-                                       &key self-name functions ledger (debug-p *synthesis-debug-mode*))
-  "Propose tentative first-order decoders from active `:conjecture` `:law` entries induced by a
-`:motif` (`(= (fn xs) (other-fold xs 'base 'step))`), allowing synthesis to re-express or
-compose monoid-fold computations via `other-fold` without turning conjectures into active rewrites."
-  (let* ((schema (frame-schema frame))
-         (inputs (schema-inputs schema))
-         (target (schema-target schema))
-         (seq-type (sequence-type target))
-         (lib (if (knowledge-library-p solver) solver *knowledge-library*)))
-    (when (some (lambda (spec) (type-mentions-seq-of-p (cdr spec) target)) inputs)
-      (let ((cid (next-child-id inputs))
-            (seen nil)
-            (proposals nil))
-        (dolist (law (knowledge-entries-of-kind :law lib) (nreverse proposals))
-          (let* ((induced-edge (first (knowledge-edges-from law :induced-by lib)))
-                 (motif-id (and induced-edge (second induced-edge)))
-                 (motif (and motif-id (find-knowledge-entry motif-id lib)))
-                 (law-inputs (knowledge-entry-inputs law))
-                 (expr (knowledge-entry-expression law)))
-            (when (and induced-edge
-                       (knowledge-entry-active-p law)
-                       (eq :conjecture (knowledge-entry-status law))
-                       (unconstrained-requirement-p (knowledge-entry-guard law))
-                       (or (null motif) (knowledge-entry-active-p motif))
-                       (= 1 (length law-inputs))
-                       (equal seq-type (cdar law-inputs))
-                       (app-of-p expr :=))
-              (let* ((v-id (caar law-inputs))
-                     (rhs (third expr))
-                     (other-name (and (app-p rhs) (ast-id rhs)))
-                     (other-entry (and other-name (find-knowledge-entry other-name lib))))
-                (when (and other-name
-                           (defined-function-p other-name)
-                           (not (eq other-name self-name))
-                           (or (null other-entry) (knowledge-entry-active-p other-entry))
-                           (or (null functions)
-                               (member other-name functions :test #'eq)
-                               (find other-name (language-operators language) :key #'operator-name)))
-                  (let ((decoder (instantiate rhs (list (cons v-id (var cid seq-type))) :var)))
-                    (when (and (not (member decoder seen :test #'equal))
-                               (ignore-errors (equal target (expression-type decoder (acons cid seq-type inputs)))))
-                      (push decoder seen)
-                      (charge ledger :template-retrieval (syntax-work decoder))
-                      (push (lifted-decomposition
-                             (list :motif-transfer (knowledge-entry-id law))
-                             decoder cid seq-type (identity-bindings inputs) language bound solver
-                             :lift-p nil :slack 24 :fallback-p t
-                             :policy-score *learned-template-policy-score*
-                             :provenance (when debug-p
-                                           (list :origin :motif-transfer
-                                                 :law (knowledge-entry-id law)
-                                                 :motif motif-id
-                                                 :decoder decoder)))
-                            proposals))))))))))))
-
-(defun template-dependencies-live-p (dependencies lib)
+(defun template-dependencies-live-p (dependencies library)
   "True when every function dependency in DEPENDENCIES remains currently defined and active."
   (and (every (lambda (dep)
-                (let ((entry (find-knowledge-entry (first dep) lib)))
+                (let ((entry (find-knowledge-entry (first dep) library)))
                   (and (defined-function-p (first dep))
                        (or (null entry) (knowledge-entry-active-p entry)))))
               dependencies)
@@ -1143,93 +1254,71 @@ compose monoid-fold computations via `other-fold` without turning conjectures in
                 (loop for dep in dependencies
                       when (defined-function-p (first dep)) collect (op (first dep)))))))
 
-(defun learned-decoder-decompositions (frame language bound &optional solver ledger)
-  "Retrieve stored active `:decoder-template` contexts (with parameter renaming/reordering) and
-single-hole anti-unifiers across sibling templates."
+(defun decoder-template-live-p (entry library)
+  "True while the template ENTRY may be proposed: the functions its decoder calls are still
+defined as they were and active, and every entry that licenses it is in LIBRARY, active,
+and not refuted."
+  (and (template-dependencies-live-p (getf (knowledge-entry-metadata entry) :dependencies) library)
+       (every (lambda (edge)
+                (let ((source (find-knowledge-entry (second edge) library)))
+                  (and source
+                       (knowledge-entry-active-p source)
+                       (not (eq :refuted (knowledge-entry-status source))))))
+              (knowledge-edges-from entry :licensed-by library))))
+
+(defun learned-decoder-decompositions (frame language bound solver ledger
+                                       &key (library *knowledge-library*))
+  "Retrieve the `:decoder-template` entries of LIBRARY that are active and live
+(`decoder-template-live-p`) and whose target is FRAME's, under every renaming of their
+parameters onto FRAME's inputs of the same types: the templates solved tasks were seen to
+use, and those the library derived from them or from its laws at consolidation. At most
+`*library-partial-proposal-limit*` are returned."
   (let* ((inputs (schema-inputs (frame-schema frame)))
          (target (schema-target (frame-schema frame)))
          (cid (next-child-id inputs))
-         (lib (if (knowledge-library-p solver) solver *knowledge-library*))
-         (au-groups (make-hash-table :test #'equal))
          (proposals nil))
-    (labels ((emit-template (name expr ctype old-cid params raw-bindings lift-p score override-bindings)
-               (let ((options (mapcar (lambda (param)
-                                        (loop for (id . type) in inputs
-                                              when (equal type (cdr param)) collect (var id type)))
-                                      params)))
-                 (map-cartesian-options
-                  options
-                  (lambda (args)
-                    (when (>= (length proposals) *library-partial-proposal-limit*)
-                      (return-from learned-decoder-decompositions (nreverse proposals)))
-                    (let* ((substitution (acons old-cid (var cid ctype)
-                                                (mapcar #'cons (mapcar #'car params) args)))
-                           (decoder (instantiate expr substitution :var))
-                           (bindings (or override-bindings
-                                         (mapcar (lambda (b)
-                                                   (cons (car b)
-                                                         (instantiate (sexp->ast (cdr b)) substitution :var)))
-                                                 raw-bindings))))
-                      (charge ledger :template-retrieval (syntax-work decoder))
-                      (when (ignore-errors (expression-type decoder (acons cid ctype inputs)))
-                        (push (lifted-decomposition
-                               name decoder cid ctype bindings language bound solver
-                               :lift-p lift-p :slack 24 :fallback-p t
-                               :policy-score score)
-                              proposals))))))))
-      (dolist (entry (knowledge-entries-of-kind :decoder-template lib))
-        (when (knowledge-entry-active-p entry)
-          (let* ((meta (knowledge-entry-metadata entry))
-                 (old-cid (getf meta :child-id))
-                 (ctype (cdr (assoc old-cid (knowledge-entry-inputs entry))))
-                 (params (remove old-cid (knowledge-entry-inputs entry) :key #'car))
-                 (deps (getf meta :dependencies)))
-            (when (and ctype
-                       (equal target (knowledge-entry-target entry))
-                       (template-dependencies-live-p deps lib))
-              (let* ((sorted-params
-                       (stable-sort (copy-list params) #'string<
-                                    :key (lambda (p)
-                                           (with-standard-io-syntax (prin1-to-string (cdr p))))))
-                     (norm-params (loop for (nil . pt) in sorted-params
-                                        for nid from 1 collect (cons nid pt)))
-                     (norm-subst (acons old-cid (var 0 ctype)
-                                        (loop for (oid . ot) in sorted-params
-                                              for (nid . nil) in norm-params
-                                              collect (cons oid (var nid ot))))))
-                (push (list entry norm-params (instantiate (knowledge-entry-expression entry) norm-subst :var))
-                      (gethash (list (getf meta :lift-p) ctype (mapcar #'cdr norm-params)) au-groups)))
-              (emit-template (list :learned-template (knowledge-entry-id entry))
-                             (knowledge-entry-expression entry) ctype old-cid params
-                             (getf meta :bindings) (getf meta :lift-p)
-                             (+ *learned-template-policy-score*
-                                (nth-value 1 (score-entry-by-descriptors
-                                              entry frame (caar inputs) :ledger ledger)))
-                             nil)))))
-      (maphash
-       (lambda (gkey group)
-         (when (>= (length group) 2)
-           (let* ((ordered (reverse group))
-                  (norm-params (second (first ordered)))
-                  (exprs (remove-duplicates (mapcar #'third ordered) :test #'equal)))
-             (when (rest exprs)
-               (let* ((pat (nth-value 0 (anti-unify exprs (acons 0 (second gkey) norm-params)
-                                                    ledger :operator-holes-p nil)))
-                      (holes (and pat (pattern-holes pat))))
-                 (when (and holes (not (hole-p pat)) (= 1 (length holes))
-                            (not (member 0 (free-vars pat) :test #'eql)))
-                   (let ((nct (cdr (first holes))))
-                     (when (valid-type-p nct)
-                       (let ((gen (instantiate pat (list (cons (caar holes) (var 0 nct))) :hole)))
-                         (unless (var-p gen)
-                           (emit-template
-                            (list :learned-template-au
-                                  (mapcar (lambda (g) (knowledge-entry-id (first g))) ordered))
-                            gen nct 0 norm-params nil nil
-                            (- *learned-template-policy-score* 3)
-                            (identity-bindings inputs))))))))))))
-       au-groups)
-      (nreverse proposals))))
+    (dolist (entry (knowledge-entries-of-kind :decoder-template library) (nreverse proposals))
+      (let* ((meta (knowledge-entry-metadata entry))
+             (old-cid (getf meta :child-id))
+             (ctype (cdr (assoc old-cid (knowledge-entry-inputs entry))))
+             (params (remove old-cid (knowledge-entry-inputs entry) :key #'car))
+             (stored-bindings (getf meta :bindings))
+             (required (getf meta :requires-input)))
+        (when (and (knowledge-entry-active-p entry)
+                   ctype
+                   (equal target (knowledge-entry-target entry))
+                   (or (null required)
+                       (some (lambda (spec) (type-mentions-p (cdr spec) required)) inputs))
+                   (decoder-template-live-p entry library))
+          (let ((options (mapcar (lambda (param)
+                                   (loop for (id . type) in inputs
+                                         when (equal type (cdr param)) collect (var id type)))
+                                 params))
+                (score (+ *learned-template-policy-score*
+                          (nth-value 1 (score-entry-by-descriptors
+                                        entry frame (caar inputs) :ledger ledger)))))
+            (map-cartesian-options
+             options
+             (lambda (args)
+               (when (>= (length proposals) *library-partial-proposal-limit*)
+                 (return-from learned-decoder-decompositions (nreverse proposals)))
+               (let* ((substitution (acons old-cid (var cid ctype)
+                                           (mapcar #'cons (mapcar #'car params) args)))
+                      (decoder (instantiate (knowledge-entry-expression entry) substitution :var))
+                      (bindings (if (eq :identity stored-bindings)
+                                    (identity-bindings inputs)
+                                    (mapcar (lambda (b)
+                                              (cons (car b)
+                                                    (instantiate (sexp->ast (cdr b)) substitution :var)))
+                                            stored-bindings))))
+                 (charge ledger :template-retrieval (syntax-work decoder))
+                 (when (ignore-errors (expression-type decoder (acons cid ctype inputs)))
+                   (push (lifted-decomposition
+                          (list :learned-template (knowledge-entry-id entry))
+                          decoder cid ctype bindings language bound solver
+                          :lift-p (getf meta :lift-p) :slack 24 :fallback-p t
+                          :policy-score score)
+                         proposals)))))))))))
 
 (defun remember-successful-decompositions (job library ledger)
   (let* ((best (synthesis-job-best job))
@@ -1239,9 +1328,13 @@ single-hole anti-unifiers across sibling templates."
          (node (and message (find (message-call-id message) (synthesis-job-nodes job) :key #'synthesis-node-id)))
          (entries nil))
     (loop while (and node (synthesis-node-parent node))
-          do (let ((parent (synthesis-node-parent node)))
-               (push (remember-decoder-template (synthesis-node-proposal node)
-                       (schema-inputs (frame-schema (synthesis-node-frame parent)))
-                       :library library :ledger ledger :work (ledger-total (synthesis-job-ledger job))) entries)
+          do (let* ((parent (synthesis-node-parent node))
+                    ;; A slot of a product is not remembered as a template.
+                    (entry (remember-decoder-template
+                            (synthesis-node-proposal node)
+                            (schema-inputs (frame-schema (synthesis-node-frame parent)))
+                            :library library :ledger ledger
+                            :work (ledger-total (synthesis-job-ledger job)))))
+               (when entry (push entry entries))
                (setf node parent)))
     entries))

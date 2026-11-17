@@ -12,7 +12,10 @@
   validate-fn
   install-fn
   consume-fn
-  consolidate-fn)
+  consolidate-fn
+  ;; True of a kind whose entries mention functions without using them: a reference from
+  ;; such an entry does not keep a function from being archived.
+  passive-p)
 
 (defvar *knowledge-kind-specs* nil
   "Priority-ordered list of declarative `knowledge-kind-spec` definitions.")
@@ -38,7 +41,9 @@ Supported clauses:
   (:install (entry library ledger) &body body)
   (:consume (entry context ledger) &body body)
   (:consolidate (entries library ledger) &body body)
-A kind without a :consume clause is consumed by evaluating its expression on the context."
+  (:passive boolean)
+A kind without a :consume clause is consumed by evaluating its expression on the context.
+A :passive kind's entries mention functions without being uses of them (`entry-live-callers`)."
   (flet ((hook (key)
            (let ((clause (assoc key clauses)))
              (when clause `(lambda ,(second clause) ,@(cddr clause))))))
@@ -49,7 +54,8 @@ A kind without a :consume clause is consumed by evaluating its expression on the
                     :validate-fn ,(hook :validate)
                     :install-fn ,(hook :install)
                     :consume-fn ,(hook :consume)
-                    :consolidate-fn ,(hook :consolidate))))
+                    :consolidate-fn ,(hook :consolidate)
+                    :passive-p ,(second (assoc :passive clauses)))))
          (setf *knowledge-kind-specs*
                (stable-sort (cons spec (remove ,kind *knowledge-kind-specs*
                                                :key #'knowledge-kind-spec-name :test #'eq))
@@ -256,10 +262,12 @@ callable, and is no longer proposed."
   (getf (knowledge-entry-metadata entry) :active-p t))
 
 (defun find-knowledge-entries-by-address (address &optional (library *knowledge-library*))
-  "Look up `knowledge-entry` items in LIBRARY by secondary compositional address or descriptor ID."
+  "Look up the active `knowledge-entry` items in LIBRARY by secondary compositional address
+or descriptor ID. An archived entry is still found by its id (`find-knowledge-entry`)."
   (when (and address library)
-    (copy-list (gethash (canonical-op-name address)
-                        (knowledge-library-compositional-index library)))))
+    (remove-if-not #'knowledge-entry-active-p
+                   (gethash (canonical-op-name address)
+                            (knowledge-library-compositional-index library)))))
 
 (defun knowledge-entries-of-kind (kind &optional (library *knowledge-library*))
   "Return the chronological list of `knowledge-entry` items of KIND in LIBRARY."

@@ -247,7 +247,8 @@ it is closed, else apply a structural rule, narrow a literal membership, or unfo
     (:tail (:cons . fold-tail-cons))
     (:length (:cons . fold-length-cons))
     (:= (:tuple . fold-equal-tuple) (:cons . fold-equal-cons) (:if . fold-equal-if)
-        (:code-apply . fold-equal-code-apply) (:code-subst . fold-equal-code-subst)))
+        (:code-apply . fold-equal-code-apply) (:code-subst . fold-equal-code-subst))
+    (:member (:tuple . fold-member-tuple)))
   "The structural rules, as (outer-operator (inner-constructor . function) ...): each takes
 a destructor, or an equality with a literal, off a constructor application. The function
 receives the fold state, the whole term, the constructor application and the other operand
@@ -303,6 +304,22 @@ to be a literal and the constructor's parts to be safe to drop or reorder."
                                  for value in (ast-value literal)
                                  collect (term `(= ,part ',value)))
                            :from-end t :initial-value (lit :bool t))))
+
+(defun fold-member-tuple (state whole tuple literal)
+  "`(member (tuple e0 ... ek) 'S)` is the conjunction of every `(member ei 'Si)` when S is
+exactly the product of the sets Si its tuples take in each place. A set that ties places
+together says more than its places do and is left whole."
+  (let* ((tuples (remove-duplicates (ast-value literal) :test #'equal))
+         (places (loop for index below (length (rest tuple))
+                       collect (remove-duplicates (mapcar (lambda (value) (nth index value)) tuples)
+                                                  :test #'equal))))
+    (when (and tuples (= (length tuples) (reduce #'* places :key #'length)))
+      (fold-rewalk state whole
+                   (reduce #'bool-and
+                           (loop for part in (rest tuple)
+                                 for set in places
+                                 collect (term `(member ,part ',set)))
+                           :from-end t :initial-value (lit :bool t))))))
 
 (defun fold-equal-cons (state whole pair literal)
   "`(= (cons head tail) '(v . vs))` is `(= head 'v)` and `(= tail 'vs)`, and false against

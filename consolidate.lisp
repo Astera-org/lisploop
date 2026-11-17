@@ -212,7 +212,7 @@ them from the keyword arguments."
                                    (register-nogoods-p t)
                                    (register-dip-p t)
                                    (register-templates-p nil)
-                                   ledger)
+                                   (ledger (make-ledger)))
   "Commit learned artifacts from completed `synthesis-job` JOB into LIBRARY:
 1. Finalized recursive or named function definition (with discovery work and edges).
 2. UIP nogood schemas (`:nogood-schema`) discovered during search.
@@ -318,7 +318,8 @@ them from the keyword arguments."
          (find (message-call-id message) (synthesis-job-nodes job) :key #'synthesis-node-id))))
 
 (defun node-library-entry (node library &optional (origins '(:library :library-filter-map)))
-  "The entry of LIBRARY whose function NODE's proposal, one of ORIGINS, lifts; or nil."
+  "The entry of LIBRARY that NODE's proposal, one of ORIGINS, was made from: the function it
+lifts or, for the origin :learned-template, the decoder template it was retrieved from; or nil."
   (let ((name (and (synthesis-node-proposal node)
                    (decomposition-name (synthesis-node-proposal node)))))
     (and (consp name)
@@ -327,16 +328,18 @@ them from the keyword arguments."
 
 (defun consolidate-policy-descriptors (library synthesis-jobs &key ledger)
   "Update empirical descriptor clause weights across LIBRARY from completed SYNTHESIS-JOBS
-search episodes: reinforce descriptor clauses of library combinators that produced verified
-root candidates, and decay empirical descriptor clauses of sibling combinators that conflicted
-or failed on matching root frames."
+search episodes: reinforce descriptor clauses of the library combinators and decoder
+templates that produced verified root candidates, and decay empirical descriptor clauses of
+their siblings that conflicted or failed on matching root frames."
   (let ((updated nil))
     (dolist (job synthesis-jobs (nreverse (remove-duplicates updated :test #'eq)))
       (let ((root (synthesis-job-root job))
             (win-node (job-winning-node job)))
         (when (and (synthesis-job-best job) root (synthesis-node-frame root))
           (dolist (node (synthesis-job-nodes job))
-            (let ((entry (node-library-entry node library)))
+            ;; A decoder template's descriptors are reinforced and decayed like a combinator's.
+            (let ((entry (node-library-entry node library
+                                             '(:library :library-filter-map :learned-template))))
               (when (and entry (knowledge-entry-descriptor-profile entry))
                 (charge ledger :orientation 1)
                 (flet ((adjust (delta)
@@ -372,14 +375,17 @@ or failed on matching root frames."
   "Workload batches in a row an entry may cost more than it saves before it is archived.")
 
 (defun entry-live-callers (entry library)
-  "The active substantive entries of LIBRARY, other than ENTRY, whose code calls the function
-ENTRY defines (`:decoder-template` and `:descriptor` metadata entries do not block archiving)."
+  "The active entries of LIBRARY, other than ENTRY, whose code calls the function ENTRY
+defines and that are uses of it. An entry of a kind declared :passive
+(`define-knowledge-kind`), a decoder template or a descriptor, only mentions the function
+and does not keep it from being archived."
   (let ((name (knowledge-entry-id entry)))
     (remove-if-not
      (lambda (other)
        (and (not (eq other entry))
             (knowledge-entry-active-p other)
-            (not (member (knowledge-entry-kind other) '(:decoder-template :descriptor)))
+            (let ((spec (find-knowledge-kind-spec (knowledge-entry-kind other))))
+              (not (and spec (knowledge-kind-spec-passive-p spec))))
             (some (lambda (code) (and code (expression-calls-operator-p code name)))
                   (list (knowledge-entry-expression other)
                         (knowledge-entry-guard other)
@@ -388,35 +394,70 @@ ENTRY defines (`:decoder-template` and `:descriptor` metadata entries do not blo
                         (knowledge-entry-auxiliary-code other)))))
      (knowledge-library-entries library))))
 
+(defun node-template-functions (node library)
+  "The function entries of LIBRARY that the decoder template NODE's proposal was retrieved
+from depends on; nil for any other proposal."
+  (let* ((name (and (synthesis-node-proposal node)
+                    (decomposition-name (synthesis-node-proposal node))))
+         (template (and (consp name) (eq :learned-template (first name))
+                        (find-knowledge-entry (second name) library))))
+    (and template
+         (loop for (function-name) in (getf (knowledge-entry-metadata template) :dependencies)
+               for entry = (find-knowledge-entry function-name library)
+               when (and entry (eq :function (knowledge-entry-kind entry))) collect entry))))
+
+(defun archive-dependent-templates (entry library)
+  "Archive the active decoder templates of LIBRARY whose decoders call the function ENTRY,
+which has just been archived: such a template could no longer be proposed, and says so by
+the edge (:archived-with function). Returns the templates archived."
+  (loop for template in (knowledge-entries-of-kind :decoder-template library)
+        when (and (knowledge-entry-active-p template)
+                  (assoc (knowledge-entry-id entry)
+                         (getf (knowledge-entry-metadata template) :dependencies)))
+          do (setf (getf (knowledge-entry-metadata template) :active-p) nil)
+             (with-knowledge-library (library)
+               (add-knowledge-edge template :archived-with (knowledge-entry-id entry)))
+          and collect template))
+
 (defun amortize-library-entries (library jobs &key (search-weight *search-weight*) ledger)
   "Settle the workload JOBS, a batch of finished synthesis jobs, with the functions of
 LIBRARY that they lifted. An entry is credited the body bits a call to it saved each solution
-verified under one of its lifts, and charged one unit of work for each lift proposed plus
-the search every failed lift's subtree consumed, at SEARCH-WEIGHT bits a unit. The balance
-accumulates in its :net-utility; :stale-epochs counts the batches in a row that left it worse
-off. An entry in debt for `*archive-epochs*` such batches, which no active entry calls, is
-archived: marked :active-p nil, so it stays defined and is no longer lifted. Entries that no
-job lifted are untouched, so an empty batch changes nothing. Returns the entries archived."
+verified under one of its lifts, or under a decoder template that calls it, and charged one
+unit of work for each lift proposed plus the search every failed lift's subtree consumed, at
+SEARCH-WEIGHT bits a unit. The balance accumulates in its :net-utility; :stale-epochs counts
+the batches in a row that left it worse off. An entry in debt for `*archive-epochs*` such
+batches, which no active entry uses, is archived: marked :active-p nil, so it stays defined
+and is no longer lifted; the decoder templates that call it are archived with it. Entries
+that no job lifted are untouched, so an empty batch changes nothing. Returns the entries
+archived."
   (let ((accounts nil))                 ; (entry saved . work), latest first
-    (dolist (job jobs)
-      (let ((win-node (job-winning-node job)))
-        (dolist (node (synthesis-job-nodes job))
-          (let ((entry (node-library-entry node library
-                                           '(:library :library-filter-map :library-partial))))
-            (when entry
-              (charge ledger :orientation)
-              (let ((account (or (assoc entry accounts) (first (push (list* entry 0 0) accounts)))))
-                (if (and win-node (synthesis-descendant-p win-node node))
-                    (progn (incf (cadr account)
-                                 (max 0 (- (knowledge-entry-bits entry)
-                                           (application-overhead (op (knowledge-entry-id entry))))))
-                           (incf (cddr account)))
-                    (incf (cddr account)
+    (flet ((account (entry)
+             (or (assoc entry accounts) (first (push (list* entry 0 0) accounts))))
+           (saving (entry)
+             (max 0 (- (knowledge-entry-bits entry)
+                       (application-overhead (op (knowledge-entry-id entry)))))))
+      (dolist (job jobs)
+        (let ((win-node (job-winning-node job)))
+          (dolist (node (synthesis-job-nodes job))
+            (let ((entry (node-library-entry node library
+                                             '(:library :library-filter-map :library-partial)))
+                  (won-p (and win-node (synthesis-descendant-p win-node node))))
+              (when entry
+                (charge ledger :orientation)
+                (if won-p
+                    (progn (incf (cadr (account entry)) (saving entry))
+                           (incf (cddr (account entry))))
+                    (incf (cddr (account entry))
                           (1+ (loop for other in (synthesis-job-nodes job)
                                     when (and (synthesis-node-search other)
                                               (synthesis-descendant-p other node))
                                       sum (ledger-total
-                                           (search-job-ledger (synthesis-node-search other)))))))))))))
+                                           (search-job-ledger (synthesis-node-search other))))))))
+              ;; A solution found through a template is one its functions saved, too.
+              (when won-p
+                (dolist (function (node-template-functions node library))
+                  (charge ledger :orientation)
+                  (incf (cadr (account function)) (saving function)))))))))
     (loop for (entry saved . work) in (reverse accounts)
           for balance = (- saved (ceiling (* search-weight work)))
           do (incf (getf (knowledge-entry-metadata entry) :net-utility 0) balance)
@@ -429,58 +470,106 @@ job lifted are untouched, so an empty batch changes nothing. Returns the entries
                     (>= (getf (knowledge-entry-metadata entry) :stale-epochs) *archive-epochs*)
                     (null (entry-live-callers entry library)))
             do (setf (getf (knowledge-entry-metadata entry) :active-p) nil)
-            and collect entry)))
+            and collect entry
+            and append (archive-dependent-templates entry library))))
 
-(defun int-solver-replays-on-samples-p (operator position context-map inputs witness guard ledger)
-  "Validate a candidate `:int` solver witness and guard against forward evaluation of OPERATOR
-over small integer sample tuples. Returns (VALUES valid-p unique-on-samples-p)."
-  (let* ((sample-ints '(-3 -1 0 1 2 3 5))
-         (alt-ints '(-3 -2 -1 0 1 2 3 4 5 6 7))
-         (arity (length (second (operator-type operator))))
-         (pos-index (first (solver-positions position)))
-         (cmap (or context-map (solver-context-map operator position)))
-         (active-hits 0)
-         (unique-p t))
-    (dolist (vals (cartesian-product-lists (make-list (length inputs) :initial-element sample-ints)))
-      (let ((g-run (evaluate guard inputs vals :ledger ledger)))
-        (unless (eq :value (evaluation-status g-run))
-          (return-from int-solver-replays-on-samples-p (values nil nil)))
-        (when (evaluation-value g-run)
-          (let ((w-run (evaluate witness inputs vals :ledger ledger)))
-            (unless (eq :value (evaluation-status w-run))
-              (return-from int-solver-replays-on-samples-p (values nil nil)))
-            (let ((w-val (evaluation-value w-run))
-                  (f-args (make-array arity :initial-element nil))
-                  (expected nil))
-              (loop for item in cmap
-                    for val in vals
-                    do (if (eq item :target)
-                           (setf expected val)
-                           (setf (aref f-args (second item)) (lit :int val))))
-              (flet ((forward (candidate-val)
-                       (setf (aref f-args pos-index) (lit :int candidate-val))
-                       (evaluate (apply #'app operator (coerce f-args 'list)) nil nil :ledger ledger)))
-                (let ((f-run (forward w-val)))
-                  (unless (and (eq :value (evaluation-status f-run))
-                               (equal expected (evaluation-value f-run)))
-                    (return-from int-solver-replays-on-samples-p (values nil nil))))
-                (incf active-hits)
-                (when unique-p
-                  (dolist (alt alt-ints)
-                    (unless (= alt w-val)
-                      (let ((alt-run (forward alt)))
-                        (when (and (eq :value (evaluation-status alt-run))
-                                   (equal expected (evaluation-value alt-run)))
-                          (setf unique-p nil)
-                          (return))))))))))))
-    (values (>= active-hits 2) unique-p)))
+(defun solver-application (operator position context-map inputs unknown)
+  "OPERATOR applied to what a solver knows and to UNKNOWN: each argument CONTEXT-MAP lists is
+the input it gives it among INPUTS, and the position, or positions, the solver inverts take
+UNKNOWN, whose value for several positions is their tuple."
+  (let ((positions (solver-positions position)))
+    (apply #'app operator
+           (loop for index below (length (second (operator-type operator)))
+                 for place = (position index positions)
+                 collect (cond ((null place)
+                                (let ((input (nth (position (list :argument index) context-map
+                                                            :test #'equal)
+                                                  inputs)))
+                                  (var (car input) (cdr input))))
+                               ((rest positions) (term `(at ,unknown ,place)))
+                               (t unknown))))))
+
+(defparameter *lift-sample-limit* 4096
+  "The most assignments on which a solver lifted from prime fields is replayed over :int.")
+
+(defun residue-assignments (types residues)
+  "Assignments to inputs of TYPES, an integer taking each of RESIDUES and a Boolean both
+truth values, tuples of these taken part by part; thinned evenly to `*lift-sample-limit*`.
+Nil when some type has no values to offer."
+  (labels ((values-of (type)
+             (cond ((eq type :int) residues)
+                   ((eq type :bool) '(nil t))
+                   ((tuple-type-p type)
+                    (let ((parts (mapcar #'values-of (rest type))))
+                      (and (every #'identity parts) (cartesian-product-lists parts)))))))
+    (let ((columns (mapcar #'values-of types)))
+      (when (and (every #'identity columns)
+                 (<= (reduce #'* columns :key #'length) (* 64 *lift-sample-limit*)))
+        (let* ((all (cartesian-product-lists columns))
+               (stride (max 1 (ceiling (length all) *lift-sample-limit*))))
+          (loop for assignment in all for index from 0
+                when (zerop (mod index stride)) collect assignment))))))
+
+(defun sampled-solver-validations (operator position context-map inputs witness guard residues ledger)
+  "Replay over :int a solver read off prime fields, as laws the VM checks on samples built
+from RESIDUES, the fields' own elements centred on zero. The witness law says that, under
+GUARD, OPERATOR applied to WITNESS gives the target. The uniqueness law says that no other
+value does: for an integer unknown, none at any nonzero offset in RESIDUES from the witness;
+for a Boolean one, not its negation. Returns (VALUES witness-validation
+uniqueness-validation), the second nil when the solver inverts several positions or an
+unknown of another type; both nil when the solver's types admit no law or no samples."
+  (let* ((signature (operator-type operator))
+         (positions (solver-positions position))
+         (unknown-type (and (null (rest positions)) (nth (first positions) (second signature))))
+         (target-input (nth (position :target context-map) inputs))
+         (target (var (car target-input) (cdr target-input)))
+         (samples (residue-assignments (mapcar #'cdr inputs) residues)))
+    (when (and samples
+               (every (lambda (input) (rewrite-scope-type-p (cdr input) :int)) inputs)
+               (rewrite-scope-type-p (third signature) :int))
+      (flet ((validated (law samples)
+               (let ((validation (validate-law law 1000000 t samples)))
+                 (charge ledger :law-checking (ledger-total (law-validation-ledger validation)))
+                 validation))
+             (other-value-law (other extra-inputs extra-guard)
+               (make-law :int (append inputs extra-inputs)
+                         (term `(= ,(solver-application operator position context-map inputs other)
+                                   ,target))
+                         (lit :bool nil)
+                         :guard (if extra-guard (bool-and guard extra-guard) guard))))
+        (values
+         (validated (make-law :int inputs
+                              (solver-application operator position context-map inputs witness)
+                              target :guard guard)
+                    samples)
+         (case unknown-type
+           (:int (let* ((offset (var (next-child-id inputs) :int))
+                        (offsets (remove 0 residues)))
+                   (validated (other-value-law (term `(+ ,witness ,offset))
+                                               (list (cons (ast-id offset) :int))
+                                               (bool-not (term `(= ,offset 0))))
+                              (let ((stride (max 1 (ceiling (* (length samples) (length offsets))
+                                                            *lift-sample-limit*)))
+                                    (index -1))
+                                (loop for sample in samples
+                                      append (loop for value in offsets
+                                                   when (zerop (mod (incf index) stride))
+                                                     collect (append sample (list value))))))))
+           (:bool (validated (other-value-law (bool-not witness) nil nil) samples))))))))
 
 (defun lift-field-solvers (library &key ledger)
   "Lift to :int what LIBRARY's active, witness-certified solvers say alike over several prime
-fields. For each primitive operator and position that is inverted over two or more fields: when
-the witnesses and guards read with their field erased anti-unify without a hole AND pass forward
-sample replay on `:int` (rejecting field-division artifacts such as `:*` -> `:/` truncating
-division), that common reading is registered as a `:conjecture` solver over `:int`."
+fields. For each primitive operator and position that is inverted over two or more fields,
+when the witnesses and the guards, read with their field erased, anti-unify without a hole,
+that common reading is replayed over the integers (`sampled-solver-validations`) and, if its
+witness law survives on at least two active samples, registered as a solver over :int. The
+integers are not a field, so it is a conjecture and its evidence is :sampled: the witness,
+and the uniqueness too when its law survives and every source solver is certified unique.
+Such evidence lets the solver be proposed and its solutions replayed; it is not current
+evidence, so a narrowing by it keeps the original requirement as a fallback. A reading the
+samples refute, like division standing in for the inverse of multiplication, is not lifted.
+An operator and position that already has an :int solver is left alone, so a second call
+adds nothing. Returns the entries added."
   (let ((solvers (knowledge-entries-of-kind :solver library))
         (groups nil)                    ; ((name position context-map) entry ...), latest first
         (added nil))
@@ -508,46 +597,81 @@ division), that common reading is registered as a `:conjecture` solver over `:in
                                (retype-expr (funcall accessor entry) (knowledge-entry-domain entry) :int))
                              entries)))
               (let* ((first-entry (first entries))
+                     (field (knowledge-entry-domain first-entry))
                      (inputs (mapcar (lambda (input)
-                                       (cons (car input)
-                                             (retype-type (cdr input) (knowledge-entry-domain first-entry) :int)))
+                                       (cons (car input) (retype-type (cdr input) field :int)))
                                      (knowledge-entry-inputs first-entry)))
                      (witnesses (erased #'knowledge-entry-expression))
                      (guards (erased #'knowledge-entry-guard))
-                     (int-op (op name :int)))
-                (unless (or (pattern-has-holes-p (anti-unify witnesses inputs ledger))
-                            (pattern-has-holes-p (anti-unify guards inputs ledger)))
-                  (multiple-value-bind (replays-p sample-unique-p)
-                      (int-solver-replays-on-samples-p int-op position context-map inputs
-                                                       (first witnesses) (first guards) ledger)
-                    (when replays-p
-                      (push (register-knowledge-solver
-                             int-op
-                             :domain :int :inputs inputs :position position :context-map context-map
-                             :witness (first witnesses) :guard (first guards)
-                             :unique-p (and sample-unique-p
-                                            (every (lambda (e)
-                                                     (knowledge-evidence-current-p e :uniqueness))
-                                                   entries))
-                             :edges (list (cons :lifted-from (mapcar #'knowledge-entry-id entries)))
-                             :library library :ledger ledger)
-                            added))))))))))))
+                     ;; The field operator at the type it has once its field is erased.
+                     (operator (ignore-errors
+                                (op name (retype-type
+                                          (ast-type (sexp->ast (getf (knowledge-entry-metadata first-entry)
+                                                                     :operator)))
+                                          field :int))))
+                     (prime (reduce #'max entries
+                                    :key (lambda (entry) (second (knowledge-entry-domain entry)))))
+                     (residues (loop for value from (- (floor prime 2)) to (floor prime 2)
+                                     collect value)))
+                (when (and operator
+                           (not (pattern-has-holes-p (anti-unify witnesses inputs ledger)))
+                           (not (pattern-has-holes-p (anti-unify guards inputs ledger))))
+                  (multiple-value-bind (witness-validation uniqueness-validation)
+                      (sampled-solver-validations operator position context-map inputs
+                                                  (first witnesses) (first guards) residues ledger)
+                    (when (and witness-validation
+                               (eq :conjecture (law-validation-status witness-validation))
+                               (>= (law-validation-active witness-validation) 2))
+                      (let* ((unique-p (and uniqueness-validation
+                                            (eq :conjecture (law-validation-status uniqueness-validation))
+                                            (every (lambda (entry)
+                                                     (knowledge-evidence-current-p entry :uniqueness))
+                                                   entries)))
+                             (entry (make-knowledge-solver
+                                     operator
+                                     :domain :int :inputs inputs :position position
+                                     :context-map context-map
+                                     :witness (first witnesses) :guard (first guards)
+                                     :unique-p unique-p
+                                     :edges (list (cons :lifted-from (mapcar #'knowledge-entry-id entries)))
+                                     :library library :ledger ledger)))
+                        ;; The record of what was tested: on how many assignments, how many
+                        ;; of them the guard admitted, and for what work.
+                        (attest-knowledge-entry entry :sampled
+                                                (if unique-p '(:witness :uniqueness) '(:witness)))
+                        (setf (knowledge-entry-certificate entry)
+                              (append (knowledge-entry-certificate entry)
+                                      (list :assignments (law-validation-count witness-validation)
+                                            :active (law-validation-active witness-validation)
+                                            :work (+ (ledger-total (law-validation-ledger witness-validation))
+                                                     (if uniqueness-validation
+                                                         (ledger-total (law-validation-ledger
+                                                                        uniqueness-validation))
+                                                         0)))))
+                        (push (register-knowledge-entry entry :library library :ledger ledger)
+                              added)))))))))))))
 
 ;;; Theory motifs: functions refactored through one fold whose steps share a star of laws,
-;;; associativity and an identity, are instances of one theory. What is found to hold of the
-;;; fold for them is conjectured of every instance, those that come later included.
+;;; associativity and an identity on both sides, are instances of one theory. What is found
+;;; to hold of the fold for them is conjectured of every instance, those that come later
+;;; included. The star rests on laws that have been tested; the conjecture is replayed.
 
 (defun usable-motif-law-p (law)
-  "True when `:law` LAW is active, unconditional, and neither `:refuted` nor malformed."
+  "True when `:law` LAW is active, unconditional, an equation, not refuted, and tested: it
+carries evidence of its equivalence for what it states now, exhaustive or sampled
+(`knowledge-evidence-tested-p`). A conjecture nobody has tested is not something a recorded
+theory may rest on."
   (and (knowledge-entry-active-p law)
        (member (knowledge-entry-status law) '(:validated :conjecture))
        (unconstrained-requirement-p (knowledge-entry-guard law))
-       (app-of-p (knowledge-entry-expression law) :=)))
+       (app-of-p (knowledge-entry-expression law) :=)
+       (knowledge-evidence-tested-p law :equivalence)))
 
 (defun law-operator-fact (law)
   "What `:law` LAW says of a binary operator, as the edge that records it: (:associative
-name) when LAW reads (op (op a b) c) = (op a (op b c)) over three distinct variables,
-(:identity name (e)) when it reads (op a 'e) = a or (op 'e a) = a; nil otherwise."
+name) when LAW reads (op (op a b) c) = (op a (op b c)) over three distinct variables;
+(:commutative name) when it reads (op a b) = (op b a) over two; (:identity name (e) side)
+when it reads (op a 'e) = a, a :right identity, or (op 'e a) = a, a :left one; nil otherwise."
   (flet ((binary-p (term &optional operator)
            (and (app-p term) (= 3 (length term)) (operator-p (first term))
                 (or (null operator) (eq operator (first term))))))
@@ -555,10 +679,13 @@ name) when LAW reads (op (op a b) c) = (op a (op b c)) over three distinct varia
       (loop for (from to) in (list (list left right) (list right left))
             when (binary-p from)
               do (destructuring-bind (operator a b) from
-                   (cond ((and (var-p to) (or (and (equal a to) (lit-p b))
-                                              (and (equal b to) (lit-p a))))
-                          (return (list :identity (operator-name operator)
-                                        (list (ast-value (if (lit-p a) a b))))))
+                   (cond ((and (var-p to) (equal a to) (lit-p b))
+                          (return (list :identity (operator-name operator) (list (ast-value b)) :right)))
+                         ((and (var-p to) (equal b to) (lit-p a))
+                          (return (list :identity (operator-name operator) (list (ast-value a)) :left)))
+                         ((and (var-p a) (var-p b) (not (equal a b))
+                               (equal to (list operator b a)))
+                          (return (list :commutative (operator-name operator))))
                          ((and (binary-p a operator) (binary-p to operator)
                                (binary-p (third to) operator)
                                (every #'var-p (list (second a) (third a) b))
@@ -570,10 +697,13 @@ name) when LAW reads (op (op a b) c) = (op a (op b c)) over three distinct varia
 
 (defun fold-signature (entry)
   "When active recursive `:function` ENTRY folds a sequence of tau to a tau, taking a (:seq tau),
-a base tau and a step code of two tau to tau in some order, the positions (sequence base step)."
+a base tau and a step code of two tau to tau in some order, and applies that step (the
+kernel's own analysis of the definition lists it among the code parameters it evaluates),
+the positions (sequence base step)."
   (let* ((inputs (knowledge-entry-inputs entry))
          (tau (knowledge-entry-target entry))
          (body (knowledge-entry-expression entry))
+         (definition (find-function-definition (knowledge-entry-id entry)))
          (positions (loop for type in (list (sequence-type tau) tau
                                             (code-type (list (cons 0 tau) (cons 1 tau)) tau))
                           collect (position type inputs :key #'cdr :test #'equal))))
@@ -582,7 +712,8 @@ a base tau and a step code of two tau to tau in some order, the positions (seque
          (notany #'null positions)
          body
          (expression-calls-operator-p body (knowledge-entry-id entry))
-         (expression-calls-operator-p body :code-eval)
+         definition
+         (member (third positions) (function-definition-conditional-code-params definition))
          positions)))
 
 (defun fold-call (fold sequence base step)
@@ -593,20 +724,44 @@ a base tau and a step code of two tau to tau in some order, the positions (seque
           do (setf (nth position arguments) argument))
     (apply #'app (op (knowledge-entry-id fold)) arguments)))
 
-(defun two-sided-identity-on-probes-p (operator base tau)
-  "Verify on small probe values of TAU that BASE acts as both a left and right identity of OPERATOR."
-  (let ((probes (sensitivity-probe-values tau)))
-    (every (lambda (val)
-             (let ((x (lit tau val)))
-               (multiple-value-bind (l l-ok) (eval-expr-value (app operator base x) nil nil)
-                 (multiple-value-bind (r r-ok) (eval-expr-value (app operator x base) nil nil)
-                   (and l-ok r-ok (equal val l) (equal val r))))))
-           (subseq probes 0 (min 3 (length probes))))))
+(defun operator-law-facts (library tau)
+  "The facts LIBRARY's usable laws over TAU state of operators, each as (fact . law)."
+  (loop for law in (knowledge-entries-of-kind :law library)
+        when (and (usable-motif-law-p law) (equal tau (knowledge-entry-domain law)))
+          append (loop for edge in (knowledge-edges-from law nil library)
+                       when (member (first edge) '(:associative :commutative :identity))
+                         collect (cons edge law))))
+
+(defun record-other-identity (library law name value side tau probes ledger)
+  "LAW states that VALUE is an identity of the operator NAME on SIDE only. State the other
+side as a law of its own and have it checked: exhaustively over a finite TAU, else on
+PROBES, the element values the motif is replayed on. A law that survives is registered,
+with the evidence its validation earned and the edge that it is `:implied-with` LAW, and
+returned. One that does not is recorded as the edge (:no-identity name (value) other-side)
+on LAW, so the question is asked once."
+  (let* ((other (if (eq side :left) :right :left))
+         (operator (op name tau))
+         (a (var 0 tau))
+         (unit (lit tau value)))
+    (unless (member (list :no-identity name (list value) other)
+                    (knowledge-edges-from law :no-identity library) :test #'equal)
+      (let ((validation (validate-law
+                         (make-law (knowledge-entry-domain law) (list (cons 0 tau))
+                                   (if (eq other :left) (app operator unit a) (app operator a unit))
+                                   a :origin (list :implied-with (knowledge-entry-id law)))
+                         100000 (not (finite-type-p tau)) (mapcar #'list probes))))
+        (charge ledger :law-checking (ledger-total (law-validation-ledger validation)))
+        (if (member (law-validation-status validation) '(:validated :conjecture))
+            (register-knowledge-law validation :library library :ledger ledger
+                                    :edges (list (list :implied-with (knowledge-entry-id law))))
+            (progn (add-knowledge-edge law :no-identity name (list value) other)
+                   nil))))))
 
 (defun monoid-fold-instance (entry library)
   "When active `:function` ENTRY of one sequence input is refactored through a fold as
-(fold X 'e '(op X0 X1)), and LIBRARY's active unconditional laws make op associative with
-two-sided identity e over the element type, returns (fold-entry base step)."
+(fold X 'e '(op X0 X1)), in either order of the step's arguments, and LIBRARY's tested laws
+make op associative with e its identity on both sides (stated on each, or on one of a
+commutative op), returns (fold-entry base step)."
   (when (knowledge-entry-active-p entry)
     (let ((body (knowledge-entry-expression entry))
           (inputs (knowledge-entry-inputs entry)))
@@ -618,31 +773,37 @@ two-sided identity e over the element type, returns (fold-entry base step)."
                      (mapcar (lambda (position) (nth position (rest body))) positions)
                    (let* ((tau (knowledge-entry-target fold))
                           (code (and (lit-p step) (ast-value step)))
-                          (operator (and (app-p code) (first code)))
-                          (facts (and operator
-                                      (loop for law in (knowledge-entries-of-kind :law library)
-                                            when (and (usable-motif-law-p law)
-                                                      (equal tau (knowledge-entry-domain law)))
-                                              append (knowledge-edges-from law nil library)))))
-                     (when (and (equal sequence (var (caar inputs) (cdar inputs)))
-                                (lit-p base)
-                                (or (equal (rest code) (list (var 0 tau) (var 1 tau)))
-                                    (equal (rest code) (list (var 1 tau) (var 0 tau))))
-                                (member (list :associative (operator-name operator)) facts :test #'equal)
-                                (member (list :identity (operator-name operator) (list (ast-value base)))
-                                        facts :test #'equal)
-                                (two-sided-identity-on-probes-p operator base tau))
-                       (return (list fold base step)))))))))
+                          (operator (and (app-p code) (operator-p (first code)) (first code)))
+                          (facts (and operator (mapcar #'car (operator-law-facts library tau)))))
+                     (flet ((fact-p (&rest fact) (member fact facts :test #'equal)))
+                       (when (and operator
+                                  (equal sequence (var (caar inputs) (cdar inputs)))
+                                  (lit-p base)
+                                  (or (equal (rest code) (list (var 0 tau) (var 1 tau)))
+                                      (equal (rest code) (list (var 1 tau) (var 0 tau))))
+                                  (fact-p :associative (operator-name operator))
+                                  (let ((unit (list (ast-value base)))
+                                        (name (operator-name operator)))
+                                    (or (and (fact-p :identity name unit :left)
+                                             (fact-p :identity name unit :right))
+                                        (and (fact-p :commutative name)
+                                             (or (fact-p :identity name unit :left)
+                                                 (fact-p :identity name unit :right))))))
+                         (return (list fold base step))))))))))
 
 (defun induce-fold-motifs (library &key ledger)
-  "Quotient the monoid folds of LIBRARY. Each active unconditional law that states an operator's
-associativity or identity gets the edge saying so (`law-operator-fact`). Where the instances of
-two folds of one signature (`monoid-fold-instance`) cover two or more operators and each
-instance's step and base give both folds the same value on every probe sequence, the equation of
-the two folds is registered as a `:motif` over the first fold's inputs. Every instance of a
-motif's folds is then conjectured to equal the other fold applied to its step and base: a
-`:law` replayed on the probes and induced by the motif, with no search. Returns the entries
-added; a second call on an unchanged library adds none."
+  "Quotient the monoid folds of LIBRARY. Each tested, unconditional law that states an
+operator's associativity, commutativity or identity gets the edge saying so
+(`law-operator-fact`), and an identity stated on one side of an operator that is not known
+to commute has its other side put to the test as a law (`record-other-identity`). Where the
+instances of two folds of one signature (`monoid-fold-instance`) cover two or more
+operators and each instance's step and base give both folds the same value on every probe
+sequence, the equation of the two folds is registered as a `:motif` over the first fold's
+inputs. Every instance of a motif's folds is then conjectured to equal the other fold
+applied to its step and base: a `:law` replayed on the probes and induced by the motif,
+with no search, beside which the decoder it licenses is kept as a `:decoder-template`
+(`remember-motif-decoder`). Returns the entries added; a second call on an unchanged
+library adds none."
   (unless (eq library *knowledge-library*)
     (return-from induce-fold-motifs
       (with-knowledge-library (library) (induce-fold-motifs library :ledger ledger))))
@@ -652,70 +813,100 @@ added; a second call on an unchanged library adds none."
         (let ((fact (law-operator-fact law)))
           (when fact (apply #'add-knowledge-edge law fact)))))
     (let* ((functions (knowledge-entries-of-kind :function library))
-           (folds (remove-if-not #'fold-signature functions))
-           (instances (loop for entry in functions
-                            for instance = (monoid-fold-instance entry library)
-                            when instance collect (cons entry instance))))
-      (loop for (left . others) on folds do
-        (dolist (right others)
-          (let* ((tau (knowledge-entry-target left))
-                 (probes (and (equal (mapcar #'cdr (knowledge-entry-inputs left))
-                                     (mapcar #'cdr (knowledge-entry-inputs right)))
-                              (probe-sequences-for-type (sequence-type tau))))
-                 (members (remove-if-not (lambda (instance) (member (second instance) (list left right)))
-                                         instances))
-                 (id (keyword-id "~A=~A/MONOID" (knowledge-entry-id left) (knowledge-entry-id right))))
-            (flet ((agree-p (base step)
-                     (every (lambda (probe)
-                              (let ((xs (lit (sequence-type tau) probe)))
-                                (multiple-value-bind (a a-p)
-                                    (eval-expr-value (fold-call left xs base step) nil nil ledger)
-                                  (multiple-value-bind (b b-p)
-                                      (eval-expr-value (fold-call right xs base step) nil nil ledger)
-                                    (and a-p b-p (equal a b))))))
-                            probes)))
-              (when (and probes
-                         (null (find-knowledge-entry id library))
-                         (rest (remove-duplicates members :key #'fourth :test #'equal))
-                         (every (lambda (instance) (agree-p (third instance) (fourth instance))) members))
-                (destructuring-bind (sequence base step)
-                    (mapcar (lambda (position)
-                              (let ((input (nth position (knowledge-entry-inputs left))))
-                                (var (car input) (cdr input))))
-                            (fold-signature left))
-                  (push (register-knowledge-entry
-                         (make-knowledge-entry
-                          :id id :kind :motif :inputs (knowledge-entry-inputs left) :target :bool
-                          :expression (term `(= ,(fold-call left sequence base step)
-                                                ,(fold-call right sequence base step)))
-                          :status :conjecture
-                          :edges (list (list :relates (knowledge-entry-id left) (knowledge-entry-id right))
-                                       (list :requires :associative :identity))
-                          :metadata (list :origin :theory-motif)
-                          :library library)
-                         :library library :ledger ledger)
-                        added)))
-              ;; Transfer: each instance equals the other fold on its own step and base.
-              (when (find-knowledge-entry id library)
-                (loop for (entry fold base step) in members
-                      for other = (if (eq fold left) right left)
-                      for inputs = (knowledge-entry-inputs entry)
-                      for law-id = (keyword-id "~A/VIA-~A" (knowledge-entry-id entry) (knowledge-entry-id other))
-                      do (add-knowledge-edge id :instance (knowledge-entry-id entry))
-                      unless (find-knowledge-entry law-id library)
-                        do (let ((validation
-                                   (validate-law
-                                    (make-law (infer-domain-from-types (list tau)) inputs
-                                              (app (op (knowledge-entry-id entry)) (var (caar inputs) (cdar inputs)))
-                                              (fold-call other (var (caar inputs) (cdar inputs)) base step)
-                                              :origin (list :motif id))
-                                    100000 t (mapcar #'list probes))))
-                             (charge ledger :law-checking (ledger-total (law-validation-ledger validation)))
-                             (when (eq :conjecture (law-validation-status validation))
-                               (push (register-knowledge-law
-                                      validation :id law-id :library library :ledger ledger
-                                      :edges (list (list :induced-by id)))
-                                     added))))))))))
+           (folds (remove-if-not #'fold-signature functions)))
+      ;; An identity known on one side only: ask about the other, once, as a law.
+      (dolist (tau (remove-duplicates (mapcar #'knowledge-entry-target folds) :test #'equal))
+        (let ((facts (operator-law-facts library tau))
+              (probes (remove-duplicates
+                       (apply #'append (probe-sequences-for-type (sequence-type tau)))
+                       :test #'equal)))
+          (loop for ((kind name unit side) . law) in facts
+                when (and (eq kind :identity)
+                          (notany (lambda (fact)
+                                    (or (equal (car fact) (list :commutative name))
+                                        (equal (car fact)
+                                               (list :identity name unit (if (eq side :left) :right :left)))))
+                                  facts))
+                  do (let ((other (record-other-identity library law name (first unit) side tau probes ledger)))
+                       (when other
+                         (apply #'add-knowledge-edge other (law-operator-fact other))
+                         (push other added))))))
+      (let ((instances (loop for entry in functions
+                             for instance = (monoid-fold-instance entry library)
+                             when instance collect (cons entry instance))))
+        (loop for (left . others) on folds do
+          (dolist (right others)
+            (let* ((tau (knowledge-entry-target left))
+                   (probes (and (equal (mapcar #'cdr (knowledge-entry-inputs left))
+                                       (mapcar #'cdr (knowledge-entry-inputs right)))
+                                (probe-sequences-for-type (sequence-type tau))))
+                   (members (remove-if-not (lambda (instance) (member (second instance) (list left right)))
+                                           instances))
+                   (id (keyword-id "~A=~A/MONOID" (knowledge-entry-id left) (knowledge-entry-id right))))
+              (flet ((agree-p (base step)
+                       (every (lambda (probe)
+                                (let ((xs (lit (sequence-type tau) probe)))
+                                  (multiple-value-bind (a a-p)
+                                      (eval-expr-value (fold-call left xs base step) nil nil ledger)
+                                    (multiple-value-bind (b b-p)
+                                        (eval-expr-value (fold-call right xs base step) nil nil ledger)
+                                      (and a-p b-p (equal a b))))))
+                              probes))
+                     (step-operator (instance) (first (ast-value (fourth instance)))))
+                (when (and probes
+                           (null (find-knowledge-entry id library))
+                           ;; Two or more operators, however their steps order the arguments.
+                           (rest (remove-duplicates members :key #'step-operator :test #'equal))
+                           (every (lambda (instance) (agree-p (third instance) (fourth instance))) members))
+                  (destructuring-bind (sequence base step)
+                      (mapcar (lambda (position)
+                                (let ((input (nth position (knowledge-entry-inputs left))))
+                                  (var (car input) (cdr input))))
+                              (fold-signature left))
+                    (push (register-knowledge-entry
+                           (make-knowledge-entry
+                            :id id :kind :motif :inputs (knowledge-entry-inputs left) :target :bool
+                            :expression (term `(= ,(fold-call left sequence base step)
+                                                  ,(fold-call right sequence base step)))
+                            :status :conjecture
+                            :edges (list (list :relates (knowledge-entry-id left) (knowledge-entry-id right))
+                                         (list :requires :associative :identity))
+                            :metadata (list :origin :theory-motif)
+                            :library library)
+                           :library library :ledger ledger)
+                          added)))
+                ;; Transfer: each instance equals the other fold on its own step and base.
+                (when (find-knowledge-entry id library)
+                  (loop for (entry fold base step) in members
+                        for other = (if (eq fold left) right left)
+                        for inputs = (knowledge-entry-inputs entry)
+                        for law-id = (keyword-id "~A/VIA-~A" (knowledge-entry-id entry) (knowledge-entry-id other))
+                        unless (or (find-knowledge-entry law-id library)
+                                   (member (list :not-instance (knowledge-entry-id entry))
+                                           (knowledge-edges-from id :not-instance library) :test #'equal))
+                          do (let* ((sequence (var (caar inputs) (cdar inputs)))
+                                    (decoder (fold-call other sequence base step))
+                                    (validation
+                                      (validate-law
+                                       (make-law (infer-domain-from-types (list tau)) inputs
+                                                 (app (op (knowledge-entry-id entry)) sequence)
+                                                 decoder
+                                                 :origin (list :motif id))
+                                       100000 t (mapcar #'list probes))))
+                               (charge ledger :law-checking (ledger-total (law-validation-ledger validation)))
+                               (cond
+                                 ((eq :conjecture (law-validation-status validation))
+                                  (let ((law (register-knowledge-law
+                                              validation :id law-id :library library :ledger ledger
+                                              :edges (list (list :induced-by id)))))
+                                    (add-knowledge-edge id :instance (knowledge-entry-id entry))
+                                    (push law added)
+                                    (let ((template (remember-motif-decoder law decoder (car (first inputs))
+                                                                            :library library :ledger ledger)))
+                                      (when template (push template added)))))
+                                 ;; The probes refute it: the motif does not hold of this
+                                 ;; function, which is recorded so it is not asked again.
+                                 (t (add-knowledge-edge id :not-instance (knowledge-entry-id entry)))))))))))))
     (nreverse added)))
 
 (define-knowledge-kind :motif

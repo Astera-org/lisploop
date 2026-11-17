@@ -464,14 +464,22 @@ within each occurrence."
 (defun compute-tree-locality-positions (n locality-key &optional ledger)
   "Compute the induced position vector (0..N-1) and quotient structure for tree indices
 under LOCALITY-KEY. When LOCALITY-KEY is nil, position(i) = i. When LOCALITY-KEY is a
-function, `:locality-key` knowledge entry, or DSL expression over `((0 . :int))`, evaluates
+function, a DSL expression over `((0 . :int))`, or a `:locality-key` knowledge entry whose one
+input is an :int (the tree index stands for it; an entry induced over any other inputs does
+not order tree indices and is refused), evaluates
 the key for each tree index i into a generated space (scalars or tuples), partitions via
 `partition-rows` (verifying `reassemble-partition`), and quotients via `quotient-values`
 (verifying `restore-quotient`).
 Returns (VALUES pos-vec labels-vec representatives residual partition)."
-  (when (knowledge-entry-p locality-key)
-    (setf locality-key (knowledge-entry-expression locality-key)))
-  (let ((pos-vec (make-array n)))
+  (let ((pos-vec (make-array n))
+        (key-inputs '((0 . :int))))
+    (when (knowledge-entry-p locality-key)
+      (let ((inputs (knowledge-entry-inputs locality-key)))
+        (assert (and (= 1 (length inputs)) (eq :int (cdar inputs))) ()
+                "The locality key ~S reads ~S; a key over tree indices reads one :int input."
+                (knowledge-entry-id locality-key) inputs)
+        (setf key-inputs inputs
+              locality-key (knowledge-entry-expression locality-key))))
     (if (null locality-key)
         (progn
           (dotimes (i n)
@@ -484,7 +492,7 @@ Returns (VALUES pos-vec labels-vec representatives residual partition)."
                                    (progn
                                      (charge ledger :locality-key)
                                      (funcall locality-key i))
-                                   (let ((run (evaluate locality-key '((0 . :int)) (list i) :ledger ledger)))
+                                   (let ((run (evaluate locality-key key-inputs (list i) :ledger ledger)))
                                      (unless (eq :value (evaluation-status run))
                                        (error "Locality key evaluation failed on ~D: ~S" i run))
                                      (evaluation-value run)))))

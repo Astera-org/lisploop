@@ -6,7 +6,8 @@
    #:valid-type-p #:function-sort-p #:value-p #:seq-type-p #:gf-type-p #:tuple-type-p #:input-alist
    #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
    #:schema-availability #:schema-target-availability #:schema-availability-order
-   #:rank-le-p #:available-inputs #:expression-respects-availability-p #:schema-maximal-availability-id
+   #:rank-le-p #:rank-lt-p #:available-inputs #:expression-respects-availability-p
+   #:schema-maximal-availability-id
    #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:map-ast #:app-of-p
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p
@@ -58,7 +59,7 @@
    #:advance-accounted-evaluation
 
    ;; 5. evidence.lisp — Provenance tracking & dependency currency
-   #:attest-knowledge-entry #:knowledge-evidence-current-p
+   #:attest-knowledge-entry #:knowledge-evidence-current-p #:knowledge-evidence-tested-p
 
    ;; 6. persistence.lisp — Homoiconic S-expression library serialization & storage accounting
    #:knowledge-entry->sexp #:sexp->knowledge-entry
@@ -77,7 +78,7 @@
    #:frame-conflict #:frame-conflict-p #:frame-conflict-kind #:frame-conflict-keys #:frame-conflict-known
    #:frame-constrained-row-count #:frame-min-resolved-rows
    #:orient-observations #:transition-probes #:lookup-model #:frame-oracle-table
-   #:pullback-frame #:compose-model #:let-call
+   #:pullback-frame #:pulled-back-metric #:compose-model #:let-call #:share-repeated-subterms
    #:product-slot-frame #:compose-product-model
    #:lift-frame #:compose-lifted-model #:*max-active-lifted-rows* #:probe-frame-coordinates
    #:conserved-quantity-frame #:support-frame #:context-label-frame #:shuffle-frame-rows
@@ -225,12 +226,15 @@
    #:dependency-proposals #:dependency-expander #:start-selector-search
    #:*product-arity-limit* #:component-bindings #:structural-decompositions #:structural-expander
    #:canonical-row-order #:induce-row-order #:with-induced-row-order
+   #:projection-language #:projection-row-keys #:stored-row-keys
+   #:generalize-decoder-templates #:remember-motif-decoder #:decoder-template-live-p
 
    ;; 23. consolidate.lisp — Trace heuristic learning & continual library consolidation
    #:make-search-trace-frame #:condense-search-heuristic #:register-knowledge-heuristic
    #:consolidate-library-functions #:consolidate-policy-descriptors
    #:commit-synthesis-job #:consolidate-knowledge-library #:lift-field-solvers
    #:induce-fold-motifs #:amortize-library-entries #:*search-weight* #:*archive-epochs*
+   #:archive-dependent-templates #:sampled-solver-validations
 
    ;; 24. explain.lisp — Read-only synthesis & library inspection reports
    #:explain-synthesis-node #:explain-synthesis-job #:explain-knowledge-library))

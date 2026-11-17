@@ -16,14 +16,16 @@
   parent-clause-expr)
 
 (defun nogood-identity (clause)
-  "What makes CLAUSE the same deduction as another: its parent, its kind, and the canonically
-sorted row keys it names or, for a UIP generalisation, its pattern."
-  (list (nogood-clause-parent-id clause)
-        (nogood-clause-kind clause)
-        (if (eq :uip-clause (nogood-clause-kind clause))
-            (nogood-clause-clause-expr clause)
-            (sort (copy-list (nogood-clause-keys clause)) #'string<
-                  :key (lambda (k) (with-standard-io-syntax (prin1-to-string k)))))))
+  "What makes CLAUSE the same deduction as another: its parent, its kind, and the row keys
+it names or, for a UIP generalisation, the conjuncts of its pattern, either in canonical order."
+  (flet ((canonical (items)
+           (sort (mapcar (lambda (item) (with-standard-io-syntax (prin1-to-string item))) items)
+                 #'string<)))
+    (list (nogood-clause-parent-id clause)
+          (nogood-clause-kind clause)
+          (if (eq :uip-clause (nogood-clause-kind clause))
+              (canonical (mapcar #'ast->sexp (extract-conjuncts (nogood-clause-clause-expr clause))))
+              (canonical (nogood-clause-keys clause))))))
 
 (defun pure-projection-decomposition-p (proposal)
   "True when PROPOSAL is a pure dependency projection `decoder = (var child-id child-type)`."

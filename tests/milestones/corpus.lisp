@@ -403,3 +403,23 @@ Returns (VALUES trees inputs hidden-oracle next-state)."
                                                     (app int-mul (hole 0 :int) (hole 1 :int)))))))
             (check (= 5 (length (pattern-holes (subexpression-abstraction-pattern int-root)))))
             (check (plusp (verify-corpus-abstraction-replay int-best-comp int-trees int-scope work)))))))))
+
+(deftest locality-key-entries-order-tree-indices-in-their-own-scope
+  "A `:locality-key` entry over one integer orders tree indices as its expression does; one
+induced over other inputs does not speak of tree indices and is refused."
+  (with-clean-kernel-state
+    (let* ((x (var 0 :int))
+           (parity (term `(- ,x (* 2 (/ ,x 2)))))
+           (over-index (register-knowledge-entry
+                        (make-knowledge-entry :kind :locality-key :inputs '((0 . :int)) :target :int
+                                              :expression parity :status :empirical
+                                              :library *knowledge-library*)))
+           (over-columns (register-knowledge-entry
+                          (make-knowledge-entry :kind :locality-key :inputs '((0 . :int) (1 . :int))
+                                                :target :int :expression (var 1 :int) :status :empirical
+                                                :library *knowledge-library*))))
+      (check (equalp #(0 2 1 3) (compute-tree-locality-positions 4 over-index)))
+      (check (equalp (multiple-value-list (compute-tree-locality-positions 4 parity))
+                     (multiple-value-list (compute-tree-locality-positions 4 over-index))))
+      (raises (compute-tree-locality-positions 4 over-columns)))))
+
