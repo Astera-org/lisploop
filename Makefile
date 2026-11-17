@@ -1,7 +1,11 @@
 # pandoc markdown -> PDF for every planning / notes document here.
 # Wider text block than the LaTeX default so the tables fit; A4 or letter
 # is left to the TeX installation's default paper.
-PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt
+# pandoc/pdf.lua adds pandoc/header.tex to the preamble (Unicode symbols that
+# pdflatex lacks, wrapped code blocks) and lets long inline code wrap inside
+# tables and paragraphs.
+PANDOC_SUPPORT = pandoc/pdf.lua pandoc/header.tex
+PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt --lua-filter=pandoc/pdf.lua
 
 DOCS = plan8.pdf plan9.pdf architecture2.pdf tests/README.pdf plan7/plan7-recursion.pdf plan7/plan7-higher-order.pdf plan7/plan7-library.pdf plan7/plan7-m9-policy.pdf
 SBCL ?= sbcl
@@ -62,7 +66,7 @@ plan8.pdf: figures/smoce-cycle.pdf
 figures/%.pdf: figures/%.dot
 	dot -Tpdf $< -o $@
 
-%.pdf: %.md
+%.pdf: %.md $(PANDOC_SUPPORT)
 	pandoc $< -o $@ $(PANDOC_FLAGS)
 
 clean:
