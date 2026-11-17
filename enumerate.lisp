@@ -65,11 +65,17 @@ CONSTANTS supplies additional typed literal ASTs. The default operators stay +/*
   (gethash (list type size) (enumerator-buckets enumerator)))
 
 (defun index-expression (enumerator expression)
+  "File EXPRESSION, which ENUMERATOR has just built, under its type and size, and return
+its type. The enumerator builds an application from buckets of its operator's argument
+types, so the type and size are read off the cached metadata, not checked by another walk;
+a candidate that is evaluated is type-checked then, once."
   (let* ((language (enumerator-language enumerator))
-         (type (expression-type expression (language-inputs language)))
+         (inputs (language-inputs language))
+         (type (ast-type expression))
          (key (list type (enumerator-size enumerator)))
          (buckets (enumerator-buckets enumerator)))
-    (assert (= (enumerator-size enumerator) (body-size expression (language-inputs language))))
+    (assert (= (enumerator-size enumerator)
+               (scoped-bits expression (reference-width inputs expression))))
     (unless (gethash key buckets)
       (setf (gethash key buckets) (make-array 0 :adjustable t :fill-pointer 0)))
     (vector-push-extend expression (gethash key buckets))

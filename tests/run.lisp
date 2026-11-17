@@ -8,7 +8,7 @@
 (defparameter *kernel-test-modules*
   '("core" "codec" "observations" "laws" "symbolic" "amortization"
     "lifting" "abstraction" "refactor" "recursion" "library"
-    "higher-order" "audit" "invariants" "structural" "metrics" "topology" "theories"))
+    "higher-order" "audit" "invariants" "structural" "metrics" "topology" "theories" "closures"))
 
 (defparameter *milestone-only-test-modules*
   '("guards" "compression" "algebra" "propagation" "corpus" "views"))

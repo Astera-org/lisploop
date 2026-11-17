@@ -35,6 +35,17 @@
 (defvar *typed-symbol-Pool* (make-hash-table :test #'equal)
   "Canonical pool of typed variable, operator, and hole symbols so EQUAL and EQ agree.")
 
+(declaim (inline node-meta))
+(defun node-meta (node)
+  "The metadata cached for NODE, or nil. A pooled symbol carries its own on its property
+list, which costs no table lookup; a cons has its in `*node-meta*`."
+  (if (symbolp node) (get node 'ast-meta) (gethash node *node-meta*)))
+
+(defun (setf node-meta) (meta node)
+  (if (symbolp node)
+      (setf (get node 'ast-meta) meta)
+      (setf (gethash node *node-meta*) meta)))
+
 (defun integer-width (value)
   (max 1 (integer-length (abs value))))
 
@@ -541,7 +552,7 @@ constantly and quoted code is sized from cached metadata."
 (defun pool-symbol (key name meta)
   "Enter a new symbol called NAME, carrying META, in the pool under KEY and return it."
   (let ((sym (make-symbol name)))
-    (setf (gethash sym *node-meta*) meta
+    (setf (node-meta sym) meta
           (gethash key *typed-symbol-pool*) sym)
     sym))
 
@@ -557,7 +568,7 @@ constantly and quoted code is sized from cached metadata."
         (let ((sig (compute-operator-signature kname norm-type))
               (overhead (+ 2 (operator-bit-size kname norm-type))))
           (if existing
-              (let ((meta (gethash existing *node-meta*)))
+              (let ((meta (node-meta existing)))
                 (when meta
                   (setf (ast-meta-non-var-bits meta) overhead
                         (ast-meta-value meta) sig))
@@ -574,11 +585,11 @@ constantly and quoted code is sized from cached metadata."
                               :total-p t :free-vars nil)))))))
 
 (defun operator-p (term)
-  (let ((meta (and (symbolp term) (gethash term *node-meta*))))
+  (let ((meta (and (symbolp term) (node-meta term))))
     (and meta (eq :op (ast-meta-kind meta)))))
 
 (defun operator-meta (operator)
-  (let ((meta (gethash operator *node-meta*)))
+  (let ((meta (node-meta operator)))
     (assert (and meta (eq :op (ast-meta-kind meta))))
     meta))
 
@@ -610,7 +621,7 @@ constantly and quoted code is sized from cached metadata."
   (pooled-leaf :hole "?" id type))
 
 (defun hole-p (term)
-  (let ((meta (and (symbolp term) (gethash term *node-meta*))))
+  (let ((meta (and (symbolp term) (node-meta term))))
     (and meta (eq :hole (ast-meta-kind meta)))))
 
 (defun value-p (value type)
@@ -651,7 +662,7 @@ constantly and quoted code is sized from cached metadata."
   (assert (and (valid-type-p type) (value-p value type)))
   (let* ((copied (copy-tree value))
          (node (list (quote-symbol type) copied)))
-    (setf (gethash node *node-meta*) (compute-lit-meta type copied))
+    (setf (node-meta node) (compute-lit-meta type copied))
     node))
 
 (defun provably-total-code-arg-p (expr &optional allow-open-code-p)
@@ -876,18 +887,18 @@ Returns (values total-p conditional-code-params)."
 
 (defun app (operator &rest arguments)
   "Construct a homoiconic application `(op arg1 arg2 ...)` with O(1) cached metadata."
-  (let ((op-meta (and (symbolp operator) (gethash operator *node-meta*))))
+  (let ((op-meta (and (symbolp operator) (node-meta operator))))
     (assert (and op-meta (member (ast-meta-kind op-meta) '(:op :hole))))
     (let ((node (cons operator (copy-list arguments))))
-      (setf (gethash node *node-meta*) (compute-app-meta operator arguments))
+      (setf (node-meta node) (compute-app-meta operator arguments))
       node)))
 
 (defun ensure-ast-meta (expression)
-  (or (gethash expression *node-meta*)
+  (or (node-meta expression)
       (when (and (consp expression) (symbolp (first expression)))
-        (let ((head-meta (gethash (first expression) *node-meta*)))
+        (let ((head-meta (node-meta (first expression))))
           (when head-meta
-            (setf (gethash expression *node-meta*)
+            (setf (node-meta expression)
                   (ecase (ast-meta-kind head-meta)
                     (:quote (compute-lit-meta (ast-meta-type head-meta) (second expression)))
                     ((:op :hole) (compute-app-meta (first expression) (rest expression))))))))

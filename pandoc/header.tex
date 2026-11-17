@@ -1,0 +1,21 @@
+% Shared LaTeX preamble for the pandoc -> pdflatex documents, added by pdf.lua.
+
+% Unicode symbols pdflatex has no text glyph for; without these the build
+% stops with "Unicode character ... not set up for use with LaTeX".
+\DeclareUnicodeCharacter{2194}{\ensuremath{\leftrightarrow}}
+\DeclareUnicodeCharacter{21D2}{\ensuremath{\Rightarrow}}
+\DeclareUnicodeCharacter{21D4}{\ensuremath{\Leftrightarrow}}
+\DeclareUnicodeCharacter{2264}{\ensuremath{\leq}}
+\DeclareUnicodeCharacter{2265}{\ensuremath{\geq}}
+\DeclareUnicodeCharacter{2260}{\ensuremath{\neq}}
+\DeclareUnicodeCharacter{2248}{\ensuremath{\approx}}
+\DeclareUnicodeCharacter{2208}{\ensuremath{\in}}
+
+% Code blocks: smaller type, and wrap (at spaces, marked with a hook arrow)
+% any line that still does not fit instead of running off the page.
+% "Highlighting" is pandoc's environment for blocks with a language tag,
+% "verbatim" the one for blocks without.
+\usepackage{fvextra}
+\newcommand{\codeblocksize}{\fontsize{9}{10.5}\selectfont}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\},fontsize=\codeblocksize,breaklines}
+\DefineVerbatimEnvironment{verbatim}{Verbatim}{fontsize=\codeblocksize,breaklines}
