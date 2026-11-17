@@ -3,6 +3,7 @@
 > **Status:** Audit of `plan9.md` (v1.0) against the Common Lisp kernel on branch `charlie` at commit `019736f`, 17 November 2026.
 > The Lisp source is the reference. `plan8.md` §6 is used as the record of what the Plan 8 refactor and its audit decided.
 > Plan 9 is cited by section ("plan §4.2"), since its line numbers move with formatting. Source is cited as `file:line` at `019736f`.
+> §11 is a later follow-up: a review of `plan9.md` v2.0 against the kernel at `fafffd9`. It also corrects three statements in the sections before it.
 
 ---
 
@@ -182,6 +183,7 @@ The plan queues ambiguous-narrowing fallbacks on `synthesis-node-deferred-propos
 - The proposed fix misreads `probe-frame-coordinates`. That function folds the decoded target at given output coordinates, by default `(0)` and `(1)`, and keeps only rows whose outermost call is ground (`frame.lisp:1045-1105`). It does not build the call-site cover and does not execute the VM; `lift-frame` builds the cover, by folding. Used here it would be sound but would see two elements per row.
 - A cheaper sound fix is to gate the zip on the kernel's existing length-preserving test:
   - `function-body-length-preserving-p`
+- *Correction (§11.7):* that gate alone is not enough. It needs two further conditions.
 
 **2. M8D returns and features — half right.**
 
@@ -379,11 +381,11 @@ Plan 8 budgeted `+550`–`650` and spent `+1,530`. It estimated `800`–`1,050` 
 These are in the kernel at `019736f` and are not in the plan.
 
 1. **The totality fixpoint iterates from stale flags (ran).** The driver starts from the other functions' previous flags (`knowledge.lisp:497-510`, `recompute-registered-functions-totality`). Define `g`, define `f` as `(g n)`, then redefine `g` as `(f n)`: both stay `total-p T`, `(provably-total-p (f n))` is true, and `(f 3)` diverges. Resetting all non-oracle flags before iterating should fix it. Plan §5.1 builds on this fixpoint.
-2. **A call to a registered but undefined name is total (ran).** The `(null def)` branch at `ast.lisp:713`.
+2. **A call to a registered but undefined name is total (ran).** The `(null def)` branch at `ast.lisp:713`. *Note (§11.3):* the same branch is what makes primitives total, so the fix must keep it for them.
 3. **Member tables crash `:relation` consolidation (ran).** §5, item 4. Not reachable from synthesis.
 4. **A failed relation fit is never memoised (ran).** One incompressible 6-row table costs `100,000` work on every bare consolidation.
 5. **Consolidation is not a fixed point after one call (ran).** The docstring at `consolidate.lisp:937-938` says it is; the first fixture of §4.7 shows otherwise.
-6. **Lift templates are stored but never generalised (ran).** `generalize-decoder-templates` takes only templates without `:lift-p` (`proposals.lisp:1189-1191`), and the templates remembered from library-lift wins have it.
+6. **Lift templates are stored but never generalised (ran).** `generalize-decoder-templates` takes only templates without `:lift-p` (`proposals.lisp:1189-1191`), and the templates remembered from library-lift wins have it. *Correction (§11.7):* this is a documented limit of scope, not a defect.
 7. **The positional schema zip.** §5, item 1b.
 
 ---
@@ -401,6 +403,162 @@ Three further points:
 - **Test control changes by replay before building them.** The method of Appendix C costs a few lines and would have shown the result of §4.1.
 - **Keep the Plan 8 audit's decisions unless the plan argues against them by name.** §4.2 and §4.3 each reverse one without saying so.
 - **State each gate against the measured baseline.** Two of the P9.2 gates are met at `019736f`.
+
+---
+
+## 11. Follow-Up: Plan 9 v2.0
+
+> **Status:** Review of `plan9.md` v2.0 (the revision that incorporates this audit), 17 November 2026, against the kernel at `fafffd9`.
+> That commit includes `a822990`, exact closure evaluation (`plan-exec.md`). Source lines in this section are at `fafffd9`; the sections above stay at `019736f`.
+> "Plan §" in this section means a section of v2.0.
+
+### 11.1 Verdict
+
+v2.0 fixes the large majority of what this audit found, and its phase structure is sound. What remains is short:
+
+- four items that would break something as written (§11.3),
+- two that cannot be reached as specified (§11.4),
+- a re-base onto the closure commit (§11.5),
+- some smaller misreadings (§11.6).
+
+Three of the remaining items trace back to statements in this audit that were too loose or mislabelled. They are corrected in §11.7.
+
+### 11.2 What v2.0 Fixes
+
+| Audit section | What v2.0 does |
+| :-------- | :-------------- |
+| §4.1 yield gate | Dropped. `stage-a-budget` is kept as it is (Guardrail 1). |
+| §4.2 deferred fallbacks | Dropped. Fallbacks stay active siblings (Guardrail 2). |
+| §4.3 complete fibers | Fallback-free narrowing only on current evidence; list-valued witnesses and inequality propagation dropped. |
+| §4.4 `+` as a chart | Host subtraction kept (Guardrail 3); packets go in a parallel `heuristic-packets` field. |
+| §4.5 branch closing | Follower-safe bound, soft parking in place of closing, structural nodes exempt, stopping keyed on job state. |
+| §4.6 retirements | Build and measure first; retire in a separate gated step, P9.3b (Guardrail 4). |
+| §4.7 consolidation | Hooks, retype and lift inside one bounded loop; hybrid relations left alone unless patched over all rows; template default stays nil. |
+| §5 latent bugs | Replaced by the defects of §9. The UIP bindings and `relations.lisp:156` are recorded as intentional. |
+| §6 gates | P9.1 is zero-drift against the measured probes; the metric tests are set to `16000`. |
+| §7 names | `start-recursive-synthesis`, `set-requirement`, the real VM API and `templates.lisp` are now cited. |
+| §8.4 law-to-solver | Distinct context variables, the free-variable condition, `:derived` attestation and a correct uniqueness rule. |
+| §8.7 totality | The off-by-one, per-slot deltas, the halving bound, ascent, and beta-inlining for `:fix-seq`. |
+| §10 structure | Six increments, each with its own gate. |
+
+Three things were checked again on `fafffd9` (ran):
+
+- The work figures of plan §1.1 reproduce exactly: `34,067`; `112,979`; `264,353`; `3,334` per `metric-delta`; `12,377` for Stage A; `100,050` end to end.
+- The flag reset in the totality fixpoint passes all 185 tests and leaves the ledger fingerprint byte-identical.
+- Both metric tests pass at `:heuristic-budget 16000`.
+
+### 11.3 Would Break Something as Written
+
+**1. The undefined-callee fix (plan §1.2.1, P9.1 item 1).**
+
+- The plan says `(null def)` "must require `def` to be present and proven total". That branch is the `otherwise` clause of `operator-step-total-p` (`ast.lisp:722-730`), and it is also what makes every primitive total, apart from the few listed as partial.
+- Requiring `def` fails the suite at its seventh test, `constant-folding-and-conflict-detection` (ran).
+- Accepting `(null def)` only for primitives passes all 185 tests (ran):
+
+  ```lisp
+  (if (null def)
+      (not (null (member op-name +operator-names+)))
+      (or (function-definition-total-p def) ...))
+  ```
+
+- With that and the flag reset together, both defects are closed (ran): after the mutual redefinition `f` and `g` are both non-total, and a call to a registered but undefined name is non-total. The ledger fingerprint over the 222 tests is byte-identical, so P9.1 item 1 is zero-drift when done this way.
+- The same branch also covers a self-call while a body is still being built, before its definition exists. Under the fix such a call is non-total until the function is defined; the fixpoint then recomputes it.
+
+**2. The all-rows chart rule (plan §2.2.1, item 2).**
+
+- The plan proposes an unconditional chart "only when every constrained row" is a hit or has a replay-valid `metric-delta`.
+- That breaks `metric-decoder-pulls-a-residual-back-to-its-delta` at `(= 1 (length proposals))` (ran). The shift solver misses the row `((5 8 2 6) 3)` with target `(6 0 0 0)`, whose requirement is still satisfiable; the test says so ("which only 3 meets").
+- A heuristic solver that misses a row has not shown the row unsatisfiable. Only a solver with current evidence can.
+- Apply the all-rows rule to decoders whose solver has current evidence, and keep today's "describes some row" rule for conjectured ones.
+- The rule also assumes a right identity for hit rows. Check it by running the solver on them.
+
+**3. The Levin formula (plan §4.3.3).**
+
+- The formula is $N + \lceil \log_2(1 + W) \rceil$, with the failed-proposal count $N$ outside the log. That charges a whole bit per failed proposal. Today a failed proposal adds one work unit, which is 1/1024 of a bit.
+
+  | Failed lifts (count $\times$ work) | Linear today | v2.0 formula | Count inside the log |
+  | :------ | :-- | :-- | :-- |
+  | 1 $\times$ 10,000 | 10 | 15 | 14 |
+  | 100 $\times$ 100 | 10 | 114 | 14 |
+  | 1 $\times$ 1,000,000 | 977 | 21 | 20 |
+  | 3 $\times$ 0 | 1 | 3 | 2 |
+
+- A hundred cheap failures cost 114 bits. That is the effect the paragraph cites as the reason for the change.
+- Put the count inside: $\lceil \log_2(1 + W + N) \rceil$. It stays nonzero for a lift that fails before any search, and the suite passes with it (§4.7, ran at `019736f`).
+
+**4. `:derived` transfer laws (plan §2.2.1, item 5).**
+
+- A motif is an empirically found relation: "what is found to hold of the fold for them is conjectured of every instance" (`consolidate.lisp:655-657`). Its premises may be certified; the step from them to the transferred law is not.
+- `:derived` counts as current evidence (`evidence.lisp:56`), and current evidence licenses elimination. Attesting a motif's law `:derived` promotes sampled evidence to that grade.
+- It is sound only for an inference the host itself proves, such as the fold theorem with associativity and a two-sided identity, matched exactly.
+- "Domain isomorphism" does not apply between prime fields. Retyped laws are re-validated in the new domain today, which is the right behaviour.
+
+### 11.4 Unreachable as Specified
+
+**1. Guard search (plan §3.1, step 3).**
+
+- The example guard `(if (= X0 0) nil (= (* (/ Y X0) X0) Y))` has body size 57. The stated bound is header + 56.
+- At 57, exact search does not find it within `60,000,000` work (ran). The frame was the 49 contexts with `X0` and `Y` from $-3$ to $3$; the grammar was `=`, `<`, `/`, `*`, `if` and the literal 0.
+- `induce-conditional-solvers` has a work limit of `40,000` in all.
+- Guards of this size need the heuristic route (Stage A, then a conditional split), not `start-search`.
+
+**2. Contrastive separators (plan §2.2.3).**
+
+- The bound is header + 72 with `20,000` work. Written with `:if`, the sorted-adjacent separator is 75 bits and the endpoint one 84.
+- By the measurement above, exact search at `20,000` work does not come near 72 bits.
+- For higher-order combinators a separator over (X, Y) has to hold for every step function, so it usually does not exist: nothing over (X, Y) alone tells `map` from `map-twice`.
+- The P9.4 gate needs a named pair for which a separator exists and is not already a shape descriptor.
+
+### 11.5 Re-Basing on the Closure Commit
+
+- **Baseline.** The kernel is `15,257` lines and has 185 tests / `928,458` checks. Milestones are unchanged at 40 / `186,771`. The P9.1 and P9.3b gates still say 182.
+- **Prepared-execution cache (plan §2.2.1, first bullet).** It is largely superseded.
+  - `expression-closure` (`vm.lisp:428`) already keeps a cache keyed on the function-library version (`*closures*`, `*closures-version*`). The one uncovered case is a call of a defined function, which `plan-exec.md` §5 lists as the next step.
+  - Skipping the static check also skips its charge. That changes ledgers, against P9.1's zero-drift title, for 11 units out of `3,334`.
+  - Either drop it, or recast it as closures for defined-function calls, with `experiments/ledger-fingerprint.lisp` as the gate.
+- **Zero-allocation replay in `metric-delta`.** Still worth doing, for a new reason: the closure cache is keyed by node identity, so a fresh AST per replay adds entries on every call until the table is cleared at `*closure-limit*`.
+- **Stale line references.**
+  - `vm.lisp:473-526`: `entry-executable` is now at 393 and `eval-entry-slot` at 574.
+  - The `ast.lisp` ranges are 11 lines later: `operator-step-total-p` at 701, `analyze-function-body-totality` at 810.
+  - `enumerate.lisp:789-796` is 6 lines later.
+  - `resume-synthesis` is at `synthesize.lisp:1215`, not 1148.
+
+### 11.6 Smaller Misreadings
+
+- **Schema-zip gate (plan §1.2.2).** See §11.7, item 1.
+- **Two-combinator pipeline lift (plan §2.1.2).** `filter-map-decompositions` is already generic. It picks its mapper and selector from the library by signature (`proposals.lisp:239-256`), is gated on contracting frames, finds the predicate by alignment, and lifts the mapper. The proposal restates it. Its stated gate, `probe-frame-coordinates`, cannot align through an unknown predicate: the first output element does not fold to a ground call. Retiring one for the other saves nothing unless the new lift does something the old one cannot, such as leaving both code children unknown.
+- **`candidate-library-definitions` (plan §5.1.B).** The call the plan says to add already happens (`proposals.lisp:62`). The gap is that line 47 strips the sequence from the target, so a sequence-typed state is never tried.
+- **Fold rule for Probe 6 (plan §5.4.2).** `fold-at-tuple` already folds `(at (tuple ...) 'i)` (`requirements.lisp:275`). What blocks the tuple product is `rows-pin-values-p` (`proposals.lisp:565`, used at `:718`), which needs every constrained row to pin one whole value.
+- **`:code-edit` pullback (plan §2.2.1, item 6).** The joint anti-unifier of the targets is what `constructor-au-decompositions` already proposes, so the P9.2 gate may be met today. `:code-subst` fills holes in a template and cannot edit a computed prediction; that needs `:code-child` and `:code-apply`.
+- **Operators.** `mod` and `when` appear again in the moment solvers. `:functional` is not a term in `relations.lisp`; the predicate to gate on is `member-table-p` (`relations.lisp:11`).
+- **Row order (plan §2.2.2).** With frames and the library left alone during search, nothing in search consumes an induced key. Recording keys there spends work for no effect in the job. Induce at consolidation, from the job's root frame.
+- **Hybrid relation patch (plan §4.3.2).** The rows the base got right are not stored, and `probe-values-for-type` gives `(0 1)` for `:int`. Store the hit keys at commit so the guard has real negatives.
+- **Budget `16000` (plan §2.2.1, item 4).** It was measured for the forward-only solver. A bidirectional solver does about twice the correlation work per `metric-delta`. Set the number after that change.
+- **Soft parking (plan §4.1.2).** "Normalized residual bits" is not defined, and a 16-bit penalty moves scheduling. Given §4.1's sensitivity, measure it on the suite.
+- **Trajectory join (plan §5.4.3).** The latent slot is constant on the $t = 0$ rows, so those rows cannot tell apart observed-slot candidates that differ only in how they read it. Keep that pool wide.
+
+### 11.7 Corrections to This Audit
+
+1. **§5, item 1b: the schema-zip gate.** The audit suggested gating on `function-body-length-preserving-p`, and v2.0 adopted it. The suggestion was made without reading the function and is too loose.
+   - It is at `descriptors.lisp:73`. The plan's `abstraction.lisp:247` is also wrong.
+   - It tests the shape `:preserving`: one `cons` per `tail` step (`descriptors.lisp:28-71`). It does not constrain what the emitted element reads. `(cons (code-eval f (length xs)) (self (tail xs) f))` passes it, and the zip is unsound for it.
+   - A sound gate needs two more conditions: the emitted head applies the code to `(at X 0)` and to nothing else that varies, and the decoder's sequence argument is the row's bare input.
+2. **§9, item 6: lift templates.** The audit listed this as a defect, and v2.0 repeats that (plan §1.2.5). The docstring of `generalize-decoder-templates` scopes it to "templates of pulled-back children" (`proposals.lisp:1175-1182`). It is a missing capability.
+3. **§9, item 2: the `(null def)` branch.** The finding stands, but the audit did not say that the branch also serves primitives. §11.3 supplies the fix.
+
+### 11.8 Experiments for This Section
+
+All on `fafffd9`. Each edit was made in a scratch copy and followed by `sbcl --script tests/run.lisp kernel`; "fingerprint" is `experiments/ledger-fingerprint.lisp` compared with the unedited kernel.
+
+- Flag reset in `recompute-registered-functions-totality` (`knowledge.lisp:492`): 185 pass; fingerprint identical.
+- The reset plus the primitive-aware `(null def)`: 185 pass; fingerprint identical; both defects closed.
+- `(null def)` replaced by requiring `def`:
+  - `constant-folding-and-conflict-detection` fails
+- `decompose.lisp:46-48`, `some` changed to `every` with a hit row counting as covered:
+  - `metric-decoder-pulls-a-residual-back-to-its-delta` fails
+- `tests/metrics.lisp:214` and `:442`, `60000` changed to `16000`: 185 pass.
+- Guard search as described in §11.4: no result at slack 56 or 57 within `3,000,000` work, and none at 57 within `60,000,000`.
+- The probes of `plan8.md` Appendix A and the measurements of Appendix B: unchanged.
 
 ---
 

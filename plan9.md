@@ -1,341 +1,295 @@
 # `lisploop` — Plan 9: Closing Heuristic Induction, Homoiconic Conditional Propagators, and Geometric-Topological Unification
 
-> **Status:** Architectural audit and implementation specification (v1.0 — post-Plan-8 audit & refactor), 17 November 2026.
-> Audited against the authoritative Common Lisp kernel on branch `charlie` at commit `019736f` (25 pure-kernel modules in `load.lisp`, `15,157` LOC + 6 milestone modules in `milestones/load.lisp`, `1,585` LOC; `182` kernel tests / `418,400` checks and `40` milestone tests / `186,771` checks passing), cross-referencing `plan8.md` (§5, §6.5–§6.7, Appendices A–C), `prompt4.md`, `architecture2.md`, `plan7/plan7.md`, `plan7/plan7-recursion.md`, `plan7/plan7-higher-order.md`, `plan7/plan7-library.md`, `plan7/plan7-m9-policy.md`, and `tests/README.md`.
+> **Status:** Architectural audit and implementation specification (v2.0 — revised incorporating empirical findings from `plan9-audit.md`), 17 November 2026.
+> Grounded in the Common Lisp kernel on branch `charlie` at commit `019736f` (25 pure-kernel modules in `load.lisp`, `15,157` LOC + 6 milestone modules in `milestones/load.lisp`, `1,585` LOC; `182` kernel tests / `418,400` checks and `40` milestone tests / `186,771` checks passing), cross-referencing `plan9-audit.md`, `plan8.md` (§5, §6.4–§6.7, Appendices A–C), `prompt4.md`, `architecture2.md`, `plan7/plan7.md`, `plan7/plan7-recursion.md`, `plan7/plan7-higher-order.md`, `plan7/plan7-library.md`, `plan7/plan7-m9-policy.md`, and `tests/README.md`.
 
 ---
 
-## 1. Ground-Truth Baseline & Architectural Diagnosis (`019736f`)
+## 1. Verified Baseline, Existing Defects, & Empirical Audit Calibration (`019736f`)
 
-### 1.1 What the Plan 8 Audit (`1bfb69d`) Settled vs. Remaining `main` Gaps
+### 1.1 Settled Plan 8 Baseline & Measured Probe Figures
 
-Commit `1bfb69d` delivered and audited several foundational mechanisms from `plan8.md`:
+Commit `1bfb69d` delivered and audited the core Plan 8 mechanisms:
 
-- **Metric pullback & subterm sharing:** `pulled-back-metric` and `metric-invariant-under-decoder-p` (`frame.lisp:448-526`) pull a parent `frame-metric` through invariant or pure-child decoders, and `share-repeated-subterms` (`frame.lisp:708-831`) factors repeated compound subterms behind `:code-eval`, solving Probe 5 (`tests/structural.lisp:210-234`) at default `:heuristic-budget 2000` in `264,353` work (`253` bits).
-- **Coupled product joins & tuple set factoring:** Bounded coupled-slot pooling (`product-join-coupled`, `*max-coupled-slot-candidates* = 4`, `*max-coupled-combinations* = 256` in `synthesize.lisp:585-680`) and Cartesian tuple membership folding (`fold-member-tuple` in `requirements.lisp:308-322`) decompose multi-slot products without dropping cross-slot invariants.
-- **Evidence grades & template generalization:** `:sampled` vs. `:exhaustive` attestation (`evidence.lisp:51-72`), evidence-gated `:unique-p` (`propagator-tested-p` in `laws.lisp:604-610, 787-793`), sampled integer solver replay (`lift-field-solvers` in `consolidate.lisp:513-652`), and `:decoder-template` anti-unification (`generalize-decoder-templates` in `proposals.lisp:1175-1236`) are operational.
-- **Initial homoiconic repairs:** `simplify-symbolic-expr` (`laws.lisp:727-744`) normalizes via `fold-constants` plus library rewrite laws, `projection-row-keys` (`proposals.lisp:821-835`) enumerates compound input accessors in the VM, and `probe-values-for-type` centralizes probe values.
+- **Metric pullback & subterm sharing:** `pulled-back-metric` and `metric-invariant-under-decoder-p` (`frame.lisp:448-526`) pull a parent `frame-metric` through invariant or pure-child decoders, and `share-repeated-subterms` (`frame.lisp:708-831`) shares repeated compound subterms via `:code-eval`.
+- **Coupled product joins & tuple set factoring:** Bounded coupled-slot pooling (`product-join-coupled`, `*max-coupled-slot-candidates* = 4`, `*max-coupled-combinations* = 256` in `synthesize.lisp:585-680`) and `fold-member-tuple` (`requirements.lisp:308-322`) split Cartesian tuple sets while screening cross-slot conjuncts.
+- **Evidence grades & template generalization:** `:sampled` vs. `:exhaustive` attestation (`evidence.lisp:51-72`), evidence-gated `:unique-p` (`propagator-tested-p` in `laws.lisp:604-610, 787-793`), sampled integer solver replay (`lift-field-solvers` in `consolidate.lisp:513-652`), and non-lift `:decoder-template` anti-unification (`generalize-decoder-templates` in `proposals.lisp:1175-1236`) are live.
+- **Homoiconic cleanups:** `simplify-symbolic-expr` (`laws.lisp:727-744`) normalizes via `fold-constants` plus library rewrite laws, `projection-row-keys` (`proposals.lisp:821-835`) enumerates compound input accessors in the VM, and `probe-values-for-type` (`descriptors.lisp:254-259`) centralizes scalar probe constants.
 
-At the same time, `plan8.md:323` records five capabilities still absent relative to `main` (`67c015c`, `11,906` LOC vs. `charlie`'s `15,157` LOC):
+**Measured Pure-Kernel Baselines at `019736f` (`plan9-audit.md` §3 & Appendices B–C):**
 
-1. Co-induced `(:*` $\leftrightarrow$ `:/)` multiplicative/affine metric decoder.
+- Irrelevant-input `:scan` (`plan8.md` §1.3 Probe 2 / Appendix A #5): **`34,067`** work at default budget.
+- Symmetric tuple `:scan-tup` (`plan8.md` §1.3 Probe 4 / Appendix A #2): **`112,979`** work at default budget.
+- Asymmetric conditional tuple `:scan-tup` (`plan8.md` §1.3 Probe 5 / Appendix A #3): **`264,353`** work at default budget (`253` bits).
+- Partially observed `:scan-proj0` (`plan8.md` §1.3 Probe 7 / Appendix A #6): lifts with `rows = 3`, `coupled = 2` (unsolved; steps $t \ge 1$ remain coupled).
+- Shifted-sequence metric task (`tests/metrics.lisp:214`, `plan9-audit.md` Appendix B): Stage A requires `12,377` work (`10,662` of which is VM `:heuristic-metric` execution of `:argmax-corr` + replay at `3,334` units per `metric-delta`); solves end-to-end at `:heuristic-budget 16000` in **`100,050`** work (`205,914` at `60000`).
+
+**Capabilities Still Absent Relative to `main` (`plan8.md:323` & `plan8.md` §6.2):**
+
+1. Co-induced `(:*` $\leftrightarrow$ `:/)` multiplicative metric decoder.
 2. Conserved-sum / moment-difference heuristic solvers.
-3. Stage B pullback for `:code-edit` residuals (`code-edit` at `frame.lisp:1520-1561` prices Stage A edits only; no Stage B decoder pulls back `:code` targets).
-4. Bidirectional / rotating `:shift-seq` (current `install-sequence-shift-metric` at `bootstrap-inverters.lisp:296-345` supports forward zero-padded advances only, and sits in the pure kernel despite having zero kernel callers).
-5. Explicit `:metric` keyword plumbing on top-level search and synthesis entry points (`start-synthesis`, `start-heuristic-synthesis`, `synthesize-recursive-function`).
+3. Bidirectional / rotating `:shift-seq` (`install-sequence-shift-metric` at `bootstrap-inverters.lisp:296-345` is forward-only and has zero kernel callers).
+4. Certified transfer laws (`plan8.md:323`).
+5. `:metric` keyword plumbing on top-level synthesis entry points (`start-synthesis`, `start-heuristic-synthesis`, `start-recursive-synthesis`).
+6. Stage B pullback for `:code-edit` residuals (`plan8.md` §6.2; `code-edit` at `frame.lisp:1520-1561` is currently Stage A pricing only).
 
-### 1.2 Five Latent Source Bugs Identified in the Current Kernel
+### 1.2 Confirmed Kernel Defects at `019736f` (`plan9-audit.md` §5 & §9)
 
-Auditing the Lisp source directly at `019736f` exposes five concrete bugs that silently degrade deduction, priority routing, metric condensation, and library consolidation:
+1. **Totality Fixpoint Stale-Flag Soundness Bug (`knowledge.lisp:492-517`) & Undefined-Callee Totality (`ast.lisp:712-713`):**
+   - `recompute-registered-functions-totality` (`knowledge.lisp:492`) iterates starting from existing `function-definition-total-p` and `conditional-code-params` flags instead of resetting non-oracle definitions to `(values nil nil)` first. Defining `g` total, defining `f` as `(g n)`, and redefining `g` as `(f n)` leaves both marked `total-p = T` so `(provably-total-p (f n))` returns `T` on a diverging mutual loop.
+   - In `operator-step-total-p` (`ast.lisp:713`), `(or (null def) ...)` treats a call to a registered-but-undefined function name as total; it must require `def` to be present and proven total.
+2. **Unsound Positional Zip in `check-library-nogood-schemas` (`nogoods.lisp:314-341`):**
+   - `commit-synthesis-job` persists `:nogood-schema` entries for any lifted combinator (`consolidate.lisp:251-254`), and `check-library-nogood-schemas` then assumes call $i$ reads `seq-in[i]` and produces `out[i]`, which can falsely refute valid lifts of permuting decoders. Gating the positional zip on `function-body-length-preserving-p` (`abstraction.lisp:247`) restores soundness with zero extra VM work. *(Note: `nogoods.lisp:244` retaining `first-ng`'s `bindings` on `:uip-clause` is intentional and sound—Case 2 of `check-parent-nogoods` at `L380-392` re-derives `first-ng`'s conflict when sibling bindings agree, whereas clearing `bindings` breaks parent-scope binding equalities in `clause-expr-matches-known-p`.)*
+3. **Member-Table Crash & Un-Memoized Incompressible Fits in `:relation` Consolidation (`relations.lisp:107-163`):**
+   - `table-rows` (`relations.lisp:114`) destructures `(key value)` pairs and crashes on `:member` set relations (which store bare key lists). `first-order-table-p` must require `:functional` mapping tables.
+   - Failed compression searches on incompressible tables are never memoized, re-spending `100,000` work on every subsequent `consolidate-knowledge-library` call. Recording `:fit-attempted-snapshot` against `(knowledge-statement-snapshot entry)` eliminates repeat work.
+   - Note that `relations.lisp:156` (`(null (knowledge-entry-expression entry))`) deliberately skips hybrid `(base + residual)` relations because `condense` replaces the entire table (`relations.lisp:140-150`); fitting missed rows alone would overwrite `base` on rows `base` already got right (`plan9-audit.md` §4.7). Condensing hybrid relations requires synthesizing a guarded patch `(if guard patch base)` over *all* known rows (§4.4).
+4. **Two-Call Consolidation Dependency Cycle (`consolidate.lisp:956-963`):**
+   - Today `:consolidate` hooks run once before `retype-knowledge-laws` and `lift-field-solvers`: lifting `GF(5)`/`GF(7)` solvers to `:int` requires a *second* `consolidate-knowledge-library` call before `:functor` sees the lifted `:int` solvers, whereas moving `retype` and `lift` unconditionally before hooks leaves `:motif`-emitted laws un-retyped until a second call (`plan9-audit.md` §4.7). Putting hooks (`:function` 10, `:relation` 25, `:decoder-template` 40, `:functor` 40, `:motif` 45), `retype-knowledge-laws`, and `lift-field-solvers` inside a bounded convergence loop fixes both in a single call.
+5. **Lift Templates Excluded from Generalization (`proposals.lisp:1191`):**
+   - `generalize-decoder-templates` filters on `(not (getf meta :lift-p))`, skipping every template remembered from a higher-order library-lift win. *(Meanwhile, `:register-templates-p nil` in `commit-synthesis-job` at `consolidate.lisp:214` must remain default until learned-template retrieval is descriptor-gated so `unamortized-library-entries-are-archived` at `tests/theories.lisp:210-211` and warm budgets in `plan7/plan7-m9-policy.md:21` do not regress.)*
+6. **Disconnected M8D Return Target & MDL Overwrite (`consolidate.lisp:5-56`, `synthesize.lisp:458`):**
+   - `synthesis-episode-returns` (`consolidate.lisp:5-18`) is never called by kernel consolidation; `make-search-trace-frame` regresses a synthetic formula `f0 + 2*f1 + work/64 + (solved ? 0 : 10)` and `node-priority` (`synthesize.lisp:458`) *replaces* the analytical full-path MDL price with that raw prediction instead of adding a bounded learned residual around MDL.
 
-1. **UIP Nogood Pattern Bypass & Unsound Positional Schema Matching (`nogoods.lisp:244-251, 314-341, 384-385`):**
-   - `anti-unify-nogood-clauses` constructs `uip` via `(copy-nogood-clause first-ng)` (`L244`) without clearing `nogood-clause-bindings`. In `check-parent-nogoods` (`L384`), `(or (nogood-clause-bindings entry) (clause-expr-matches-known-p ...))` short-circuits to `T` whenever `first-ng` carried concrete bindings, skipping `clause-expr-matches-known-p` on the generalized `:uip-clause` hole pattern.
-   - `check-library-nogood-schemas` (`L314-341`) zips `(first (row-known row))` positionally against `(first allowed)` (`(= (length seq-in) (length (first allowed)))`), assuming index $i$ of input maps to index $i$ of output—unsound on permuting combinators (`reverse`, `sort`) and blind to multi-input lifts.
-2. **Disconnected M8D Return Calculation & Feature/Baseline Mismatch (`consolidate.lisp:5-89` vs. `synthesize.lisp:408-465`):**
-   - `synthesis-episode-returns` (`consolidate.lisp:5-18`) computes realized M8D search returns $G_t = B_t - B_T - \lambda_{\mathrm{search}}(W_T - W_t)$, **but has zero callers anywhere in the codebase**.
-   - Instead, `make-search-trace-frame` (`consolidate.lisp:20-56`) regresses a hardcoded 4-feature host formula `(+ f0 (* 2 f1) (floor search-work 64) (if solved-p 0 10))`, while `priority-predictor-function` (`synthesize.lisp:432-451`) passes 6 features and `node-priority` (`synthesize.lisp:458`) *overwrites* the exact full-path MDL price rather than predicting a bounded residual around it (forcing `tests/theories.lisp:175` to pass `:condense-heuristic-p nil`).
-3. **Repeated VM Re-Typechecking, AST Allocation, & Triple Evaluation in `metric-delta` (`vm.lisp:416-526`, `laws.lisp:1201-1213`, `condense.lisp:218-236`):**
-   - Whenever an entry calls a defined library `:function` (such as `:argmax-corr`), `compile-ast-fn` (`vm.lisp:416`) returns `nil` and `eval-entry-slot` (`vm.lisp:524`) falls back to raw `(evaluate ast inputs args :ledger ledger)`—re-running static `expression-type` validation and re-charging `value-work` on *every* `(candidate, row)` pair instead of caching a pre-validated `validated-program` inside `entry-executable`.
-   - `metric-delta` (`laws.lisp:1209`) then allocates a fresh closed AST `(app operator (lit type predicted) (lit delta-type delta))` (inserting transient conses into `*node-meta*`) and invokes un-prepared `evaluate` even when `:witness` has current checked evidence.
-   - Finally, `condense.lisp:218-236` discards `best-packet` from `select-closest-witness`, forcing `metric-residual-decompositions` (`decompose.lisp:46-52`) and `prepare-synthesis-node` to re-run the solver a 2nd and 3rd time. This accounts for the $30\times$ manual `:heuristic-budget 60000` override in `tests/metrics.lisp:214, 442`.
-4. **Residual `:relation` Consolidation Failures (`relations.lisp:112-180`):**
-   - `table-rows` / `find-compressing-expr` (`L112-126`) passes `:member` set payloads into `singleton-requirement`, crashing whenever a multi-valued relation has $\ge 4$ rows.
-   - Line `156` checks `(null (knowledge-entry-expression entry))`, skipping 100% of synthesis-committed hybrid `:relation` entries because `commit-synthesis-job` (`consolidate.lisp:301`) populates `:parametric (heuristic-program h-model)` into `knowledge-entry-expression`.
-   - Pass 2 (`L177`) checks `(< (* (length remaining) (body-size best inputs)) ...)` because it pastes duplicate AST copies into each relation rather than extracting one shared `:function` and calling it.
-5. **Missing `:code-subst` Lineage Edges & Two-Pass Consolidation Ordering (`abstraction.lisp:515-520`, `consolidate.lisp:214, 946-964`):**
-   - `combinator-call-code-args` (`abstraction.lisp:515-520`) recognizes `(lit (:code ...) ...)` arguments when recording `:refactored-by`/`:abstracts` edges in `define-function`, but misses `(app (:code-subst ...) ...)` closures—breaking downstream theory/functor transfer for parameterized lifts.
-   - `commit-synthesis-job` (`consolidate.lisp:214`) defaults `:register-templates-p nil`, so `consolidate-knowledge-library` (`L947`) never records observed decompositions for `generalize-decoder-templates`.
-   - `consolidate-knowledge-library` (`L956-963`) executes per-kind `:consolidate` hooks *before* `retype-knowledge-laws` and `lift-field-solvers`, requiring two calls to reach fixed-point (`tests/invariants.lisp:424-428`).
+### 1.3 Confirmed Unwired Seams & Empirical Guardrails from `plan9-audit.md`
 
-### 1.3 Unwired Seams & Why the Kernel LOC Gate Was Missed
+Five kernel mechanisms are built and tested in isolation but not yet wired into synthesis or consolidation:
 
-As `plan8.md:287` observed, meeting the kernel simplification target requires retiring duplicated host mechanisms rather than micro-trimming lines:
+1. `induce-row-order` and `with-induced-row-order` (`proposals.lisp:853-964`, called only in `tests/topology.lisp`).
+2. `frame-addressed-entries` (`descriptors.lisp:691-712`) and `find-knowledge-entries-by-address` (`knowledge.lisp:264-270`).
+3. `orient-conserved-quantity` (`laws.lisp:850-911`).
+4. `install-sequence-shift-metric` (`bootstrap-inverters.lisp:296-345`).
+5. Contrastive `:descriptor` synthesis (`consolidate-policy-descriptors` at `consolidate.lisp:329-366` only nudges existing clause weights $\pm 1$).
 
-- **Conditional propagators are split across rigid host builders:** All `346` lines of `bootstrap-inverters.lisp` plus `induce-solvers-from-transformers` (`templates.lisp:247-272`, which ignores source operator identity and drops source guards) hand-construct ASTs for special cases (`(= (f (f X0)) X0)`, unary `:map`, binary `(op elem param)`), while general search-based `(guard, witness)` solver discovery was left outside the kernel in `milestones/algebra-discovery.lisp:259-371`.
-- **Target residuals have parallel Stage B paths:** `make-additive-residual-decoder` (`decompose.lisp:13-25`) hardcodes `+` alongside `metric-residual-decompositions` (`decompose.lisp:45`), while `filter-map-decompositions` (`proposals.lisp:148-298`, `150` LOC) hand-recognizes `(:map (:filter xs pred) mapper)` outside general combinator lifting.
-- **Induced geometry and compositional addressing are built but disconnected from synthesis:**
-  - `induce-row-order` and `with-induced-row-order` (`proposals.lisp:853-964`) have **zero callers** outside `tests/topology.lisp`; `:persistence` edges are ignored in Stage A's `relational-linkage-residual` (`enumerate.lisp:591-602`); and `generated-space-distance` (`milestones/corpus.lisp:455-462`) treats distinct scalar `:int` `:locality-key` values as unrelated partition classes (`2 + rank-dist`) instead of 1D metric coordinates $|k_a - k_b|$.
-  - `frame-addressed-entries` (`descriptors.lisp:691-712`) and `find-knowledge-entries-by-address` (`knowledge.lisp:258-262`) have **zero callers** in `proposals.lisp`; `synthesize-io-descriptor-specs` (`descriptors.lisp:329-518`) is ~190 lines of 1D-sequence host templates; and `consolidate-policy-descriptors` (`consolidate.lisp:329-366`) nudges weights $\pm 1$ without ever synthesizing contrastive separators between colliding entries.
+At the same time, replay experiments in `plan9-audit.md` (§4 & Appendices A–C) establish **four concrete design guardrails** that v2.0 strictly respects:
+
+- **Guardrail 1 (No per-quantum bucket/score Stage A cutoff):** Replaying Stage A in `2,000`-work quanta shows that the winning node on conditional tuple scan has bucket counts `4 5 5 5 8 8 11 13`—stalling across intermediate bit-tiers at `q3`–`q4` before reaching bilinear combinations at `q8`—while dead arity-3 lifts steadily add buckets through `q7`, and metric-heavy tasks yield `0` models in `q1` (`3,334` work per candidate). Keep `stage-a-budget` (`synthesize.lisp:363-380`, including the recursive-child $2\times$ and lifted-only `(max 1 (1- arity))^2` multipliers from `plan8.md` §6.4.7) intact.
+- **Guardrail 2 (Keep narrowing fallbacks on the active reserve, not `deferred-proposals`):** Pushing `add-fallback-sibling` (`synthesize.lisp:736-746`) onto `synthesis-node-deferred-proposals` reverses `plan8.md` §6.7, places narrowing rescues behind up to 256 partial/template fallbacks, and breaks `an-ambiguous-narrowing-is-rescued-by-its-fallback`. Keep narrowing fallbacks as active siblings reached by the 1-in-$4|A|$ rotated reserve (`synthesize.lisp:934-937`).
+- **Guardrail 3 (Keep host `+` subtraction fast-pathed):** Serving integer `+` through VM `metric-delta` would charge VM solver + replay steps on every missed row of every integer task and violate `(null (metric-decoders :int))` on a clean library (`tests/metrics.lisp:168`). Keep `correction`'s host subtraction (`frame.lisp:1494`) and `make-additive-residual-decoder` (`decompose.lisp:13-25`, tested in `tests/refactor.lisp:545`) as the zero-VM-work baseline, using `:metric-decoder` strictly for library-installed non-additive charts.
+- **Guardrail 4 (Build & benchmark learned replacements *before* retiring host builders):** Today, removing `filter-map-decompositions` breaks H2 filter-map (`proposals.lisp:389`), and anti-unifying unary witnesses alone yields `(map Y ?code)` rather than the `:code-match`/`:code-bind`/`:code-subst` meta-program in `build-functorial-map-inverter`. Build and measure the homoiconic replacements alongside existing code first, and execute retirements in a separate gated step (`P9.3b`).
 
 ---
 
 ## 2. Unifying Around the Two Mathematical Motifs
 
-Almost every operation in `lisploop` is an instance of one of two mathematical structures. Making those two structures explicit in code allows us to delete bespoke host recognizers while broadening generality.
-
 ### 2.1 Motif I: Topological Projection, Pullback/Lift, and Fiber Calculus
 
-Every structural transformation in synthesis acts on the **input-requirement bundle** $\mathcal{E} \to \Omega$ whose base points $\omega \in \Omega$ carry known inputs $x_\omega \in \mathcal{X}$ and target requirement fibers $A_\omega(Y) \subseteq \mathcal{Y}$:
+Every structural step in `lisploop` acts on the **input-requirement bundle** $\mathcal{E} \to \Omega$:
 
-1. **Projection ($\pi: \Omega \to \mathcal{V}$):** Quotienting or forgetting coordinates—`project-frame-rows` (`frame.lisp:620-645`), `orient-available` (`frame.lisp:1664-1698`), and Stage A behavioral equivalence bucketing (`observation-bucket` in `enumerate.lisp:545-580`).
-2. **Pullback & 1-to-Many Lift ($d^*: A_\omega(Y) \mapsto B_{\omega,c}(Z)$):** Pulling parent requirements back along an outer decoder $Y = d(X, Z)$ (`pullback-frame`, `product-slot-frame`, `lift-frame` in `frame.lisp:886-1242`). When $d$ invokes higher-order code $Z$ at call sites $c \in \{0, \dots, m_\omega - 1\}$ on row $\omega$, `probe-frame-coordinates` (`frame.lisp:1028-1104`) materializes the **evaluation cover** $\widetilde{\Omega} = \{(\omega, c)\}$ purely by metered VM probe execution.
-3. **Fiber Narrowing (Conditional Propagators):** Intersecting pulled-back fibers $B_{\omega,c}(Z)$ with guarded inverse preimages $G(K, c) \Rightarrow Z \in W(K, c)$ (`propagate-requirements` in `laws.lisp:680-723`, `solve-equality-symbolically` in `laws.lisp:746-806`).
-4. **Fiber Separation / Sectioning:** Whenever a projection or lift aliases two points $(\omega_1, c_1), (\omega_2, c_2)$ onto identical child inputs $\pi(\omega_1, c_1) = \pi(\omega_2, c_2)$ with incompatible target fibers $B_{\omega_1,c_1} \wedge B_{\omega_2,c_2} = \bot$, synthesis either records a deductive nogood or adjoins a **section coordinate** $\kappa(X)$ with $\kappa(\omega_1, c_1) \neq \kappa(\omega_2, c_2)$ to separate the colliding fibers.
+1. **Projection ($\pi: \Omega \to \mathcal{V}$):** Quotienting coordinates (`project-frame-rows` at `frame.lisp:1287`, `orient-available` at `frame.lisp:1302`) or partitioning rows into behavioral equivalence classes (`observation-bucket` at `enumerate.lisp:594`).
+2. **Pullback & 1-to-Many Lift ($d^*: A_\omega(Y) \mapsto B_{\omega,c}(Z)$):** Pulling parent requirements through $Y = d(X, Z)$ (`pullback-frame`, `product-slot-frame`, `lift-frame` in `frame.lisp:528-1208`). Note that `lift-frame` constructs the full call-site cover by requirement folding, whereas `probe-frame-coordinates` (`frame.lisp:1045-1105`) folds only targeted output coordinates (default `(0)` and `(1)`) for lightweight partial-lift checks.
+3. **Fiber Narrowing (Conditional Propagators):** Intersecting pulled-back requirements $B_{\omega,c}(Z)$ with guarded inverse preimages (`propagate-requirements` in `laws.lisp:680-723`, `solve-equality-symbolically` in `laws.lisp:746-806`).
+4. **Fiber Separation / Sectioning:** When $\pi(\omega_1) = \pi(\omega_2)$ (or lifted call sites) collide on child inputs with incompatible requirements $B_1 \wedge B_2 = \bot$, either recording a deductive `nogood-clause` (`nogoods.lisp`) or adjoining a separating context coordinate $\kappa(X)$ (`dip-repaired-decompositions` at `nogoods.lisp:505-545`, `dependency-expander` at `proposals.lisp:474-529`).
 
-#### Architectural Simplifications from Motif I
+#### Concrete Motif-I Improvements
 
-- **Unifying the Three Fiber-Separation Paths (`proposals.lisp:661-720`, `nogoods.lisp:282-346, 406-512`, `synthesize.lisp:476-484`):**
-  Currently, first-order `dependency-expander`, higher-order `propose-dip-context-bindings` (DIP), and `check-library-nogood-schemas` duplicate collision detection and separator enumeration:
-  - Replace index-aligned sequence zipping in `check-library-nogood-schemas` (`nogoods.lisp:314-341`) with `probe-frame-coordinates`, making persisted `:nogood-schema` checks sound on permuting/filtering/multi-input combinators and fixing the `anti-unify-nogood-clauses` `bindings` copy bug (`nogoods.lisp:244` $\to$ `(setf (nogood-clause-bindings uip) nil)`).
-  - Unify separator candidate generation across `dependency-expander` and DIP around **(a)** library `:dip-feature` entries, **(b)** Stage A's already-evaluated `heuristic-buckets` on the parent frame, and **(c)** bounded enumerator features when Stage A buckets do not separate the conflict.
-  - Drop the `(decomposition-lift-p proposal)` gate in `node-dip-repairs` (`synthesize.lisp:479`) so first-order projections `(:dependency f(X))` that hit `:incompatible-rows` conflicts are repaired by DIP (`(f(X), \kappa(X))`) identically to higher-order combinator lifts.
-- **Retiring `filter-map-decompositions` (`proposals.lisp:148-298`, `-150` LOC):**
-  `filter-map-decompositions` is a procedural hostcomprehension recognizer for `(:map (:filter xs pred) mapper)`. With partial/reentrant lifts properly scheduled (§4.3) and `:decoder-template` anti-unification wired (`:register-templates-p t`), `(:map (:filter xs pred) mapper)` arises as an ordinary two-step lift—first `:map` or `:filter` via partial/nested combinator proposals—and consolidates into a first-class `:decoder-template` entry in `*knowledge-library*`.
+1. **Complete DIP Repair on Pure First-Order Projections (`synthesize.lisp:479`, `nogoods.lisp:181`):**
+   `dip-repaired-decompositions` (`nogoods.lisp:514-515`) already accepts `(pure-projection-decomposition-p proposal)`, but `node-dip-repairs` (`synthesize.lisp:479`) and `collect-frame-nogood-clauses` (`nogoods.lisp:181`) both gate on `(decomposition-lift-p proposal)`. Admitting `pure-projection-decomposition-p` at **both** sites ensures all colliding input buckets on a failed projection `(:dependency f(X))` are collected at once so `propose-dip-context-bindings` synthesizes a single separator $\kappa(X)$ resolving all collisions simultaneously (essential since `:dip-repair` nodes are not repaired a second time, `nogoods.lisp:512-513`). Where the parent node already condensed non-empty Stage A `heuristic-buckets`, test those buckets as zero-cost candidate separators before enumerating fresh grammar terms.
+2. **General Comprehension / Subsequence Lifting (Prerequisite to Retiring `filter-map-decompositions`):**
+   `library-decompositions` (`proposals.lisp:300-395`) currently lifts a combinator `(C X_seq Z_code)` only when `X_seq` is a parent variable/FO-expression, missing `[f(x) for x in xs if p(x)]` unless `filter-map-decompositions` (`proposals.lisp:219-298`) runs. To express list comprehensions through general lifting:
+   - Extend `generalize-decoder-templates` (`proposals.lisp:1175-1236`) to support `:lift-p t` outer/inner combinator compositions once observed, **and**
+   - Add a general **two-combinator pipeline lift** for contracting sequence frames (`|Y| <= |X|` with `|Y| < |X|` on some row): when the library contains a length-preserving mapper $M$ (`function-body-length-preserving-p`) and a contracting selector $F$ (`:DESC/LEN-LE` + `:DESC/SUBSET-ELEMENTS`), propose the nested product/sequential composition $M(F(X, Z_{\mathrm{pred}}), Z_{\mathrm{map}})$ gated by monotone subsequence alignment on `probe-frame-coordinates` (`(0)` and `(1)`). Once verified to solve H2 filter-map (`tests/higher-order.lisp:193`) within existing budgets, `filter-map-decompositions` can be retired in `P9.3b`.
 
 ---
 
 ### 2.2 Motif II: Observed & Generated Geometries, Co-Induced Metrics, and Embeddings
 
-Heuristic induction, heuristic-guided search, and heuristic-based language creation all instantiate **metric-chart and embedding induction** across three coupled discrete spaces:
-
-| Space | Points | Observed Geometry | Generated / Library Geometry | Plan 9 Unification |
+| Space | Points | Observed Geometry | Generated / Library Geometry | Plan 9 Refinements |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Target Space $(\mathcal{Y}, d_{\mathcal{L}})$** | Output values / ASTs $y \in \tau$ | Replacement bits `value-bit-size` & structural `:tuple-delta` / `:seq-delta` | Co-induced charts $(d, q)$ via `:metric-decoder` + pulled-back `frame-metric` | Single cached chart protocol covering `(+, -)`, `(*, /)`, rotating `:shift-seq`, `:code-subst` AU edits, and bipartite set matching |
-| **2. Row / Corpus Space $(\Omega, d_{\Omega})$** | Frame rows $\omega \in \Omega$ or AST occurrences $o \in \mathcal{C}$ | Target variation $\sum_{(u,v)} d_{\mathcal{L}}(y_u, y_v)$ along `:persistence` chains | Coordinate embedding $k: \mathcal{X} \to \mathbb{Z}^d$ stored as `:locality-key` | $\mathbb{Z}^d$ tuple & scalar $L_1$ distance; live `with-induced-row-order` from Stage A buckets; soft `:persistence` residual pricing |
-| **3. Concept / Library Space $(\mathcal{F}, d_{\mathcal{F}})$** | Library `:function`s, `:decoder-template`s, `:solver`s | Behavioral I/O traces on probes & job confusion outcomes | Symbolic coordinate map $\phi: \mathcal{F} \to \{0,1,*\}^K$ of `:descriptor` concepts in `compositional-index` | Homoiconic `:descriptor` seeds, contrastive separator synthesis across confusion classes, & progressive Tier $1 \to 2 \to 3$ variable-compute address decoding |
+| **1. Target Space $(\mathcal{Y}, d_{\mathcal{L}})$** | Values / ASTs $y \in \tau$ | Host `+` delta & structural `:tuple-delta` / `:seq-delta` / `code-edit` | Library `(:metric-decoder d q tag-bits)` + pulled-back `frame-metric` | Parallel `heuristic-packets` cache, `(vm-versions)` prepared execution, `:metric` kwarg, safe `(*, /)`, moment solvers, unified `:code-edit` pullback |
+| **2. Row / Corpus Space $(\Omega, d_\Omega)$** | Rows $\omega \in \Omega$ or AST occurrences | Chain variation $\sum_{(u,v)} d_{\mathcal{L}}(y_u, y_v)$ vs. independent & star baselines | `:locality-key` embeddings $k: \mathcal{X} \to \mathbb{Z}^d$ | Lexicographic $\mathbb{Z}^d$ tuple keys; `:int`-filtered bucket union; consolidation-time registration; `:partition` vs. `:coordinate` corpus distance |
+| **3. Concept / Library Space $(\mathcal{F}, d_{\mathcal{F}})$** | Active `:function`s & `:decoder-template`s | Probe I/O traces & job lift outcomes | `:descriptor` AST profiles & `compositional-index` | Error-safe descriptor verdicts; mandatory `:necessary` pruning before progressive empirical tiers; memoized contrastive separators for liftable competitors |
 
-#### 1. Unifying Target Charts $(\mathcal{Y}, d_{\mathcal{L}})$
-Every local coordinate chart on $\mathcal{Y}$ is a pair $(d: \tau \times \tau_\delta \to \tau,\; q: \tau \times \tau \rightharpoonup \tau_\delta)$ linked by `(:metric-decoder d q tag-bits)`:
+#### 1. Target Space $(\mathcal{Y}, d_{\mathcal{L}})$: Prepared Execution, Packet Reuse, & Missing Charts
 
-- **Stage A (`priced-correction`):** Evaluates active charts $(d, q)$ on $(\hat{y}, y)$, scoring $\mathrm{tag}(d) + S_{\tau_\delta}(\delta)$ where $\delta = q(\hat{y}, y)$ and $d(\hat{y}, \delta) = y$, and **stores the winning chart packet `(:chart decoder-id delta)` directly in `heuristic-residual`**.
-- **Stage B (`metric-residual-decompositions`):** Reads the winning chart(s) directly from `heuristic-residual` without re-evaluating `program` or `q`, proposing $Y = d(\hat{\pi}(X), Z)$ with $q$ attached as child propagator—and lifting scalar charts componentwise across homogeneous/heterogeneous `:tuple` targets automatically.
-- **Consequences:**
-  1. Retires bespoke `make-additive-residual-decoder` and the `(not (eq :+ ...))` exclusion in `decompose.lisp:13-67`: `(:+` $\leftrightarrow$ `:-)` is simply the built-in default 0-tag chart on `:int` and `(:gf p)`.
-  2. Restores the `(:*` $\leftrightarrow$ `:/)` exact-factor chart (guarded by `(and (not (= pred 0)) (= (mod target pred) 0))`, plus affine remainder composition via standard Stage B depth 2).
-  3. Closes **Stage B pullback for `:code-edit` (`plan8.md` §5.5, `L303`)**: when `code-edit` (`frame.lisp:1520-1561`) anti-unifies predicted `:code` literal $\hat{c}$ against target $c$ into pattern $p(?_0 \dots ?_{k-1})$ with fillings $(\delta_0, \dots, \delta_{k-1})$, Stage B emits the exact `:code-subst` / Constructor-AU product pullback $Y = \text{code-subst}(p, \text{tuple}(Z_0, \dots, Z_{k-1}))$ so child slots synthesize the varying sub-ASTs!
-  4. Threads `:metric` cleanly onto `start-synthesis`, `start-heuristic-synthesis`, and `synthesize-recursive-function`.
+- **Version-Safe Prepared Execution in `entry-executable` (`vm.lisp:73-85, 473-526`):**
+  Cache `(validated-program . vm-versions-snapshot)` slots on `entry-executable` constructed via `start-program-validation` (`vm.lisp:76`) and refreshed whenever `(vm-versions)` (`vm.lisp:73`) changes. When `compile-ast-fn` returns `nil` (as on recursive or `:function`-calling entries like `:argmax-corr`), `eval-entry-slot` runs `start-validated-evaluation` (`vm.lisp:81`), skipping repeated `expression-type` static checks while preserving input `value-work` validation (`tests/amortization.lisp`) and exact VM step metering.
+- **Zero-Allocation `metric-delta` & Parallel `heuristic-packets` Slot (`laws.lisp:1201-1213`, `condense.lisp:218-245`):**
+  - Keep `heuristic-residual` strictly in its `(row-key . witness)` format (preserving `consolidate.lisp:292`, `decompose.lisp:78-84`, and all existing tests), and add a parallel **`heuristic-packets`** alist `((row-key . packet) ...)` on `heuristic-model` populated whenever `(null (frame-metric frame))`.
+  - In `metric-delta`, skip forward replay when `(knowledge-evidence-current-p entry :witness)` holds; otherwise replay through a cached `(vm-versions)`-checked `validated-program` for `(app operator (var 0 type) (var 1 delta-type))` with zero fresh AST allocation. `metric-residual-decompositions` (`decompose.lisp:30-67`) consults `heuristic-packets` directly in Stage B instead of re-evaluating the solver.
+- **Closing the Six `main` / `plan8.md` §6.2 Gaps:**
+  1. **`:metric` keyword:** Accept `:metric` on `start-synthesis`, `start-heuristic-synthesis`, and `start-recursive-synthesis` (`decompose.lisp:559`), attaching it to the root frame via `derive-frame`.
+  2. **Safe `(:*` $\leftrightarrow$ `:/)` metric decoder:** An integer multiplicative solver `(/ target pred)` has guard `(if (= pred 0) nil (= (* (/ target pred) pred) target))`. Because an unconditional Stage B pullback `Y = (* base(X) Z)` conflicts on any row where `base(X)` does not divide `Y` (`(= (* 'p Z) 'y)` is unsatisfiable), `metric-residual-decompositions` proposes an unconditional partial chart $d(\hat{\pi}(X), Z)$ **only when every constrained row** has either $\hat{\pi}(x_\omega) = y_\omega$ (assuming $d$ has a right-identity delta, e.g., `1` for `*`) or a replay-valid `metric-delta`; when a chart covers a proper non-empty subset of missed rows (`>= 2` rows), emit a **conditional chart proposal** `(if G(X) d(base(X), Z_hit) Z_miss)` using Path B2's guard finder!
+  3. **Conserved-sum / moment-difference heuristic solvers (`plan8.md:323`):** Provide library-definable moment estimators for aggregate/sequence targets—specifically first-moment delta `(- (sum-seq target) (sum-seq pred))` paired with decoders such as head-adjustment `(cons (+ (at xs 0) delta) (tail xs))` or uniform-offset `(when (= (mod delta (length xs)) 0) ...)`—as conjectured `:metric-decoder` entries verified by forward replay.
+  4. **Bidirectional / rotating `:shift-seq`:** Relocate `install-sequence-shift-metric` from `bootstrap-inverters.lisp:296-345` to `tests/support.lisp`, extending `:shift-seq` and `:best-shift` (enabled by §5.1 integer descent/ascent totality) to positive and negative shifts $k \in [-|xs|, |xs|]$ (both zero-padded shift and cyclic rotation variants). In `tests/metrics.lisp:214, 442`, tighten the `:heuristic-budget` override from `60000` to the measured `16000` (or test an explicit `:metric-witness-budget` cap separate from `:observation` budget).
+  5. **Certified transfer laws (`plan8.md:323`):** When a `:motif` or domain isomorphism rests on `:exhaustive` or `:derived` premise laws over a finite type (or proved structural induction), attest the transferred law `:derived` (`evidence.lisp:54`) rather than `:sampled` so `as-rewrite-library` and `solve-equality-symbolically` can apply it without fallback.
+  6. **Cross-Row Unified `:code-edit` Stage B Pullback (`plan8.md` §6.2):** Row-by-row `code-edit` (`frame.lisp:1520-1561`) against a non-constant $\hat{\pi}(X)$ can yield different edit paths on each row. Stage B `:code-edit` pullback therefore computes the **joint anti-unifier** of `{target_w}` (or checks that all rows' `(:code-edit paths fillings)` share a non-empty intersection of structural paths in $\hat{\pi}(X_\omega)$), emitting `:code-subst` over the shared hole tuple only when a single typed template covers every constrained row.
 
-#### 2. Wiring Row & Corpus Embeddings ($\Omega \to \mathbb{Z}^d$)
+#### 2. Row & Corpus Embeddings ($\Omega \to \mathbb{Z}^d$)
 
-- **Multi-dimensional `:locality-key` embeddings (`proposals.lisp:771-776`, `milestones/corpus.lisp:447-507`):** Allow `:locality-key` entries to target either `:int` or flat integer tuples `(:tuple :int ...)` ($\mathbb{Z}^d$).
-- **Fixing `generated-space-distance` (`milestones/corpus.lisp:455-462`) & multi-input keys (`L478`):** When a `:locality-key` produces scalar integers $k_a, k_b \in \mathbb{Z}$, measure $L_1$ coordinate distance $|k_a - k_b|$ (matching the tuple branch $\sum_i |k_{a,i} - k_{b,i}|$) rather than treating distinct integers as unrelated partition classes, and evaluate multi-input `:locality-key` expressions when subterm occurrences supply matching arity.
-- **Zero-overhead `with-induced-row-order` in synthesis & soft `:persistence` pricing:** Invoke `with-induced-row-order` at the end of root Stage A condensation, passing `(heuristic-buckets h-model)` so candidate keys $k(X)$ are harvested at zero extra enumeration cost. In `relational-linkage-residual` (`enumerate.lisp:591-602`), keep `:persistence` edges zero-penalty on exact row hits (`plan8.md` §6.4.15) while adding a small variation tie-breaker $\lfloor d_{\mathcal{L}}(\hat{y}_u, \hat{y}_v) / 4 \rfloor$ on *non-exact* Stage A candidates so smooth approximations along the induced chain outrank jagged ones.
+- **Tuple `:locality-key` Support (`proposals.lisp:771-964`):** Allow `:locality-key` entries to target `:int` or flat integer tuples `(:tuple :int ...)`, ordering rows in `induce-row-order` by lexicographic `<` across tuple components (breaking ties via `canonical-row-order`).
+- **Type-Safe Bucket Reuse in `induce-row-order`:** Because `heuristic-buckets` holds target-typed expressions (`enumerate.lisp:789-796`) and passing a non-nil `:buckets` currently suppresses `projection-row-keys` (`proposals.lisp:908`), change `induce-row-order` to **union** any `:int` / `(:tuple :int ...)` buckets passed in `:buckets` with `(projection-row-keys frame ledger)` whenever compound inputs are present.
+- **No Mid-Search Frame Reordering or Library Mutation:** Calling `with-induced-row-order` inside node preparation would reorder `frame-rows` (invalidating positional bucket indices), add a hard `:distinct` endpoint edge, and mutate `*knowledge-library*` mid-search. Instead, keep row-order induction **pure during search** (recording discovered candidate keys on `synthesis-job` metadata without mutating `frame-rows` or `*knowledge-library*`), and register winning `:locality-key` entries strictly inside `consolidate-knowledge-library`. Leave `relational-linkage-residual` (`enumerate.lisp:597`) free of `:persistence` cliff penalties (`plan8.md` §6.4.15).
+- **Explicit `:partition` vs. `:coordinate` Mode in `generated-space-distance` (`milestones/corpus.lisp:455-462`):** Scalar `:locality-key`s in existing corpus tests represent discrete class labels (e.g., parity), where `2 + rank-dist` keeps the locality window focused on `59` same-class pairs (`plan9-audit.md` §8.6). Preserve discrete class distance as default (`:metric-mode :partition`) and apply $L_1$ coordinate distance $|k_a - k_b|$ when a scalar `:locality-key` carries metadata `:metric-mode :coordinate` (matching $\mathbb{Z}^d$ tuple keys). Keep single-occurrence arity validation (`milestones/corpus.lisp:478`) as tested.
 
-#### 3. Contrastive Descriptors & Variable-Compute Compositional Language (`prompt4.md` §9, `plan8.md` Appendix C.3–C.4)
+#### 3. Descriptors, Mandatory `:necessary` Pruning, & Contrastive Synthesis (`descriptors.lisp`, `consolidate.lisp`)
 
-- **Homoiconic seed `:descriptor`s (`descriptors.lisp`):** Express reusable I/O concepts (`len-eq`, `len-le`, `empty->empty`, `preserves-head`, `monotone-int`, tuple-projection preservation) as declarative `:descriptor` specifications in `*knowledge-library*`, retiring ~150 lines of 1D-sequence-only procedural AST builders in `synthesize-io-descriptor-specs` (`descriptors.lisp:329-518`).
-- **Contrastive Separator Synthesis (`synthesize-contrastive-descriptors` in `consolidate.lisp`):**
-  During `consolidate-knowledge-library`, form **confusion classes** of active `:function` and `:decoder-template` entries that either (a) collide on coarse compositional address tokens or (b) competed on a `synthesis-job` (one won while a sibling lifted and failed/conflicted). For each confusion pair $(f_1, f_2)$:
-  1. Generate probe inputs $X$ via `probe-values-for-type`, computing $(X, f_1(X))$ and $(X, f_2(X))$ in the VM.
-  2. Build a binary classification `frame` over `(X, Y) -> :bool` requiring `T` on $(X, f_1(X))$ and `NIL` on $(X, f_2(X))$ whenever $f_1(X) \neq f_2(X)$.
-  3. Run a bounded `start-search` (`work-limit = 15000`, `bound = header + 28`) to synthesize a minimal Boolean separator $D(X, Y)$ (e.g., adjacent order `(<= (at Y 0) (at Y 1))` separating `sort` from `reverse`, or endpoint preservation `(= (at Y 0) (at X (- (length X) 1)))`).
-  4. Validate $D(X, f_1(X))$ on finite/sampled probe domains (attesting `:sampled` or `:exhaustive` `:necessary` evidence as appropriate), register $D$ as a Tier-3 `:descriptor` with `:describes` edge to $f_1$, and re-index `compositional-index`.
-- **Progressive Variable-Compute Address Decoding (`frame-addressed-entries` in `descriptors.lisp:658-713` $\to$ `library-decompositions` in `proposals.lisp:300-395`):**
-
-  Replace the flat `(max-tier 2)` scan with staged variable-compute decoding:
-  1. **Tier 1 ($O(1)$ type, arity, & boundary checks):** Filter `compositional-index` to compatible entries; if $\le k_{\mathrm{unambig}}$ (default `2`) entries survive, return immediately without running VM sequence loops.
-  2. **Tier 2 (behavioral I/O descriptors):** Evaluate Tier-2 descriptors *only* `:describing` the surviving set; prune `:necessary` violations and rank survivors.
-  3. **Tier 3 (contrastive separators & algebraic invariants):** Executed *only* on remaining ties/confusion classes where $\ge 2$ candidates score within `4` policy bits of the leader.
-
----
-
-## 3. Homoiconic Conditional Propagators: Everything Searchable in `*knowledge-library*`
-
-Conditional propagators are the primary bridge between syntax and fiber narrowing. Per architectural principle, **every propagator whose guard and witness can be discovered by search or derived from library laws belongs in `*knowledge-library*`, not in host Lisp**.
-
-### 3.1 Kernel-Native Search for Conditional Solvers (`induce-conditional-solvers` in `laws.lisp`)
-
-Promote and generalize solver discovery into the pure kernel as `induce-conditional-solvers(operator-or-fn &key positions library work-limit ledger)`:
-
-1. **Empirical Fiber Construction:** For an operator or `:function` $f(X_0, \dots, X_{n-1}) \to \tau_Y$ and unknown index set $P \subset \{0, \dots, n-1\}$ (with known indices $K = \{0,\dots,n-1\} \setminus P$), evaluate $f$ on probe assignments from `probe-values-for-type`, grouping tuples by context $c = (X_K, y)$ into empirical fibers $F(c) = \{X_P \mid f(X_K, X_P) = y\}$.
-2. **Witness Synthesis ($W(c)$):**
-   - Build a `frame` mapping known context $c = (X_K, Y)$ to requirement `(member Z F(c))` over all non-empty fibers $F(c) \neq \emptyset$.
-   - Run `start-heuristic-synthesis` / `condense-heuristic` to synthesize a minimal witness expression $W(X_K, Y)$ (supporting conditional witnesses `(if G_branch W_1 W_2)` as well as multi-witness finite-fiber list expressions when $|F(c)| > 1$ is bounded and uniform, e.g., `(cons Y (cons (- 0 Y) ()))` for `abs`).
-   - Note how this automatically solves parameterized sequence functions like `(scale-seq xs p) = ys` at *both* position `0` (`xs = map(ys, / p)`) and position `1` (`p`, synthesizing a witness over non-zero elements instead of `bootstrap-inverters.lisp:78`'s fragile hardcoded `(at xs 0)`!).
-3. **Necessary & Sufficient Guard Synthesis ($G(c)$):**
-   - Partition evaluated probe contexts plus boundary counterfactuals $(X_K, y')$ into **replay-valid** contexts ($f(X_K, W(X_K, y')) = y'$) vs. **invalid** contexts ($F(c) = \emptyset$ or $f(X_K, W(X_K, y')) \neq y'$).
-   - Synthesize minimal Boolean guard $G(X_K, Y) : \text{bool}$ via `start-search` / `find-sound-exception-guard` (discovering `(= (mod Y X0) 0)` and `(not (= X0 0))` for integer scaling, `(<= 0 Y)` for squares/abs, `(= (length X0) (length Y))` for pointwise sequence ops, etc.).
-4. **Verification & Registration:** Certify exhaustively via `certify-solver-entry` on finite types or via `sampled-solver-validations` (`consolidate.lisp:513-558`, extended from `:int`/`:bool` to sequences and tuples via `probe-values-for-type`) on infinite types, registering the resulting `:solver` in `library`.
-
-### 3.2 Law-to-Solver Extraction, Learned `:functor` AU, & Retiring `bootstrap-inverters.lisp`
-
-We retire `bootstrap-inverters.lisp` (`346` LOC removed from `load.lisp` and `Makefile`) and `induce-solvers-from-transformers` (`templates.lisp:247-272`, which dropped source guards and operator checks), replacing them with three concise, domain-general mechanisms in `laws.lisp` and `templates.lisp`:
-
-1. **General Law-to-Solver Extraction (`induce-law-solvers` in `laws.lisp`, ~35 LOC):**
-   For any tested `:law` entry (`usable-motif-law-p` or guarded `:validated`/`:sampled` equation) of shape:
-   $$G(\vec{v}) \implies (\mathrm{op}\; A_0 \dots A_{\mathrm{pos}} \dots A_{m-1}) = v_t$$
-   where $v_t \in \vec{v}$ is a bare variable, each $A_j$ ($j \neq \mathrm{pos}$) is a variable $v_{k_j}$ disjoint from $v_t$ (so $\vec{k} = (v_{k_j})_{j \neq \mathrm{pos}}$ together with target $v_t$ determine all free variables of $A_{\mathrm{pos}}$ and $G$), register a `:solver` for `op` at `pos` with witness $W = A_{\mathrm{pos}}$ and guard $G$, inheriting the law's `:exhaustive` or `:sampled` witness evidence!
-   - Subsumes `induce-involution-solvers` (`(= (f (f X0)) X0)`), mutual inverses `(= (enc (dec Y)) Y)`, group actions `(= (shift-seq (shift-seq XS K) (- 0 K)) XS)`, and right-cancellation laws `(= (+ (- Y K) K) Y)` in one unified rule.
-2. **Learned `:functor` Anti-Unification (`laws.lisp`, ~55 LOC, fulfilling `plan7/plan7-library.md` §3.4):**
-   Keep `:functor` as a first-class `define-knowledge-kind` (`:priority 40`, preserving all 9+ knowledge kinds in `tests/library.lisp` and `tests/invariants.lisp`), but replace the hardcoded Lisp builders of `bootstrap-inverters.lisp:28-249` with **edge-star anti-unification**:
-   - When $\ge 2$ functions $f_1, f_2$ refactored through a higher-order combinator $C$ (`(:refactored-by C)` edges, now recorded for `:code-subst` closures too by fixing `abstraction.lisp:515-520`) possess `:solver` entries whose witnesses call $C$ over inverted step codes (or when $C$'s recursion body is length-preserving elementwise application and element `:solver`s exist), store the generalized `:code-match`/`:code-bind`/`:code-subst` transfer rule as the `:functor` entry's homoiconic AST—carrying elementwise target guards soundly via `all-elements` rather than silently dropping them (`bootstrap-inverters.lisp:70`)!
-   - Expose `induce-functorial-solvers` as a thin wrapper invoking `(induce-law-solvers library)` + `:functor` consolidation + `(induce-conditional-solvers ...)` on newly refactored functions, keeping existing test call sites (`tests/library.lisp`, `tests/higher-order.lisp`, `tests/audit.lisp`) compatible.
-3. **Relocating `install-sequence-shift-metric` to Test Fixtures (`tests/support.lisp` / `tests/metrics.lisp`):**
-   Move `install-sequence-shift-metric` out of `load.lisp` into the test suite, upgraded to support **bidirectional / rotating integer shifts** ($k \in [-L, L]$) once static totality (§5.1) removes the dummy forward `(tail xs)` restriction.
-
-### 3.3 Expressive Conditional Requirement Propagation (`laws.lisp` & `synthesize.lisp`)
-
-1. **Finite-Set Preimages, Multi-Witness Complete Fibers, & Monotone Inequalities (`laws.lisp:582-723`):**
-   - **Set propagation:** Generalize `extract-equality-target` to also match finite set memberships `(member term '(c_1 ... c_m))` ($1 \le m \le 8$). When a rule solves `(= term 'c_i)` for every $c_i$ (or refutes infeasible $c_i$ under a certified-necessary guard), rewrite the conjunct to the union `(member unknown '(w_1 ... w_r))`.
-   - **Multi-witness complete fibers (`:fiber-set-p t`):** Allow a `:solver` returning `(:seq tau)` with metadata `:fiber-set-p t` to return the finite list of *all* inverse witnesses $W(K, c) = (w_1, \dots, w_r)$ for non-injective operators (`abs`, `sq`, truncating `/`, modular square roots). Certifying fiber completeness (`f(K, z) = c <=> member z W(K, c)`) lets `propagate-requirements` rewrite `(= (abs Z) '5)` $\to$ `(member Z '(5 -5))` **without** marking propagation ambiguous or spawning a `:fallback-p` clone!
-   - **Monotone inequality propagation:** When a unary/binary `:solver` carries `:exhaustive` or `:sampled` monotonicity evidence (`:increasing` or `:decreasing`), propagate strict/non-strict bounds `(< (op 'k Z) 'c)` $\to$ `(< Z 'w)` (or flipped for `:decreasing`).
-2. **Row-Assumption-Aware Propagation:**
-   - Feed sibling conjuncts of `(row-requirement row)` into `propagate-requirements` and subsequent `fold-constants`: e.g., `(and (< '0 Z) (= (* Z Z) '9))` narrows via the complete fiber `(member Z '(-3 3))` and immediately folds against `(< '0 Z)` to `(= Z '3)` with zero fallback!
-3. **Indexed Evidence-Ranked Dispatch, Solver-Aware Folding, & Deferred Fallbacks:**
-   - Index `propagator-library` rules by `(operator-name . positions)` and sort each bucket by evidence grade: `(certified + complete) > certified > (sampled + complete) > sampled > conjecture`, eliminating greedy registration-order dependence (`laws.lisp:667-678`).
-   - Pass an optional predicate `:preserve-operator-p` into `frame-conflict-p` / `fold-constants` so calls matching an active `:solver` are narrowed in **one** pass rather than running propagation twice around `callable-rules-library` (`synthesize.lisp:527-542`).
-   - Queue ambiguous/tentative `:fallback-p t` clones onto `synthesis-node-deferred-proposals` (`synthesize.lisp:736-746`) instead of eagerly inserting them into `synthesis-job-nodes`, preventing speculative fallbacks from stealing 25% of reserve turns while the primary narrowed node is still actively improving.
-4. **Intermediate Simplification & Boundary-Guarded Symbolic Orientation (`laws.lisp:746-911`):**
-   - Call `simplify-symbolic-expr` on `expression` before each unwinding step in `solve-equality-symbolically` (so algebraic cancellations expose buried occurrences of `target-id`).
-   - Wire `orient-conserved-quantity` into invariant/relational synthesis, and when symbolic unwinding produces `(values sym-expr guards certified-p)` where `guards` hold on $\ge 1$ row(s) but fail on boundary rows (e.g., division by `X0 = 0`), propose a guarded conditional decomposition `(if guard sym-expr Z_boundary)` so the child frame only has to solve the boundary fiber!
+- **Error-Safe Descriptor Verdicts (`descriptors.lisp:200-252`):** Fix `evaluate-descriptor-entry-on-frame` so rows on which a descriptor's expression errors count against `:satisfied` (yielding `:neutral` unless all concrete pairs evaluate cleanly to `T`), preventing partial/out-of-bounds descriptors from spuriously scoring `:satisfied`. Preserve all 10 existing `:descriptor` concepts (`tests/library.lisp`).
+- **Mandatory Tier-1 `:necessary` Pruning + Progressive Empirical Tiers (`proposals.lisp:345-365`, `descriptors.lisp:658-785`):**
+  Never skip `:necessary` descriptors via an early survivor-count cutoff (on contracting frames, Tier-1 `:necessary` pruning refutes `:map` in `197` work!). Structure candidate scoring in `library-decompositions` in three strict stages:
+  1. **Stage 1 (Exact signature + `:necessary` pruning):** Filter by `:type` compatibility and evaluate all current `:necessary`-attested `:descriptor` entries on the candidate set, hard-pruning any unary-FO `:function` returning `:violated`.
+  2. **Stage 2 (Tier-2 empirical I/O descriptors):** When $\ge 2$ un-pruned entries survive, evaluate Tier-2 empirical `:descriptor`s `:describing` only the surviving IDs.
+  3. **Stage 3 (Tier-3 contrastive separators):** Evaluated only when $\ge 2$ surviving entries remain within `8` policy-delta bits of the top scorer.
+- **Memoized Contrastive Separator Synthesis for Liftable Competitors (`consolidate.lisp`):**
+  - Record attempted liftable entries (`:library`, `:learned-template`) explicitly on `synthesis-job` (distinguishing genuine failed lift searches from scope-reuse followers, fixing `consolidate.lisp:362-366`).
+  - For confusion pairs $(f_1, f_2)$ of **liftable higher-order combinators or `:decoder-template`s** (applied to shared probe step codes over rich unsorted/signed probe sequences `'(() (3) (5 1 -2) (-1 2 5) (4 4 1))`, not `probe-sequences-for-type`'s ascending-only lists), build a binary `(X, Y) -> :bool` frame and run `start-search` + `resume-search` (`bound = header + 72`, `work-limit = 20000`) using valid kernel operators (`:=`, `:<`, `:+`, `:-`, `:if`, `:at`, `:length`, `:cons`, `:tail`).
+  - Record tested pairs `(id1 . id2)` (keyed by statement snapshots) on `knowledge-library` so repeated calls to `consolidate-knowledge-library` never re-run failed separator searches (preserving 1-call fixed-point). Contrastive descriptors attach via `:describes` edges at `:tier 3` without altering the 5-slot compositional address symbol.
 
 ---
 
-## 4. Closing Heuristic Induction, Search Control, & Consolidation Loops
+## 3. Homoiconic Conditional Propagators in `*knowledge-library*`
 
-### 4.1 VM `entry-executable` `validated-program` Cache & Fast `metric-delta`
+### 3.1 Kernel-Native Conditional Solver Discovery (`induce-conditional-solvers` in `laws.lisp`)
 
-1. **Pre-Validated AST Execution (`vm.lisp:473-526`):**
-   Add `expr-program`, `guard-program`, and `aux-program` (`validated-program` structs from `prepare-program` in `vm.lisp:247-272`) to `entry-executable`. When `compile-ast-fn` returns `nil` (e.g., recursive or `:function`-calling entries like `:argmax-corr`), `eval-entry-slot` calls `evaluate-prepared` on the cached `validated-program`, bypassing repeated `expression-type` traversals and input `value-work` tariffs on every call while preserving exact VM step metering.
-2. **Zero-Allocation `metric-delta` & Cached Residual Packets (`laws.lisp:1185-1218`, `condense.lisp:218-236`, `decompose.lisp:30-67`):**
-   - Each tuple in `metric-decoders` carries a pre-prepared 2-variable `validated-program` for `(app operator (var 0 type) (var 1 delta-type))`.
-   - When `(knowledge-evidence-current-p entry :witness)` holds, `metric-delta` skips forward replay altogether; when the solver is sampled/conjectured, it replays via `evaluate-prepared` on `(list predicted delta)` with **zero AST allocation** and zero `*node-meta*` growth.
-   - `condense-heuristic` preserves `best-packet` per missed row inside `heuristic-residual`, so `metric-residual-decompositions` reads which metric decoder won on each row in $O(1)$ without re-running `eval-expr-value` or `metric-delta`.
+Add `induce-conditional-solvers(operator-or-fn &key positions library (work-limit 40000) ledger)` to `laws.lisp`:
 
-### 4.2 Information-Gain / Bucket-Yield Adaptive `stage-a-budget`
+1. **Rich Solver Probe Grid (`solver-probe-values-for-type`):** Unlike `probe-values-for-type` (`descriptors.lisp:254-259`, which returns only `(0 1)` on `:int` and `nil` on sequences/tuples—where `(* X0 Z) = Y` degenerates to witness `Y` and guard `t`), `solver-probe-values-for-type` supplies `(-3 -2 -1 0 1 2 3)` on `:int`, full elements up to $|D| \le 13$ on `(:gf p)`, small cartesian tuples, and diverse sequences `'(() (0) (2) (-2 3) (0 4 -2) (1 2 3))`.
+2. **Fiber Frame & Witness Synthesis:** Evaluate forward calls $f(X) = y$ across bounded probe grids, grouping by known context $c = (X_K, y)$ into empirical fibers $F(c) = \{X_P \mid f(X_K, X_P) = y\}$. Construct a child `frame` with `set-requirement` (`frame.lisp:152`) over non-empty fibers $F(c)$ and synthesize a typed witness $W(X_K, Y) : \tau_P$ via `start-heuristic-synthesis` + `resume-synthesis`.
+3. **Replay-Exact Guard Synthesis:** Partition probe contexts plus counterfactual targets $(X_K, y')$ into contexts where $f(X_K, W(X_K, y')) = y'$ holds vs. fails/errors, and run `start-search` + `resume-search` (`bound = header + 56`) for a Boolean guard $G(X_K, Y)$ in the kernel's native `:if`/`=`/`<`/`/`/`*` grammar (e.g., `(if (= X0 0) nil (= (* (/ Y X0) X0) Y))` for integer division).
+4. **Evidence Attestation:** Run `certify-solver-entry` on finite domains ($\le 65,536$ assignments $\to$ `:exhaustive` current evidence) and `sampled-solver-validations` (`consolidate.lisp:513-558`, extended to sequences and tuples via `solver-probe-values-for-type` $\to$ `:sampled` evidence, which retains `propagation-fallback` on `:int` and sequences) on infinite domains.
 
-`stage-a-budget` (`synthesize.lisp:363-380`) currently multiplies `base` (`2000`) by $2 \cdot \max(1, \text{arity}-1)^2$ unconditionally inside `lifted-p` branches and by `1` outside them—burning $8\times$ budgets on dead lifted combinators (Probe 4 regression `80k -> 113k`) while starving 3-input root/projection frames.
+### 3.2 Law-to-Solver Extraction (`induce-law-solvers`) & Staged Retirement of `bootstrap-inverters.lisp`
 
-- **Design:** Replace the static multiplier cliff with an **adaptive yield-gated Stage A budget** inside `node-stage-a-model` / `condense-heuristic`:
-  - Run Stage A in quanta of `base` (`2000` work), up to ceiling $B_{\max}(\text{arity}) = \text{base} \cdot \min(16, (1 + \max(0, \text{arity}-1))^2)$ on *both* lifted and multi-input frames.
-  - After each quantum, continue to the next quantum **if and only if** the just-completed quantum either (a) strictly improved `best-score` ($S(p) + S(\varepsilon)$) or (b) increased behavioral feature diversity (`(length (heuristic-buckets job))` grew by $\ge \eta_{\min}$ non-constant buckets while grammar enumeration is still in low-size variable-combination tiers).
-  - Stop immediately on exact hit (`stop-on-exact-p`) or zero yield. Dead lifts abort after 1 quantum (`2000` work); genuine 3-input conditional transitions (`plan8.md` Appendix A Probe 3 & Probe 5) scale smoothly until bilinear variable combinations are condensed.
+1. **Exact Preconditions & Bijectivity Rules for `induce-law-solvers` (`laws.lisp`):**
+   Given an active tested `:law` (`knowledge-evidence-tested-p law :equivalence`) with guard $G(\vec{v})$ and equation `(= (op A_0 ... A_{m-1}) v_t)` (or symmetric orientation):
+   - **Preconditions:** (a) Target $v_t$ is a variable in $\vec{v}$; (b) for inverted position $\mathrm{pos}$, every other argument $A_j$ ($j \neq \mathrm{pos}$) is a **distinct** variable $v_{k_j} \notin \{v_t\}$; and (c) $\mathrm{FV}(A_{\mathrm{pos}}) \cup \mathrm{FV}(G) \subseteq \{v_t\} \cup \{v_{k_j}\}_{j \neq \mathrm{pos}}$. *(Laws whose context positions hold compound expressions like `(- 0 K)` are handled only if rewrite/solver inversion first re-parameterizes `K' = (- 0 K)`.)*
+   - **Evidence Attestation (`evidence.lisp:44-49`):** Certificates bind to their own entry's snapshot and cannot be copied; instead, attest the induced `:solver` with method **`:derived`** when `(knowledge-evidence-current-p law :equivalence)` holds (recording `(:induced-by law-id)`), or `:sampled` when the law's evidence is sampled.
+   - **Uniqueness Preservation:** A single left-inverse law $f(W(y)) = y$ proves surjectivity (`:witness`), not injectivity (`:uniqueness`). However:
+     - When `op` is unary, $G = \text{'t}$, and $A_0 = (\text{op } v_t)$ (an unguarded involution $f(f(x)) = x$), $f(z) = y \implies f(f(z)) = f(y) \implies z = f(y)$ algebraically guarantees injectivity! Thus `induce-law-solvers` attests `:derived` `:uniqueness` as well as `:witness` on certified unguarded involutions—matching `induce-involution-solvers` (`bootstrap-inverters.lisp:147`) with zero extra fallback.
+     - More generally, when a dual left-cancellation law `G' => (= (W_op ... (op ... z ...)) z)` is also certified in `library`, attest `:derived` `:uniqueness` too.
+2. **Keeping `:transformer` Live & Measuring Before Retiring `bootstrap-inverters.lisp`:**
+   - Retain `induce-solvers-from-transformers` (`templates.lisp:247-272`, tightened to verify source operator match and instantiate source guards) so `:transformer` keeps its consumer.
+   - Relocate `install-sequence-shift-metric` (`bootstrap-inverters.lisp:296-345`) immediately to `tests/support.lisp`.
+   - Keep `bootstrap-inverters.lisp`'s functorial/pointwise builders (`L6-293`) in `P9.3a` while benchmarking `induce-conditional-solvers` + `induce-law-solvers` on all H4 and L2–L4 tasks; retire the remaining host builders in `P9.3b` once every `tests/library.lisp`, `tests/higher-order.lisp`, and `tests/audit.lisp` assertion passes at comparable budgets.
 
-### 4.3 Monotone Full-Path-Price Branch Closing & Online Marginal $J_{\mathrm{procedure}}$ Stopping
+### 3.3 Sound Set Propagation, Solver-Aware Folding, & Symbolic Unwinding (`laws.lisp`)
 
-To close `plan8.md` §5.4 and Appendix C.1 (`synthesize.lisp:856-1180`):
+1. **Single-Unknown Finite-Set Propagation Respecting Evidence Grades (`laws.lisp:582-723`):**
+   - Extend `extract-equality-target` / `solve-learned-equality` to handle `(member term '(c_1 ... c_m))` for **single-unknown** applications (`(= 1 (length open))`) and $1 \le m \le 8$ (capping the resulting union at $\le 8$ elements at every unwinding depth so set size cannot blow up exponentially, and avoiding multi-unknown tuple unions which do not factor into a conjunction).
+   - For each $c_i$, run the matching `:solver`: if all $m$ targets solve via rules with **current** `:witness` and `:uniqueness` evidence (`propagator-evidence` returning `(values t t)`, e.g., certified solvers over `(:gf p)` or `:bool`), rewrite to `(member unknown '(w_1 ... w_r))` with no fallback. On `:int` or sequences—where uniqueness/witness evidence is `:sampled` or conjectured—rewrite in `propagation-frame` while **always preserving `propagation-fallback`** (`laws.lisp:720-722`, Invariant 3).
+   - *(Note: We drop list-valued `:fiber-set-p` witnesses on `:solver`, which violate `validate-solver-shape` at `laws.lisp:1049-1052` and break downstream consumers, and omit sign-dependent inequality propagation.)*
+2. **Solver-Aware Single-Pass Folding & Typed Rule Indexing:**
+   - Index `propagator-library` rules by `(list (arithmetic-propagator-operator rule) (solver-positions (arithmetic-propagator-position rule)))` (using the **full typed operator AST**, `laws.lisp:669`), sorted within each bucket by evidence grade `(certified+unique > certified > sampled+unique > sampled > conjecture)`. *(Note: indexing changes `:propagator-dispatch` work counts slightly relative to full linear scans; record before/after work deltas explicitly.)*
+   - If `callable-rules-library` is unified into single-pass folding via `:preserve-operator-p`, match both the full operator and open argument positions—and whenever `solve-learned-equality` fails to rewrite a preserved call, **immediately run ordinary call unfolding** on it so conflict detection and witness extraction are never lost.
+3. **Fallback-Safe Intermediate Simplification & Guarded `orient-conserved-quantity` (`laws.lisp:746-911`):**
+   - In `solve-equality-symbolically`, attempt `simplify-symbolic-expr` on `expression` before unwinding each level, **but retain the unsimplified `expression` as fallback** whenever simplification duplicates `target-id` into $>1$ argument positions (`plan9-audit.md` §8.5).
+   - Wire `orient-conserved-quantity` into relational/invariant synthesis; when symbolic unwinding yields `(values sym-expr guards certified-p)` whose `guards` hold on a non-empty proper subset of constrained rows, propose the guarded Stage B branch `(if guard sym-expr Z_boundary)` alongside the numeric `conserved-quantity-frame` fallback.
 
-1. **Incumbent Bound Pruning:** Whenever `synthesis-job-best` updates to verified score $J^* = J_{\mathrm{exact}}(M_{\mathrm{best}})$, tighten `synthesis-node-bound` on all open nodes and immediately close (`:phase :done`, `:expansion :done`) any node whose minimal composed root size (`full-path-minimal-bits`, substituting a minimal variable/literal at `child-id`) is $\ge J^*$.
-2. **Monotone Full-Path-Price Branch Closing (with 1-Step Representation Grace):**
-   Track `parent-full-price` $B(p)$ on each non-structural Stage B / library child $c$:
-   - Allow at most **one** non-improving representation shift (`grace-used-p = t` when $B(c) > B(p)$) so a decoder that pays upfront header bits to expose a clean inner invariant can expand once.
-   - If a grandchild $g$ under a `grace-used-p` branch still satisfies $B(g) \ge \min(B(p), B(c))$, mark $g$'s expansion `:done` and park its priority behind active improving lanes.
-3. **Bounded Eager Fan-Out & Responsive Deferred Promotion:**
-   - Default `*max-eager-proposals-per-node*` (`synthesize.lisp:983`) to `4` (keeping product-slot groups atomic).
-   - Upgrade `promote-next-deferred-proposal` (`synthesize.lisp:856-863, 951`) so a node promotes its next deferred proposal whenever all of its *own* eager children have either closed (`:done`) or been prepared with `node-price` worse than the parent's Stage A baseline—ending the starvation of `:library-partial` and `:learned-template` proposals (`proposals.lisp:1093, 1319`).
-4. **Online Marginal $J_{\mathrm{procedure}}$ Stopping (`resume-synthesis`):**
-   Add `:stopping-policy` (`nil`, `:first`, or `:marginal-j` with `:search-weight`) to `resume-synthesis`: once at least one verified root solution $M_{\mathrm{best}}$ exists, halt online if an additional work window $\Delta W$ passes with $\Delta W \cdot \lambda_{\mathrm{search}} > B(M_{\mathrm{best}}) - B_{\mathrm{lower}}$, where $B_{\mathrm{lower}}$ is the best open lower bound across active lanes.
+---
 
-### 4.4 True M8D Residual Priority Predictor $\hat{\Delta}$ Around Analytical MDL
+## 4. Search Control, Subtree-Grounded M8D Residuals, & Consolidation
 
-Fix `consolidate.lisp:5-89` and `synthesize.lisp:408-465`:
+### 4.1 Follower-Safe Pruning, Soft Priority Parking, & Anytime-Safe Stopping (`synthesize.lisp`)
 
-1. **Unified 6-Feature Trace Schema:** Standardize `node-trace-features` (`synthesize.lisp:408`) on the 6-integer tuple:
-   `(full-program-bits residual-bits depth constrained-rows policy-score coupled-count)`.
-2. **Return-Grounded Residual Targets:** In `make-search-trace-frame`, call `synthesis-episode-returns` on each job's trace (mapping node IDs to realized cost-to-go improvements) so each explored node's target is the **clipped integer residual** $\Delta^*(n) = \mathrm{clamp}(J_{\text{realized}}(n) - B_{\mathrm{MDL}}(n), -32, +64)$, where $B_{\mathrm{MDL}}(n)$ is the analytical `node-priority` formula (`synthesize.lisp:460-464`).
-3. **Additive Residual Deployment:** In `node-priority`, evaluate $B_{\mathrm{MDL}}(n) + \mathrm{clamp}(\hat{\Delta}(f_n), -32, +64)$ instead of replacing $B_{\mathrm{MDL}}(n)$ outright. A zero predictor `0` reproduces exact analytical MDL; learned predictors adjust for empirical residual over/under-optimism without ever inverting asymptotic MDL scaling. Re-enable `:condense-heuristic-p t` in `tests/theories.lisp:175`.
+1. **Follower-Safe Incumbent Filtering (`synthesize.lisp:681-704, 819-826`):**
+   Never tighten a canonical node's `synthesis-node-bound` in-place via its own outer decoder overhead when followers share its `search-job` (`follow-canonical-node` at `synthesize.lisp:780-795`), as a follower with a cheaper outer path needs larger child candidates. Instead:
+   - Filter composed root models at `enqueue-node-candidate` (`synthesize.lisp:681`) against the current verified incumbent score `J* = (candidate-score (synthesis-job-best job) run-weight)` before paying root verification work, and
+   - Close a node (`:phase :done`) only when `(full-path-minimal-bits node)` exceeds `J*` for `node` **and every follower** in `(synthesis-node-followers node)`.
+2. **Soft Priority Parking (Preserving Invariant 3 & `max-depth`):**
+   Compare *per-parent-row normalized* analytical MDL (`full-path-program-bits + normalized-residual-bits`, excluding `node-policy-score`, coupled-requirement penalties, learned $\hat{\Delta}$, and multi-call row-count inflation on lifted frames). Rather than marking `expansion :done` irreversibly, add a soft priority penalty (`+16` bits) to branches that worsen normalized analytical MDL twice in a row—parking them behind improving branches while keeping them reachable on the 1-in-4 reserve.
+3. **Structural-Node-Aware Deferred Promotion (`synthesize.lisp:856-863, 983`):**
+   When `*max-eager-proposals-per-node*` is bounded (e.g., `4`), exclude `structural-node-p` children (whose `node-price` is `(min own parent)`, `synthesize.lisp:889-896`) when testing whether a parent's eager non-structural proposals have all closed or scored worse than the parent's baseline. Add a dedicated multi-combinator library starvation test verifying that deferred proposals wake promptly.
+4. **Anytime-Safe Marginal Stopping (`resume-synthesis`, `synthesize.lisp:1148-1180`):**
+   Record `work-at-last-improvement` on `synthesis-job` whenever `synthesis-job-best` improves. Under optional `:marginal-search-weight` $\lambda_{\mathrm{search}}$, halt once `(synthesis-job-best job)` exists and `(* lambda-search (- (ledger-total ledger) work-at-last-improvement))` exceeds `(candidate-score best)` minus the analytical lower bound of open enumeration frontiers. Because `work-at-last-improvement` lives on `synthesis-job` rather than a local `resume-synthesis` call window, 1-unit vs. 97-unit `check-anytime-resumption` parity holds identically.
 
-### 4.5 Single-Pass Consolidation Fixed-Point, `:relation` Pooling, & Levin Amortization
+### 4.2 Subtree-Grounded M8D Residual Priority Predictor (`consolidate.lisp:5-89`, `synthesize.lisp:408-465`)
 
-1. **Single-Pass Consolidation Order (`consolidate.lisp:946-975`):**
-   - Default `:register-templates-p t` in `commit-synthesis-job` (`consolidate.lisp:214`) so `remember-successful-decompositions` feeds `:decoder-template` generalization automatically.
-   - Reorder `consolidate-knowledge-library` stages into topological dependency order:
-     1. Ingest jobs, law validations, and observation laws.
-     2. Retype laws across `retype-domains` (`retype-knowledge-laws`) and lift cross-field solvers (`lift-field-solvers`) *first*, so newly lifted integer laws and solvers are visible to theory hooks.
-     3. Run `:consolidate` hooks (`:relation`, `:law`, `:motif`, `:functor`, `:decoder-template`) to fixed point (at most 2 internal micro-passes when a hook adds entries of an earlier kind).
-     4. Synthesize contrastive `:descriptor`s, update policy descriptor weights, condense M8D residual `:heuristic`, and run utility amortization.
-2. **Fixing `consolidate-residual-relations` (`relations.lisp:105-185`):**
-   - Build per-row `member-requirement`s when a relation table stores multi-value sets instead of assuming `singleton-requirement`.
-   - Include hybrid relations (`(and (knowledge-entry-residual entry) ...)` even when `knowledge-entry-expression` holds a non-exact Stage A `:parametric` base!), pricing candidate compression against `(knowledge-entry-bits entry)`.
-   - In Pass 2 (multi-relation pooling across $\ge 2$ relations sharing `(domain, inputs, target)`), define **one** shared helper `:function` $g$ when `(+ (header-size inputs target) (body-size best inputs) (* k call-bits)) < sum_bits`, refactoring each relation to call $g$ and recording `:abstracts` / `:refactored-by` edges.
-3. **Scale-Free Levin Search Tariff (`amortize-library-entries` in `consolidate.lisp:422-475`):**
-   - Replace linear `(ceiling (* search-weight work))` (or support `:cost-model :levin` as the default) with the scale-free Levin charge $\lceil \log_2(1 + W_{\mathrm{failed}}) \rceil$ per failed lift (`plan8.md:274`), and extend amortization to `:decoder-template` entries and uncertified conjectured `:solver`s (attributing `:propagator-dispatch` + `:propagation-witness` + rejected witness replay work per solver entry).
+1. **Well-Defined Per-Node Realized Cost (`make-search-trace-frame`):**
+   For each prepared node $n$ with Stage A model $h_n$ in a completed `synthesis-job`:
+   - Let $J_{\mathrm{win}}(n)$ be the minimum verified root `candidate-score` among verified candidates whose ancestor path passes through $n$ (or `nil` if $n$'s subtree produced no verified root candidate), and let $W_{\mathrm{sub}}(n)$ be total search + preparation work expended in $n$'s subtree.
+   - Define realized node outcome $J_{\mathrm{real}}(n) = \min\big(B_{\mathrm{MDL}}(n) + 48,\; (J_{\mathrm{win}}(n) \text{ or } (B_{\mathrm{MDL}}(n) + 24)) + \lfloor W_{\mathrm{sub}}(n) / \text{work-scale} \rfloor\big)$, and set the regression target to the **signed residual** $\Delta^*(n) = \mathrm{clamp}(J_{\mathrm{real}}(n) - B_{\mathrm{MDL}}(n), -24, +48)$ over the 6-feature vector `(full-program-bits residual-bits depth constrained-rows policy-score coupled-count)`.
+2. **Additive Deployment Around Analytical MDL (`node-priority`):**
+   In `node-priority` (`synthesize.lisp:453-465`), compute analytical $B_{\mathrm{MDL}}(n)$ first and add `(clamp predicted-delta -24 48)` when a predictor is active. An uninformative predictor (`0`) leaves exact MDL ordering untouched.
+
+### 4.3 One-Call Consolidation Convergence & Total-Batch Levin Amortization (`consolidate.lisp`)
+
+1. **Bounded Convergence Loop (`consolidate.lisp:956-963`):**
+   Inside `consolidate-knowledge-library`, run a bounded loop (up to `3` passes, stopping early as soon as a pass adds zero entries and zero new edges):
+   - Execute `:consolidate` hooks in priority order (`:function` 10, `:relation` 25, `:decoder-template` 40, `:functor` 40, `:motif` 45).
+   - Run `retype-knowledge-laws` across `retype-domains`.
+   - Run `lift-field-solvers`.
+   This resolves both `lift-field-solvers -> :functor` and `:motif -> retype-knowledge-laws` in **one** `consolidate-knowledge-library` call.
+2. **Hybrid `:relation` Patch Condensation (`relations.lisp`):**
+   Keep Pass 1 & Pass 2 on pure `:functional` tables (gated against `:member` tables and memoized on failure per §1.2.3, keeping Pass 2's tested copy-cost gate `tests/audit.lisp:369-382`). For hybrid `:relation` entries carrying both `base = knowledge-entry-expression` and `residual` (`consolidate.lisp:290-304`), only replace `(base + residual)` when a synthesized guarded expression `(if G(X) patch(X) base(X))` matches **both** all residual points *and* probe evaluations of `base` off the residual keys at strictly lower total bit size than `(knowledge-entry-bits entry)`.
+3. **Total-Batch Logarithmic Search Tariff (`amortize-library-entries`, `consolidate.lisp:422-475`):**
+   Taking $\log_2$ *per lift* overcharges many cheap failed lifts ($100 \times 100$ work $\to 700$ bits vs. linear `10`, `plan9-audit.md` §4.7). Support optional `:cost-model :levin` on lifted `:function`s using **one logarithm over the entry's total failed search work in the batch plus the per-proposal count**:
+   $$\text{debt}(\text{entry}) = N_{\text{failed-proposals}} + \lceil \log_2(1 + W_{\text{failed-search}}) \rceil$$
+   preserving nonzero debt when a lift conflicts before starting search (`tests/theories.lisp:187`) while preventing a single $10^6$-work exploration from permanently bankrupting a useful combinator (`21` bits instead of `977`).
 
 ---
 
 ## 5. Open Frontiers (`plan8.md` §5.1–§5.5 & Appendices B–C)
 
-### 5.1 Static Totality Extensions (`ast.lisp`) & Homoiconic `(:fix-seq fuel init step)`
+### 5.1 Static Totality Generalization (`ast.lisp:721-868`) & Homoiconic `(:fix-seq fuel init step)`
 
-#### A. Generalizing `analyze-function-body-totality` (`ast.lisp:704-851`, Appendix C.2)
-Replace Boolean `non-empty-vars` + single `decreasing-param-id` with a lightweight **structural rank environment** $\Gamma$ mapping each parameter $X_i$ to its proven branch lower bound (`(:seq-len>= k)` for sequences, `(:int>= b)` / `(:int-neq 0)` for integers):
+#### A. Sound Rank-Environment Totality Analyzer (`ast.lisp:700-868`)
+First apply §1.2.1's soundness fixes (`recompute-registered-functions-totality` reset + `ast.lisp:713` non-nil `def` check). Then generalize `non-empty-vars` into a rank environment $\Gamma$ tracking proven parameter bounds:
 
-1. **Multi-step sequence descent (`(tail^d X_i)`):** Propagate `(:seq-len>= 1)` into the false branch of `(= X_i ())` / `(< (length X_i) 1)`, and `(:seq-len>= (1+ k))` into the false branch of `(= (tail^k X_i) ())` or `(< (length X_i) '(k+1))`. Accept any self-call argument `(tail^d X_i)` ($1 \le d \le k$), certifying `pairwise`, `evens`/`odds`, and 2-step sliding recursions.
-2. **Multi-parameter sum & lexicographic descent (`merge`):** Collect all recursive call vectors $\vec{a}^{(s)} = (\Delta_1^{(s)}, \dots, \Delta_m^{(s)})$ across self-call sites $s$, where $\Delta_i^{(s)} \in \{-\text{strict}, 0, +\text{unknown}\}$. Certify totality whenever there exists a non-empty parameter subset $S$ (sum measure $\sum_{i \in S} |X_i|$: every call site has $\Delta_i \le 0$ for all $i \in S$ and $\Delta_j < 0$ for at least one $j \in S$) or a parameter permutation (lexicographic measure)—certifying `merge(xs, ys)` and mutual countdowns immediately.
-3. **Bounded `:int` descent (`range`, `shift-seq`, binary halving):** Under branch guard `(< 'b X_i)` (or `(and (<= '0 X_i) (not (= X_i '0)))`), certify `(- X_i 'c)` ($c \ge 1$, when $X_i - c \ge b - 1$) and positive integer halving `(/ X_i 'd)` ($d \ge 2$, under `(< '0 X_i)`) as strictly decreasing on the non-negative measure $\max(0, X_i - b)$.
+1. **Multi-step sequence guards & element access (`(:seq-len>= k)`):**
+   - Starting from $\Gamma(X_i) = 0$: if $\Gamma(X_i) \ge k$, then `(= (tail^k X_i) ())` is itself total to evaluate (`(tail^k X_i)` requires length $\ge k$), and its **false branch** establishes $\Gamma'(X_i) = \max(\Gamma(X_i), k + 1)$. Likewise `(< 'm (length X_i))` ($m \ge 0$) establishes $\Gamma'(X_i) = \max(\Gamma(X_i), m + 1)$ in its true branch.
+   - **Step & access definedness:** Under $\Gamma(X_i) \ge L$, `(tail^d X_i)` is total for $1 \le d \le L$, and `(at (tail^j X_i) 'r)` is total whenever $r \ge 0, j \ge 0,$ and $r + j < L$ (so `pairwise` accessing `(at X 0)` and `(at (tail X) 0)` and recursing on `(tail (tail X))` under nested `(= X ())` and `(= (tail X) ())` guards is certified total!).
+2. **Per-Slot Sum & Lexicographic Termination Measures (`merge`):**
+   - At every recursive self-call `(self a_0 ... a_{m-1})`, compare `a_p` **strictly against parameter $X_p$ of the same slot $p$** (never matching `(tail ys)` in `xs`'s slot!): record $\Delta_p = -1$ if $a_p = (\text{tail}^d\; X_p)$ with $1 \le d \le \Gamma(X_p)$, $\Delta_p = 0$ if $a_p = X_p$, and $\Delta_p = +\infty$ otherwise.
+   - Certify termination when there exists a non-empty subset $S \subseteq \{0,\dots,m-1\}$ such that at every self-call site, $\forall p \in S: \Delta_p \le 0$ and $\exists q \in S: \Delta_q = -1$ (sum measure $\sum_{p \in S} |X_p|$, certifying `merge(xs, ys)`), or a lexicographic order on $S$.
+3. **Bounded Integer Descent & Ascent:**
+   - **Descent:** If a single constant integer lower bound $b$ guards all recursive sites for integer parameter $X_p$ via `(< 'b X_p)` in $\Gamma$, then `(- X_p 'c)` for any literal $c \ge 1$ strictly decreases $\max(0, X_p - b)$. For integer halving `(/ X_p 'd)` ($d \ge 2$), require $b \ge 0$ (`(< '0 X_p)`), since negative integers stick at `0` under truncating division (`plan9-audit.md` §8.7). Never license descent from `(not (= X_p 0))` alone.
+   - **Ascent (for negative shifts counting up to `0`):** Under a uniform upper bound `(< X_p 'b)` in $\Gamma$, `(+ X_p 'c)` ($c \ge 1$) strictly decreases $\max(0, b - X_p)$.
+4. **Closed `:code-eval` Beta-Redex Inlining in Analyzer:**
+   When `walk` encounters `(code-eval (lit (:code ...) body) arg_0 ... arg_{r-1})` where every `arg_j` walks cleanly under $\Gamma$, check `body` with each parameter mapped to `arg_j` (preserving outer $\Gamma$ bounds on parameters passed through as `(var id)`).
 
-#### B. Homoiconic `(:fix-seq fuel init step)` as a Library `:function` (Appendix B.3)
-Rather than expanding `+operator-names+` in `ast.lisp`, define `:fix-seq` as a standard library `:function`:
-```lisp
-;; fuel : (:seq alpha), init : sigma, step : (:code ((0 . sigma)) sigma) -> sigma
-(define-function :fix-seq (list (cons 0 seq-alpha) (cons 1 sigma) (cons 2 step-type)) sigma
-  (lambda (self)
-    (let* ((fuel (var 0 seq-alpha)) (state (var 1 sigma)) (step (var 2 step-type))
-           (next-fn (lit (code-type (list (cons 0 seq-alpha) (cons 1 sigma) (cons 2 step-type)
-                                          (cons 3 sigma))
-                                    sigma)
-                         (term `(if (= ,(var 3 sigma) ,(var 1 sigma))
-                                    ,(var 1 sigma)
-                                    (,self (tail ,(var 0 seq-alpha)) ,(var 3 sigma) ,(var 2 step-type)))
-                               sigma))))
-      (term `(if (= ,fuel ())
-                 ,state
-                 (code-eval ,next-fn ,fuel ,state ,step (code-eval ,step ,state)))
-            sigma))))
-```
-**Two Specific Design Points to Test During Implementation:**
+#### B. Homoiconic `(:fix-seq fuel init step)` & Two-Variable Instantiation (`proposals.lisp`, `templates.lisp`)
 
-1. *Totality through `:code-eval` `let`-sharing:* Verify `analyze-function-body-totality` tracks `(tail fuel)` across an inline `:code-eval` of a quoted literal `next-fn` (or allow inlining closed `:code-eval` beta-redexes during totality checking so `next` is evaluated once at runtime while `self` sees `(tail fuel)` under `(= fuel ()) = nil`).
-2. *Two-parameter polymorphic retyping & stationary equilibrium law:* Extend `retype-function-definition` (`proposals.lisp:24-110`) from 1 sequence element type to independent `(alpha, sigma)` type variables (so `:fix-seq` defined once over `(:seq :int)` and `:int` retypes to `fuel : (:seq (:tuple :int :int))` and `state : (:seq :int)`). Pair `:fix-seq` with a library `:law` / lift hook encoding the **stationary fixed-point condition**: on any row where `y != init` and convergence occurs within `< |fuel|` steps, `(code-eval step 'y) = 'y` holds as a `coupled = 0` Stage B constraint (retaining the full un-narrowed trajectory fallback if `|fuel|` exhausts early).
+- With closed `:code-eval` beta-inlining in `analyze-function-body-totality`, the 3-parameter library `:function` `:fix-seq` (`fuel : (:seq alpha)`, `init : sigma`, `step : (:code ((0 . sigma)) sigma) -> sigma`) evaluates `(code-eval step state)` **once** per round and is certified conditionally total on parameter `2` (`step`) automatically.
+- **Instantiation in `candidate-library-definitions` (`proposals.lisp:40-62`):** `retype-function-definition` (`templates.lisp:183-215`) already unifies independent template type variables (`in-elem` and `return-element-type`), so `(retype-function-definition :fix-seq '(:tuple :int :int) :return-element-type '(:seq :int))` already works; update `candidate-library-definitions` (`proposals.lisp:60-62`) so when `(= in-elem orig-elem)` holds on fuel while `(/= out-elem orig-out)`, `(retype in-elem out-elem)` is still invoked!
+- **Two Separate Lifting Facts (`plan8.md` Appendix B.3 & `plan9-audit.md` §8.7):**
+  1. *Certified zero-step inequality:* On any row with concrete `init` and singleton target `y != init`, `(if (= (code-eval step 'init) 'init) nil t)` holds unconditionally.
+  2. *Conjectured stationary equilibrium (with fallback):* Because early convergence ($k < |\text{fuel}|$) cannot be proven from `(fuel, init, y)` alone, `(= (code-eval step 'y) 'y)` is proposed strictly as an **unverified conjectured narrowing** that retains the un-narrowed trajectory fallback.
 
-### 5.2 Minimum-$d_{\mathcal{L}}$ Bipartite Set Matching & Canonical `sort-by` Bootstrapping (Appendix B.1–B.2)
+### 5.2 Opt-In Bipartite Set Correspondence & Provably-Total `sort-by` (Appendix B.1–B.2)
 
-1. **Metered Hungarian / Shortest-Augmenting-Path Assignment (`frame.lisp`):**
-   - Provide a reusable pure-kernel matcher `minimum-bipartite-correspondence(pred-seq target-seq elem-type &key metric decoders order-free-p ledger)` bounded by `*max-bipartite-set-size*` (`12`, falling back to positional `:seq-delta` above the bound so long streams remain $O(N)$).
-   - Edge weights $C_{i,j}$ use `priced-correction(pred[i], target[j], elem-type)` (charging `ledger`), with insertion/deletion slack nodes weighted by `value-bit-size` + 2 tag bits.
-   - **Order-free `:metric` mode:** Returns pure multiset edit cost $\sum_{(i,j)\in\pi^*} C_{i,j}$ (`0` bits on any permutation of the target set).
-   - **Lossless `:bipartite-seq-delta` chart mode:** Adds permutation code length $\lceil \log_2(|\text{target}|! + 1) \rceil$ and emits portable `(:bipartite-seq-delta perm element-deltas)` handled by `apply-correction-packet` (`frame.lisp:1453-1489`), gated strictly below `(value-bit-size target seq-type)` so Galois soundness holds unconditionally.
-2. **Closing the `:locality-key` Co-Induction Loop:**
-   When a Stage A model achieves `0` element-edit bits under bipartite matching (differing from `target` only by permutation $\pi^*$), `induce-element-order-key` runs `induce-row-order` on the elementwise frame $e_j \mapsto j$, synthesizing the monotone tuple projection $\kappa(e)$ (e.g., `(at e 0)`) and proposing `(sort-by base-expr kappa)` in Stage B while registering $\kappa$ as a `:locality-key`!
+1. **Strict Gating (`frame.lisp`):** Never run $O(N^2)$ elementwise corrections on ordinary ordered sequence tasks! Bipartite Hungarian assignment (`*max-bipartite-set-size* = 12`, metered on `ledger`) runs **only** when either:
+   - The caller supplies an order-invariant set `frame-metric` (using `minimum-bipartite-correspondence` inside a library `:function` or metric AST; note `frame.lisp:1598` clamps non-equal misses to $\ge 1$ bit unless `(equal predicted target)` or set canonicalization precedes comparison), or
+   - An explicit `:bipartite-seq-delta` `:metric-decoder` is installed in `*knowledge-library*` for tuple sequences `(:seq (:tuple ...))`—where any non-identity permutation pays $\ge 1$ tag + permutation bits (`0` bits iff `predicted` equals `target` in exact order, preserving `correction` invariants and gating strictly below replacement `value-bit-size`).
+2. **Total `sort-by` Combinator & Consolidation-Time Key Harvesting:**
+   Define `:insert-by` and `:sort-by` (`xs : (:seq alpha)`, `key : (:code ((0 . alpha)) :int) -> (:seq alpha)`) as standard library `:function`s (provably conditionally total on `key` via structural `(tail xs)` descent). Group matched element pairs per parent row when testing whether a monotone tuple projection `(at elem j)` orders target elements ascendingly, proposing `(:sort-by base key)` in Stage B without mutating `*knowledge-library*` during search.
 
-### 5.3 Pure-Kernel Active Disambiguating Query Selection (`plan8.md` §5.3)
+### 5.3 Exact-Search Active Disambiguating Query Selection (`plan8.md` §5.3)
 
-Add `propose-disambiguating-query(candidates-or-job &key inputs domain-guard (work-limit 20000) ledger)` in `explain.lisp` / `proposals.lisp`:
+Add `propose-disambiguating-query(candidates &key inputs domain-guard (bound-slack 32) (work-limit 20000) ledger)` in `explain.lisp`:
 
-- Given $\ge 2$ distinct verified/surviving candidate expressions $\{e_1, \dots, e_k\}$ over `inputs` (or an underdetermined fiber), construct a **dual query-synthesis `frame`**:
-  - **Target:** A single tuple value $x^* \in \text{tuple}(\tau_0, \dots, \tau_{n-1})$ (or scalar $\tau_0$ when unary) on a 1-row inputless frame.
-  - **Requirement:** `(and domain-guard (not (= e_1(X) e_2(X))))` (and for $k > 2$, Stage A maximization of distinct output count $|\{e_1(x^*), \dots, e_k(x^*)\}|$).
-- Solve using the kernel's own `start-search` / `condense-heuristic`, metered on `ledger`—producing minimal, valid disambiguating oracle inputs with zero external SMT machinery.
+- Because `(if (= e_1(X) e_2(X)) nil t)` is a non-membership relational predicate (`extract-allowed-values` returns `:unknown`, so Stage A witness condensation does not apply), construct a 1-row inputless `frame` whose target is `(:tuple tau_0 ... tau_{n-1})` (or scalar `tau_0` when unary) and solve via **exact `start-search` + `resume-search`**.
+- When $|C| > 2$ candidates survive, run exact search to split the first pair $(e_1, e_2)$, evaluate all $e \in C$ on the discovered input $x^*$, and if desired prefer among the first $r \le 4$ enumerated splitting inputs the one maximizing distinct output count $|\{e(x^*) : e \in C\}|$.
 
-### 5.4 Coupled Intermediate Fibers & Latent State / Accumulator Abduction (`plan8.md` §5.1)
+### 5.4 Coupled Intermediate Fibers & Latent Trajectory Abduction (`plan8.md` §5.1)
 
-1. **Observation-Regime Contract (`:open-loop` vs. `:prequential`):**
-   Annotate sequential schemas/lifts explicitly via `schema-availability-order` (`frame.lisp:1625-1698`): in `:open-loop` (`:scan`, `:scan-proj0`, `reverse-acc`), step $t$ sees only action $a_t$ and the recurrent state $s_t$ emitted by step $t-1$; in `:prequential` autoregressive prediction, step $t$ sees observed $y_{t-1}$ at a strictly earlier availability rank.
-2. **Bounded Trajectory Fiber Narrowing (`lift-frame` in `frame.lisp:1150-1242` + `fibers.lisp`):**
-   When `lift-frame` produces multi-step `coupled-requirements` (as in `plan8.md` Appendix A Probe 6: `(:scan-proj0 actions '(0 0) step)` where `(at s_1 0) = y_0` is observed, `(at s_1 1)` is unobserved, and `(= (at (code-eval step s_1 a_1) 0) y_1)` couples step $t=0$ and $t=1$):
-   - Seed a decoupled partial child frame from the anchored $t=0$ rows plus any stationary/boundary rows.
-   - Enumerate/condense candidate transitions `step` on the anchored sub-frame, and validate/score candidates on the coupled multi-step rows via forward VM trajectory rollout (`coupled-trajectory-admissible-p`, analogous to `coupled-combination-admissible-p` in `synthesize.lisp:613-632`), combined with backward conditional propagator narrowing (`propagate-requirements`) from $y_t$ through candidate `step` skeletons to restrict latent coordinates $s_{t,\text{lat}}$.
-3. **Latent State Product-Extension Proposal (`:latent-scan` / accumulator abduction):**
-   When lifting a stateful combinator (`:scan` or `:fold`) over observed type $\tau$ fails with an unrepairable fiber collision—specifically, two call coordinates $(\omega_1, t_1), (\omega_2, t_2)$ share identical $(s_{\text{obs}}, a)$ inputs yet require incompatible next outputs $y'$, and no input projection $\kappa(X)$ separates them because the varying quantity is dynamic—propose a **latent-register lift** expanding state $\tau \to \text{(:tuple }\tau\text{ :int)}$ (or `(:tuple tau (:seq elem))` for sequence accumulators like `reverse-acc`) initialized at a synthesized literal (`0` or `()`) and projected via `(at state 0)` at output! This reduces hidden-state abduction directly to coupled product-slot synthesis (`synthesize.lisp:634-680`) + trajectory rollout screening.
+`plan9-audit.md` §8.10 pinpoints why coupled/latent state synthesis cannot simply reuse `product-join`:
+
+1. **Observation Regime Belongs to the Combinator Decoder:** `schema-availability-order` ranks whole input columns against the target. Whether step $t$ sees autonomous recurrent state $s_t$ (`:open-loop`, `:scan` / `:scan-proj0`) vs. observed prior output $y_{t-1}$ (`:prequential`, zipped window combinator) is encoded by **which higher-order combinator decoder** lifts the sequence.
+2. **Partial Tuple-Projection Folding at $t = 0$ (`requirements.lisp`):** In Appendix A Probe 6 (`(:scan-proj0 actions '(0 0) step)`), row $t = 0$ has requirement `(= (at (code-eval step '(0 0) '1) 0) '1)`, whose `extract-allowed-values` is `:unknown` because component `1` of the returned tuple is unconstrained. Add a fold rule recognizing `(= (at Z 'j) 'v)` on a `:tuple`-typed target `Z`: under `product-slot-frame`, slot `0` receives the exact singleton requirement `(= Z_0 '1)` (`coupled = 0` at $t = 0$!), while slot `1` (`Z_1`, the latent accumulator update) remains coupled through $t \ge 1$.
+3. **Trajectory-Screened Latent Synthesis (Dedicated Trajectory Join, Not `product-join`):**
+   Because slot `1` has no decoupled $t = 0$ constraint, naive `product-join` would fill `*max-coupled-slot-candidates*` (`4`) with tiny constant expressions (`0`, `1`, `s_0`, `a`) and miss the true accumulator update. Instead, pair each candidate observed-slot expression `e_0` (solved from the decoupled $t = 0$ projection rows!) with bounded tiered enumeration of `e_1` screened directly by **multi-step VM rollout** of `(tuple e_0 e_1)` across the parent sequence rows (`trajectory-admissible-p`, metered on `ledger`). For flat `:scan` tasks that fail with dynamic state collisions (identical `(s_obs, a)` mapping to distinct `y'`), propose lifting `:scan-proj0` over `(:tuple tau :int)` initialized at `(tuple init 0)`.
 
 ---
 
-## 6. Candidate Phase Breakdown (`P9.1` – `P9.5`), Verification Gates, & LOC Budget
+## 6. Decoupled, Independently Testable Increments (`P9.1` – `P9.6`)
 
-*(Note: Phases below group tightly coupled changes into self-contained, independently testable increments; execution sequence to be finalized after plan review.)*
+*(Execution order to be selected after review; each increment is small, self-contained, and anchored to measured `019736f` baselines.)*
 
-| Phase | Core Deliverables | Primary Modules Touched | Key Semantic Verification Gates |
+| Increment | Scope | Files Touched | Concrete Verification Gate |
 | :--- | :--- | :--- | :--- |
-| **`P9.1` Substrate, Totality, VM Cache & Homoiconic Propagators** | Fix 5 latent bugs (§1.2, except M8D in `P9.2`); `entry-executable` `validated-program` cache & zero-alloc `metric-delta` + cached chart packet; unified target `:metric-decoder` (`(+, -)`, `(*, /)`, `:code-edit` Stage B pullback, `:metric` kwarg); `induce-conditional-solvers`, `induce-law-solvers`, learned `:functor` AU, set/complete-fiber/assumption propagation, solver-aware single fold, deferred fallbacks; unified fiber-separation (`probe-frame-coordinates` + DIP on projections); retire `bootstrap-inverters.lisp` & `filter-map-decompositions`; generalize `analyze-function-body-totality` | `vm.lisp`, `ast.lisp`, `frame.lisp`, `laws.lisp`, `templates.lisp`, `condense.lisp`, `decompose.lisp`, `nogoods.lisp`, `proposals.lisp`, `synthesize.lisp`, `relations.lisp`, `abstraction.lisp`, `load.lisp`, *(retire `bootstrap-inverters.lisp`)* | `tests/metrics.lisp` passes at default `:heuristic-budget 2000` (dropping `60000`); `tests/higher-order.lisp` Filter-Map, involution, & functor suites pass with `bootstrap-inverters.lisp` & `filter-map-decompositions` gone; new tests for `merge`/`pairwise`/`range` totality, complete-fiber `abs`/`sq` propagation without fallback, `:code-edit` Stage B pullback, and search-discovered `:solver`s |
-| **`P9.2` Heuristic Control, M8D & Consolidation Closure** | Yield-gated adaptive `stage-a-budget`; incumbent lower-bound pruning, 1-grace monotone full-path branch closing, `*max-eager-proposals-per-node* = 4` + responsive deferred waking, `:stopping-policy :marginal-j`; 6-feature return-grounded M8D residual predictor $\hat{\Delta}$; `:register-templates-p t` default, 1-pass consolidation order, Levin $\log_2 W$ amortization across functions/templates/solvers | `synthesize.lisp`, `condense.lisp`, `consolidate.lisp` | `plan8.md` Appendix A Probe 3 (asymmetric conditional tuple scan) solves $< 350\text{k}$ work; Probe 4 $< 85\text{k}$; 1-call `consolidate-knowledge-library` idempotence (`tests/invariants.lisp`); `:condense-heuristic-p t` enabled & beneficial on `tests/theories.lisp` |
-| **`P9.3` Co-Induced Embeddings & Language Creation** | $\mathbb{Z}^d$ tuple & scalar $L_1$ `:locality-key` embeddings; multi-input `generated-space-distance`; Stage-A-bucketed `with-induced-row-order` wired at root + soft Stage A `:persistence` tie-breaker; homoiconic seed `:descriptor`s; `synthesize-contrastive-descriptors` across confusion classes; progressive Tier $1 \to 2 \to 3$ `frame-addressed-entries` routing in `library-decompositions` | `proposals.lisp`, `enumerate.lisp`, `descriptors.lisp`, `consolidate.lisp`, `milestones/corpus.lisp` | Automatic synthesis of contrastive separator between `reverse` and `sort` during consolidation; $>50\%$ reduction in `library-decompositions` orientation + false-lift work on 8+ combinator libraries; row-permutation invariance preserved |
-| **`P9.4` `(:fix-seq)`, Set Matching & Active Queries** | Library `:fix-seq` + 2-param `retype-function-definition` + stationary `(= (code-eval step Y) Y)` lift law; metered Hungarian bipartite set metric & `:bipartite-seq-delta` chart + `sort-by` `:locality-key` bootstrapping; pure-kernel `propose-disambiguating-query`; moment-difference heuristic solvers | `proposals.lisp`, `frame.lisp`, `laws.lisp`, `explain.lisp` | Graph reachability / transitive closure over shuffled `(:seq (:tuple :int :int))` edge lists solved via `:fix-seq` + bipartite matching; canonical `sort-by` induced from matched fibers; minimal oracle query disambiguation |
-| **`P9.5` Coupled & Latent Fibers** | Explicit `:open-loop` vs. `:prequential` availability contract; anchored $t=0$ seeding + VM trajectory rollout screening + backward propagator narrowing on multi-step `coupled-requirements`; latent-register product lift `tau -> (:tuple tau tau_L)` on unrepairable dynamic state collisions | `frame.lisp`, `fibers.lisp`, `proposals.lisp`, `synthesize.lisp` | `plan8.md` Appendix A Probe 6 (`:scan-proj0` with hidden 2nd register) and `reverse-acc` / stateful transducer synthesis solved through general kernel decomposition |
+| **`P9.1` Zero-Drift Soundness & Consolidation Fixes** | 1. Reset non-oracle totality flags in `recompute-registered-functions-totality` + reject `(null def)` at `ast.lisp:713`.<br/>2. Gate `check-library-nogood-schemas` zip on `function-body-length-preserving-p`.<br/>3. Gate `:relation` condensation to `:functional` tables + memoize failed fits on statement snapshot.<br/>4. Put hooks + `retype-knowledge-laws` + `lift-field-solvers` in bounded convergence loop in `consolidate-knowledge-library`.<br/>5. Add `(vm-versions)`-keyed `validated-program` cache in `entry-executable`, zero-alloc `metric-delta` replay, & parallel `heuristic-packets` field on `heuristic-model`. | `knowledge.lisp`, `ast.lisp`, `nogoods.lisp`, `relations.lisp`, `consolidate.lisp`, `vm.lisp`, `laws.lisp`, `condense.lisp`, `decompose.lisp` | All `182` kernel + `40` milestone tests pass; Probe 2 (`34,067`), Probe 4 (`112,979`), and Probe 5 (`264,353`) Stage A/search trajectories unchanged (packet cache saves Stage B/prep work on metric tasks); new unit tests for mutual-redefinition non-totality, permuting-combinator nogood soundness, member-table safety, fit memoization, and 1-call consolidation fixed-point on **both** `lift -> :functor` and `:motif -> retype` fixtures. |
+| **`P9.2` Static Totality & Missing `main` Capabilities** | 1. Rank-environment `analyze-function-body-totality` (`(:seq-len>= k)` with $1 \le d \le k+1$ & `(at (tail^j X) 'r)` for $r+j < L$; per-slot sum/lexicographic `merge`; integer descent/ascent/halving; closed `:code-eval` redex beta-inlining).<br/>2. `:metric` kwarg on `start-synthesis` / `start-heuristic-synthesis` / `start-recursive-synthesis`; move `install-sequence-shift-metric` to `tests/support.lisp` with bidirectional shifts & tighten `tests/metrics.lisp` `60000 -> 16000`; add all-row/guarded `(:*` $\leftrightarrow$ `:/)` decoder, moment-difference solvers, certified transfer laws, & cross-row unified `:code-edit` pullback. | `ast.lisp`, `synthesize.lisp`, `decompose.lisp`, `frame.lisp`, `consolidate.lisp`, `bootstrap-inverters.lisp`, `tests/support.lisp`, `tests/metrics.lisp` | New totality unit tests (`pairwise`, `evens`, `merge`, positive/negative `shift-seq`, integer halving, negative-halving rejection); partial `(*, /)` task solves without child conflict; `:code-edit` Stage B pullback solves parametric AST macro task; `tests/metrics.lisp` passes at `:heuristic-budget 16000` (`~100k` work). |
+| **`P9.3a` Homoiconic Propagators & Comprehension Lift (Parallel Build)** | 1. `solver-probe-values-for-type` + `induce-conditional-solvers` + `induce-law-solvers` (`:derived` attestation, distinct context vars, bijective involution `:unique-p`); tighten `induce-solvers-from-transformers`.<br/>2. Single-unknown finite-set propagation ($m \le 8$, fallback preserved on `:int`), full-operator-keyed dispatch index, unsimplified fallback in `solve-equality-symbolically`, guarded `orient-conserved-quantity`.<br/>3. Complete DIP on pure projections (`synthesize.lisp:479` + `nogoods.lisp:181`); generalize `:lift-p` templates + 2-combinator `map(filter(...))` lift. | `laws.lisp`, `templates.lisp`, `synthesize.lisp`, `nogoods.lisp`, `proposals.lisp` | Learned `induce-conditional-solvers` & `induce-law-solvers` independently discover guarded `scale-seq`, `offset-seq`, arithmetic, and bijective involution solvers; 2-combinator pipeline lift solves H2 filter-map (`tests/higher-order.lisp:193`) with `filter-map-decompositions` disabled in an isolated test; before/after dispatch work logged. |
+| **`P9.3b` Gated Retirement Step** | Retire `filter-map-decompositions` (`proposals.lisp:219-298`, `-80` to `-150` LOC) and the superseded builders of `bootstrap-inverters.lisp` (`-250` to `-346` LOC) **only** for every case verified green by `P9.3a`. | `proposals.lisp`, `bootstrap-inverters.lisp`, `load.lisp`, `Makefile`, `package.lisp` | Full `182` kernel + `40` milestone suite green at default budgets with zero regressions. |
+| **`P9.4` Search Control, Subtree M8D, Levin Tariff, & Contrastive Descriptors** | 1. Follower-safe incumbent filtering, normalized soft MDL parking, structural-exempt deferred waking, `work-at-last-improvement` marginal stopping.<br/>2. Subtree-grounded M8D residual predictor $\hat{\Delta}$ around analytical MDL; total-batch Levin tariff (`N_prop + log2(1 + W_failed)`).<br/>3. Error-safe descriptor verdicts, mandatory `:necessary` pruning before progressive Tier 2/3 empirical scoring, memoized contrastive separator synthesis for liftable combinators, consolidation-time $\mathbb{Z}^d$ `:locality-key` harvesting & `:coordinate` mode. | `synthesize.lisp`, `consolidate.lisp`, `descriptors.lisp`, `proposals.lisp`, `milestones/corpus.lisp` | Multi-combinator starvation benchmark solved via deferred waking; 1-unit vs. 97-unit resumption parity under marginal stopping; learned M8D residual improves or matches baseline work across multi-job curriculum; contrastive separator synthesized & memoized (1-call fixed-point preserved). |
+| **`P9.5` `(:fix-seq)`, Opt-In Set Matching, Active Queries, & Latent Trajectories** | 1. Library `:fix-seq` + 2-type `candidate-library-definitions` fix + conjectured stationary `(= (code-eval step 'y) 'y)` narrowing.<br/>2. Opt-in tuple-sequence bipartite correspondence + provably-total `:sort-by`.<br/>3. Exact-search `propose-disambiguating-query`.<br/>4. Tuple-slot `(= (at Z 'j) 'v)` folding at $t=0$ + trajectory-screened latent-slot enumeration for `:scan-proj0` & `reverse-acc`. | `proposals.lisp`, `frame.lisp`, `requirements.lisp`, `explain.lisp`, `synthesize.lisp` | Graph reachability over shuffled edge lists `(:seq (:tuple :int :int))` via `:fix-seq` + opt-in set metric; exact query disambiguation on multi-candidate tasks; Appendix A Probe 6 (`:scan-proj0` with unobserved 2nd tuple slot) & `reverse-acc` solved end-to-end. |
 
-### Non-Negotiable Kernel Invariants Preserved Across All Phases
-1. **Pure-Kernel Isolation (`tests/run.lisp:61-71`):** `load.lisp` has zero dependencies on `milestones/` or test fixtures.
-2. **Deterministic Unit-Step Preemption (`check-anytime-resumption`, `tests/support.lisp`):** Every host preparation, propagation, bipartite assignment, and Stage A quantum stages work onto private ledgers and publishes only via `stage-work` / `pay-debt` (`1`-unit vs. `97`-unit parity).
-3. **Zero-False-Pruning Galois Soundness (`tests/invariants.lisp`):** Every metric chart (`:bipartite-seq-delta`, `:code-edit`, `(*, /)`) gates bit price against raw replacement and verifies replay; tentative/sampled propagators and stationary `:fix-seq` hypotheses preserve deferred un-narrowed fallbacks; branch closing prunes *hard* only against verified root upper bounds $J^*(M_{\mathrm{best}})$ and parks (rather than deletes) speculative non-monotone branches under the 3:1 reserve.
-4. **Representation & Permutation Invariance (`tests/invariants.lisp`):** Row-order induction canonicalizes via `canonical-row-order`; all input projections and multi-parameter retypings key on `(id . type)` alists rather than contiguous `0..n-1` indices.
-5. **Single-Pass Consolidation & Serialization Fixed Point (`tests/invariants.lisp:400-465`):** One call to `consolidate-knowledge-library` reaches semantic fixed point and round-trips losslessly through `serialize-knowledge-library` / `deserialize-knowledge-library`.
+---
 
-### Expected Pure-Kernel LOC Balance (`load.lisp`)
+## 7. Non-Negotiable Kernel Invariants
 
-| Change Group | Retired / Consolidated | Added | Net LOC |
-| :--- | :---: | :---: | :---: |
-| Retire `bootstrap-inverters.lisp` (`-346`), `induce-solvers-from-transformers` (`-26`), `filter-map-decompositions` (`-150`), & `make-additive-residual-decoder` (`-20`); add `induce-conditional-solvers`, `induce-law-solvers`, learned `:functor` AU, & richer propagation | `-542` | `+215` | **`-327`** |
-| Unify fiber separation (`dependency-expander` + DIP + `check-library-nogood-schemas` via `probe-frame-coordinates`) | `-195` | `+75` | **`-120`** |
-| Replace procedural 1D `synthesize-io-descriptor-specs` with homoiconic library `:descriptor`s + contrastive separator synthesis + progressive Tier $1 \to 3$ decoding | `-205` | `+125` | **`-80`** |
-| VM `validated-program` cache, static totality generalization, adaptive `stage-a-budget`, branch closing, M8D residual fix, `:relation` & consolidation fixes | `-95` | `+160` | **`+65`** |
-| `(:fix-seq)` support, bipartite set matching, `propose-disambiguating-query`, & coupled/latent fiber abduction (`P9.4`–`P9.5`) | `-15` | `+315` | **`+300`** |
-| **Total Across `P9.1`–`P9.5`** | **`-1,052`** | **`+890`** | **`-162` net (`-462` net across `P9.1`–`P9.3`)** |
+1. **Pure-Kernel Isolation (`tests/run.lisp:61-71`):** `load.lisp` never depends on `milestones/` or test fixtures (`install-sequence-shift-metric` moves to `tests/support.lisp`).
+2. **Deterministic Unit-Step Preemption (`check-anytime-resumption`):** Every host preparation, propagation, bipartite match, and marginal-stopping check depends solely on metered ledgers and persistent `synthesis-job` fields (`1`-unit vs. `97`-unit parity).
+3. **Zero-False-Pruning Galois Soundness (`tests/invariants.lisp`):** Sampled/conjectured solvers and stationary `:fix-seq` hypotheses always preserve active reserve `propagation-fallback`s (`plan8.md` §6.7); canonical search bounds cover the loosest follower; partial metric decoders (`(*, /)`, `:code-edit`) either cover all constrained rows or split conditionally; speculative non-improving branches are priority-parked, never irreversibly killed.
+4. **Permutation & Alpha-Renaming Invariance (`tests/invariants.lisp`):** `frame-rows` order and `*knowledge-library*` are never mutated mid-search; multi-type combinator retyping and tuple projections key on `(id . type)` alists.
+5. **Single-Pass Consolidation & Serialization Idempotence (`tests/invariants.lisp:400-465`):** The bounded hook/retype/lift convergence loop plus snapshot-keyed failure memos (for incompressible `:relation` tables and contrastive `:descriptor` pairs) guarantee semantic fixed-point in a single `consolidate-knowledge-library` call.
