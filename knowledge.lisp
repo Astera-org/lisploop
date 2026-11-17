@@ -573,7 +573,7 @@ active function table, and record it in the active library."
            (self-op (progn (setf (gethash kname *function-definitions*) def)
                            (let ((sym (op kname))
                                  (ctype (function-definition-code-type def)))
-                             (setf (gethash sym *node-meta*)
+                             (setf (node-meta sym)
                                    (make-ast-meta :kind :op :id kname :type (copy-tree ctype)
                                                   :value (compute-operator-signature kname ctype)
                                                   :non-var-bits (+ 2 (operator-bit-size kname ctype))

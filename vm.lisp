@@ -84,10 +84,18 @@ reduce PLACE by that amount, and return it. A job publishes staged results once 
   (%make-evaluation :inputs (validated-program-inputs program) :values values :prepared-p t
                     :tasks (list (list :validate) (list :eval (validated-program-expression program)))))
 
+(defparameter *closure-evaluation* t
+  "When true, `start-evaluation` runs an expression that `expression-closure` accepts as a host
+closure and returns an evaluation that only has to be paid for (`settled-evaluation`). When
+nil every evaluation is interpreted. Either way an evaluation reports the same status,
+value, error and work, however its budget is sliced.")
+
 (defun start-evaluation (expression inputs values)
   "An isolated, resumable machine. Its environment contains supplied arguments only."
-  (%make-evaluation :inputs (input-alist inputs) :values values
-                    :tasks (list (list :validate expression) (list :eval expression))))
+  (let ((inputs (input-alist inputs)))
+    (or (and *closure-evaluation* (settled-evaluation expression inputs values))
+        (%make-evaluation :inputs inputs :values values
+                          :tasks (list (list :validate expression) (list :eval expression))))))
 
 (defun arithmetic-cost (name type values)
   "Unit arithmetic only for fixed primes <= 257; otherwise a bit-sensitive tariff."
@@ -234,23 +242,29 @@ the work of its arguments, plus what its own traversal, copying or matching can 
          (nth (checked-position (second values) length) items)))
       (otherwise (execute-symbolic-primitive name type values)))))
 
+(defun validation-work (expression inputs values)
+  "What a :validate instruction costs: the syntax of EXPRESSION, when it checks one, and
+the declaration and the value of every input."
+  (+ (if expression (syntax-work expression) 0)
+     (loop for spec in inputs
+           for value in values
+           sum (+ (integer-width (car spec)) (type-work (cdr spec))
+                  (value-work value (cdr spec))))))
+
 (defun instruction-cost (state task)
   (ecase (first task)
     (:validate-program (syntax-work (second task)))
     ;; A :validate task checks the input values, and the expression too when it names one.
-    (:validate
-     (+ (if (rest task) (syntax-work (second task)) 0)
-        (loop for spec in (evaluation-inputs state)
-              for value in (evaluation-values state)
-              sum (+ (integer-width (car spec)) (type-work (cdr spec))
-                     (value-work value (cdr spec))))))
+    (:validate (validation-work (second task) (evaluation-inputs state) (evaluation-values state)))
     (:eval (let ((expression (second task)))
              (if (lit-p expression)
                  (1+ (value-work (ast-value expression) (ast-type expression)))
                  1)))
     ((:branch :restore-env) 1)
     (:apply (primitive-cost (second task)
-                            (reverse (subseq (evaluation-stack state) 0 (third task)))))))
+                            (reverse (subseq (evaluation-stack state) 0 (third task)))))
+    ;; A closure has already run this evaluation: what is left is to pay for it.
+    (:settle (second task))))
 
 (defun execute-instruction (state task)
   (ecase (first task)
@@ -326,7 +340,13 @@ the work of its arguments, plus what its own traversal, copying or matching can 
                  (call-body (function-definition-inputs def) ordered-values (function-definition-body def)))
                 (t (error "Undefined body for function ~S" name)))))
            (t
-            (push (execute-primitive operator ordered-values) (evaluation-stack state)))))))))
+            (push (execute-primitive operator ordered-values) (evaluation-stack state)))))))
+    (:settle
+     (destructuring-bind (status outcome) (cddr task)
+       (ecase status
+         (:value (push outcome (evaluation-stack state)))
+         (:unresolved (error 'unresolved-evaluation :name (first outcome) :arguments (second outcome)))
+         (:error (error "~A" outcome)))))))
 
 (defun advance-evaluation (state budget &optional ledger (category :simulation))
   "Spend at most BUDGET units, retaining unpaid instructions on interruption."
@@ -383,78 +403,141 @@ the work of its arguments, plus what its own traversal, copying or matching can 
   guard-fn
   aux-fn)
 
+(defvar *closure-work* 0
+  "While a closure of `expression-closure` runs, the work the VM would have charged so far
+for the instructions the closure stands for. A caller that wants the count binds it.")
+
+(defparameter *closure-limit* 32768
+  "The most nodes whose closures `expression-closure` remembers before it starts afresh.")
+
+(defvar *closures* (make-hash-table :test #'eq)
+  "Node -> (scope . closure or nil): what `expression-closure` made of the nodes compiled
+most recently, in the scope each was compiled in.")
+
+(defvar *closures-version* nil
+  "The `*function-library-version*` that `*closures*` holds closures for. No closure calls a
+function, but whether quoted code that does is well typed depends on its definition.")
+
 (defun compile-ast-fn (expression inputs)
-  "Compile a pure, hole-free first-order primitive AST over INPUTS into a zero-allocation
-host closure `(lambda (args) ...)`. Returns NIL when EXPRESSION calls defined functions,
-symbolic `:code-*` operators, or contains holes, so callers fall back to `evaluate`."
-  (let ((norm-inputs (input-alist inputs)))
-    (when (and expression (ignore-errors (expression-type expression norm-inputs)))
-      (labels ((build (node)
-                 (let ((meta (ignore-errors (ensure-ast-meta node))))
-                   (when meta
-                     (case (ast-meta-kind meta)
-                       (:lit
-                        (let ((val (ast-meta-value meta)))
-                          (if (consp val)
-                              (lambda (args) (declare (ignore args)) (copy-tree val))
-                              (lambda (args) (declare (ignore args)) val))))
-                       (:var
-                        (let* ((id (ast-meta-id meta))
-                               (pos (position id norm-inputs :key #'car :test #'eql)))
-                          (when pos
-                            (lambda (args)
-                              (let ((val (nth pos args)))
-                                (when (eq val :unresolved)
-                                  (error 'unresolved-evaluation :name :var :arguments (list id)))
-                                val)))))
-                       (:app
-                        (let* ((operator (first node))
-                               (name (and (operator-p operator) (operator-name operator)))
-                               (type (and name (operator-operand-type operator)))
-                               (subnodes (rest node)))
-                          (unless (or (null name)
-                                      (defined-function-p name)
-                                      (member name '(:code-eval :code-kind :code-child :code-operator
-                                                     :code-apply :code-match :code-bind :code-subst
-                                                     :code-total :code-less)))
-                            (let ((fns (mapcar #'build subnodes)))
-                              (when (every #'identity fns)
-                                (cond
-                                  ((eq name :if)
-                                   (destructuring-bind (cf yf nf) fns
-                                     (lambda (args)
-                                       (if (funcall cf args) (funcall yf args) (funcall nf args)))))
-                                  ((and (eq name :length) (= 1 (length fns)))
-                                   (let ((a1 (first fns)))
-                                     (lambda (args) (length (funcall a1 args)))))
-                                  ((and (eq name :=) (= 2 (length fns)))
-                                   (let ((a1 (first fns)) (a2 (second fns)))
-                                     (lambda (args) (equal (funcall a1 args) (funcall a2 args)))))
-                                  ((and (eq name :<) (= 2 (length fns)))
-                                   (let ((a1 (first fns)) (a2 (second fns)))
-                                     (lambda (args) (< (funcall a1 args) (funcall a2 args)))))
-                                  ((and (eq type :int) (member name '(:+ :- :*)) (= 2 (length fns)))
-                                   (let ((a1 (first fns)) (a2 (second fns)))
-                                     (ecase name
-                                       (:+ (lambda (args) (+ (funcall a1 args) (funcall a2 args))))
-                                       (:- (lambda (args) (- (funcall a1 args) (funcall a2 args))))
-                                       (:* (lambda (args) (* (funcall a1 args) (funcall a2 args)))))))
-                                  ((and (eq name :member) (= 2 (length fns)))
-                                   (let ((a1 (first fns)) (a2 (second fns)))
-                                     (lambda (args)
-                                       (not (null (member (funcall a1 args) (funcall a2 args) :test #'equal))))))
-                                  ((and (eq name :at) (= 2 (length fns)))
-                                   (let ((a1 (first fns)) (a2 (second fns)))
-                                     (lambda (args)
-                                       (let* ((items (funcall a1 args))
-                                              (idx (funcall a2 args)))
-                                         (nth (checked-position idx (length items)) items)))))
-                                  (t
-                                   (lambda (args)
-                                     (execute-primitive
-                                      operator
-                                      (mapcar (lambda (f) (funcall f args)) fns)))))))))))))))
-        (build expression)))))
+  "The closure of EXPRESSION over INPUTS (`expression-closure`) for a caller that charges a
+fixed cost for running it, or NIL. Such callers evaluate what has no closure in the VM, at
+the VM's price; literal code is left to them as it always was, so their charges are the same."
+  (and expression (not (contains-call-to-p expression :code-eval))
+       (expression-closure expression inputs)))
+
+(defun expression-closure (expression inputs)
+  "Compile a hole-free AST over INPUTS that applies primitives only into a host closure
+`(lambda (args) ...)` on the list of its input values. Returns NIL when EXPRESSION is
+ill-typed, calls a defined function or a symbolic `:code-*` operator, or evaluates code that
+is not a literal, so callers fall back to the VM. The closure computes what the VM
+computes and fails where the VM fails, with the same condition. It adds to `*closure-work*`
+what the VM charges for its :eval, :branch, :apply and :restore-env instructions, in the
+VM's order, so that the count is the VM's at a failure as well as at a value.
+The closure of every node is remembered with its scope (`*closures*`): an expression
+evaluated on row after row is compiled once, and one built from parts already compiled, as
+the enumerator's are, costs one closure more. A node is type-checked as it is compiled, by
+the rules of `expression-type`."
+  (let ((scope (input-alist inputs)))
+    (labels ((closure (node scope)
+               (let ((entry (gethash node *closures*)))
+                 (unless (and entry (or (eq scope (car entry)) (equal scope (car entry))))
+                   (when (>= (hash-table-count *closures*) *closure-limit*)
+                     (clrhash *closures*))
+                   (setf entry (cons scope (build node scope))
+                         (gethash node *closures*) entry))
+                 (cdr entry)))
+             (closures (nodes types scope)
+               ;; The closures of NODES if each has one and they have TYPES, else :none.
+               (let ((parts (loop for node in nodes collect (closure node scope))))
+                 (if (and (notany #'null parts) (equal types (mapcar #'ast-type nodes)))
+                     parts
+                     :none)))
+             (build (node scope)
+               (let ((meta (ignore-errors (ensure-ast-meta node))))
+                 (case (and meta (ast-meta-kind meta))
+                   (:lit
+                    (let ((value (ast-meta-value meta)) (type (ast-meta-type meta)))
+                      (when (and (valid-type-p type) (value-p value type))
+                        (let ((cost (1+ (value-work value type))))
+                          (lambda (args) (declare (ignore args)) (incf *closure-work* cost) value)))))
+                   (:var
+                    (let* ((id (ast-meta-id meta))
+                           (position (position id scope :key #'car)))
+                      (when (and position (equal (ast-meta-type meta) (cdr (nth position scope))))
+                        (lambda (args)
+                          (incf *closure-work*)
+                          (let ((value (nth position args)))
+                            (when (eq value :unresolved)
+                              (error 'unresolved-evaluation :name :var :arguments (list id)))
+                            value)))))
+                   (:app
+                    (let ((operator (ignore-errors (ensure-ast-meta (first node)))))
+                      (when (and operator (eq :op (ast-meta-kind operator)))
+                        (application (first node) (ast-meta-id operator) (ast-meta-type operator)
+                                     (second (ast-meta-value operator)) (rest node) scope)))))))
+             (application (operator name type argument-types arguments scope)
+               (let ((parts (closures arguments argument-types scope)))
+                 (cond
+                   ((eq parts :none) nil)
+                   ((eq name :if)
+                    (destructuring-bind (condition yes no) parts
+                      (lambda (args)
+                        (incf *closure-work*)
+                        (let ((test (funcall condition args)))
+                          (incf *closure-work*) ; the :branch
+                          (if test (funcall yes args) (funcall no args))))))
+                   ;; Literal code is a let: its arguments are evaluated and bound, and its
+                   ;; body runs as a closure over them. PARTS holds the code's own closure
+                   ;; first, which stands for the :eval of the literal.
+                   ((eq name :code-eval)
+                    (let* ((code (first arguments))
+                           (body (and (lit-p code) (closure (ast-value code) (code-inputs type)))))
+                      (when body
+                        (destructuring-bind (literal &rest bound) parts
+                          (lambda (args)
+                            (incf *closure-work*)
+                            (funcall literal args)
+                            (let ((values (loop for part in bound collect (funcall part args))))
+                              (incf *closure-work*) ; the :apply
+                              (prog1 (funcall body values)
+                                (incf *closure-work*))))))))  ; the :restore-env
+                   ((and (member name +operator-names+)
+                         (not (member name '(:code-kind :code-child :code-operator :code-apply
+                                             :code-match :code-bind :code-subst :code-total
+                                             :code-less))))
+                    ;; The :apply of a primitive, priced and run by the VM's own functions.
+                    (lambda (args)
+                      (incf *closure-work*)
+                      (let ((values (loop for part in parts collect (funcall part args))))
+                        (incf *closure-work* (primitive-cost operator values))
+                        (execute-primitive operator values))))))))
+      (unless (eql *closures-version* *function-library-version*)
+        (clrhash *closures*)
+        (setf *closures-version* *function-library-version*))
+      (and expression (closure expression scope)))))
+
+(defun settled-evaluation (expression inputs values)
+  "EXPRESSION run to its end on VALUES by its closure, as an evaluation with one instruction
+left, :settle. The instruction costs what the VM's instructions would have cost up to the
+same end, and once paid it yields the closure's value or fails as the closure did; so the
+evaluation is paid for, cut off and resumed exactly as an interpreted one. Returns nil when
+EXPRESSION has no closure or VALUES are not values of INPUTS, which the VM reports itself."
+  (let ((closure (expression-closure expression inputs)))
+    (when (and closure
+               (= (length inputs) (length values))
+               (every (lambda (spec value) (or (eq value :unresolved) (value-p value (cdr spec))))
+                      inputs values))
+      (let ((*closure-work* (validation-work expression inputs values)))
+        (multiple-value-bind (status outcome)
+            (handler-case (let ((value (funcall closure values)))
+                            ;; As in the VM, the value shares nothing with the caller's VALUES.
+                            (values :value (if (consp value) (copy-tree value) value)))
+              (unresolved-evaluation (condition)
+                (values :unresolved (list (unresolved-evaluation-name condition)
+                                          (unresolved-evaluation-arguments condition))))
+              (error (condition) (values :error (princ-to-string condition))))
+          (%make-evaluation :inputs inputs :values values
+                            :tasks (list (list :settle *closure-work* status outcome))))))))
 
 (defun sync-entry-executable (entry)
   "Compile and cache synchronized fast closures for ENTRY's symbolic AST slots."
