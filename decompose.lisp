@@ -124,17 +124,21 @@ expression of each distinct Boolean behaviour found, the latest behaviour first.
 (defparameter *feature-guard-bits* 32
   "Body-bit bound on an exception guard that compares two Stage A features.")
 
-(defun feature-pair-predicates (buckets inputs row-count bound ledger)
+(defun feature-pair-predicates (buckets inputs row-count bound ledger &optional guard-language)
   "Comparisons of two Stage A features as guard candidates ((expression . row-values) ...):
 `=` of two features of one type and `<` of two integer features either way, of at most
-BOUND body bits. BUCKETS, ((expression . row-values) ...), already hold every feature's
-value on each of the ROW-COUNT rows, so a comparison is priced by one unit of guard search
-and no expression is evaluated."
-  (let ((features (loop for (expression . values) in buckets
-                        when (= row-count (length values))
-                          collect (list expression (ast-type expression)
-                                        (body-size expression inputs) values)))
-        (predicates nil))
+BOUND body bits (restricted to comparison operators present in GUARD-LANGUAGE when supplied).
+BUCKETS, ((expression . row-values) ...), already hold every feature's value on each of the
+ROW-COUNT rows, so a comparison is priced by one unit of guard search and no expression is
+evaluated."
+  (let* ((ops (and guard-language (language-operators guard-language)))
+         (allow-eq-p (or (null guard-language) (find := ops :key #'operator-name)))
+         (allow-lt-p (or (null guard-language) (find :< ops :key #'operator-name)))
+         (features (loop for (expression . values) in buckets
+                         when (= row-count (length values))
+                           collect (list expression (ast-type expression)
+                                         (body-size expression inputs) values)))
+         (predicates nil))
     (flet ((offer (predicate values)
              (charge ledger :guard-search)
              (when (<= (body-size predicate inputs) bound)
@@ -145,8 +149,10 @@ and no expression is evaluated."
               when (and (equal left-type right-type)
                         (< (+ left-bits right-bits) bound)
                         (not (and (lit-p left) (lit-p right)))) do
-                (offer (term `(= ,left ,right)) (mapcar #'equal left-values right-values))
-                (when (eq :int left-type)
+                (when allow-eq-p
+                  (offer (term `(= ,left ,right)) (mapcar #'equal left-values right-values)))
+                (when (and allow-lt-p (eq :int left-type)
+                           (every #'integerp left-values) (every #'integerp right-values))
                   (offer (term `(< ,left ,right)) (mapcar #'< left-values right-values))
                   (offer (term `(< ,right ,left)) (mapcar #'< right-values left-values))))))
     (nreverse predicates)))
@@ -190,7 +196,7 @@ of the Stage A features in BUCKETS compete too, up to FEATURE-BOUND body bits
           (setf best (best-by (remove nil (list best
                                                 (best-guard (feature-pair-predicates
                                                              buckets inputs (length rows)
-                                                             feature-bound ledger))))
+                                                             feature-bound ledger guard-language))))
                               (list :desc #'third) #'fourth)))
         (values (first best) (second best))))))
 
@@ -526,7 +532,7 @@ work limit is CONDENSE-BUDGET, and of `start-synthesis`."
                                    decompositions)
            :policy :heuristic
            :max-depth max-depth
-           :expand (apply #'heuristic-expander :child-language c-lang :child-bound c-bound
+           :expand (apply #'heuristic-expander :child-language child-language :child-bound c-bound
                           :work-limit condense-budget :allow-other-keys t keys)
            (remove-keys '(:child-language :child-bound :condense-budget :fibers :dependencies
                           :guard-language :guard-bound :additive-p :conditional-p

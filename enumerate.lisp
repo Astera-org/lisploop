@@ -425,13 +425,10 @@ reject the candidate on an error or once it exhausts the row budget."
          (reject-candidate job))))))
 
 (defun finish-search-candidate (job)
-  "Accept a candidate that resolved enough rows, by way of its hard edges when the frame has any."
-  (cond ((< (search-job-resolved-rows job) (frame-min-resolved-rows (search-job-frame job)))
-         (reject-candidate job))
-        ((search-job-hard-edges job)
-         (setf (search-job-phase job) :edges
-               (search-job-debt job) (length (search-job-hard-edges job))))
-        (t (accept-candidate job))))
+  "Accept a candidate that resolved enough rows; incident hard edges were already checked row by row."
+  (if (< (search-job-resolved-rows job) (frame-min-resolved-rows (search-job-frame job)))
+      (reject-candidate job)
+      (accept-candidate job)))
 
 (defun violated-edge (job)
   "The first hard edge of the frame that the candidate's row values contradict, or nil. An
@@ -443,10 +440,10 @@ edge to a row the candidate left unresolved is not judged."
                  (and a b (eq (eq kind :distinct) (equal (cdr a) (cdr b)))))))
            (search-job-hard-edges job)))
 
-(defun settle-candidate-edges (job)
-  "Accept the candidate whose rows have all been visited unless it violates a hard edge."
+(defun settle-row-edges (job)
+  "Advance past a row's newly settled hard edges, rejecting immediately when one is violated."
   (let ((violated (violated-edge job)))
-    (cond ((null violated) (accept-candidate job))
+    (cond ((null violated) (next-row job))
           (t (when (search-job-diagnostics job)
                (push (make-message :call-id (search-job-call-id job) :claim :counterexample
                                    :evidence (list :edge violated
@@ -497,7 +494,7 @@ normal form was already refuted by a row."
       ((:rule-setup :rewrite-start :rewrite :reuse) (rewrite-filter-step job budget))
       (:edges
        (pay-debt (search-job-debt job) budget ledger :checking)
-       (when (zerop (search-job-debt job)) (settle-candidate-edges job)))
+       (when (zerop (search-job-debt job)) (settle-row-edges job)))
       (:requirement
        (charge ledger :scheduling)
        (setf (search-job-evaluation job)
@@ -513,9 +510,23 @@ normal form was already refuted by a row."
            (:value
             (cond ((eq t (evaluation-value state))
                    (when (constrained-row-p row) (incf (search-job-resolved-rows job)))
-                   (when (search-job-hard-edges job)
-                     (push (cons (row-key row) (search-job-predicted job)) (search-job-values job)))
-                   (next-row job))
+                   (if (search-job-hard-edges job)
+                       (let* ((key (row-key row))
+                              (incident
+                                (count-if (lambda (edge)
+                                            (or (and (equal key (second edge))
+                                                     (assoc (third edge) (search-job-values job)
+                                                            :test #'equal))
+                                                (and (equal key (third edge))
+                                                     (assoc (second edge) (search-job-values job)
+                                                            :test #'equal))))
+                                          (search-job-hard-edges job))))
+                         (push (cons key (search-job-predicted job)) (search-job-values job))
+                         (if (plusp incident)
+                             (setf (search-job-debt job) incident
+                                   (search-job-phase job) :edges)
+                             (next-row job)))
+                       (next-row job)))
                   (t (reject-candidate job t)))))))
       (t
        ;; A row evaluation stops at its budget, so an overrun is detected at the same work however
@@ -670,6 +681,7 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
 
 (defstruct (observation-job (:include row-job) (:constructor %make-observation-job))
   scope current (outputs nil) retain-outcomes-p (outcomes nil) records buckets
+  (staged-bucket nil)
   (record-index (make-hash-table :test #'equal))
   (bucket-index (make-hash-table :test #'equal)))
 
@@ -700,7 +712,7 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
 (defun observation-invariants (job)
   (remove-if-not #'observation-bucket-informative-p (reverse (observation-job-buckets job))))
 
-(defun classify-observation-bucket (bucket)
+(defun classify-observation-bucket (bucket &optional ledger)
   (let* ((scope (observation-bucket-scope bucket))
          (values (coerce (observation-bucket-values bucket) 'vector))
          (pairs (observation-scope-pairs scope))
@@ -722,7 +734,9 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
     (multiple-value-bind (entries total-bits pair-bits anchor-bits)
         (relational-linkage-residual (observation-scope-frame scope)
                                      (observation-bucket-values bucket)
-                                     :type (observation-bucket-type bucket))
+                                     :type (observation-bucket-type bucket)
+                                     :decoders (metric-decoders (observation-bucket-type bucket))
+                                     :ledger ledger)
       (declare (ignore entries))
       (setf (observation-bucket-pair-bits bucket) pair-bits
             (observation-bucket-anchor-bits bucket) anchor-bits
@@ -736,28 +750,39 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
     (push record (observation-job-records job))
     (setf (gethash (observed-expression-expression record) (observation-job-record-index job)) record)
     (when (eq (observed-expression-status record) :complete)
-      (let ((bucket (gethash key (observation-job-bucket-index job))))
-        (unless bucket
-          (setf bucket (classify-observation-bucket
-                        (make-observation-bucket :scope scope :type (first key) :values (second key)))
-                (gethash key (observation-job-bucket-index job)) bucket)
-          (push bucket (observation-job-buckets job)))
-        (push record (observation-bucket-members bucket))
-        (when (observation-bucket-informative-p bucket)
-          (push (make-message :call-id (observation-scope-id scope) :claim :observed-invariant
-                              :evidence record) (observation-job-messages job)))))
-    (setf (observation-job-phase job) :enumerate)))
+      (let ((bucket (or (gethash key (observation-job-bucket-index job))
+                        (let ((staged (shiftf (observation-job-staged-bucket job) nil)))
+                          (when staged
+                            (setf (gethash key (observation-job-bucket-index job)) staged)
+                            (push staged (observation-job-buckets job)))
+                          staged))))
+        (when bucket
+          (push record (observation-bucket-members bucket))
+          (when (observation-bucket-informative-p bucket)
+            (push (make-message :call-id (observation-scope-id scope) :claim :observed-invariant
+                                :evidence record) (observation-job-messages job))))))
+    (setf (observation-job-staged-bucket job) nil
+          (observation-job-phase job) :enumerate)))
 
 (defun prepare-observation-index (job)
   (let* ((record (observation-job-current job)) (scope (observation-job-scope job))
-         (values (nreverse (observation-job-outputs job))))
+         (values (nreverse (observation-job-outputs job)))
+         (type (observed-expression-type record))
+         (bucket-ledger (make-ledger)))
     (setf (observed-expression-values record) values
           (observed-expression-outcomes record) (nreverse (observation-job-outcomes job))
           (observation-job-outputs job) nil
           (observation-job-outcomes job) nil
+          (observation-job-staged-bucket job)
+          (when (and (eq (observed-expression-status record) :complete)
+                     (null (gethash (list type values) (observation-job-bucket-index job))))
+            (classify-observation-bucket
+             (make-observation-bucket :scope scope :type type :values values)
+             bucket-ledger))
           (observation-job-phase job) :index
           (observation-job-debt job)
-          (+ 1 (loop for value in values sum (value-work value (observed-expression-type record)))
+          (+ 1 (ledger-total bucket-ledger)
+             (loop for value in values sum (value-work value type))
              (* 2 (length (observation-scope-pairs scope)))
              (length (observation-scope-anchors scope))))))
 

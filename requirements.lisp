@@ -247,7 +247,7 @@ it is closed, else apply a structural rule, narrow a literal membership, or unfo
     (:tail (:cons . fold-tail-cons))
     (:length (:cons . fold-length-cons))
     (:= (:tuple . fold-equal-tuple) (:cons . fold-equal-cons) (:if . fold-equal-if)
-        (:code-apply . fold-equal-code-apply)))
+        (:code-apply . fold-equal-code-apply) (:code-subst . fold-equal-code-subst)))
   "The structural rules, as (outer-operator (inner-constructor . function) ...): each takes
 a destructor, or an equality with a literal, off a constructor application. The function
 receives the fold state, the whole term, the constructor application and the other operand
@@ -335,6 +335,43 @@ false for any other tree: an application is built from its operator and argument
           (fold-walk state (bool-and (term `(= ,operator ',(first tree)))
                                      (term `(= ,arguments ',(rest tree)))))
           (lit :bool nil)))))
+
+(defun fold-equal-code-subst (state whole subst literal)
+  "`(= (code-subst 'pat (tuple b0 ... bk)) 'tree)` matches TREE structurally against PAT,
+projecting each substituted variable of PAT to an equality on its corresponding binding Bi
+(either as quoted syntax in SUBST's output scope or as a lifted value literal)."
+  (destructuring-bind (template bindings) (rest subst)
+    (when (and (lit-p template) (app-of-p bindings :tuple))
+      (let* ((a-inputs (code-inputs (ast-type template)))
+             (out-type (ast-type subst))
+             (out-inputs (code-inputs out-type))
+             (parts (rest bindings)))
+        (labels ((match-subst (pat tree)
+                   (cond
+                     ((var-p pat)
+                      (let* ((pos (position (ast-id pat) a-inputs :key #'car :test #'equal))
+                             (input-type (and pos (cdr (nth pos a-inputs))))
+                             (b (and pos (nth pos parts)))
+                             (b-type (and b (ast-type b))))
+                        (cond
+                          ((null pos) (lit :bool (if (equal pat tree) t nil)))
+                          ((code-subst-code-binding-p b-type out-type input-type)
+                           (if (equal input-type (ast-type tree))
+                               (term `(= ,b ,(lit (code-type out-inputs input-type) tree)))
+                               (lit :bool nil)))
+                          ((and (lit-p tree) (equal input-type (ast-type tree)))
+                           (term `(= ,b ,(lit input-type (ast-value tree)))))
+                          (t (lit :bool nil)))))
+                     ((app-p pat)
+                      (if (and (app-p tree)
+                               (equal (first pat) (first tree))
+                               (= (length pat) (length tree)))
+                          (reduce #'bool-and
+                                  (mapcar #'match-subst (rest pat) (rest tree))
+                                  :from-end t :initial-value (lit :bool t))
+                          (lit :bool nil)))
+                     (t (lit :bool (if (equal pat tree) t nil))))))
+          (fold-rewalk state whole (match-subst (ast-value template) (ast-value literal))))))))
 
 (defun fold-equal-if (state whole conditional literal)
   "`(= (if c a b) 'v)` on sequences is `(if c (= a 'v) (= b 'v))`, which exposes each branch."

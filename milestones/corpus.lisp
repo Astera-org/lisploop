@@ -464,10 +464,13 @@ within each occurrence."
 (defun compute-tree-locality-positions (n locality-key &optional ledger)
   "Compute the induced position vector (0..N-1) and quotient structure for tree indices
 under LOCALITY-KEY. When LOCALITY-KEY is nil, position(i) = i. When LOCALITY-KEY is a
-function or DSL expression over `((0 . :int))`, evaluates the key for each tree index i
-into a generated space (scalars or tuples), partitions via `partition-rows` (verifying
-`reassemble-partition`), and quotients via `quotient-values` (verifying `restore-quotient`).
+function, `:locality-key` knowledge entry, or DSL expression over `((0 . :int))`, evaluates
+the key for each tree index i into a generated space (scalars or tuples), partitions via
+`partition-rows` (verifying `reassemble-partition`), and quotients via `quotient-values`
+(verifying `restore-quotient`).
 Returns (VALUES pos-vec labels-vec representatives residual partition)."
+  (when (knowledge-entry-p locality-key)
+    (setf locality-key (knowledge-entry-expression locality-key)))
   (let ((pos-vec (make-array n)))
     (if (null locality-key)
         (progn

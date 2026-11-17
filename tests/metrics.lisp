@@ -289,10 +289,13 @@ the frame for as long as the target type does."
       (check (< (heuristic-residual-bits scored-model) (heuristic-residual-bits plain-model)))
       (check (equal (heuristic-residual scored-model) (heuristic-residual plain-model))))
     (check-heuristic-search-resumption (lambda () (start-heuristic-search scored language)) :budget 20000)
-    ;; The metric is the target type's: kept by a snapshot, dropped where the target changes.
+    ;; The metric belongs to the target coordinate: kept by a snapshot or identity pullback,
+    ;; dropped when the target coordinate or type changes.
     (check (equal zero-one (frame-metric (snapshot-frame scored))))
-    (check (equal zero-one (frame-metric (pullback-frame scored (term `(+ ,(var 0 :int) ,(var 9 :int)))
+    (check (equal zero-one (frame-metric (pullback-frame scored (var 9 :int)
                                                          9 :int (identity-bindings inputs)))))
+    (check (null (frame-metric (pullback-frame scored (term `(+ ,(var 0 :int) ,(var 9 :int)))
+                                               9 :int (identity-bindings inputs)))))
     (check (null (frame-metric (pullback-frame scored (term `(if ,(var 9 :bool) ,(var 0 :int) 0) :int)
                                                9 :bool (identity-bindings inputs)))))
     (raises (make-frame (frame-schema plain) (frame-rows plain) :metric (lit :bool t)))))
@@ -337,4 +340,63 @@ the concepts a frame satisfies address the entries that have them."
             (when (and (consp name) (eq :library (first name)))
               (check (= (decomposition-policy-score proposal)
                         (nth-value 1 (score-entry-by-descriptors (second name) frame 4)))))))))))
+
+(deftest frame-metrics-and-packets-stay-total-portable-and-preserved
+  "A `:code` literal metric unwraps to its expression while non-total metrics are refused; a
+zero-returning seminorm never prices an unequal miss at 0 bits; `propagate-requirements`
+preserves `frame-metric`; archived metric decoders are ignored; and correction packets round-trip
+through `prin1`/`read` with no uninterned AST symbols."
+  (labels ((has-uninterned-symbol-p (tree)
+             (cond ((symbolp tree) (null (symbol-package tree)))
+                   ((consp tree) (or (has-uninterned-symbol-p (car tree))
+                                     (has-uninterned-symbol-p (cdr tree))))
+                   (t nil)))
+           (roundtrip-sexp (tree)
+             (with-standard-io-syntax
+               (read-from-string (prin1-to-string tree)))))
+    (let* ((inputs '((0 . :int)))
+           (zero-one (term `(if (= ,(var 0 :int) ,(var 1 :int)) 0 1) :int))
+           (metric-code (lit (code-type '((0 . :int) (1 . :int)) :int) zero-one))
+           (plain (simple-frame :int inputs '(((1) 1) ((2) 10))))
+           (wrapped (make-frame (frame-schema plain) (frame-rows plain) :metric metric-code))
+           (seminorm (lit :int 0)))
+      ;; 1. Quoted `:code` metric unwraps; non-total metric raises.
+      (check (equal zero-one (frame-metric wrapped)))
+      (raises (make-frame (frame-schema plain) (frame-rows plain)
+                          :metric (term `(/ ,(var 0 :int) ,(var 1 :int)))))
+      ;; 2. Seminorm clamping: equal values cost 0 bits, unequal values cost >= 1 bit even if metric returns 0.
+      (check (equal '(0 0) (multiple-value-list (priced-correction 7 7 :int :metric seminorm))))
+      (multiple-value-bind (packet bits) (priced-correction 4 1000 :int :metric seminorm)
+        (check (= 1000 packet))
+        (check (= 1 bits)))
+      ;; 3. `propagate-requirements` preserves `frame-metric`.
+      (let* ((z (var 0 :int))
+             (prop-frame (make-frame (make-schema :inputs nil :target :int)
+                                     (list (make-row :key 0 :known nil :requirement (term `(= (+ ,z 2) 9))))
+                                     :metric zero-one))
+             (prop (propagate-requirements prop-frame (kernel-propagator-library :int) (make-ledger))))
+        (check (equal zero-one (frame-metric (propagation-frame prop)))))
+      ;; 4. `:code-edit` and `:metric-decoder` packets are pure portable S-expressions and archived decoders hide.
+      (let* ((code (code-type '((0 . :int)) :int))
+             (x (var 0 :int))
+             (pred (term `(+ (* ,x ,x) (+ ,x 1))))
+             (targ (term `(+ (* ,x ,x) (+ ,x 2)))))
+        (multiple-value-bind (packet bits) (priced-correction pred targ code)
+          (check (plusp bits))
+          (check (eq :code-edit (first packet)))
+          (check (not (has-uninterned-symbol-p packet)))
+          (check (equal targ (apply-correction-packet pred (roundtrip-sexp packet) code)))))
+      (with-clean-kernel-state
+        (let* ((seq (sequence-type :int))
+               (entry (install-sequence-shift-metric))
+               (decoders (metric-decoders seq)))
+          (multiple-value-bind (packet bits)
+              (priced-correction '(3 1 4 1 5) '(4 1 5 0 0) seq :decoders decoders)
+            (check (plusp bits))
+            (check (eq :metric-decoder (first packet)))
+            (check (not (has-uninterned-symbol-p packet)))
+            (check (equal '(4 1 5 0 0)
+                          (apply-correction-packet '(3 1 4 1 5) (roundtrip-sexp packet) seq))))
+          (setf (getf (knowledge-entry-metadata entry) :active-p) nil)
+          (check (null (metric-decoders seq))))))))
 

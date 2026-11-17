@@ -9,11 +9,14 @@
   inputs
   target
   (lookup-p nil)
-  ;; Optional availability preorder: ((input-id . index) ...) and the index of the target.
-  ;; A model of the target may read only the inputs whose index is below the target's; an
-  ;; input without an index is always available. Nothing here names what a column means.
+  ;; Optional availability preorder: ((input-id . rank) ...), the rank of the target, and
+  ;; optional DAG order pairs ((low . high) ...). A model of the target may read only inputs
+  ;; whose rank is at or before the target's (`rank-le-p`, so contemporaneous inputs are
+  ;; available); an input without an explicit rank defaults to `:bottom` (always available).
+  ;; Nothing here names what a column means.
   (availability nil)
-  (target-availability nil))
+  (target-availability nil)
+  (availability-order nil))
 
 (defstruct ast-meta
   kind            ; :var | :lit | :op | :hole | :app
@@ -288,24 +291,87 @@ or element type `tau` (normalized to `(:seq tau)`)."
       (let ((sub (infer-domain-from-types (rest type))))
         (unless (eq sub :int) (return sub))))))
 
-(defun make-schema (&key domain inputs (target :int) lookup-p availability target-availability)
-  (let ((inferred-domain (or domain
-                             (infer-domain-from-types (cons target (mapcar #'cdr inputs))))))
-    (assert (every (lambda (entry) (and (assoc (car entry) inputs) (realp (cdr entry)))) availability))
-    (assert (or (null target-availability) (realp target-availability)))
+(defun valid-availability-rank-p (rank)
+  (not (null rank)))
+
+(defun rank-le-p (low high &optional order)
+  "True when availability rank LOW precedes or equals HIGH under ORDER (`((u . v) ...)`):
+reflexive (`<=` on reals), universal bounds `:bottom` / `:top`, and transitive reachability
+along ORDER."
+  (cond ((equal low high) t)
+        ((eq low :bottom) t)
+        ((eq high :top) t)
+        ((or (eq low :top) (eq high :bottom)) nil)
+        ((and (realp low) (realp high)) (<= low high))
+        (order
+         (let ((queue (list low))
+               (visited (list low)))
+           (loop while queue
+                 for cur = (pop queue)
+                 do (dolist (edge order)
+                      (when (equal (car edge) cur)
+                        (let ((next (cdr edge)))
+                          (when (or (equal next high)
+                                    (and (realp next) (realp high) (<= next high)))
+                            (return-from rank-le-p t))
+                          (unless (member next visited :test #'equal)
+                            (push next visited)
+                            (push next queue)))))
+                 finally (return nil))))))
+
+(defun make-schema (&key domain inputs (target :int) lookup-p
+                         availability target-availability availability-order)
+  (let* ((plist-p (and (consp availability) (keywordp (first availability))))
+         (ranks (if plist-p (getf availability :ranks) availability))
+         (target-rank (or target-availability (and plist-p (getf availability :target))))
+         (order (or availability-order (and plist-p (getf availability :le))))
+         (inferred-domain (or domain
+                              (infer-domain-from-types (cons target (mapcar #'cdr inputs))))))
+    (assert (every (lambda (entry)
+                     (and (consp entry)
+                          (assoc (car entry) inputs :test #'equal)
+                          (valid-availability-rank-p (cdr entry))))
+                   ranks))
+    (assert (or (null target-rank) (valid-availability-rank-p target-rank)))
+    (assert (every (lambda (edge)
+                     (and (consp edge)
+                          (valid-availability-rank-p (car edge))
+                          (valid-availability-rank-p (cdr edge))))
+                   order))
     (%make-schema :domain inferred-domain :inputs (copy-tree inputs)
                   :target (copy-tree target) :lookup-p lookup-p
-                  :availability (copy-tree availability)
-                  :target-availability target-availability)))
+                  :availability (copy-tree ranks)
+                  :target-availability (copy-tree target-rank)
+                  :availability-order (copy-tree order))))
 
 (defun available-inputs (schema)
-  "The inputs of SCHEMA that a model of its target may read: those whose availability index
-is below the target's, and those that have none."
-  (let ((limit (schema-target-availability schema)))
-    (remove-if (lambda (input)
-                 (let ((index (cdr (assoc (car input) (schema-availability schema)))))
-                   (and limit index (not (< index limit)))))
-               (schema-inputs schema))))
+  "The inputs of SCHEMA that a model of its target may read: those whose availability rank
+is at or before the target's (`rank-le-p`), and those without an explicit rank (`:bottom`)."
+  (let ((limit (schema-target-availability schema))
+        (ranks (schema-availability schema))
+        (order (schema-availability-order schema)))
+    (if (null limit)
+        (schema-inputs schema)
+        (remove-if-not (lambda (input)
+                         (let ((entry (assoc (car input) ranks :test #'equal)))
+                           (rank-le-p (if entry (cdr entry) :bottom) limit order)))
+                       (schema-inputs schema)))))
+
+(defun expression-respects-availability-p (expression schema)
+  "True when EXPRESSION reads only inputs permitted by SCHEMA's availability preorder."
+  (let ((allowed (available-inputs schema)))
+    (every (lambda (id) (assoc id allowed :test #'equal))
+           (free-vars expression))))
+
+(defun schema-maximal-availability-id (schema)
+  "Return the unique input ID of SCHEMA whose explicit availability rank dominates every
+ranked input under `rank-le-p`, or nil when no unique top-ranked input exists."
+  (let* ((ranks (schema-availability schema))
+         (order (schema-availability-order schema))
+         (top (loop for (id . rank) in ranks
+                    when (every (lambda (other) (rank-le-p (cdr other) rank order)) ranks)
+                      collect id)))
+    (and (= 1 (length top)) (first top))))
 
 ;;; Structural work & bit-size helpers needed at AST construction time
 

@@ -61,20 +61,31 @@ is nil when the guard fails to evaluate on some row."
         (mapcar #'candidate-expression (reverse (synthesis-job-results search))))))
 
 (defun evaluate-model-run-work (model frame &optional ledger)
-  "Verify MODEL across all rows of FRAME in the metered VM and return total runtime work W_run."
+  "Verify MODEL across all rows and hard edges of FRAME in the metered VM and return total runtime work W_run."
   (let* ((schema (frame-schema frame))
          (inputs (schema-inputs schema))
-         (target-type (schema-target schema)))
-    (loop for row in (frame-rows frame)
-          sum (let ((run (evaluate model inputs (row-known row) :ledger ledger)))
-                (unless (eq :value (evaluation-status run))
-                  (return-from evaluate-model-run-work nil))
-                (let ((chk (check-requirement (row-requirement row) (evaluation-value run)
-                                              :ledger ledger :type target-type)))
-                  (unless (and (eq :value (evaluation-status chk))
-                               (eq t (evaluation-value chk)))
-                    (return-from evaluate-model-run-work nil)))
-                (evaluation-work run)))))
+         (target-type (schema-target schema))
+         (edges (hard-edges frame))
+         (values nil)
+         (work (loop for row in (frame-rows frame)
+                     sum (let ((run (evaluate model inputs (row-known row) :ledger ledger)))
+                           (unless (eq :value (evaluation-status run))
+                             (return-from evaluate-model-run-work nil))
+                           (let ((chk (check-requirement (row-requirement row) (evaluation-value run)
+                                                         :ledger ledger :type target-type)))
+                             (unless (and (eq :value (evaluation-status chk))
+                                          (eq t (evaluation-value chk)))
+                               (return-from evaluate-model-run-work nil)))
+                           (when edges
+                             (push (cons (row-key row) (evaluation-value run)) values))
+                           (evaluation-work run)))))
+    (dolist (edge edges work)
+      (charge ledger :checking)
+      (destructuring-bind (kind left right) edge
+        (let ((a (assoc left values :test #'equal))
+              (b (assoc right values :test #'equal)))
+          (when (and a b (eq (eq kind :distinct) (equal (cdr a) (cdr b))))
+            (return-from evaluate-model-run-work nil)))))))
 
 (defun price-view-combinations (frame guard true-models false-models
                                 bindings type ledger &key decoder child-id)

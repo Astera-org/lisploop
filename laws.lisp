@@ -703,8 +703,7 @@ Both retain the original frame as a fallback."
              (setf (propagation-retained result) (length (frame-rows frame))))
             (t
              (setf (propagation-frame result)
-                   (make-frame (frame-schema frame) (mapcar #'narrow (frame-rows frame))
-                               :pairs (frame-pairs frame) :anchors (frame-anchors frame)))
+                   (derive-frame frame :rows (mapcar #'narrow (frame-rows frame))))
              (when (or (plusp (propagation-suggested result))
                        (plusp (propagation-ambiguous result)))
                (setf (propagation-fallback result) frame))))
@@ -712,22 +711,67 @@ Both retain the original frame as a fallback."
 
 ;;; Symbolic unwinding: the same rules applied to expressions instead of row values.
 
+(defun simplify-symbolic-expr (expr)
+  "Lightweight algebraic cleanup on a symbolically unwound expression: folds closed subterms
+and strips provably-total additive/multiplicative identities (`+ 0`, `- 0`, `* 1`, `* 0`)."
+  (cond
+    ((not (app-p expr)) expr)
+    ((and (null (free-vars expr)) (not (pattern-has-holes-p expr)))
+     (let ((run (evaluate expr nil nil :budget 64)))
+       (if (eq :value (evaluation-status run))
+           (lit (ast-type expr) (evaluation-value run))
+           expr)))
+    (t
+     (let* ((rebuilt (apply #'app (first expr) (mapcar #'simplify-symbolic-expr (rest expr))))
+            (name (ast-id rebuilt))
+            (a (second rebuilt))
+            (b (third rebuilt)))
+       (flet ((lit-val-p (node v) (and (lit-p node) (eql v (ast-value node)))))
+         (cond
+           ((and (null (free-vars rebuilt)) (not (pattern-has-holes-p rebuilt)))
+            (let ((run (evaluate rebuilt nil nil :budget 64)))
+              (if (eq :value (evaluation-status run))
+                  (lit (ast-type rebuilt) (evaluation-value run))
+                  rebuilt)))
+           ((and (eq name :+) (lit-val-p a 0)) b)
+           ((and (eq name :+) (lit-val-p b 0)) a)
+           ((and (eq name :-) (lit-val-p b 0)) a)
+           ((and (eq name :*) (lit-val-p a 1)) b)
+           ((and (eq name :*) (lit-val-p b 1)) a)
+           ((and (eq name :*) (lit-val-p a 0) (provably-total-p b)) a)
+           ((and (eq name :*) (lit-val-p b 0) (provably-total-p a)) b)
+           (t rebuilt)))))))
+
 (defun solve-equality-symbolically (expression constant target-id &key (library *knowledge-library*) ledger)
-  "Unwind the equation EXPRESSION = CONSTANT for the variable TARGET-ID. At each level
-EXPRESSION must apply an operator whose arguments mention the target in one place only;
-a rule of LIBRARY that inverts the operator there, and whose witness is the only solution,
-then turns `(= (op K T) c)` into `(= T q(K, c))` with the rule's witness written over the
-expressions K and c themselves. Returns (VALUES solution guards certified-p): the closed
-form of the target, the instances of the rules' guards it holds under, and whether every
-rule used has current witness evidence; a solution that is not certified is a conjecture to
-replay. Returns nil when some level has no such rule."
+  "Unwind the equation EXPRESSION = CONSTANT (or a two-sided `(= lhs rhs)` when CONSTANT is
+nil or `'t`) for the variable TARGET-ID. At each level EXPRESSION must apply an operator whose
+arguments mention the target in one place only; a rule of LIBRARY that inverts the operator
+there, and whose witness is marked unique, then turns `(= (op K T) c)` into `(= T q(K, c))`
+with the rule's witness written over the expressions K and c themselves. Returns
+(VALUES solution guards certified-p): the closed form of the target, the instances of the
+rules' guards it holds under, and whether every rule used has current witness and uniqueness
+evidence; a solution that is not certified is a conjecture to replay. Returns nil when some
+level has no such rule."
+  (when (and (app-of-p expression :=)
+             (or (null constant)
+                 (and (lit-p constant) (eq :bool (ast-type constant)) (eq t (ast-value constant)))))
+    (let ((lhs (second expression))
+          (rhs (third expression)))
+      (cond ((and (member target-id (free-vars lhs)) (not (member target-id (free-vars rhs))))
+             (setf expression lhs constant rhs))
+            ((and (member target-id (free-vars rhs)) (not (member target-id (free-vars lhs))))
+             (setf expression rhs constant lhs)))))
+  (when (null constant)
+    (return-from solve-equality-symbolically nil))
   (let* ((propagators (as-propagator-library library))
          (rules (and propagators (propagator-library-rules propagators)))
          (guards nil)
          (certified-p t))
     (loop
       (when (and (var-p expression) (eql target-id (ast-id expression)))
-        (return (values constant (nreverse guards) certified-p)))
+        (return (values (simplify-symbolic-expr constant)
+                        (mapcar #'simplify-symbolic-expr (nreverse guards))
+                        certified-p)))
       (let* ((open (and (app-p expression)
                         (loop for argument in (rest expression) for position from 0
                               when (member target-id (free-vars argument)) collect position)))
@@ -735,7 +779,9 @@ replay. Returns nil when some level has no such rule."
                         (find-if (lambda (rule)
                                    (and (equal (first expression) (arithmetic-propagator-operator rule))
                                         (equal open (solver-positions (arithmetic-propagator-position rule)))
-                                        (propagator-certified-current-p rule :uniqueness)))
+                                        (or (propagator-certified-current-p rule :uniqueness)
+                                            (let ((src (arithmetic-propagator-source rule)))
+                                              (and src (getf (knowledge-entry-metadata src) :unique-p))))))
                                  rules))))
         (unless rule (return nil))
         (charge ledger :symbolic-unwinding (syntax-work expression))
@@ -746,60 +792,114 @@ replay. Returns nil when some level has no such rule."
                              collect (cons id (if (eq item :target)
                                                   constant
                                                   (nth (second item) (rest expression)))))))
-          (unless (propagator-certified-current-p rule) (setf certified-p nil))
+          (unless (and (propagator-certified-current-p rule :witness)
+                       (propagator-certified-current-p rule :uniqueness))
+            (setf certified-p nil))
           (let ((guard (instantiate (arithmetic-propagator-guard rule) context :var)))
             (unless (unconstrained-requirement-p guard) (push guard guards)))
           (setf constant (instantiate (arithmetic-propagator-witness rule) context :var)
                 expression (nth (first open) (rest expression))))))))
 
+(defun sensitivity-probe-values (type)
+  "Synthetic fallback probe values of TYPE for `target-sensitive-p`."
+  (cond ((eq type :int) '(0 1 -1 2 7))
+        ((eq type :bool) '(nil t))
+        ((gf-type-p type) (loop for v from 0 below (min (second type) 7) collect v))
+        ((seq-type-p type)
+         (let ((d (default-value-for-type (second type))))
+           (list nil (list d) (list d d))))
+        (t (list (default-value-for-type type)))))
+
 (defun target-sensitive-p (expression target-id frame &optional ledger)
   "True when EXPRESSION mentions the input TARGET-ID of FRAME and, on some row, takes another
-value once that input is given the value it has on a different row. A conserved quantity
-that mentions the target only to cancel it, like `(- Y Y)`, says nothing about it."
+value once that input is perturbed across all observed or synthetic probe values of its type.
+A conserved quantity that mentions the target only to cancel it, like `(- Y Y)`, says nothing
+about it."
   (let* ((inputs (schema-inputs (frame-schema frame)))
          (position (position target-id inputs :key #'car))
-         (alternatives (and position
-                            (remove-duplicates (mapcar (lambda (row) (nth position (row-known row)))
-                                                       (frame-rows frame))
-                                               :test #'equal))))
+         (target-type (and position (cdr (nth position inputs))))
+         (observed (and position
+                        (loop for row in (frame-rows frame)
+                              for val = (nth position (row-known row))
+                              unless (eq val :unresolved) collect val)))
+         (probes (and position
+                      (remove-duplicates (append observed (sensitivity-probe-values target-type))
+                                         :test #'equal))))
     (and (member target-id (free-vars expression))
-         (rest alternatives)
+         (rest probes)
          (some (lambda (row)
                  (let* ((known (row-known row))
-                        (other (find (nth position known) alternatives :test-not #'equal))
-                        (perturbed (substitute-if other (constantly t) known :start position :count 1)))
-                   (multiple-value-bind (here here-p) (eval-expr-value expression inputs known ledger)
-                     (multiple-value-bind (there there-p) (eval-expr-value expression inputs perturbed ledger)
-                       (and here-p there-p (not (equal here there)))))))
+                        (orig (nth position known)))
+                   (and (not (eq orig :unresolved))
+                        (multiple-value-bind (here here-p) (eval-expr-value expression inputs known ledger)
+                          (and here-p
+                               (some (lambda (other)
+                                       (and (not (equal other orig))
+                                            (let ((perturbed (substitute-if other (constantly t) known
+                                                                            :start position :count 1)))
+                                              (multiple-value-bind (there there-p)
+                                                  (eval-expr-value expression inputs perturbed ledger)
+                                                (and there-p (not (equal here there)))))))
+                                     probes))))))
                (frame-rows frame)))))
 
 (defun orient-conserved-quantity (obs-frame target-id conserved-expr constant-value
                                   &key (library *knowledge-library*) ledger)
   "Turn the conservation C(u, T) = CONSTANT-VALUE observed on OBS-FRAME, whose rows know
-every column, into a way to predict column TARGET-ID from the others. Returns nil when C is
-not sensitive to T. When unique solvers unwind the equation and the closed form meets
-every row, its guards included, returns (VALUES model :symbolic guards): an expression over
-the other columns. Otherwise returns (VALUES frame :numeric), the pulled-back frame of
-`conserved-quantity-frame`, which solves the equation row by row."
-  (when (target-sensitive-p conserved-expr target-id obs-frame ledger)
-    (let* ((inputs (schema-inputs (frame-schema obs-frame)))
-           (position (position target-id inputs :key #'car))
-           (constant (lit (expression-type conserved-expr inputs) constant-value)))
-      (multiple-value-bind (model guards)
-          (solve-equality-symbolically conserved-expr constant target-id :library library :ledger ledger)
-        (if (and model
-                 (every (lambda (row)
-                          (let ((known (row-known row)))
-                            (and (every (lambda (guard)
-                                          (multiple-value-bind (value ok) (eval-expr-value guard inputs known ledger)
-                                            (and ok value)))
-                                        guards)
-                                 (multiple-value-bind (value ok) (eval-expr-value model inputs known ledger)
-                                   (and ok (equal value (nth position known)))))))
-                        (frame-rows obs-frame)))
-            (values model :symbolic guards)
-            (values (conserved-quantity-frame obs-frame target-id conserved-expr constant-value ledger)
-                    :numeric))))))
+every column, into a way to predict column TARGET-ID (or `:auto` for the unique top-ranked
+column under the schema's availability preorder) from the others. Returns nil when C is not
+sensitive to T. When unique solvers unwind the equation, the closed form and its guards read
+only inputs available at T's rank, and they meet every row, returns (VALUES model :symbolic guards).
+Otherwise returns (VALUES frame :numeric), the pulled-back frame of `conserved-quantity-frame`
+oriented to T's available inputs."
+  (let* ((obs-schema (frame-schema obs-frame))
+         (inputs (schema-inputs obs-schema))
+         (target-id (if (eq target-id :auto)
+                        (schema-maximal-availability-id obs-schema)
+                        target-id))
+         (position (and target-id (position target-id inputs :key #'car))))
+    (when (and position (target-sensitive-p conserved-expr target-id obs-frame ledger))
+      (let* ((target-type (cdr (nth position inputs)))
+             (u-inputs (remove target-id inputs :key #'car))
+             (target-rank (or (cdr (assoc target-id (schema-availability obs-schema) :test #'equal))
+                              (schema-target-availability obs-schema)))
+             (u-schema (make-schema :domain (schema-domain obs-schema)
+                                    :inputs u-inputs :target target-type
+                                    :availability (remove target-id (schema-availability obs-schema)
+                                                          :key #'car)
+                                    :target-availability target-rank
+                                    :availability-order (schema-availability-order obs-schema)))
+             (constant (lit (expression-type conserved-expr inputs) constant-value)))
+        (multiple-value-bind (model guards)
+            (solve-equality-symbolically conserved-expr constant target-id
+                                         :library library :ledger ledger)
+          (if (and model
+                   (expression-respects-availability-p model u-schema)
+                   (every (lambda (g) (expression-respects-availability-p g u-schema)) guards)
+                   (every (lambda (row)
+                            (let ((known (row-known row)))
+                              (and (every (lambda (guard)
+                                            (multiple-value-bind (value ok)
+                                                (eval-expr-value guard inputs known ledger)
+                                              (and ok value)))
+                                          guards)
+                                   (multiple-value-bind (value ok)
+                                       (eval-expr-value model inputs known ledger)
+                                     (and ok (equal value (nth position known)))))))
+                          (frame-rows obs-frame)))
+              (values model :symbolic guards)
+              (let ((pulled (conserved-quantity-frame obs-frame target-id conserved-expr
+                                                      constant-value ledger)))
+                (values (if target-rank
+                            (orient-available
+                             (make-frame u-schema (frame-rows pulled)
+                                         :pairs (frame-pairs pulled)
+                                         :anchors (frame-anchors pulled)
+                                         :edges (frame-edges pulled)
+                                         :metric (frame-metric pulled))
+                             ledger)
+                            pulled)
+                        :numeric))))))))
 
 ;;; ============================================================
 ;;; Persistent Knowledge Library: Laws, Solvers, and Functors
@@ -1066,12 +1166,13 @@ Records the edge (:metric-decoder d q tag-bits) on the entry and returns it."
 each as (operator solver-entry tag-bits delta-type)."
   (let ((found nil))
     (dolist (entry (knowledge-entries-of-kind :solver library))
-      (let ((edge (first (knowledge-edges-from entry :metric-decoder library))))
-        (when edge
-          (let* ((operator (sexp->ast (getf (knowledge-entry-metadata entry) :operator)))
-                 (signature (operator-type operator)))
-            (when (equal type (third signature))
-              (push (list operator entry (fourth edge) (second (second signature))) found))))))
+      (when (knowledge-entry-active-p entry)
+        (let ((edge (first (knowledge-edges-from entry :metric-decoder library))))
+          (when edge
+            (let* ((operator (sexp->ast (getf (knowledge-entry-metadata entry) :operator)))
+                   (signature (operator-type operator)))
+              (when (equal type (third signature))
+                (push (list operator entry (fourth edge) (second (second signature))) found)))))))
     (let ((ordered (stable-sort (nreverse found) #'< :key #'third)))
       (subseq ordered 0 (min limit (length ordered))))))
 

@@ -129,14 +129,15 @@ the rows are stored, and a composed candidate is held to the root's edges."
     (raises (make-frame schema rows :edges '((:near :a :b))))))
 
 (deftest availability-preorder-withholds-later-inputs
-  "A schema may order its columns. A model of the target reads only the columns before it,
-whatever they are called; the orientation is explicit and search refuses a frame without it."
+  "A schema may preorder its columns (`tau(X_i) <= tau(Y)`). A model of the target reads only
+earlier or contemporaneous columns, whatever they are called; later or incomparable columns are
+withheld, and search refuses an unoriented frame."
   (dolist (ids '((0 1) (7 3)))
     (destructuring-bind (early late) ids
       (let* ((inputs (list (cons early :int) (cons late :int)))
              ;; The later column happens to equal the target: read, it would be the whole model.
              (schema (make-schema :inputs inputs :target :int
-                                  :availability (list (cons early 0) (cons late 1))
+                                  :availability (list (cons early 0) (cons late 2))
                                   :target-availability 1))
              (frame (make-frame schema
                                 (loop for (x y) in '((1 2) (5 6) (9 10)) for key from 0
@@ -151,17 +152,29 @@ whatever they are called; the orientation is explicit and search refuses a frame
         (check (equal '((1) (5) (9)) (mapcar #'row-known (frame-rows oriented))))
         (raises (start-search frame language))
         (raises (start-synthesis frame language 60))
+        (raises (start-heuristic-search frame language))
         (let ((job (start-search oriented oriented-language)))
           (resume-search job (header-bound oriented-inputs :int 16) 100000)
           (check (= 13 (result (candidate-expression (search-job-best job)) oriented-inputs '(12)))))
         ;; An invariant may still be sought across every column.
         (check (make-observation-scope frame language))
-        ;; An equal index is not earlier; a column without one is always available.
-        (check (null (available-inputs (make-schema :inputs inputs :target :int
-                                                    :availability (list (cons early 1) (cons late 1))
-                                                    :target-availability 1))))
+        ;; Contemporaneous equal-rank inputs (`<=`) and unranked columns are available.
+        (check (equal (list (cons early :int))
+                      (available-inputs (make-schema :inputs inputs :target :int
+                                                     :availability (list (cons early 1) (cons late 2))
+                                                     :target-availability 1))))
         (check (equal inputs (available-inputs (make-schema :inputs inputs :target :int
                                                             :target-availability 0))))
+        ;; Symbolic DAG preorders withhold both strictly later and incomparable columns.
+        (let* ((dag-inputs (list (cons early :int) (cons late :int) (cons 99 :int)))
+               (dag-schema (make-schema :inputs dag-inputs :target :int
+                                        :availability (list :ranks (list (cons early :past)
+                                                                         (cons late :future)
+                                                                         (cons 99 :side-branch))
+                                                            :target :present
+                                                            :le '((:past . :present)
+                                                                  (:present . :future))))))
+          (check (equal (list (cons early :int)) (available-inputs dag-schema))))
         ;; The order belongs to this target: a child with another target starts unordered.
         (check (null (schema-target-availability
                       (frame-schema (pullback-frame oriented (term `(if ,(var 9 :bool) ,(var early :int) 0) :int)
@@ -255,4 +268,75 @@ the original requirement, and consolidating again adds nothing (plan 8, P8.4)."
                                         :witness (term `(+ (- ,(var 1 field) ,(var 0 field)) ,(1- prime)) field)
                                         :unique-p nil)))
       (check (null (lift-field-solvers *knowledge-library*))))))
+
+(deftest symbolic-unwinding-respects-availability-and-multi-probe-sensitivity
+  "Symbolic unwinding auto-selects the maximal-availability column when `:target-id :auto` is
+requested, refuses closed forms that read unavailable later columns, detects target sensitivity
+across synthetic probes when sample rows collide, and preserves frame topology across propagation
+and row shuffles."
+  (with-clean-kernel-state
+    (let* ((library (kernel-propagator-library :int))
+           (inputs '((0 . :int) (1 . :int) (2 . :int)))
+           (x0 (var 0 :int)) (x1 (var 1 :int)) (x2 (var 2 :int)))
+      ;; 1. `:target-id :auto` unwinds the unique maximal-availability column (`x2` at rank 2).
+      (let* ((schema (make-schema :inputs inputs :target :int
+                                  :availability '((0 . 0) (1 . 1) (2 . 2))))
+             (rows (loop for (a b c) in '((1 3 4) (2 5 7) (-1 4 3)) for k from 0
+                         collect (make-row :key k :known (list a b c) :requirement (lit :bool t))))
+             (frame (make-frame schema rows))
+             (conserved (term `(- ,x2 (+ ,x0 ,x1)))))
+        (multiple-value-bind (model kind)
+            (orient-conserved-quantity frame :auto conserved 0 :library library)
+          (check (eq :symbolic kind))
+          (check (= 15 (result model inputs '(6 9 0))))))
+      ;; 2. Unwinding `x1` (rank 1) from `(- (+ x1 x2) 10) = 0` when `x2` has rank 2 > 1 refuses
+      ;;    the unavailable `:symbolic` closed form `(- 10 x2)` and strips `x2` from `:numeric`.
+      (let* ((schema (make-schema :inputs inputs :target :int
+                                  :availability '((0 . 0) (1 . 1) (2 . 2))))
+             (rows (loop for (a b c) in '((0 3 7) (1 4 6) (2 8 2)) for k from 0
+                         collect (make-row :key k :known (list a b c) :requirement (lit :bool t))))
+             (frame (make-frame schema rows)))
+        (multiple-value-bind (fallback kind)
+            (orient-conserved-quantity frame 1 (term `(- (+ ,x1 ,x2) 10)) 0 :library library)
+          (check (eq :numeric kind))
+          (check (equal '((0 . :int)) (schema-inputs (frame-schema fallback)))))))
+    ;; 3. Multi-probe sensitivity: `1^2 = 4^2 = 1 (mod 5)` collides on rows `(1, 1)` and `(2, 4)`,
+    ;;    yet synthetic probes still detect sensitivity of `(* X (* Y Y))` to `Y`.
+    (let* ((field (gf 5))
+           (f-inputs (list (cons 0 field) (cons 1 field)))
+           (fx (var 0 field)) (fy (var 1 field))
+           (colliding (probe-frame field f-inputs '((1 1) (2 4)))))
+      (check (target-sensitive-p (term `(* ,fx (* ,fy ,fy)) field) 1 colliding)))
+    ;; 4. `propagate-requirements` preserves `frame-edges` and `child-scope-signature` is shuffle-invariant.
+    (let* ((inputs '((0 . :int)))
+           (z (var 0 :int))
+           (rows (list (make-row :key :a :known '(1) :requirement (term `(= (+ ,z 1) 6)))
+                       (make-row :key :b :known '(2) :requirement (term `(= (+ ,z 2) 7)))
+                       (make-row :key :c :known '(3) :requirement (term `(= (+ ,z 3) 9)))))
+           (frame (make-frame (make-schema :inputs inputs :target :int) rows
+                              :pairs '((:a . :b)) :anchors '(:c)
+                              :edges '((:equal :a :b) (:persistence :b :c))))
+           (lang (make-language :int inputs :operators (list (op :+ :int)) :literals '(0 1)))
+           (prop (propagate-requirements frame (kernel-propagator-library :int) (make-ledger))))
+      (check (equal (frame-edges frame) (frame-edges (propagation-frame prop))))
+      (check (equal (child-scope-signature frame lang)
+                    (child-scope-signature (shuffle-frame-rows frame '(2 0 1)) lang))))))
+
+(deftest truncating-integer-division-does-not-lift-from-prime-fields
+  "Multiplication's prime-field inverse `(/ y c)` does not replay over the integers because `/`
+truncates (`(/ 7 2) = 3` while `3 * 2 /= 7`), so `lift-field-solvers` rejects `:*` while keeping
+sound lifts; archived field solvers are ignored as well."
+  (with-clean-kernel-state
+    (dolist (prime '(5 7))
+      (register-kernel-arithmetic-solver (gf prime) :* 0)
+      (register-kernel-arithmetic-solver (gf prime) :+ 0))
+    (let ((lifted (lift-field-solvers *knowledge-library*)))
+      (check (= 1 (length lifted)))
+      (check (eq :+ (getf (knowledge-entry-metadata (first lifted)) :operator-name)))))
+  (with-clean-kernel-state
+    (dolist (prime '(5 7))
+      (let ((entry (register-kernel-arithmetic-solver (gf prime) :+ 0)))
+        (when (= prime 7)
+          (setf (getf (knowledge-entry-metadata entry) :active-p) nil))))
+    (check (null (lift-field-solvers *knowledge-library*)))))
 

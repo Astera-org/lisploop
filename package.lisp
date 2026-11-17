@@ -5,7 +5,8 @@
    #:gf #:tuple-type #:sequence-type #:code-type #:code-type-p #:code-inputs #:code-sort
    #:valid-type-p #:function-sort-p #:value-p #:seq-type-p #:gf-type-p #:tuple-type-p #:input-alist
    #:schema #:make-schema #:copy-schema #:schema-domain #:schema-inputs #:schema-target #:schema-lookup-p
-   #:schema-availability #:schema-target-availability #:available-inputs
+   #:schema-availability #:schema-target-availability #:schema-availability-order
+   #:rank-le-p #:available-inputs #:expression-respects-availability-p #:schema-maximal-availability-id
    #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:map-ast #:app-of-p
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p

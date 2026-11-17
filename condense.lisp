@@ -72,6 +72,7 @@ and unverified oracle functions from Stage A unconditional observation."
 
 (defun start-heuristic-search (frame language &key description-limit (run-weight 0) stop-on-exact-p)
   (assert (and (realp run-weight) (>= run-weight 0)))
+  (assert-inputs-available frame)
   (let ((obs-language (stage-a-observation-language frame language)))
     (%make-heuristic-search
      :observation (start-observation-search (make-observation-scope frame obs-language) :retain-outcomes t)

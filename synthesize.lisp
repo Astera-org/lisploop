@@ -221,7 +221,31 @@ value apart or putting one together is not a step of computation."
                                   collect (if (eq value :unresolved) :unresolved
                                               (ast->sexp (lit type value))))
                             (ast->sexp (row-requirement row))))
-        #'string< :key #'prin1-to-string))
+        #'string<
+        :key (lambda (item) (with-standard-io-syntax (prin1-to-string item)))))
+
+(defun canonical-linkage-signature (frame)
+  "Order-independent signature of FRAME's pairs, anchors, and edges, mapping row keys through
+`canonical-row-order` so physical row permutations (`shuffle-frame-rows`) share one signature."
+  (when (or (frame-pairs frame) (frame-anchors frame) (frame-edges frame))
+    (let* ((ordered (canonical-row-order (frame-rows frame)))
+           (ranks (loop for row in ordered for idx from 0 collect (cons (row-key row) idx))))
+      (labels ((rk (key) (or (cdr (assoc key ranks :test #'equal)) key))
+               (canon-pair (a b symmetric-p)
+                 (let ((ra (rk a)) (rb (rk b)))
+                   (if (and symmetric-p
+                            (string< (with-standard-io-syntax (prin1-to-string rb))
+                                     (with-standard-io-syntax (prin1-to-string ra))))
+                       (list rb ra)
+                       (list ra rb))))
+               (sort-sexps (items)
+                 (sort (copy-list items) #'string<
+                       :key (lambda (item) (with-standard-io-syntax (prin1-to-string item))))))
+        (list (sort-sexps (loop for (a . b) in (frame-pairs frame)
+                                collect (canon-pair a b t)))
+              (sort-sexps (mapcar #'rk (frame-anchors frame)))
+              (sort-sexps (loop for (kind a b) in (frame-edges frame)
+                                collect (cons kind (canon-pair a b (not (eq kind :persistence)))))))))))
 
 (defun child-scope-signature (frame language &optional reserve)
   "Frozen constraint identity, independent of occurrence names/order; keep linkage contexts distinct."
@@ -229,34 +253,35 @@ value apart or putting one together is not a step of computation."
     (list (copy-tree inputs) (copy-tree (schema-target (frame-schema frame)))
           (canonical-constraint-rows (frame-rows frame) inputs)
           (canonical-constraint-rows reserve inputs)
-          ;; Observation linkage carries occurrence semantics; do not quotient it away.
-          (when (or (frame-pairs frame) (frame-anchors frame) (frame-edges frame))
-            (copy-tree (list (mapcar #'row-key (frame-rows frame)) (frame-pairs frame) (frame-anchors frame)
-                             (frame-edges frame))))
+          ;; Observation linkage carries occurrence semantics; canonicalize across storage order.
+          (canonical-linkage-signature frame)
           (copy-tree (language-domain language))
           (copy-tree (language-inputs language))
           (mapcar #'ast->sexp (language-operators language))
           (copy-tree (language-literals language))
           (mapcar #'ast->sexp (language-constants language)))))
 
-(defun slot-models (node expression)
-  "A model for every slot of the product NODE is a slot of: EXPRESSION for its own, the best
-found so far for another, and a default literal for a slot that has none yet."
+(defun slot-models (node expression &optional overrides)
+  "A model for every slot of the product NODE is a slot of: EXPRESSION for its own, an explicit
+entry in OVERRIDES or the best found so far for another, and a default literal for a slot that
+has none yet."
   (let ((proposal (synthesis-node-proposal node))
         (found (product-join-models (synthesis-node-join node))))
     (loop for (id . type) in (decomposition-slots proposal)
           collect (cons id (cond ((eql id (decomposition-child-id proposal)) expression)
+                                 ((cdr (assoc id overrides)))
                                  ((second (assoc id found)))
                                  (t (lit type (default-value-for-type type))))))))
 
-(defun compose-through (node expression ledger)
+(defun compose-through (node expression ledger &optional slot-overrides)
   "EXPRESSION, a model of NODE's frame, composed into a model of its parent's frame. A slot
 of a product is composed with the models of the other slots (`slot-models`)."
   (let* ((proposal (synthesis-node-proposal node))
          (parent-frame (synthesis-node-frame (synthesis-node-parent node)))
          (inputs (and parent-frame (schema-inputs (frame-schema parent-frame)))))
     (cond ((synthesis-node-join node)
-           (compose-product-model (decomposition-decoder proposal) (slot-models node expression)
+           (compose-product-model (decomposition-decoder proposal)
+                                  (slot-models node expression slot-overrides)
                                   (decomposition-bindings proposal) ledger inputs))
           ((decomposition-lift-p proposal)
            (compose-lifted-model (decomposition-decoder proposal) (decomposition-child-id proposal)
@@ -333,16 +358,16 @@ A slot of a product is judged once it is joined: another slot may make the call.
 
 (defun stage-a-budget (job node frame)
   "The work NODE's Stage A condensation of FRAME may spend, or nil for none: the job's
-heuristic budget, doubled for a lifted frame and for the child of a recursive definition.
-A lifted frame also receives the parent inputs its decoder does not consume, and each one
-both adds its combinations to every tier of the grammar and makes a variable reference
-dearer than a small literal, which puts the combinations of two inputs later. Its budget is
-therefore multiplied by the square of its number of inputs beyond the first, the least
-multiplier that keeps those combinations within reach as inputs are added (plan 8, probe 2).
-Stage A stops at an exact model in a lifted branch, so the larger budget is spent in full
-only where there is none."
+heuristic budget, doubled inside a lifted branch and for the child of a recursive definition.
+A node inside a lifted branch also receives the parent inputs its decoder does not consume,
+and each one both adds its combinations to every tier of the grammar and makes a variable
+reference dearer than a small literal, which puts the combinations of two inputs later. Its
+budget is therefore multiplied by the square of its number of inputs beyond the first, the
+least multiplier that keeps those combinations within reach as inputs are added (plan 8,
+probes 2 & 5). Stage A stops at an exact model in a lifted branch, so the larger budget is
+spent in full only where there is none."
   (let ((base (synthesis-job-heuristic-budget job))
-        (lifted-p (lifted-node-p node)))
+        (lifted-p (node-in-lifted-library-branch-p node)))
     (when (and (integerp base) (plusp base))
       (* base
          (if (or lifted-p (and (synthesis-job-self-name job) (synthesis-node-parent node))) 2 1)
@@ -549,33 +574,61 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
                         :diagnostics t
                         :expressions (list model)))))
 
-(defun join-slot-candidate (job node expression ledger)
-  "Record EXPRESSION as a model of NODE's slot. Return its product with the best model of
-every other slot, a model of the parent's frame, or nil while some slot has none."
+(defparameter *max-coupled-slot-candidates* 4
+  "Maximum distinct candidate expressions retained per product slot for coupled joins.")
+
+(defun join-slot-candidates (job node expression ledger)
+  "Record EXPRESSION as a model of NODE's slot (retaining up to `*max-coupled-slot-candidates*`
+distinct models by size). Return joined product models for the parent's frame once every slot
+has at least one model: the best-per-slot join for uncoupled slots, or combinations across
+retained sibling candidates when NODE carries coupled cross-slot requirements."
   (let* ((proposal (synthesis-node-proposal node))
          (join (synthesis-node-join node))
          (id (decomposition-child-id proposal))
          (size (description-size expression (schema-inputs (frame-schema (synthesis-node-frame node)))))
          (entry (assoc id (product-join-models join))))
-    (cond ((null entry) (push (list id expression size) (product-join-models join)))
-          ((< size (third entry)) (setf (cdr entry) (list expression size))))
+    (cond
+      ((null entry)
+       (push (list id expression size (list (cons expression size))) (product-join-models join)))
+      (t
+       (let ((pool (fourth entry)))
+         (unless (assoc expression pool :test #'equal)
+           (setf pool (stable-sort (copy-list (cons (cons expression size) pool)) #'< :key #'cdr))
+           (when (> (length pool) *max-coupled-slot-candidates*)
+             (setf pool (subseq pool 0 *max-coupled-slot-candidates*)))
+           (setf (fourth entry) pool)))
+       (when (< size (third entry))
+         (setf (second entry) expression
+               (third entry) size))))
     (when (every (lambda (slot) (assoc (car slot) (product-join-models join)))
                  (decomposition-slots proposal))
-      (let ((product (compose-through node expression ledger)))
-        (and (valid-job-node-candidate-p job (synthesis-node-parent node) product)
-             product)))))
+      (if (null (synthesis-node-coupled-requirements node))
+          (let ((product (compose-through node expression ledger)))
+            (when (valid-job-node-candidate-p job (synthesis-node-parent node) product)
+              (list product)))
+          (let* ((other-slots
+                   (loop for (sid . nil) in (decomposition-slots proposal)
+                         unless (eql sid id)
+                           collect (let ((e (assoc sid (product-join-models join))))
+                                     (mapcar (lambda (pair) (cons sid (car pair)))
+                                             (or (fourth e) (list (cons (second e) (third e))))))))
+                 (products nil))
+            (dolist (combo (cartesian-product-lists other-slots) (nreverse products))
+              (let ((product (compose-through node expression ledger combo)))
+                (when (and (not (member product products :test #'equal))
+                           (valid-job-node-candidate-p job (synthesis-node-parent node) product))
+                  (push product products)))))))))
 
 (defun enqueue-node-candidate (job node expression candidate-obj &optional (private (make-ledger)))
   "Compose EXPRESSION, a model of NODE's frame, to the root and queue it for verification there.
-A model of one slot of a product is first joined with the other slots' models into a model
-of their parent's frame, which is queued in its place; it waits while a slot has none.
+A model of one slot of a product is first joined with the other slots' models into model(s)
+of their parent's frame, which are queued in its place; it waits while a slot has none.
 The work of composing is staged on PRIVATE."
   (when candidate-obj
     (synthesis-message job node :child-candidate (list :candidate candidate-obj :scope :child-frame)))
   (if (synthesis-node-join node)
-      (let ((product (join-slot-candidate job node expression private)))
-        (when product
-          (enqueue-node-candidate job (synthesis-node-parent node) product nil private)))
+      (dolist (product (join-slot-candidates job node expression private))
+        (enqueue-node-candidate job (synthesis-node-parent node) product nil private))
       (let ((model (reconstruct-synthesis-candidate node expression private)))
         (setf (synthesis-job-pending job)
               (append (synthesis-job-pending job)
@@ -752,6 +805,18 @@ deferred proposal recorded on any node."
     (and join (assoc (decomposition-child-id (synthesis-node-proposal node))
                      (product-join-models join)))))
 
+(defun slot-waiting-p (node)
+  "True when NODE is a satisfied product slot that should yield to other work: always for an
+uncoupled slot, while a sibling slot still lacks its first model, or once its coupled candidate
+pool is full."
+  (let ((entry (slot-satisfied-p node)))
+    (and entry
+         (or (null (synthesis-node-coupled-requirements node))
+             (>= (length (fourth entry)) *max-coupled-slot-candidates*)
+             (let ((join (synthesis-node-join node)))
+               (notevery (lambda (slot) (assoc (car slot) (product-join-models join)))
+                         (decomposition-slots (synthesis-node-proposal node))))))))
+
 (defun node-price (node)
   "NODE's full-path price: its Stage A model composed through every ancestor and priced at
 the root, plus its residual. A structural node poses its parent's problem in another form,
@@ -764,11 +829,11 @@ so it is worth at least what its parent is."
 (defun action-priority (action)
   "The full-path price of the action's node. Expansion wins ties: it is the cheaper
 lookahead. A structural node's search wins ties with its parent's, whose candidates of that
-form it finds sooner; but a slot that already has a model waits for those that have none."
+form it finds sooner; but a slot that already has enough models waits for those that have none."
   (let* ((node (action-node action))
          (price (node-price node)))
     (cond ((consp action) (- price 1/2))
-          ((slot-satisfied-p node) most-positive-fixnum)
+          ((slot-waiting-p node) most-positive-fixnum)
           ((structural-node-p node) (- price 1/4))
           (t price))))
 

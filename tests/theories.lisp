@@ -195,3 +195,91 @@ entry calls is kept, and a batch without jobs changes nothing."
           (check (knowledge-entry-active-p (find-knowledge-entry :map restored)))
           (check (equal (account :map :net-utility)
                         (getf (knowledge-entry-metadata (find-knowledge-entry :map restored)) :net-utility))))))))
+
+(deftest motif-laws-stay-sound-and-propose-fold-decompositions
+  "Refuted and guarded laws never induce motifs; transferred motif equations stay out of active
+rewrite libraries while proposing tentative fold decompositions in `proposals.lisp`; and passive
+`:decoder-template` references do not block amortization from archiving an unused decoy."
+  ;; 1. Refuted and guarded laws are ignored by `induce-fold-motifs`, while a genuine motif
+  ;;    equation proposes a `:foldl` decomposition without becoming an active rewrite.
+  (with-clean-kernel-state
+    (define-standard-int-combinators :which '(:foldr :foldl))
+    (let* ((seq (sequence-type :int))
+           (xs (var 0 seq))
+           (a (var 0 :int)) (b (var 1 :int)) (c (var 2 :int))
+           (step-type (code-type '((0 . :int) (1 . :int)) :int))
+           (samples '((0 0 0) (1 2 3) (-2 5 7) (4 -1 2))))
+      (labels ((fold-fn (name operator identity)
+                 (define-function name (list (cons 0 seq)) :int
+                   (app (op :foldr) xs (lit :int identity) (lit step-type (app operator a b))))
+                 (add-knowledge-edge name :refactored-by :foldr)
+                 (add-knowledge-edge :foldr :abstracts name))
+               (sampled-law (inputs left right &key (guard (lit :bool t)))
+                 (register-knowledge-law
+                  (resume-law-validation
+                   (start-law-validation (make-law :int inputs left right :guard guard)
+                                         :samples (mapcar (lambda (s) (subseq s 0 (length inputs))) samples))
+                   100000))))
+        ;; Subtraction's associativity is `:refuted`; guarded identity is conditional: neither counts.
+        (fold-fn :bad-sub (op :- :int) 0)
+        (fold-fn :sum (op :+ :int) 0)
+        (sampled-law (arithmetic-inputs :int 3)
+                     (term `(- (- ,a ,b) ,c)) (term `(- ,a (- ,b ,c))))
+        (sampled-law (arithmetic-inputs :int 1)
+                     (term `(- ,a 0)) a :guard (term `(= ,a 0)))
+        (sampled-law (arithmetic-inputs :int 3)
+                     (term `(+ (+ ,a ,b) ,c)) (term `(+ ,a (+ ,b ,c))))
+        (sampled-law (arithmetic-inputs :int 1)
+                     (term `(+ ,a 0)) a)
+        (check (null (induce-fold-motifs *knowledge-library*)))
+        ;; Add `:shifted-sum` with genuine monoid laws so the motif forms and transfers `:shifted-sum/via-foldl`.
+        (define-function :shift-add (arithmetic-inputs :int) :int (term `(+ (+ ,a ,b) 1)))
+        (fold-fn :shifted-sum (op :shift-add) -1)
+        (sampled-law (arithmetic-inputs :int 3)
+                     (app (op :shift-add) (app (op :shift-add) a b) c)
+                     (app (op :shift-add) a (app (op :shift-add) b c)))
+        (sampled-law (arithmetic-inputs :int 1)
+                     (app (op :shift-add) a (lit :int -1)) a)
+        (induce-fold-motifs *knowledge-library*)
+        (check (null (find-knowledge-entry :bad-sub/via-foldl)))
+        (check (find-knowledge-entry :shifted-sum/via-foldl))
+        ;; Never an active rewrite rule:
+        (check (notany (lambda (law) (expression-calls-operator-p (law-equation law) :shifted-sum))
+                       (as-rewrite-library *knowledge-library* :domain :int)))
+        ;; Consumed by `transferred-law-decompositions` to solve `(shifted-sum (cons 4 xs))` via `:foldl`
+        ;; in a sequence-only grammar that has neither `:shifted-sum` nor `:shift-add` nor `-1`!
+        (let* ((inputs (list (cons 0 seq)))
+               (frame (simple-frame :int inputs
+                                    '((((2 3)) 11)
+                                      (((5)) 10)
+                                      ((()) 4))))
+               (lang (make-language :int inputs :operators (list (op :cons :int)) :literals '(4))))
+          ;; Control: before motif transfer (on an un-consolidated copy without `:shifted-sum/via-foldl`),
+          ;; `:foldl` cannot synthesize `-1` or `shift-add`.
+          (setf (getf (knowledge-entry-metadata (find-knowledge-entry :shifted-sum/via-foldl)) :active-p) nil)
+          (let ((control (start-heuristic-synthesis frame lang 90 :library-functions '(:foldl))))
+            (resume-synthesis control 60000 :stop-on-first t)
+            (check (null (synthesis-job-best control))))
+          (setf (getf (knowledge-entry-metadata (find-knowledge-entry :shifted-sum/via-foldl)) :active-p) t)
+          (let ((job (start-heuristic-synthesis frame lang 90 :library-functions '(:foldl))))
+            (resume-synthesis job 60000 :stop-on-first t)
+            (check (synthesis-job-best job))
+            (let ((expr (candidate-expression (synthesis-job-best job))))
+              (check (expression-calls-operator-p expr :foldl))
+              (check-synthesized-model expr frame
+                                       :held-out '((((1 2 3)) 13)))))))))
+  ;; 2. Passive `:decoder-template` metadata referencing a decoy does not count as a live caller.
+  (with-clean-kernel-state
+    (let* ((seq (sequence-type :int))
+           (xs (var 0 seq))
+           (inputs (list (cons 0 seq))))
+      (define-function :decoy-id inputs seq xs)
+      (let* ((lang (make-language :int inputs :operators (list (op :decoy-id)) :literals nil))
+             (prop (make-decomposition :name :use-decoy
+                                       :decoder (app (op :decoy-id) (var 9 seq))
+                                       :child-id 9 :child-type seq
+                                       :bindings (identity-bindings inputs)
+                                       :language lang :bound 40))
+             (tmpl (remember-decoder-template prop inputs)))
+        (check tmpl)
+        (check (null (entry-live-callers (find-knowledge-entry :decoy-id) *knowledge-library*)))))))

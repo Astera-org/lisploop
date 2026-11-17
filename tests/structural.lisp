@@ -215,11 +215,11 @@ the joined product binds the projections once. The monolithic step is out of rea
     (multiple-value-bind (frame language held-out) (conditional-tuple-scan-fixture)
       (flet ((start ()
                (start-heuristic-synthesis frame language 260
-                                          :library-functions '(:scan-pair)
-                                          :heuristic-budget 16000)))
+                                          :library-functions '(:scan-pair))))
         (multiple-value-bind (batch)
-            (check-synthesis-resumption #'start :budget 1000000 :stop-on-first t)
+            (check-synthesis-resumption #'start :budget 800000 :stop-on-first t)
           (let ((expression (candidate-expression (synthesis-job-best batch))))
+            (check (< (ledger-total (synthesis-job-ledger batch)) 800000))
             (check-synthesized-model expression frame :held-out held-out :must-call-ops '(:scan-pair))
             ;; The winning candidate was joined at the lifted node from its two slots.
             (check (some (lambda (node)
@@ -229,9 +229,8 @@ the joined product binds the projections once. The monolithic step is out of rea
         ;; Without structural proposals the same budget does not reach the step.
         (let ((job (start-heuristic-synthesis frame language 260
                                               :library-functions '(:scan-pair)
-                                              :heuristic-budget 16000
                                               :structural-proposals-p nil)))
-          (resume-synthesis job 1000000 :stop-on-first t)
+          (resume-synthesis job 800000 :stop-on-first t)
           (check (null (synthesis-job-best job))))))))
 
 (deftest constructor-au-product-solves-a-symbolic-rewrite
@@ -327,3 +326,122 @@ features that Stage A already evaluated separates the exceptions without running
                                                     :buckets buckets))
                        (ledger-total ledger)))))
         (check (equal (guard-work nil) (guard-work (heuristic-buckets easy-model))))))))
+
+(deftest let-call-canonicalizes-ids-and-inlines-closed-singletons
+  "Let-sharing renumbers bound variables to `0 .. k-1` in first-occurrence order so alpha-renamed
+child ids produce identical ASTs, inlines closed single-use total bindings, and leaves
+heterogeneous tuple inputs untouched when listing homogeneous component bindings."
+  (let* ((inputs '((0 . :int)))
+         (x0 (var 0 :int))
+         (big (term `(+ ,x0 (* (+ ,x0 1) (+ ,x0 1))))))
+    ;; 1. Child ids 9 and 99 produce the exact same canonicalized `:code-eval` AST.
+    (let ((from-9 (let-call (term `(+ ,(var 9 :int) ,(var 9 :int))) (list (cons 9 big))))
+          (from-99 (let-call (term `(+ ,(var 99 :int) ,(var 99 :int))) (list (cons 99 big)))))
+      (check (app-of-p from-9 :code-eval))
+      (check (equal from-9 from-99)))
+    ;; 2. A closed 1-use total binding is inlined while a 2-use binding is shared at parameter 0.
+    (let* ((body (term `(+ (+ ,(var 5 :int) ,(var 5 :int)) ,(var 8 :int))))
+           (shared (let-call body (list (cons 5 big) (cons 8 (lit :int 7))))))
+      (check (app-of-p shared :code-eval))
+      (check (= 2 (length (rest shared))))
+      (check (= (result shared inputs '(3)) (+ (* 2 (+ 3 (* 4 4))) 7))))
+    ;; 3. Heterogeneous tuple inputs do not crash `component-bindings` (1 untouched + 2 projected = 3).
+    (let ((mixed-inputs (list (cons 0 (tuple-type :int :bool)) (cons 1 (tuple-type :int :int)))))
+      (check (= 3 (length (component-bindings mixed-inputs)))))))
+
+(deftest constructor-au-handles-operator-holes-and-lowered-literals
+  "Constructor-AU synthesizes `:fn` operator holes when target trees share arguments across
+varying operators, and lowers constant `:code` literal holes to scalar slots when outer inputs
+are first-order scalars."
+  ;; 1. `:fn` operator hole: selector chooses `:+` vs `:*` inside `(<op> x 2)`.
+  (let* ((scope '((0 . :int)))
+         (code (code-type scope :int))
+         (x (var 0 :int))
+         (inputs '((0 . :int)))
+         (frame (simple-frame code inputs
+                              (list (list '(0) (term `(+ ,x 2)))
+                                    (list '(1) (term `(* ,x 2))))))
+         (language (make-language :int inputs
+                                  :operators (list (op := :int) (op :if :int) (op :+ :int) (op :* :int))
+                                  :literals '(0 1))))
+    (let ((job (start-heuristic-synthesis frame language 180)))
+      (resume-synthesis job 150000 :stop-on-first t)
+      (check (synthesis-job-best job))
+      (let ((expr (candidate-expression (synthesis-job-best job))))
+        (check-synthesized-model expr frame)
+        (check (equal (term `(+ ,x 2)) (result expr inputs '(0))))
+        (check (equal (term `(* ,x 2)) (result expr inputs '(1)))))))
+  ;; 2. Value-literal lowering: scalar input `a` fills literal hole in `(+ x <lit>)`.
+  (let* ((scope '((0 . :int)))
+         (code (code-type scope :int))
+         (x (var 0 :int))
+         (inputs '((0 . :int)))
+         (frame (simple-frame code inputs
+                              (list (list '(3) (term `(+ ,x 3)))
+                                    (list '(5) (term `(+ ,x 5)))
+                                    (list '(-2) (term `(+ ,x -2))))))
+         (language (make-language :int inputs :operators (list (op :+ :int)) :literals '(0 1))))
+    (let ((job (start-heuristic-synthesis frame language 160)))
+      (resume-synthesis job 120000 :stop-on-first t)
+      (check (synthesis-job-best job))
+      (let ((expr (candidate-expression (synthesis-job-best job))))
+        (check-synthesized-model expr frame
+                                 :held-out (list (list '(11) (term `(+ ,x 11)))))))))
+
+(deftest feature-guards-templates-and-coupled-products-stay-sound
+  "Feature-pair guards obey the guard language's operators; product proposals do not pollute
+decoder templates while single-difference templates anti-unify; and coupled non-Cartesian
+product slots explore multiple slot candidates until a valid tuple combination joins."
+  ;; 1. Guard language with `:<` offers `<` predicates; without `:<` it offers only `=`.
+  (let* ((inputs '((0 . :int) (1 . :int)))
+         (buckets (list (cons (var 0 :int) '(1 4 2))
+                        (cons (var 1 :int) '(2 3 5))))
+         (eq-only (make-language :int inputs :operators (list (op := :int)) :literals nil))
+         (with-lt (make-language :int inputs :operators (list (op := :int) (op :< :int)) :literals nil)))
+    (check (notany (lambda (entry) (app-of-p (car entry) :<))
+                   (feature-pair-predicates buckets inputs 3 *feature-guard-bits* nil eq-only)))
+    (check (some (lambda (entry) (app-of-p (car entry) :<))
+                 (feature-pair-predicates buckets inputs 3 *feature-guard-bits* nil with-lt))))
+  ;; 2. Product-slot proposals are skipped by `remember-decoder-template`, whereas two ordinary
+  ;;    templates differing at one constant anti-unify into a `:learned-template-au` proposal.
+  (with-clean-kernel-state
+    (let* ((pair (tuple-type :int :int))
+           (inputs '((0 . :int)))
+           (prod-frame (simple-frame pair inputs '(((1) (2 3)) ((4) (5 6)))))
+           (prod-lang (make-language :int inputs :operators (list (op :+ :int) (op :tuple pair)) :literals '(1 2)))
+           (prod-proposals (structural-decompositions prod-frame prod-lang 60)))
+      (check prod-proposals)
+      (dolist (p prod-proposals)
+        (check (null (remember-decoder-template p inputs))))
+      (check (null (knowledge-entries-of-kind :decoder-template))))
+    (let* ((inputs '((0 . :int)))
+           (frame (simple-frame :int inputs '(((1) 13) ((2) 23) ((3) 33))))
+           (lang (make-language :int inputs :operators (list (op :+ :int) (op :* :int)) :literals '(3 10))))
+      (dolist (branch (list (var 9 :int) (term `(+ ,(var 9 :int) 1))))
+        (let ((prop (make-decomposition :name (list :branch branch)
+                                        :decoder (term `(if (= ,(var 0 :int) 0) ,branch 10) :int)
+                                        :child-id 9 :child-type :int
+                                        :bindings (identity-bindings inputs)
+                                        :language lang :bound 40)))
+          (check (remember-decoder-template prop inputs))))
+      (let ((au-proposals (learned-decoder-decompositions frame lang 40 *knowledge-library*)))
+        (check (find :learned-template-au au-proposals
+                     :key (lambda (p) (and (consp (decomposition-name p))
+                                           (first (decomposition-name p)))))))))
+  ;; 3. Coupled non-Cartesian product join: `(member Y '((0 1) (1 0)))` rejects `(0 0)` (each
+  ;;    slot's first literal) and joins once a second candidate (`1`) arrives.
+  (let* ((pair (tuple-type :int :int))
+         (slots '((0 . :int) (1 . :int)))
+         (frame (make-frame (make-schema :inputs nil :target pair)
+                            (list (make-row :key 0 :known nil
+                                            :requirement (set-requirement pair '((0 1) (1 0)))))))
+         (slot-lang (make-language :int nil :operators nil :literals '(0 1)))
+         (empty-root-lang (make-language :int nil :operators nil :literals nil))
+         (decomps (product-decompositions :coupled-pair
+                                          (term `(tuple ,(var 0 :int) ,(var 1 :int)))
+                                          slots nil slot-lang 20))
+         (job (start-synthesis frame empty-root-lang 40 :decompositions decomps)))
+    (resume-synthesis job 50000 :stop-on-first t)
+    (check (synthesis-job-best job))
+    (check (member (result (candidate-expression (synthesis-job-best job)))
+                   '((0 1) (1 0)) :test #'equal))))
