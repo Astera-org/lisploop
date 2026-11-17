@@ -320,7 +320,7 @@ Commit `2484d19` hand-ported behaviour from `main`'s independent implementation 
 - A composed model shares any compound subterm it repeats (`share-repeated-subterms`): Probe 5's model is `253` bits where it was `264`, within its bound of `260`.
 - Probe values come from the library's one table (`probe-values-for-type`).
 
-**Still absent, from `main`:** the `(:* ↔ :/)` metric decoder, moment solvers, the rotating `:shift-seq`, certified transfer laws, and the `:metric` keyword on the search entry points. The kernel is `15,154` lines; `main`'s is `11,906`, and the LOC gate of §6.6 is further off than it was.
+**Still absent, from `main`:** the `(:* <-> :/)` metric decoder, moment solvers, the rotating `:shift-seq`, certified transfer laws, and the `:metric` keyword on the search entry points. The kernel is `15,154` lines; `main`'s is `11,906`, and the LOC gate of §6.6 is further off than it was.
 
 ---
 
