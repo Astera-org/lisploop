@@ -98,19 +98,12 @@ Both AU/library refactoring and TD+BU synthesis instantiate **one five-stage fib
 | **4. Conserve** | Minimize $S(p) + S_{\mathrm{rows}}^{d_{\mathcal{L}}}(\varepsilon) + S_{\mathrm{edges}}^{d_{\mathcal{L}}}(\varepsilon) + \lambda W_{\mathrm{run}}$ | Closed-form LGG `anti-unify` + `shared-subterm-cover`; `provably-total-p` | Tiered search + Stage A under `:metric` / $d_{\mathcal{L}}$; Stage A bucket-pair guards; edge-checked `search-step` |
 | **5. Extract** | Emit single or parallel `product-decomposition` with `:code-eval` `let`-sharing | `abstraction-parameters`; multi-hole Constructor-AU `p(?0..?m)`; `:uip-clause` | Co-induced $d(\hat{\pi}(X), Z)$ pullback; parallel product join; definedness-safe `:code-eval` `let`-frames |
 
-```mermaid
-flowchart LR
-    F["Frame Omega (Rows + row-key frame-edges + Availability Preorder + Metric d_L)"] --> C1["1. Cover: Lift / Parallel Slot Cover / Canonical sort-by(k(X))"]
-    C1 --> C2["2. Correspond: Locality Align + Match Constructors O(|t|)"]
-    C2 --> C3["3. Orient & Unwind: Availability tau(p)<tau(q) + Symbolic/Heuristic Solvers"]
-    C3 --> C4["4. Conserve: Closed-Form LGG or Stage A/Bucket-Pair Search under d_L"]
-    C4 --> C5["5. Extract: Co-Induced Pullback + Parallel Product Join + Safe let-Sharing"]
-    C5 -->|"Child subproblem(s) or CEGAR refinement"| F
-```
+![The unified five-stage SMOCE cycle (source: `figures/smoce-cycle.dot`).](figures/smoce-cycle.pdf){width=75%}
 
 ### 3.1 Target Geometry: Pluggable & Co-Induced `(decoder, :solver)` Metrics *(Priority #1 & #5)*
 
 Heuristic condensation is **coordinate-chart induction**: Stage A finds $\hat{\pi}(X)$ placing targets near $0$ displacement under a transformation action, and Stage B pulls targets back along that action.
+
 1. **Explicit `:metric` AST Hook:** `frame`, `start-heuristic-search`, `condense-heuristic`, and `start-synthesis` accept an optional total `:code` AST `M : (tau, tau) -> :int` (`0` iff equal, metered on `ledger` in `select-closest-witness` at `frame.lisp:1088` and `relational-linkage-residual` at `enumerate.lisp:543`).
 2. **Co-Induced `(decoder, :solver)` Pairs:** Register knowledge edges `(:metric-decoder d q tag-bits)` pairing any binary decoder $d : (\tau, \tau_\delta) \to \tau$ with a `provably-total-p` `:solver` $q : (\tau, \tau) \to \tau_\delta$ (certified or tentative `#5`: `:+` $\leftrightarrow$ `:-`, `:shift-seq` $\leftrightarrow$ `:argmax-corr`, `:code-subst` $\leftrightarrow$ `anti-unify`, or conserved-sum / moment-difference estimators guarded by `witness-replays-p` and 3:1 `propagation-fallback` in `laws.lisp:823-825`).
    - *Stage A:* `correction` evaluates the top-$k$ ($k \le 4$) type-matching `(d, q)` pairs, scoring $S_{\mathrm{tag}}(d) + \text{value-bit-size}(\delta, \tau_\delta)$ whenever $d(\hat{y}, q(\hat{y}, y)) = y$ (capped by default `correction-bit-size`).
@@ -129,6 +122,7 @@ Heuristic condensation is **coordinate-chart induction**: Stage A finds $\hat{\p
 ### 3.3 Symbolic Equation Unwinding (`solve-equality-symbolically`)
 
 To make Operation 3's conservation-reorientation productive on singleton-target frames (avoiding circular numeric round-tripping in `tests/recursion.lisp:543-635` and degenerate `(- Y Y) = 0` invariants):
+
 1. **Target-Sensitivity Check:** Accept joint invariant $C(\mathbf{x}, Y) = c_0$ only when `Y` occurs free in $C$ and perturbing $y_\omega \mapsto y'_\omega$ changes $C(\mathbf{x}_\omega, y)$ on $\ge 1$ row.
 2. **Symbolic Unwinding:** Apply certified `:solver` witness ASTs **symbolically** to `(= C(X, Y) 'c_0)` (checking solver domain guards across `row-known`) to emit closed-form candidate $Y = g(X)$ directly (e.g., `(= (- (+ Y X0) X1) '0) => (- X1 X0)`), or simplified non-identity requirement `(= h(Y) g(X))`. Reserve numeric `conserved-quantity-frame` strictly for unoriented relational tables where $Y$ is not yet the target.
 
@@ -145,6 +139,7 @@ To make Operation 3's conservation-reorientation productive on singleton-target 
 ### 3.5 Idempotent Continual-Learning Consolidation Hygiene *(#6)*
 
 Extend `consolidate-knowledge-library` (`consolidate.lisp:363`) and `persistence.lisp:89-99` while preserving **strict fixed-point consolidation + serialization idempotence** on unchanged state (`tests/invariants.lisp:420-448`):
+
 1. **Second-Order Theory Motifs (`plan7/plan7-library.md` §2.2):** Deduplicated quotienting of connected `(:refactored-by :foldr)` + `:associative` + `:identity` `:law` edge stars into reusable **Monoid / Fold-Homomorphism** motifs licensing `:foldr <-> :foldl` / `:scan` rewrites on new instances.
 2. **Cross-Prime `(:gf p)` Solver AU:** Idempotent domain-erased `anti-unify` across finite-field `:solver` witnesses to lift parametric `:int` solver conjectures.
 3. **Net-Utility Cold-Archive Demotion (`plan7/plan7.md` §4.9):** Track $\mathrm{NetUtility}(e) = \sum \Delta S_{\mathrm{saved}}(e) - \lambda_{\mathrm{search}} \sum W_{\mathrm{dispatch + failed\text{-}lift}}(e)$ from ingested job ledgers, advancing staleness epochs **only when non-empty workload batches are ingested** (so zero-workload `consolidate-knowledge-library` + `serialize`/`deserialize` round-trips remain an exact fixed point) and demoting non-amortizing entries without live `:depends-on` callers to `:active-p nil`.
@@ -173,11 +168,11 @@ The following open problems are cleanly separated from Core Plan 8 so the kernel
    - *Explicit Prediction / Calling Contracts:* Distinguishing **open-loop rollout** (valid only for endogenous memory determined by observed inputs) from **prequential filtering** (required for exogenous per-episode parameters, where filter updates read newly arrived observations under $\tau(o_{t+1}) < \tau(o_{t+2})$ and price latent channel bit-capacity $C_{\mathrm{cap}}(\tau_L)$).
    - *Latent-Hole Decoder Proposal:* Proposing $F(\dots, Z)$ via iterated Stage A on residual row subsets (regime multiplexers) or per-instance Stage A + AU shells rather than clustering input-confounded raw residuals.
    - *Joint $(L, U)$ Alternation:* Resolving soft-persistence ties across unprobed corridors via alternating Viterbi/constraint-propagation over finite fibers and Stage A/B synthesis of transition laws, validated on held-out horizons and Markovian negative controls.
-2. **Unaligned Set/Graph Correspondence & Fuel-Bounded Fixed-Point Combinators:**
+2. **Unaligned Set/Graph Correspondence & Fuel-Bounded Fixed-Point Combinators:** *(see [Appendix B](#appendix-b-unaligned-set-and-graph-correspondence-and-fuel-bounded-fixed-point-combinators))*
    Extending `:locality-key` canonical ordering with minimum-$d_{\mathcal{L}}$ bipartite set matching across `(:seq (:tuple ...))` elements and structurally fueled `(:fix-seq fuel init step)` closure for variable-degree graph traversal.
 3. **Active Intervention & Disambiguating Query Selection *(Item 3 — `prompt4.md` §3b)*:**
    Selecting inputs or online actions whose predicted outcomes maximally split surviving candidate programs or narrow ambiguous preimage fibers under $d_{\mathcal{L}}$.
-4. **Branch-Closing Controllers, Static Totality Extensions, & Discriminative Descriptors *(Item 7)*:**
+4. **Branch-Closing Controllers, Static Totality Extensions, & Discriminative Descriptors *(Item 7)*:** *(see [Appendix C](#appendix-c-branch-closing-controllers-static-totality-extensions-and-discriminative-descriptors))*
    Monotone full-path-price branch closing and marginal $J_{\mathrm{procedure}}$ stopping (`plan7/plan7.md` §1.5, §4.8); bounded `:int` descent, `(tail (tail X_i))`, and non-lockstep `merge` totality in `analyze-function-body-totality` (`ast.lisp:698`, `plan7/plan7-recursion.md` §2.3); discriminative separator `:descriptor` synthesis (`plan7/plan7-m9-policy.md` §4.3) and variable-compute compositional address decoding (`prompt4.md` §9).
 5. **Stage-A-Seeded Decoder-Shell AU & Firewall-Typed Object-Language Views (`plan8-2.md` §4.2, §6.5):**
    General 1-edit residual shell anti-unification and reifying `frame` views as object-language values behind a static capability firewall barring candidate access to `row-key`.
@@ -450,3 +445,121 @@ Run directly via `sbcl --script` from repository root at commit `54acfa3` (uses 
     (multiple-value-bind (l2 c2)
         (lift-frame f-proj0 (app (op :scan-proj0) (var 0 seq-int) (var 1 tup) (var 2 step-tup)) 2 step-tup nil)
       (format t "[Partial Accumulator Boundary] rows=~D coupled=~D~%" (length (frame-rows l2)) (length c2)))))
+```
+
+---
+
+## Appendix B: Unaligned Set and Graph Correspondence and Fuel-Bounded Fixed-Point Combinators
+
+*(Companion elaboration to §5, Item 2. Kernel symbol and line references below reflect the implemented Plan 8 kernel on this branch at commit `2484d19`.)*
+
+### B.1 Why Current Metrics & `:locality-key` Break on Unaligned Sets and Edge Lists
+
+Plan 8 addresses ordering across two orthogonal axes, neither of which handles an **unordered collection encoded inside a single sequence value** `(:seq (:tuple ...))` (such as point clouds, sparse edge lists `(src, dst, weight)`, unordered neighbor sets, or permuted AST child lists):
+
+1. **Positional `:seq-delta` in `correction` (`frame.lisp:1341-1357`):**
+   When pricing the difference between a predicted sequence $\hat{S} = \langle \hat{e}_0, \dots, \hat{e}_{m-1}\rangle$ and target $S = \langle e_0, \dots, e_{n-1}\rangle$, default `correction` builds a `:seq-delta` packet by zipping element $i$ strictly with element $i$ up to $\min(m, n)$ and emitting raw replacement values for any trailing suffix `(nthcdr (length predicted) target)`. Permuting the same $k$ tuples pays full tuple mismatches across every shifted index rather than permutation entropy.
+2. **1D Index Shifts Only (`bootstrap-inverters.lisp:296-345`):**
+   Co-induced metric decoder `:solve-shift-seq-by-correlation` (`:shift-seq` $\leftrightarrow$ `:argmax-corr`, registered by `install-sequence-shift-metric`) detects and compresses uniform forward sequence-advance offsets with zero-padding, leaving backward shifts and non-shift permutations (swaps, sorting, local insertions/deletions that shift downstream indices, or canonical orderings induced by relational structure) uncaptured.
+3. **1D Cross-Row / Cross-Tree `:locality-key` (`proposals.lisp:798-902`, `milestones/corpus.lisp:447-552`):**
+   - `induce-row-order` (`proposals.lisp:798-872`) synthesizes a scalar `:int` key $k(X)$ to sort **distinct `frame-rows`** into a 1D chain of `:persistence` `frame-edges` minimizing adjacent target variation $\sum_{(u,v)\in E_k} d_{\mathcal{L}}(y_u, y_v)$, and `with-induced-row-order` (`proposals.lisp:874-902`) registers $k(X)$ as a `:locality-key` entry in `library` (as §6.2 notes, `with-induced-row-order` is not yet invoked from node expansion).
+   - `compute-tree-locality-positions` and `generated-space-distance` (`milestones/corpus.lisp:447-499`) project indexed corpus trees ($0 \dots N-1$) onto rank positions or $\mathbb{Z}^d$ integer vectors solely to schedule candidate `anti-unify` occurrence pairs in `schedule-occurrence-pairs` (`milestones/corpus.lisp:501-552`).
+   Neither primitive establishes correspondence between individual elements *inside* a multi-element `(:seq (:tuple ...))` value when elements lack a shared a priori positional alignment.
+
+### B.2 Minimum-$d_{\mathcal{L}}$ Bipartite Set Matching
+
+To give Stage A (`priced-correction` / `correction`, `frame.lisp:1311-1359, 1423-1446`) and Stage B (`metric-residual-decompositions`, `decompose.lisp:30-67`) a smooth, permutation-tolerant geometry over set-like `(:seq (:tuple ...))` targets without abandoning MDL accounting:
+
+1. **Weighted Bipartite Assignment Graph:**
+   Given predicted elements $\hat{S} = \{\hat{e}_0, \dots, \hat{e}_{m-1}\}$ and target elements $S = \{e_0, \dots, e_{n-1}\}$ of element type $\tau$ (typically `(:tuple ...)`), construct a complete bipartite matching instance over indices $[m] \times [n]$ augmented with $\bot$ insertion/deletion slack nodes:
+   - *Match / edit edge $(i, j)$:* Weighted by the active kernel residual price (`priced-correction` / `correction-bit-size`, `frame.lisp:1423, 1491`) comparing $\hat{e}_i$ to $e_j$ at element type $\tau$ under the active `metric` and `decoders`. If two edge tuples `(u, v, w)` and `(u, v, w')` match in endpoints and differ by $\Delta w$ in weight, bipartite matching aligns $(i, j)$ automatically and charges only the tuple-coordinate delta $d_{\mathcal{L}}(w, w')$.
+   - *Insertion $(\bot, j)$ / deletion $(i, \bot)$ edges:* Weighted by `(value-bit-size ...)` of $e_j$ in $\tau$ (plus tag bit) or a minimal deletion tag so missing/spurious elements do not misalign the surviving prefix.
+2. **Minimum-Cost Assignment Price & Permutation Accounting:**
+   Solving the minimum-weight assignment $\pi^*$ (e.g., via $O(N^3)$ Hungarian / shortest-augmenting-path matching, $N = \max(m, n)$, metered on `ledger`) yields two complementary pricing modes:
+   - *Order-invariant set metric:* When a task's `:metric` or set equivalence declares element order irrelevant, $\pi^*$ acts purely as a correspondence witness and the set residual price omits $S_{\mathrm{perm}}(\pi^*)$: predicting the exact multiset in any order scores `0` displacement bits.
+   - *Exact lossy-to-lossless `(:metric-decoder)` pullback:* When exact sequence reconstruction via `apply-correction-packet` (`frame.lisp:1453-1489`) is required, the delta packet encodes the paired elementwise $d_{\mathcal{L}}$ edits plus permutation/index reconstruction $\pi^*$, gated strictly against replacement cost `(value-bit-size target type)` as `correction` already does (`frame.lisp:1350`) so Galois zero-false-pruning holds.
+3. **Resolving the Chicken-and-Egg Loop with `:locality-key`:**
+   Bipartite correspondence and canonical `:locality-key` ordering reinforce one another:
+   - *Bootstrapping before a global sort key exists:* Even a partially accurate candidate program $\hat{\pi}(X)$ whose tuple elements appear out of order still achieves low bipartite $d_{\mathcal{L}}$ error, preventing Stage A from rejecting the right computational law under shuffled element positions.
+   - *Inducing canonical keys from matched fibers:* Once $\pi^*$ aligns predicted/source elements $\hat{e}_i \leftrightarrow e_{\pi^*(i)}$ across rows, invariant coordinates or monotone tuple projections $\kappa(e)$ preserved by $\pi^*$ can be harvested by `induce-row-order` / `with-induced-row-order` (`proposals.lisp:798-902`, which registers `:locality-key` entries) to synthesize a deterministic `sort-by`($\kappa$) canonical ordering—collapsing permutation entropy $S_{\mathrm{perm}}(\pi^*)$ down to `0` on subsequent tasks.
+4. **Budget & Guardrails:**
+   Like `metric-decoders` (`laws.lisp:1164-1177`, `limit = 4`), bipartite matching must meter every underlying `correction` call and assignment relaxation step on `ledger`, bounded by a sequence-length threshold so cubic matching never dominates Stage A fast paths on long raw scalar streams.
+
+### B.3 Structurally Fueled `(:fix-seq fuel init step)` Fixed-Point Closure
+
+#### 1. The Linearity Bottleneck in Static Totality (`ast.lisp:782-851`)
+
+In the current kernel, `analyze-function-body-totality` (`ast.lisp:782-851`) proves termination purely by **strict single-spine structural descent**:
+- Every self-call inside a `:function` body must pass `(tail (var dec-id ...))` (`ast.lisp:825-828`) in the same parameter slot `decreasing-param-id` (`ast.lisp:830, 832`) across all recursive sites, protected by an empty-sequence test `(= dec-id ())` (`branch-non-empty-vars`, `ast.lisp:718-725`; `empty-sequence-guard-var-id`, `ast.lisp:704-716`).
+- Any iteration whose step count is bounded by graph diameter, transitive reachability depth, worklist expansion `(concat (tail q) neighbors)`, or fixed-point convergence fails this linear `tail` check (`total-p = nil`)—blocking it from Stage A feature condensation, safe `let`-hoisting (`compose-model`, `frame.lisp:650-670`), and direct `:solver` acceptance.
+
+Even `install-sequence-shift-metric`'s helpers (`:shift-seq` at `bootstrap-inverters.lisp:314-320` and `:best-shift` at `bootstrap-inverters.lisp:328-335`) only pass totality by walking `(tail xs)` alongside their integer offset/index registers (which restricts `:shift-seq` to forward zero-padded advances along `xs`); any general bounded loop or convergence iteration without a shrinking primary sequence argument requires hand-authoring boilerplate dummy fuel spines and lacks general lifting/unfolding semantics.
+
+#### 2. Design of `(:fix-seq fuel init step)`
+
+Generalizing sequence-backed structural fuel into a single combinator **decouples loop termination (bounded by a structural spine) from topology degree (arbitrary branching inside `step`)**:
+
+- **Type & Parameters:** For loop state type $\sigma$ (e.g., visited bitset/list, `(tuple frontier distance-map)`, or node coloring) and fuel element type $\alpha$:
+  - `fuel : (:seq alpha)` — any existing structural collection whose length upper-bounds worst-case iterations (for graphs $G = (V, E)$, typically the vertex list $V$ or edge list $E$ itself, since simple reachability, shortest paths, and monotone closures converge in $\le |V|$ rounds).
+  - `init : sigma` — initial state.
+  - `step : (:code ((0 . sigma)) sigma)` — pure single-round transition function (with static graph tables or parameters captured via `:code-subst`).
+- **Operational Semantics:**
+  1. Start with `rem = fuel`, `state = init`.
+  2. While `rem` is non-empty: evaluate `next = (code-eval step state)`.
+  3. **Early fixed-point exit:** If `(= next state)`, halt immediately and return `state`; otherwise update `rem <- (tail rem)`, `state <- next` and repeat. When `rem` reaches `'()`, return `state`.
+- **Provable Totality by Construction:**
+  Using the existing conditional code-totality hook (`operator-step-total-p` / `function-definition-conditional-code-params`, `ast.lisp:673-702`), `(:fix-seq fuel init step)` is `provably-total-p` whenever `(provably-total-p fuel)`, `(provably-total-p init)`, and `(provably-total-code-arg-p step)` (`ast.lisp:640-658`) hold—without requiring `analyze-function-body-totality` to prove arbitrary integer ranking functions (cf. §5, Item 4 and `plan7/plan7-recursion.md` §2.3). Because each round shrinks `rem` unconditionally by one element and variable-degree neighbor expansion occurs *inside* a single total `step` call (via `:map`/`:fold`/set ops), irregular graph degrees ($0, 1, \deg(v)$) never jeopardize termination.
+- **Interaction with SMOCE Lifting (`requirements.lisp:382-450`, `frame.lisp:976-1053`) & §5, Item 1:**
+  Unlike fixed-length `:map` or `:foldr`, early fixed-point halting makes iteration count $k \le |\text{fuel}|$ data-dependent and leaves intermediate states $s_1, \dots, s_{k-1}$ unobserved in `lift-frame` (`coupled` / `coupled-fallback-rows`, `frame.lisp:952-974, 1021-1022`, §5, Item 1). However, `(:fix-seq ...)` exposes two exact Stage A/B hooks unavailable to generic recursion:
+  1. *Zero-iteration & fixed-point equilibrium checks:* Whenever $\mathrm{target} \ne \mathrm{init}$, `(code-eval step init)` cannot equal `init`; more strongly, on every converged row ($k < |\text{fuel}|$) where the final output $Y$ is observed directly, $Y$ satisfies the exact stationary constraint **`(= (code-eval step Y) Y)`**—providing immediate `coupled = 0` Stage B constraints on `step` before multi-step trajectory abduction is even needed.
+  2. *Monotone closure / bipartite pairing:* When `state` is an edge/node set `(:seq (:tuple ...))`, coupling `(:fix-seq ...)` with §B.2 bipartite $d_{\mathcal{L}}$ matching allows Stage A/B to measure incremental closure accuracy per round ($d_{\mathcal{L}}^{\mathrm{set}}(\mathrm{next}, \mathrm{target}) < d_{\mathcal{L}}^{\mathrm{set}}(\mathrm{state}, \mathrm{target})$) instead of treating every unclosed or misordered intermediate set as a full replacement failure.
+
+---
+
+## Appendix C: Branch-Closing Controllers, Static Totality Extensions, and Discriminative Descriptors
+
+*(Companion elaboration to §5, Item 4 (`Item 7`). Kernel symbol and line references below reflect the implemented Plan 8 kernel on this branch at commit `2484d19`; note that §5, Item 4's inline citation `ast.lisp:698` refers to the pre-Plan-8 line number of `analyze-function-body-totality` at commit `54acfa3`.)*
+
+### C.1 Monotone Full-Path-Price Branch Closing & Marginal $J_{\mathrm{procedure}}$ Stopping (`plan7/plan7.md` §1.5, §4.8)
+
+#### 1. What the Kernel Does Today
+- **No evidence-driven subtree pruning (`synthesize.lisp:689-727, 1143`):** Under `start-synthesis` / `start-heuristic-synthesis`, a node transitions to `:phase :done` only when it hits a hard conflict or reused nogood (`close-conflicting-node`, `synthesize.lisp:689-711`), merges into an equivalent cached scope (`follow-canonical-node`, `synthesize.lisp:713-727`), or exhausts its grammar up to `synthesis-node-bound` (`search-bound-complete-p`, `synthesize.lisp:1143`, `enumerate.lisp:539-540`). Meanwhile, `node-may-expand-p` (`synthesize.lisp:197-201`) cuts off branching strictly by static integer depth (`max-depth = 1` in `start-synthesis` at `synthesize.lisp:144-147`; `max-depth = 2` in `start-heuristic-synthesis` at `decompose.lisp:515-518`).
+- **Dominated branches leak compute through round-robin and deferred queues:** Whenever child decomposition yields a **worse** full-path estimate $B(n) = S_{\mathrm{full}}(n) + S(\varepsilon_n)$ (`full-path-program-bits + heuristic-residual-bits`, `synthesize.lisp:396-408, 456-457`), `node-priority` (`synthesize.lisp:449-461`) and `node-price` (`synthesize.lisp:820-827`) only rank it behind cheaper siblings. Because `reserved-turn-p` (`synthesize.lisp:840-842`) reserves every 4th turn for `root` in `select-synthesis-lane` (`synthesize.lisp:895`) and for round-robin coverage across open actions in `select-agenda-action` (`synthesize.lisp:865`)—and `promote-next-deferred-proposal` (`synthesize.lisp:789-796`, invoked at `885`) wakes queued alternatives once active nodes stall—dominated branches remain alive and periodically burn VM search steps until `work-limit` runs out (as flagged in `plan7/plan7.md` §4.8).
+- **Only retrospective `J_procedure` accounting (`consolidate.lisp:5-18`):** `plan7/plan7.md` §1.5 defines candidate optimality $J_{\mathrm{exact}}(M) = S(M) + \lambda_{\mathrm{run}} W_{\mathrm{run}}(M)$ (`candidate-score`) and procedural search efficiency $J_{\mathrm{procedure}}(P) = J(M_P) + \lambda_{\mathrm{search}} W_{\mathrm{search}}(P)$. Today `synthesis-episode-returns` (`consolidate.lisp:5-18`) evaluates realized returns $G_t = B_t - B_T - \lambda_{\mathrm{search}}(W_T - W_t)$ *post hoc* after termination, while `resume-synthesis` (`synthesize.lisp:1148-1180`) only offers `:stop-on-first t` (`1156`, halting on the very first feasible candidate even if a much shorter law lies nearby) or running blindly to the fixed `work-limit`.
+
+#### 2. The Open Controller Design
+1. **Monotone Full-Path-Price Branch Closing:** Close dominated heuristic branches (`:phase :done`, `:expansion :done`) when repeated residual decompositions fail to reduce full-path MDL $B(\text{child}) < B(\text{parent})$ or exceed a verified incumbent $J_{\mathrm{exact}}(M_{\mathrm{best}})$ plus residual headroom—while preserving a bounded speculative grace window for non-monotone two-step representation shifts (where paying an extra decoder bit up front exposes a much simpler recursive body).
+2. **Online Marginal $J_{\mathrm{procedure}}$ Stopping:** Track marginal improvement rate $\Delta J(M_{\mathrm{best}}) / \Delta W_{\mathrm{search}}$ (or a learned stopping rule distilled from `synthesis-episode-returns` traces) so nodes and entire jobs halt online once expected improvement $-\mathbb{E}[\Delta J(M)] < \lambda_{\mathrm{search}} \Delta W_{\mathrm{search}}$, avoiding both fixed-depth truncation and unbounded anytime thrashing.
+
+### C.2 Static Totality Extensions in `analyze-function-body-totality` (`ast.lisp:704-851`, `plan7/plan7-recursion.md` §2.3)
+
+#### 1. Role of Static Totality
+`provably-total-p` does **not** limit which functions can execute in the VM (arbitrary general recursion still runs under `row-budget`); rather, it guards **sound compile-time and pullback rewrites**: unwinding calls inside `fold-constants` (`requirements.lisp:510-521`) / `try-unfold-call` (`requirements.lisp:419-450`), hoisting multi-use bindings via `:code-eval` `let`-sharing (`compose-model`, `frame.lisp:650-670`), Stage A candidate condensation, and `:solver` certification.
+
+#### 2. Three Expressiveness Boundaries in `ast.lisp:704-851`
+1. **Multi-step `(tail (tail X_i))` descent:**
+   `branch-non-empty-vars` (`ast.lisp:718-725`) records only a Boolean membership check (`len(X_i) >= 1` after `(= X_i '())`), and `analyze-function-body-totality` (`ast.lisp:825-828`) requires every recursive argument at the decreasing slot to match literal `(tail (var id))`. Skip-2 algorithms (`pairwise`, `evens`/`odds`, 2-element sliding steps) that step `(tail (tail X_i))` under nested guards such as `(= (tail X_i) '())` are marked non-total (`total-p = nil`). Tracking minimum guaranteed spine length ($\ge k$) lifts this barrier.
+2. **Non-lockstep multi-sequence recursion (`merge`):**
+   Lines `ast.lisp:830` and `832` enforce a **single** scalar parameter ID `(or (null decreasing-param-id) (eql decreasing-param-id matched-id))` across all self-call sites. Lockstep `zip(xs, ys)` happens to pass by picking `decreasing-param-id = xs`, whereas `merge(xs, ys)` shrinks `xs` in one `if` branch (`(merge (tail xs) ys)`) and `ys` in the other (`(merge xs (tail ys))`). Because `matched-id` flips between branches, `merge` is rejected even though $|xs| + |ys|$ strictly decreases; accepting multi-parameter sum/lexicographic spine measures resolves this.
+3. **Bounded `:int` descent (`range`, `countdown`, binary splitting):**
+   `seq-param-ids` (`ast.lisp:787-788`) inspects only `seq-type-p` arguments, and `empty-sequence-guard-var-id` (`ast.lisp:704-716`) checks only `(= var '())` (ignoring `(< 0 (length var))`, `(< n 1)`, `(= n 0)`, `(< i hi)`). Consequently, bounded integer recursions descending via `(- n 1)` or `(/ n 2)` receive `total-p = nil`—which is why even `:shift-seq` (`bootstrap-inverters.lisp:314-320`) must guard on `(= xs '())` and recurse on `(tail xs)` alongside `(- k 1)` solely to pass `analyze-function-body-totality`.
+
+### C.3 Discriminative Separator `:descriptor` Synthesis (`plan7/plan7-m9-policy.md` §4.3)
+
+#### 1. What Happens Today (`descriptors.lisp:327-516`, `consolidate.lisp:328-363`)
+- `synthesize-io-descriptor-specs` (`descriptors.lisp:327-516`) builds per-entry `:descriptor` rules **in isolation** for one function at a time, testing tiny canned inputs (`probe-sequences-for-type`, `descriptors.lisp:259-273`) against ~10 fixed structural templates (`:DESC/LEN-EQ`, `:DESC/LEN-DEC-1`, `:DESC/LEN-LE`, `:DESC/EMPTY->EMPTY`, `:DESC/SUBSET-ELEMENTS`, etc.).
+- Meanwhile, `consolidate-policy-descriptors` (`consolidate.lisp:328-363`) **only** adjusts integer `weight-bits` (`+1` on winning paths, `-1` on failing siblings); despite `plan7/plan7-m9-policy.md` §4.3 specifying it, no routine synthesizes **new contrastive `:descriptor` guards** to separate colliding operators.
+
+#### 2. The Discrimination Problem
+When distinct library entries share a type signature and agree on all fixed coarse templates—for instance `reverse`, `sort`, and `map(+1)` all passing `:DESC/LEN-EQ` + `:DESC/EMPTY->EMPTY`, and both `reverse` and `sort` passing `:DESC/SUBSET-ELEMENTS`—`score-entry-by-descriptors` (`descriptors.lisp:712-783`) using `evaluate-frame-descriptors` (`descriptors.lisp:656-687`) scores them nearly identically, causing `library-decompositions` (`proposals.lisp:300-393, 345-354`) to waste expensive `lift-frame` searches trying false matches. Resolving collisions requires forming explicit **confusion classes** (operators sharing a compositional signature or competing in job logs) and invoking observation/synthesis search to discover minimal Boolean predicates $D(X, Y)$ that hold for $e_1$ and refute $e_2$ (e.g., adjacent order `not(< (at Y 1) (at Y 0))` for `sort` vs. endpoint reversal `(= (at Y 0) (at X (- (length X) 1)))` for `reverse`), certifying provable separators `:necessary` and re-indexing compositional names.
+
+### C.4 Variable-Compute Compositional Address Decoding (`prompt4.md` §9)
+
+#### 1. What Happens Today (`knowledge.lisp:61-67, 258-262`, `descriptors.lisp:137-146, 656-710`)
+- `derive-compositional-name` (`descriptors.lisp:137-146`) packs descriptors into a rigid 5-slot keyword symbol (`~A/~A/~A/~A/~A`), while `evaluate-frame-descriptors` (`descriptors.lisp:656-687`) runs a single flat pass over all `:descriptor` entries up to a static cutoff `(max-tier 2)` (`descriptors.lisp:657, 671`), `frame-addressed-entries` (`descriptors.lisp:689-710`) intersects satisfied concepts via `find-knowledge-entries-by-address` (`knowledge.lisp:258-262`), and `library-decompositions` (`proposals.lisp:345-354`) still linearly scores all candidate definitions via `score-entry-by-descriptors` (`descriptors.lisp:712-783`) rather than routing through progressive address lookup.
+- Although `descriptor-clause` defines `:tier` (`knowledge.lisp:64`, `package.lisp:177`) and `descriptors.lisp` stamps clauses across tiers `1`–`3` (with `:algebraic` clauses at tier `3`, `descriptors.lisp:639, 643`) and varying `work-cost` (`1`–`8`), `evaluate-frame-descriptors` only uses `max-tier` as a fixed ceiling (never stopping early after Tier 1 or escalating to Tier 3 on ambiguity), and no runtime decoder reads `descriptor-clause-tier` to drive adaptive staged evaluation.
+
+#### 2. Why True Compositional Addressing Needs Variable Compute (`prompt4.md` §9)
+In continuous ML models ($\mathbb{R}^d$ vector retrieval) or fixed-length error-correcting linear codes, decoding an address takes constant, non-compositional work. By contrast, behavioral program specifications form a symbolic **topology** whose descriptions are executable predicates shorter than running the library operators themselves:
+- **Simple, unambiguous frames** should decode in $O(1)$ Tier-1 checks (type signature + boundary bit) and bypass deeper descriptor evaluations entirely.
+- **Ambiguous queries and multi-operator targets** require **variable compute at address-decode time**: an adaptive multi-tier decision DAG / progressive probe controller that invests additional Tier-2/Tier-3 behavioral checks (or small Stage A invariants) strictly on demand when coarse address tokens under-determine the candidate set—resolving both colliding atomic functions and compositional multi-step chains ($\mathrm{op}_1 \circ \mathrm{op}_2$) without flat $O(|\text{library}|)$ re-scoring.
