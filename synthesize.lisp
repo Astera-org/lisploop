@@ -149,14 +149,17 @@ messages describe computation. Parents may consume these without trusting a heur
 (defun start-synthesis (frame language description-limit
                         &key decompositions (run-weight 0) (quantum 32)
                              (policy :round-robin) heuristic-bound (heuristic-budget 2000) priority-predictor
-                             library expand (max-depth 1)
+                             (library nil library-p) expand (max-depth 1)
                              self-name oracle-table (verification-row-budget 2000)
                              (deductive-nogoods-p t) (debug-p *synthesis-debug-mode*))
   "Direct selector search is always retained as the canonical root lane.
 DECOMPOSITIONS are explicit alternatives, including dependency/fiber/residual proposals.
-LIBRARY (solve discoveries or propagator libraries) is applied to every pulled-back child
-frame. When it is a knowledge library the job also reads nogood schemas and DIP features
-from it, and otherwise from the knowledge library active at this call.
+LIBRARY, a knowledge library or propagator libraries, supplies the solvers that narrow every
+pulled-back child frame. Left out, it is the knowledge library active at this call, so what
+that library holds is used without being asked for; given as nil, no solver is applied.
+When LIBRARY is a knowledge library the job also reads its priority predictor, nogood
+schemas and DIP features from it; the schemas and features otherwise come from the active
+library, and the predictor is read only from a library that is named.
 EXPAND, a function (job node frame language heuristic-model ledger) -> decompositions,
 proposes further branches below a prepared node shallower than MAX-DEPTH, root included.
 Expansion is a scheduled action, chosen like search by the node's full-path price; with
@@ -185,7 +188,8 @@ MAX-DEPTH nil the tree grows for as long as the budget lasts (an anytime search)
                                    :deductive-nogoods-p deductive-nogoods-p
                                    :debug-p debug-p)))
     (activate-job-oracle job)
-    (setf (synthesis-job-library job) (as-propagator-library library))
+    (setf (synthesis-job-library job)
+          (as-propagator-library (if library-p library *knowledge-library*)))
     (dolist (proposal decompositions) (add-synthesis-node job root (copy-decomposition-tree proposal)))
     job))
 
@@ -465,9 +469,13 @@ through every ancestor and priced at the root, plus its residual bits."
       (t most-positive-fixnum))))
 
 (defun node-library (job proposal)
-  "The job's learned propagators plus any supplied with PROPOSAL; none on a fallback branch."
+  "The job's learned propagators plus any supplied with PROPOSAL; none on a fallback branch.
+The job's library is kept current with the VM, so that a function the search itself defines
+does not leave it holding programs prepared for another function table."
   (unless (and proposal (decomposition-fallback-p proposal))
-    (let ((shared (and job (synthesis-job-library job)))
+    (let ((shared (and job (synthesis-job-library job)
+                       (setf (synthesis-job-library job)
+                             (current-propagator-library (synthesis-job-library job)))))
           (local (and proposal (decomposition-solver proposal))))
       (if local
           (as-propagator-library (if shared (list shared local) local))

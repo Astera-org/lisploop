@@ -371,7 +371,8 @@ or descriptor ID. An archived entry is still found by its id (`find-knowledge-en
              addresses)
     (remhash entry *knowledge-entry-owners*)))
 
-(declaim (ftype function sync-entry-executable consume-entry-executable))
+(declaim (ftype function sync-entry-executable consume-entry-executable
+                recompute-registered-functions-totality))
 
 (defun install-knowledge-entry (entry library ledger)
   "Run the install hook of ENTRY's kind, synchronize its derived executable cache, and index any
@@ -392,12 +393,17 @@ running each kind's `:install` hook in priority order."
       ;; A definition without a :function entry has nothing to be rebuilt from: drop it.
       (let ((function-ids (loop for entry in (knowledge-library-entries library)
                                 when (eq :function (knowledge-entry-kind entry))
-                                  collect (knowledge-entry-id entry))))
+                                  collect (knowledge-entry-id entry)))
+            (dropped-p nil))
         (dolist (name (copy-list *registered-function-names*))
           (unless (member name function-ids)
             (remhash name *function-definitions*)
-            (setf *registered-function-names* (remove name *registered-function-names*))))
-        (invalidate-app-meta))
+            (setf *registered-function-names* (remove name *registered-function-names*)
+                  dropped-p t)))
+        ;; A function that called a dropped one is no longer total on its account.
+        (if dropped-p
+            (recompute-registered-functions-totality)
+            (invalidate-app-meta)))
       (dolist (entry (knowledge-library-entries library))
         (index-knowledge-entry entry library))
       (dolist (entry (stable-sort (copy-list (knowledge-library-entries library)) #'<
@@ -433,7 +439,8 @@ An entry with the same ID is replaced in place in the entry list."
                (unindex-knowledge-entry existing library)
                (when (and (eq :function (knowledge-entry-kind existing)) (not (eq :function kind)))
                  (remhash id *function-definitions*)
-                 (setf *registered-function-names* (remove id *registered-function-names*)))
+                 (setf *registered-function-names* (remove id *registered-function-names*))
+                 (recompute-registered-functions-totality))
                (setf (knowledge-library-entries library)
                      (substitute entry existing (knowledge-library-entries library) :test #'eq)))
               (t
@@ -490,7 +497,16 @@ A kind without one is consumed via ENTRY's synchronized executable cache."
 ;;; The function table
 
 (defun recompute-registered-functions-totality ()
-  "Recompute totality and conditional-code-params across all registered functions until fixed point."
+  "Recompute totality and conditional-code-params across all registered functions, as the
+least fixed point of the analysis: every function starts as not total, and a pass certifies
+one only through callees that are certified already. Starting from the flags the functions
+carried would let a cycle of calls vouch for itself, since a function that was total before
+a callee was redefined to call it back would still be read as total."
+  (dolist (fname *registered-function-names*)
+    (let ((fdef (find-function-definition fname)))
+      (when fdef
+        (setf (function-definition-total-p fdef) nil
+              (function-definition-conditional-code-params fdef) nil))))
   (invalidate-app-meta)
   (loop
     (let ((changed-p nil))

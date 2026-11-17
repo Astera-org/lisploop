@@ -534,22 +534,36 @@ syntax of every law, usable as a rule or not."
               (setf (gethash key cache)
                     (make-propagator-library :rules rules :versions (vm-versions)))))))))
 
+(defun current-propagator-library (library)
+  "LIBRARY if it was prepared under the VM's present versions. If only the function table
+has changed since, as when a search instantiates a combinator at a new type, a library of
+the same rules to be prepared afresh: a rule is data and outlives that change, only its
+prepared programs do not, and evidence that its entry no longer states is not believed
+(`propagator-evidence`). A library prepared under another encoding, tariff or simulator is
+an error: there its rules mean something else."
+  (let ((prepared (propagator-library-versions library))
+        (present (vm-versions)))
+    (cond ((equal prepared present) library)
+          (t (assert (equal (butlast prepared) (butlast present)) () "Stale propagator library")
+             (make-propagator-library :rules (propagator-library-rules library))))))
+
 (defun as-propagator-library (sources)
   "Merge SOURCES, a propagator library, a knowledge library, or a list of either, into one
-library; nil when they hold no rule. A lone library is returned as is."
-  (flet ((fresh (library)
-           (assert (equal (propagator-library-versions library) (vm-versions)) ()
-                   "Stale propagator library")
-           library))
-    (cond
-      ((propagator-library-p sources) (fresh sources))
-      ((knowledge-library-p sources) (knowledge-library-propagator-library sources))
-      (t (let ((rules (loop for source in sources
-                            for library = (if (knowledge-library-p source)
-                                              (knowledge-library-propagator-library source)
-                                              source)
-                            when library append (propagator-library-rules (fresh library)))))
-           (and rules (make-propagator-library :rules rules)))))))
+library that is current (`current-propagator-library`); nil when they hold no rule. A lone
+library that is current is returned as is. An entry that two sources both hold gives the
+merged library one rule, the first: tried twice, it would fail twice at twice the price."
+  (cond
+    ((propagator-library-p sources) (current-propagator-library sources))
+    ((knowledge-library-p sources) (knowledge-library-propagator-library sources))
+    (t (let ((rules (remove-duplicates
+                     (loop for source in sources
+                           for library = (if (knowledge-library-p source)
+                                             (knowledge-library-propagator-library source)
+                                             source)
+                           when library
+                             append (propagator-library-rules (current-propagator-library library)))
+                     :key #'arithmetic-propagator-source :test #'eq :from-end t)))
+         (and rules (make-propagator-library :rules rules))))))
 
 (defun callable-rules-library (library)
   "The rules of LIBRARY that invert a defined function, as a library of their own, or nil
@@ -654,28 +668,45 @@ value and true, or nil when the guard rejects CONTEXT or either program has no v
                   collect (term `(= ,unknown ',part)))
             :from-end t)))
 
+(defun propagator-rules-for (library operator positions)
+  "The rules of LIBRARY that invert OPERATOR, type included, at exactly POSITIONS, in the
+order LIBRARY lists them. They are read off an index of the library's rules by operator and
+positions, built the first time it is asked for."
+  (flet ((key (operator positions) (list operator (sort (copy-list positions) #'<))))
+    (let* ((cache (propagator-library-matchers library))
+           (index (or (gethash :dispatch-index cache)
+                      (setf (gethash :dispatch-index cache)
+                            (let ((index (make-hash-table :test #'equal)))
+                              (dolist (rule (reverse (propagator-library-rules library)) index)
+                                (push rule (gethash (key (arithmetic-propagator-operator rule)
+                                                         (solver-positions
+                                                          (arithmetic-propagator-position rule)))
+                                                    index))))))))
+      (gethash (key operator positions) index))))
+
 (defun solve-learned-equality (conjunct library ledger certified-p result)
   "Invert any typed application with the rule's declared known-context mapping.
 Multiple unknown positions use a tuple witness. A witness from a rule that CERTIFIED-P does
 not vouch for must replay forward to the target; one that does not is counted in RESULT.
-Returns the solved conjunct and the rule that solved it, or nil."
+Returns the solved conjunct and the rule that solved it, or nil.
+Dispatch is one indexed lookup by the term's operator and open positions, charged once
+whatever the size of LIBRARY: a rule for another operator is never looked at, so a library
+can hold many rules without each conjunct paying for them all."
   (multiple-value-bind (term target) (extract-equality-target conjunct)
     (let ((open (and term (app-p term)
                      (loop for arg in (rest term) for i from 0
                            when (or (free-vars arg) (pattern-has-holes-p arg)) collect i))))
       (when open
-        (dolist (rule (propagator-library-rules library))
-          (charge ledger :propagator-dispatch (+ 1 (syntax-work (arithmetic-propagator-operator rule))))
-          (when (and (equal (first term) (arithmetic-propagator-operator rule))
-                     (null (set-exclusive-or open (solver-positions (arithmetic-propagator-position rule)))))
-            (multiple-value-bind (context mapping) (solver-context-values rule term target ledger)
-              (multiple-value-bind (value solved-p)
-                  (and context (run-learned-solver library rule context ledger))
-                (cond ((not solved-p))
-                      ((or (funcall certified-p rule)
-                           (witness-replays-p rule term target mapping context value ledger))
-                       (return (values (solved-conjunct rule term value) rule)))
-                      (t (incf (propagation-rejected result))))))))))))
+        (charge ledger :propagator-dispatch (+ 1 (syntax-work (first term))))
+        (dolist (rule (propagator-rules-for library (first term) open))
+          (multiple-value-bind (context mapping) (solver-context-values rule term target ledger)
+            (multiple-value-bind (value solved-p)
+                (and context (run-learned-solver library rule context ledger))
+              (cond ((not solved-p))
+                    ((or (funcall certified-p rule)
+                         (witness-replays-p rule term target mapping context value ledger))
+                     (return (values (solved-conjunct rule term value) rule)))
+                    (t (incf (propagation-rejected result)))))))))))
 
 (defun propagate-requirements (frame source ledger)
   "Rewrite every top-level conjunct (= (op 'k T) 'c) or (member (op 'k T) '(c)) of FRAME's

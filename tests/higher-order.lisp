@@ -692,21 +692,8 @@
              (check (equal '(2) (extract-allowed-values (row-requirement (first (frame-rows probed-2d))))))
              (check (equal '(4) (extract-allowed-values (row-requirement (second (frame-rows probed-2d)))))))
            ;; 3. Discrete derivative / adjacent stencil combinator `:map-adjacent` constrained by 2 adjacent fibers
-           (let ((xs (var 0 seq-type))
-                 (f-var (var 1 binary-code)))
-             (define-function :map-adjacent (list (cons 0 seq-type) (cons 1 binary-code)) seq-type
-               (lambda (self)
-                 (app (op :if seq-type)
-                      (app (op := seq-type) xs (lit seq-type '()))
-                      (lit seq-type '())
-                      (app (op :if seq-type)
-                           (app (op := seq-type) (app (op :tail :int) xs) (lit seq-type '()))
-                           (lit seq-type '())
-                           (app (op :cons :int)
-                                (app (op :code-eval binary-code) f-var
-                                     (app (op :at seq-type) (app (op :tail :int) xs) (lit :int 0))
-                                     (app (op :at seq-type) xs (lit :int 0)))
-                                (app self (app (op :tail :int) xs) f-var))))))
+           (progn
+             (load-battery :sequences :only '(:map-adjacent))
              (let* ((diff-frame (simple-frame seq-type inputs
                                               '(((()) ())
                                                 (((10 13 19 20 25 31)) (3 6 1 5 6)))))

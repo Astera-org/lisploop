@@ -721,13 +721,16 @@ constantly and quoted code is sized from cached metadata."
     ((:lookup :gather :code-child :code-operator :code-bind) nil)
     (otherwise
      (let ((def (find-function-definition op-name)))
-       (or (null def)
-           (function-definition-total-p def)
-           (and (function-definition-conditional-code-params def)
-                (every (lambda (param-idx)
-                         (and (< param-idx (length arguments))
-                              (funcall code-total-fn (nth param-idx arguments))))
-                       (function-definition-conditional-code-params def))))))))
+       (if def
+           (or (function-definition-total-p def)
+               (and (function-definition-conditional-code-params def)
+                    (every (lambda (param-idx)
+                             (and (< param-idx (length arguments))
+                                  (funcall code-total-fn (nth param-idx arguments))))
+                           (function-definition-conditional-code-params def))))
+           ;; Without a definition: a primitive not ruled on above is total. A name that is
+           ;; registered and nothing more has no body to judge, so a call of it is not.
+           (not (null (primitive-pattern op-name))))))))
 
 (defun empty-sequence-guard-var-id (condition &optional seq-param-ids)
   "If CONDITION is `(= Xi '())` or `(= '() Xi)` for a sequence variable Xi, return Xi's id."
@@ -1140,7 +1143,11 @@ known (nil marks an argument that is not), or else off the EXPECTED result type.
            (and (notany #'null parts) (apply #'tuple-type parts))))
     (case name
       ;; These carry a tuple of the types involved, which no single pattern expresses.
-      (:tuple (apply #'tuple-of types))
+      ;; A literal part has no type of its own; the result type then supplies them all.
+      (:tuple (or (apply #'tuple-of types)
+                  (and (tuple-type-p expected)
+                       (= (length types) (length (rest expected)))
+                       expected)))
       (:code-match (tuple-of (first types) (second types)))
       (:code-child (tuple-of (first types) expected))
       ((:code-bind :code-subst) (tuple-of (first types) (second types) expected))

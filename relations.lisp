@@ -101,13 +101,42 @@ RELATION-KIND, when given, must name the kind of table that TABLE is."
    algebraic expression compresses the residual table with positive MDL gain (delta-S > 0).
 2. Across multiple relation entries sharing (inputs, target) that are individually too small
    to justify a parametric rule, pool their residual tables and test whether a shared expression
-   jointly compresses the pooled residuals with positive total MDL gain."
+   jointly compresses the pooled residuals with positive total MDL gain.
+Only a lookup table that stands alone is fitted. A set of keys (`member-table-p`) lists no
+non-members, so there is nothing to fit it against. A table with a parametric base or a
+default answers off its rows too, and a law fitted to the rows would overwrite that answer.
+Both are left as they are.
+A search that finds nothing shorter is recorded in the metadata of the entry, or of the first
+entry of a pooled group, against what it searched: the statements of the tables, the bound
+and the work limit. While those stand it is not run again, so an incompressible table is
+paid for once. A search in a supplied LANGUAGE is not recorded, since the record does not
+say which language failed."
   (let ((condensed nil)
         (by-sig (make-hash-table :test #'equal)))
-    (labels ((first-order-table-p (inputs target table)
-               (and (consp table)
-                    (every (lambda (spec) (not (code-type-p (cdr spec)))) inputs)
-                    (not (code-type-p target))))
+    (labels ((fittable-table-p (entry)
+               ;; A first-order lookup table that stands alone. With a parametric base or
+               ;; a default its rows are exceptions, and a law fitted to them would replace
+               ;; what the entry answers everywhere else.
+               (let ((inputs (knowledge-entry-inputs entry))
+                     (target (knowledge-entry-target entry))
+                     (table (knowledge-entry-residual entry)))
+                 (and (consp table)
+                      (null (knowledge-entry-expression entry))
+                      (null (getf (knowledge-entry-metadata entry) :default))
+                      (every (lambda (spec) (not (code-type-p (cdr spec)))) inputs)
+                      (not (code-type-p target))
+                      (not (member-table-p table inputs target nil)))))
+             (search-record (inputs target searched)
+               ;; What decides the outcome of the default search over the tables of SEARCHED.
+               (unless language
+                 (list (or description-limit (header-bound inputs target 36))
+                       work-limit
+                       (mapcar #'knowledge-statement-snapshot searched))))
+             (searched-p (holder slot record)
+               (and record (equalp record (getf (knowledge-entry-metadata holder) slot))))
+             (note-search (holder slot record)
+               (when record
+                 (setf (getf (knowledge-entry-metadata holder) slot) record)))
              (table-rows (entry &optional entry-index)
                ;; The rows of ENTRY's table as (row-key known-inputs value).
                (loop with single-p = (= 1 (length (knowledge-entry-inputs entry)))
@@ -146,6 +175,8 @@ RELATION-KIND, when given, must name the kind of table that TABLE is."
                        (knowledge-entry-auxiliary-code entry) expression
                        (knowledge-entry-status entry) :empirical
                        (knowledge-entry-bits entry) bits)
+                 (remf (knowledge-entry-metadata entry) :fit-attempted)
+                 (remf (knowledge-entry-metadata entry) :pooled-fit-attempted)
                  (sync-entry-executable entry)
                  (push entry condensed))))
       ;; Pass 1: Individual relation entries and grouping by signature
@@ -153,31 +184,37 @@ RELATION-KIND, when given, must name the kind of table that TABLE is."
         (let ((inputs (knowledge-entry-inputs entry))
               (target (knowledge-entry-target entry))
               (table (knowledge-entry-residual entry)))
-          (when (and (null (knowledge-entry-expression entry))
-                     (first-order-table-p inputs target table))
+          (when (fittable-table-p entry)
             (push entry (gethash (list (knowledge-entry-domain entry) inputs target) by-sig))
             (when (>= (length table) 4)
-              (let ((best (find-compressing-expr inputs target (knowledge-entry-domain entry)
-                                                 (table-rows entry))))
-                (when (and best (< (body-size best inputs) (knowledge-entry-bits entry)))
-                  (condense entry best)))))))
+              (let ((record (search-record inputs target (list entry))))
+                (unless (searched-p entry :fit-attempted record)
+                  (let ((best (find-compressing-expr inputs target (knowledge-entry-domain entry)
+                                                     (table-rows entry))))
+                    (if (and best (< (body-size best inputs) (knowledge-entry-bits entry)))
+                        (condense entry best)
+                        (note-search entry :fit-attempted record)))))))))
       ;; Pass 2: Joint pooling across multiple relations with the same (domain, inputs, target)
       (maphash
        (lambda (sig group)
          (let ((remaining (remove-if #'knowledge-entry-expression (reverse group))))
            (when (>= (length remaining) 2)
              (destructuring-bind (domain inputs target) sig
-               (let* ((pooled-rows (loop for entry in remaining
-                                         for entry-index from 0
-                                         append (table-rows entry entry-index)))
-                      (best (when (>= (length pooled-rows) 4)
-                              (find-compressing-expr inputs target domain pooled-rows))))
-                 ;; Entries store independent AST copies; pay for every copy.
-                 (when (and best
-                            (< (* (length remaining) (body-size best inputs))
-                               (reduce #'+ remaining :key #'knowledge-entry-bits)))
-                   (dolist (entry remaining)
-                     (condense entry best))))))))
+               (let ((pooled-rows (loop for entry in remaining
+                                        for entry-index from 0
+                                        append (table-rows entry entry-index)))
+                     (record (search-record inputs target remaining))
+                     (holder (first remaining)))
+                 (when (and (>= (length pooled-rows) 4)
+                            (not (searched-p holder :pooled-fit-attempted record)))
+                   (let ((best (find-compressing-expr inputs target domain pooled-rows)))
+                     ;; Entries store independent AST copies; pay for every copy.
+                     (if (and best
+                              (< (* (length remaining) (body-size best inputs))
+                                 (reduce #'+ remaining :key #'knowledge-entry-bits)))
+                         (dolist (entry remaining)
+                           (condense entry best))
+                         (note-search holder :pooled-fit-attempted record)))))))))
        by-sig)
       (when condensed
         (incf (knowledge-library-version library)))

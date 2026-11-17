@@ -75,6 +75,33 @@ a preserving one needs every other argument to be a code literal. Anything else 
 X_SEQ-ID to a length-preserving combinator; see `list-recursion-shape`."
   (eq :preserving (list-recursion-shape name body seq-id seq-pos)))
 
+(defun function-body-pointwise-map-p (name inputs body seq-id code-id)
+  "True when BODY, the definition of NAME over INPUTS, maps the code X_CODE-ID over the list
+X_SEQ-ID element by element: '() on the empty list, and otherwise that code applied to the
+head alone, consed onto NAME applied to the tail and the same code. The i-th output of such
+a function is the code's value on the i-th input and depends on nothing else. A body that
+merely preserves length (`function-body-length-preserving-p`) promises less: its step may
+read the rest of the list, or the list in another order."
+  (let ((kname (canonical-op-name name))
+        (seq-pos (position seq-id inputs :key #'car))
+        (code-pos (position code-id inputs :key #'car)))
+    (flet ((code-var-p (term) (and (var-p term) (eql code-id (ast-id term))))
+           (head-p (term)
+             (and (app-of-p term :at) (var-p (second term)) (eql seq-id (ast-id (second term)))
+                  (lit-p (third term)) (eql 0 (ast-value (third term))))))
+      (multiple-value-bind (base step) (empty-sequence-base body seq-id)
+        (and seq-pos code-pos base (null (ast-value base))
+             (app-of-p step :cons)
+             (destructuring-bind (emitted onward) (rest step)
+               (and (app-of-p emitted :code-eval)
+                    (= 2 (length (rest emitted)))
+                    (code-var-p (second emitted))
+                    (head-p (third emitted))
+                    (app-of-p onward kname)
+                    (= (length inputs) (length (rest onward)))
+                    (tail-of-var-p (nth seq-pos (rest onward)) seq-id)
+                    (code-var-p (nth code-pos (rest onward))))))))))
+
 (defun function-shape-facts (name inputs target body)
   "Structural facts about the function NAME : INPUTS -> TARGET with BODY, as a plist.
 :seq-spec is the first sequence input; :pure-p holds when every other input is code; :shape

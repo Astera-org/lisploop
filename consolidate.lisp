@@ -919,6 +919,9 @@ library adds none."
     (declare (ignore entries))
     (induce-fold-motifs library :ledger ledger)))
 
+(defparameter *consolidation-pass-limit* 4
+  "The most passes `consolidate-knowledge-library` makes over its stages in one call.")
+
 (defun consolidate-knowledge-library (library &key synthesis-jobs observation-jobs law-validations
                                                    retype-domains library-names
                                                    (min-gain 0) (condense-heuristic-p t)
@@ -926,19 +929,28 @@ library adds none."
   "Consolidate LIBRARY across accumulated synthesis jobs, law validations and registered
 entries:
 1. Ingest SYNTHESIS-JOBS, LAW-VALIDATIONS and OBSERVATION-JOBS.
-2. Run each registered `define-knowledge-kind` `:consolidate` hook in priority order; for
-   example `:function` discovers higher-order combinators with MDL gain above MIN-GAIN,
-   `:relation` compresses pooled residual tables into expressions, and `:motif` quotients
-   the folds whose steps share a star of laws.
-3. Retype validated laws into each of RETYPE-DOMAINS, and lift to :int the solvers that
-   read alike over several prime fields (`lift-field-solvers`).
-4. Settle the SYNTHESIS-JOBS with the functions they lifted (`amortize-library-entries`),
+2. Run the stages to a fixed point. The stages are each registered `define-knowledge-kind`
+   `:consolidate` hook in priority order (for example `:function` discovers higher-order
+   combinators with MDL gain above MIN-GAIN, `:relation` compresses pooled residual tables
+   into expressions, and `:motif` quotients the folds whose steps share a star of laws),
+   then the retyping of validated laws into each of RETYPE-DOMAINS, then the lifting to :int
+   of the solvers that read alike over several prime fields (`lift-field-solvers`). A stage
+   feeds stages on either side of it: a lifted solver is what the `:functor` hook maps
+   through a combinator, and a law the `:motif` hook induces is one to retype. So the
+   stages are passed over again, and in a pass a stage runs when the library has changed
+   since that stage last began, its own changes included. The passes end when no stage is
+   due, or after `*consolidation-pass-limit*` of them.
+3. Settle the SYNTHESIS-JOBS with the functions they lifted (`amortize-library-entries`),
    update descriptor weights and condense a priority predictor from their traces.
-Without SYNTHESIS-JOBS step 4 does nothing, so consolidating an unchanged library again is
-a fixed point. Returns a structured consolidation report plist."
+Without SYNTHESIS-JOBS step 3 does nothing, so one call leaves a library that a second call
+does not change, and that second call runs each stage once. Returns a structured
+consolidation report plist; its :passes is the number of passes made and its :fixed-point-p
+is false only when the limit cut them short."
   (let ((before-version (knowledge-library-version library))
         (ingested nil)
         (consolidated nil)
+        (passes 0)
+        (fixed-point-p nil)
         (*consolidation-options* (list :min-gain min-gain :library-names library-names)))
     (flet ((note (kind result)
              (when result (push (cons kind result) consolidated))))
@@ -953,14 +965,36 @@ a fixed point. Returns a structured consolidation report plist."
               (let ((validation (resume-law-validation (start-law-validation law) 100000)))
                 (when (eq :validated (law-validation-status validation))
                   (push (register-knowledge-law validation :library library :ledger ledger) ingested))))))
-        (dolist (spec *knowledge-kind-specs*)
-          (let ((kind (knowledge-kind-spec-name spec))
-                (hook (knowledge-kind-spec-consolidate-fn spec)))
-            (when hook
-              (note kind (funcall hook (knowledge-entries-of-kind kind library) library ledger)))))
-        (dolist (domain retype-domains)
-          (note :retyped-laws (retype-knowledge-laws library domain :validate-p t :ledger ledger)))
-        (note :lifted-solvers (lift-field-solvers library :ledger ledger))
+        (let ((stages                   ; (name . thunk), in the order of a pass
+                (append
+                 (loop for spec in *knowledge-kind-specs*
+                       for hook = (knowledge-kind-spec-consolidate-fn spec)
+                       when hook
+                         collect (let ((kind (knowledge-kind-spec-name spec))
+                                       (hook hook))
+                                   (cons kind
+                                         (lambda ()
+                                           (funcall hook (knowledge-entries-of-kind kind library)
+                                                    library ledger)))))
+                 (loop for domain in retype-domains
+                       collect (let ((domain domain))
+                                 (cons :retyped-laws
+                                       (lambda ()
+                                         (retype-knowledge-laws library domain
+                                                                :validate-p t :ledger ledger)))))
+                 (list (cons :lifted-solvers
+                             (lambda () (lift-field-solvers library :ledger ledger))))))
+              (begun (make-hash-table :test #'eq))) ; stage -> library version when it last began
+          (flet ((due-p (stage)
+                   (multiple-value-bind (version begun-p) (gethash stage begun)
+                     (or (not begun-p) (/= version (knowledge-library-version library))))))
+            (loop while (and (< passes *consolidation-pass-limit*) (some #'due-p stages))
+                  do (incf passes)
+                     (dolist (stage stages)
+                       (when (due-p stage)
+                         (setf (gethash stage begun) (knowledge-library-version library))
+                         (note (car stage) (funcall (cdr stage))))))
+            (setf fixed-point-p (notany #'due-p stages))))
         (when synthesis-jobs
           (note :archived (amortize-library-entries library synthesis-jobs :ledger ledger)))
         (when (and condense-heuristic-p synthesis-jobs)
@@ -977,4 +1011,6 @@ a fixed point. Returns a structured consolidation report plist."
           :after-version (knowledge-library-version library)
           :ingested (nreverse ingested)
           :consolidated (nreverse consolidated)
+          :passes passes
+          :fixed-point-p fixed-point-p
           :work (ledger-total ledger))))

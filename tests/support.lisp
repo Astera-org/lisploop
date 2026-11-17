@@ -524,52 +524,14 @@ semantics rather than brittle de-novo naming order or hardcoded bit-gain integer
       (error "Required identity was not discovered")))
 
 (defun register-kernel-arithmetic-solver (domain name position &key (library *knowledge-library*))
-  "Register a standard arithmetic inverse rule directly via kernel `register-knowledge-solver`
-(without invoking `milestones/algebra-discovery.lisp`). Finite-field rules are exhaustively
-certified; integer rules remain tentative (`:certified-p nil`) with exact uniqueness flags."
-  (let* ((k (var 0 domain))
-         (c (var 1 domain))
-         (zero (lit domain 0))
-         (finite-p (finite-type-p domain)))
-    (multiple-value-bind (witness guard unique-p)
-        (ecase name
-          (:+ (values (app (op :- domain) c k) (lit :bool t) t))
-          (:- (if (zerop position)
-                  ;; z - k = c  =>  z = c + k
-                  (values (app (op :+ domain) c k) (lit :bool t) t)
-                  ;; k - z = c  =>  z = k - c
-                  (values (app (op :- domain) k c) (lit :bool t) t)))
-          (:* (values (app (op :/ domain) c k)
-                      (bool-not (app (op := domain) k zero))
-                      finite-p))
-          (:/ (if (zerop position)
-                  ;; z / k = c  =>  z = c * k (k != 0; non-unique on truncating :int division!)
-                  (values (app (op :* domain) c k)
-                          (bool-not (app (op := domain) k zero))
-                          finite-p)
-                  ;; k / z = c  =>  z = k / c (k != 0 and c != 0 on fields)
-                  (values (app (op :/ domain) k c)
-                          (bool-and (bool-not (app (op := domain) k zero))
-                                    (bool-not (app (op := domain) c zero)))
-                          finite-p))))
-      (let ((entry (register-knowledge-solver
-                    name
-                    :id (intern (format nil "KERNEL-SOLVE-~A-~A-~D"
-                                        (if (consp domain) (second domain) domain) name position)
-                                :keyword)
-                    :domain domain
-                    :inputs (arithmetic-inputs domain)
-                    :target domain
-                    :position position
-                    :witness witness
-                    :guard guard
-                    :certified-p finite-p
-                    :unique-p unique-p
-                    :library library)))
-        (when (and unique-p (not finite-p))
-          (attest-knowledge-entry entry :derived '(:uniqueness))
-          (clrhash (knowledge-library-propagator-libraries library)))
-        entry))))
+  "Register in LIBRARY the inverse of the arithmetic operator NAME at POSITION over DOMAIN, from
+the `arithmetic` battery (library/arithmetic.lisp), and return its entry. Finite-field rules
+are exhaustively certified; integer rules remain tentative, and those of addition and
+subtraction are unique by axiom."
+  (first (load-battery :arithmetic
+                       :types (list (cons '?n domain))
+                       :only (list (keyword-id "SOLVE-~A-~D" name position))
+                       :library library)))
 
 (defun kernel-propagator-library (domain &key (operators '(:+ :- :* :/)) (positions '(0 1)) ledger)
   "Construct an isolated `propagator-library` for DOMAIN using only kernel solver registration."
@@ -581,56 +543,15 @@ certified; integer rules remain tentative (`:certified-p nil`) with exact unique
     (as-propagator-library temp-lib)))
 
 (defun define-standard-int-combinators (&key (which '(:map :foldr :filter)))
-  "Register standard higher-order combinators over `(:seq :int)` in the active library."
-  (let* ((seq-type (sequence-type :int))
-         (xs (var 0 seq-type))
-         (empty-xs (app (op := seq-type) xs (lit seq-type '())))
-         (head-xs (app (op :at seq-type) xs (lit :int 0)))
-         (tail-xs (app (op :tail :int) xs))
-         (unary-code (code-type '((0 . :int)) :int))
-         (binary-code (code-type '((0 . :int) (1 . :int)) :int))
-         (pred-code (code-type '((0 . :int)) :bool)))
-    (when (member :map which)
-      (define-function :map (list (cons 0 seq-type) (cons 1 unary-code)) seq-type
-        (lambda (self)
-          (app (op :if seq-type) empty-xs (lit seq-type '())
-               (app (op :cons :int)
-                    (app (op :code-eval unary-code) (var 1 unary-code) head-xs)
-                    (app self tail-xs (var 1 unary-code)))))))
-    (when (member :foldr which)
-      (define-function :foldr (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
-        (lambda (self)
-          (app (op :if :int) empty-xs (var 1 :int)
-               (app (op :code-eval binary-code) (var 2 binary-code)
-                    head-xs
-                    (app self tail-xs (var 1 :int) (var 2 binary-code)))))))
-    (when (member :foldl which)
-      (define-function :foldl (list (cons 0 seq-type) (cons 1 :int) (cons 2 binary-code)) :int
-        (lambda (self)
-          (app (op :if :int) empty-xs (var 1 :int)
-               (app self tail-xs
-                    (app (op :code-eval binary-code) (var 2 binary-code) (var 1 :int) head-xs)
-                    (var 2 binary-code))))))
-    (when (member :filter which)
-      (define-function :filter (list (cons 0 seq-type) (cons 1 pred-code)) seq-type
-        (lambda (self)
-          (app (op :if seq-type) empty-xs (lit seq-type '())
-               (app (op :if seq-type)
-                    (app (op :code-eval pred-code) (var 1 pred-code) head-xs)
-                    (app (op :cons :int) head-xs (app self tail-xs (var 1 pred-code)))
-                    (app self tail-xs (var 1 pred-code)))))))
-    (when (member :map-adjacent which)
-      (define-function :map-adjacent (list (cons 0 seq-type) (cons 1 binary-code)) seq-type
-        (lambda (self)
-          (app (op :if seq-type) empty-xs (lit seq-type '())
-               (app (op :if seq-type)
-                    (app (op := seq-type) tail-xs (lit seq-type '()))
-                    (lit seq-type '())
-                    (app (op :cons :int)
-                         (app (op :code-eval binary-code) (var 1 binary-code)
-                              (app (op :at seq-type) tail-xs (lit :int 0))
-                              head-xs)
-                         (app self tail-xs (var 1 binary-code))))))))))
+  "Register the standard higher-order combinators over `(:seq :int)` named by WHICH in the
+active library, from the `sequences` battery (library/sequences.lisp), in its order."
+  (load-battery :sequences :only which))
+
+(defun install-sequence-shift-metric ()
+  "Load the `sequence-shift` battery (library/sequence-shift.lisp) into the active library:
+the decoder `:shift-seq`, its correlation solver, and their registration as a metric decoder
+of `(:seq :int)`. Returns the solver entry."
+  (first (last (load-battery :sequence-shift))))
 
 (defun standard-r4-corpus (&key (self-name :fa))
   "Build the standard 6-program recursive list corpus (`:copy`, `:inc-all`, `:double-all`,

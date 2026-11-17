@@ -426,3 +426,260 @@
       (check-synthesized-model (candidate-expression (synthesis-job-best batch)) frame
                                :must-call-ops '(:map)
                                :held-out '((((5 -2)) (10 -4)))))))
+
+;;; Defects found by the audit of Plan 9 (`plan9-audit.md` §9, `plan9.md` §1.2).
+
+(deftest audit-totality-is-a-least-fixed-point
+  ;; A function is total through callees that are total already. A cycle of calls cannot
+  ;; vouch for itself, whatever its members were certified as before a redefinition.
+  (with-knowledge-library ((make-knowledge-library))
+    (let ((n (var 0 :int)) (scope '((0 . :int))))
+      (flet ((total-p (name) (function-definition-total-p (find-function-definition name)))
+             (call (name) (app (op name) (lit :int 3)))
+             (successor () (app (op :+ :int) n (lit :int 1))))
+        (define-function :audit-g scope :int (successor))
+        (define-function :audit-f scope :int (app (op :audit-g) n))
+        (check (and (total-p :audit-f) (total-p :audit-g)))
+        (check (= 4 (result (call :audit-f))))
+        ;; The callee now calls back: neither returns, and neither may be read as total.
+        (define-function :audit-g scope :int (app (op :audit-f) n))
+        (dolist (name '(:audit-f :audit-g))
+          (check (not (total-p name)))
+          (check (not (provably-total-p (call name))))
+          (check (not (eq :value (evaluation-status (evaluate (call name) nil nil :budget 2000))))))
+        ;; Breaking the cycle certifies both again.
+        (define-function :audit-g scope :int (successor))
+        (check (and (total-p :audit-f) (total-p :audit-g)))
+        ;; A caller listed before its callee is certified by a later pass from the bottom.
+        (define-function :audit-early scope :int n)
+        (define-function :audit-late scope :int (successor))
+        (define-function :audit-early scope :int (app (op :audit-late) n))
+        (check (< (position :audit-early *registered-function-names*)
+                  (position :audit-late *registered-function-names*)))
+        (check (total-p :audit-early))
+        (check (provably-total-p (call :audit-early)))))
+    ;; A combinator that is total given total code stays so across an unrelated definition.
+    (define-standard-int-combinators :which '(:map))
+    (define-function :audit-other '((0 . :int)) :int (var 0 :int))
+    (let ((map (find-function-definition :map)))
+      (check (not (function-definition-total-p map)))
+      (check (equal '(1) (function-definition-conditional-code-params map))))))
+
+(deftest audit-calls-of-undefined-names-are-not-total
+  (with-knowledge-library ((make-knowledge-library))
+    (let ((n (var 0 :int)) (scope '((0 . :int))))
+      ;; A name that is registered and nothing more has no body to judge.
+      (let ((*registered-function-names* (append *registered-function-names* (list :audit-ghost))))
+        (check (not (provably-total-p (app (op :audit-ghost (code-type scope :int)) (lit :int 3))))))
+      ;; A primitive needs no definition.
+      (check (provably-total-p (app (op :+ :int) (lit :int 1) (lit :int 2))))
+      ;; A caller stops being total when its callee leaves the library.
+      (define-function :audit-callee scope :int (app (op :+ :int) n (lit :int 1)))
+      (define-function :audit-caller scope :int (app (op :audit-callee) n))
+      (check (function-definition-total-p (find-function-definition :audit-caller)))
+      (remove-knowledge-entry :audit-callee)
+      (check (not (defined-function-p :audit-callee)))
+      (let ((caller (find-function-definition :audit-caller)))
+        (check (not (function-definition-total-p caller)))
+        (check (not (provably-total-p (function-definition-body caller))))))))
+
+(deftest audit-persisted-nogood-schemas-zip-only-pointwise-maps
+  ;; A persisted schema pairs the i-th input element of a row with its i-th output element
+  ;; and calls one input with two outputs a conflict. A pointwise map reads its rows that
+  ;; way and no other decoder does, so a lift that holds through another is not refuted.
+  (with-clean-kernel-state
+    (define-standard-int-combinators :which '(:map))
+    (let* ((seq (sequence-type :int))
+           (unary (code-type '((0 . :int)) :int))
+           (xs (var 0 seq))
+           (code (var 1 unary))
+           (inputs (list (cons 0 seq)))
+           (signature (list (cons 0 seq) (cons 1 unary)))
+           (identity (lit unary (var 0 :int)))
+           (successor (lit unary (term `(+ ,(var 0 :int) 1)))))
+      ;; Preserves length, but its i-th output is the code's value on the length left.
+      (define-function :audit-map-length signature seq
+        (lambda (self)
+          (term `(if (= ,xs ()) ()
+                     (cons (code-eval ,code (length ,xs)) (,self (tail ,xs) ,code)))
+                seq)))
+      ;; Its i-th output is the code's value on the i-th input from the end.
+      (define-function :audit-map-reversed signature seq
+        (lambda (self)
+          (term `(if (= ,xs ()) ()
+                     (concat (cons (,self (tail ,xs) ,code)
+                                   (cons (cons (code-eval ,code (at ,xs 0)) ()) ()))))
+                seq)))
+      (flet ((body (name) (function-definition-body (find-function-definition name)))
+             (refuted-p (name rows)
+               (let* ((parent (make-synthesis-node :id 0 :frame (simple-frame seq inputs rows)
+                                                   :language (make-language :int inputs)))
+                      (decoder (app (op name) xs code))
+                      (proposal (make-decomposition :decoder decoder :child-id 1 :child-type unary
+                                                    :lift-p t)))
+                 (unless (find decoder (knowledge-entries-of-kind :nogood-schema)
+                               :key #'knowledge-entry-auxiliary-code :test #'equal)
+                   (register-knowledge-nogood-schema (lit :bool t) :inputs (code-inputs unary)
+                                                                  :decoder decoder :child-id 1
+                                                                  :child-type unary))
+                 (and (check-library-nogood-schemas *knowledge-library* parent proposal (make-ledger))
+                      t))))
+        ;; Preserving length is not being pointwise.
+        (check (function-body-pointwise-map-p :map signature (body :map) 0 1))
+        (check (function-body-length-preserving-p :audit-map-length (body :audit-map-length)))
+        (check (not (function-body-pointwise-map-p :audit-map-length signature
+                                                   (body :audit-map-length) 0 1)))
+        (check (not (function-body-pointwise-map-p :audit-map-reversed signature
+                                                   (body :audit-map-reversed) 0 1)))
+        ;; A map is still refuted by rows that no code satisfies, and only by those.
+        (check (refuted-p :map '((((5)) (6)) (((5 7)) (9 8)))))
+        (check (not (refuted-p :map '((((5)) (6)) (((5 7)) (6 8))))))
+        ;; The rows below hold of the code named, and repeat an input with another output.
+        (check (equal '(2 1) (result (app (op :audit-map-length) (lit seq '(5 7)) identity))))
+        (check (not (refuted-p :audit-map-length '((((5)) (1)) (((5 7)) (2 1))))))
+        (check (equal '(6 8) (result (app (op :audit-map-reversed) (lit seq '(7 5)) successor))))
+        (check (not (refuted-p :audit-map-reversed '((((5)) (6)) (((7 5)) (6 8))))))))))
+
+(deftest audit-relation-consolidation-fits-only-standalone-lookup-tables
+  (let ((affine '((0 1) (1 4) (2 7) (3 10) (4 13) (5 16)))
+        (inputs '((0 . :int))))
+    (flet ((value (entry key) (evaluation-value (consume-knowledge-entry entry (list key)))))
+      ;; Two sets of keys with one signature: nothing to fit them against, and no error.
+      (with-knowledge-library ((make-knowledge-library))
+        (let ((evens (register-knowledge-relation :audit-evens '(0 2 4 6 8) :inputs inputs :target :bool))
+              (odds (register-knowledge-relation :audit-odds '(1 3 5 7 9) :inputs inputs :target :bool))
+              (ledger (make-ledger)))
+          (check (null (consolidate-residual-relations (list evens odds) *knowledge-library* ledger)))
+          (check (zerop (ledger-total ledger)))
+          (check (eq t (value evens 4)))
+          (check (null (value evens 3)))
+          (check (getf (consolidate-knowledge-library *knowledge-library*) :fixed-point-p))))
+      ;; A default answers off the table, and a law fitted to the rows would overwrite it.
+      (with-knowledge-library ((make-knowledge-library))
+        (let ((entry (register-knowledge-relation :audit-default affine :inputs inputs :default -1))
+              (ledger (make-ledger)))
+          (check (null (consolidate-residual-relations (list entry) *knowledge-library* ledger)))
+          (check (zerop (ledger-total ledger)))
+          (check (= 10 (value entry 3)))
+          (check (= -1 (value entry 9)))))
+      ;; The same rows standing alone are condensed to the law that generates them.
+      (with-knowledge-library ((make-knowledge-library))
+        (let ((entry (register-knowledge-relation :audit-bare affine :inputs inputs)))
+          (check (equal (list entry)
+                        (consolidate-residual-relations (list entry) *knowledge-library* (make-ledger))))
+          (check (plusp (knowledge-entry-gain entry)))
+          (check (= 10 (value entry 3)))
+          (check (= 28 (value entry 9))))))))
+
+(deftest audit-failed-relation-fits-are-searched-once
+  (let ((inputs '((0 . :int))))
+    (flet ((work (&rest keys)
+             (let ((ledger (make-ledger)))
+               (apply #'consolidate-residual-relations (knowledge-entries-of-kind :relation)
+                      *knowledge-library* ledger keys)
+               (ledger-total ledger))))
+      ;; One table that no small expression generates.
+      (with-knowledge-library ((make-knowledge-library))
+        (let ((noise '((0 17) (1 3) (2 40) (3 8) (4 29) (5 1))))
+          (register-knowledge-relation :audit-noise noise :inputs inputs)
+          (check (plusp (work)))
+          (check (null (knowledge-entry-expression (find-knowledge-entry :audit-noise))))
+          (check (zerop (work)))
+          ;; The record of the search is part of the entry and survives persistence.
+          (with-knowledge-library ((deserialize-knowledge-library (serialize-knowledge-library)))
+            (check (zerop (work))))
+          ;; The whole consolidation is then free, and a fixed point.
+          (let ((report (consolidate-knowledge-library *knowledge-library*)))
+            (check (zerop (getf report :work)))
+            (check (getf report :fixed-point-p)))
+          ;; A search with more work is another search, and so is a search of another table:
+          ;; a record carried over to a table it was not made for is not believed.
+          (check (plusp (work :work-limit 120000)))
+          (check (zerop (work :work-limit 120000)))
+          (let ((record (getf (knowledge-entry-metadata (find-knowledge-entry :audit-noise))
+                              :fit-attempted)))
+            (check record)
+            (register-knowledge-relation :audit-noise (append noise '((6 23))) :inputs inputs
+                                         :metadata (list :fit-attempted record))
+            (check (plusp (work :work-limit 120000))))))
+      ;; Two tables too small to fit alone, pooled.
+      (with-knowledge-library ((make-knowledge-library))
+        (register-knowledge-relation :audit-pool-a '((0 17) (1 3) (2 40)) :inputs inputs)
+        (register-knowledge-relation :audit-pool-b '((3 8) (4 29) (5 1)) :inputs inputs)
+        (check (plusp (work)))
+        (check (zerop (work)))
+        ;; A third table changes what is pooled.
+        (register-knowledge-relation :audit-pool-c '((6 23) (7 2)) :inputs inputs)
+        (check (plusp (work)))
+        (check (zerop (work)))))))
+
+(deftest audit-one-consolidation-call-reaches-a-fixed-point
+  (flet ((unchanged-by-another-call-p (&rest arguments)
+           (let ((version (knowledge-library-version *knowledge-library*))
+                 (count (length (knowledge-library-entries *knowledge-library*)))
+                 (report (apply #'consolidate-knowledge-library *knowledge-library* arguments)))
+             (and (getf report :fixed-point-p)
+                  (= 1 (getf report :passes))
+                  (null (getf report :consolidated))
+                  (= version (knowledge-library-version *knowledge-library*))
+                  (= count (length (knowledge-library-entries *knowledge-library*)))))))
+    ;; 1. The lift to :int runs after the :functor hook that maps its solvers through :map.
+    (with-clean-kernel-state
+      (define-standard-int-combinators :which '(:map))
+      (dolist (prime '(5 7))
+        (dolist (position '(0 1))
+          (register-kernel-arithmetic-solver (gf prime) :+ position)))
+      ;; Cut short after one pass, the call says that it did not reach the fixed point.
+      (let* ((*consolidation-pass-limit* 1)
+             (report (consolidate-knowledge-library *knowledge-library*)))
+        (check (= 1 (getf report :passes)))
+        (check (not (getf report :fixed-point-p)))
+        (check (= 2 (length (cdr (assoc :lifted-solvers (getf report :consolidated))))))
+        (check (null (find-knowledge-entry :map/functor))))
+      (let ((report (consolidate-knowledge-library *knowledge-library*)))
+        (check (getf report :fixed-point-p))
+        (check (<= (getf report :passes) *consolidation-pass-limit*))
+        (dolist (id '(:map/functor :map/invert-+-0 :map/invert-+-1))
+          (check (find-knowledge-entry id))))
+      (check (unchanged-by-another-call-p)))
+    ;; 2. The same library in one call.
+    (with-clean-kernel-state
+      (define-standard-int-combinators :which '(:map))
+      (dolist (prime '(5 7))
+        (dolist (position '(0 1))
+          (register-kernel-arithmetic-solver (gf prime) :+ position)))
+      (let ((report (consolidate-knowledge-library *knowledge-library*)))
+        (check (getf report :fixed-point-p))
+        (dolist (id '(:map/functor :map/invert-+-0 :map/invert-+-1))
+          (check (find-knowledge-entry id))))
+      (check (unchanged-by-another-call-p)))
+    ;; 3. The :motif hook induces laws that are then retyped, and reads the retyped ones.
+    (with-clean-kernel-state
+      (define-standard-int-combinators :which '(:foldr :foldl))
+      (let* ((seq (sequence-type :int))
+             (a (var 0 :int)) (b (var 1 :int)) (c (var 2 :int))
+             (step-type (code-type '((0 . :int) (1 . :int)) :int))
+             (samples '((0 0 0) (1 2 3) (-2 5 7) (4 -1 2))))
+        (flet ((sampled-law (inputs left right)
+                 (register-knowledge-law
+                  (resume-law-validation
+                   (start-law-validation (make-law :int inputs left right)
+                                         :samples (mapcar (lambda (sample) (subseq sample 0 (length inputs)))
+                                                          samples))
+                   100000))))
+          (loop for (name operator identity) in (list (list :sum (op :+ :int) 0)
+                                                      (list :product (op :* :int) 1))
+                do (define-function name (list (cons 0 seq)) :int
+                     (app (op :foldr) (var 0 seq) (lit :int identity)
+                          (lit step-type (app operator a b))))
+                   (add-knowledge-edge name :refactored-by :foldr)
+                   (add-knowledge-edge :foldr :abstracts name)
+                   (sampled-law (arithmetic-inputs :int 3)
+                                (app operator (app operator a b) c) (app operator a (app operator b c)))
+                   (sampled-law (arithmetic-inputs :int 1) (app operator a (lit :int identity)) a)))
+        (let ((report (consolidate-knowledge-library *knowledge-library*
+                                                     :retype-domains (list (gf 5)))))
+          (check (getf report :fixed-point-p))
+          (check (find-knowledge-entry :foldr=foldl/monoid))
+          (check (assoc :retyped-laws (getf report :consolidated))))
+        (check (unchanged-by-another-call-p :retype-domains (list (gf 5))))))))

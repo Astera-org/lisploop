@@ -279,10 +279,41 @@ containing holes `?h`) holds on KNOWN under SCOPE-INPUTS in the VM."
         ((pattern-has-holes-p clause-expr) (every #'conjunct-holds-p (extract-conjuncts clause-expr)))
         (t (holds-p clause-expr))))))
 
+(defun pointwise-map-decoder-p (decoder child-id seq-id)
+  "True when DECODER calls a defined function on the parent input X_SEQ-ID and on the child
+code CHILD-ID, each passed as a bare variable, and that function maps the code over the list
+element by element (`function-body-pointwise-map-p`)."
+  (and (app-p decoder)
+       (operator-p (first decoder))
+       (let* ((definition (find-function-definition (operator-name (first decoder))))
+              (inputs (and definition (function-definition-inputs definition)))
+              (arguments (rest decoder)))
+         (flet ((parameter-receiving (id)
+                  ;; The id of the parameter that the variable ID is passed to, if any.
+                  (let ((position (position-if (lambda (argument)
+                                                 (and (var-p argument) (eql id (ast-id argument))))
+                                               arguments)))
+                    (and position (car (nth position inputs))))))
+           (and definition
+                (function-definition-body definition)
+                (null (function-definition-oracle-table definition))
+                (= (length inputs) (length arguments))
+                (let ((seq-parameter (parameter-receiving seq-id))
+                      (code-parameter (parameter-receiving child-id)))
+                  (and seq-parameter code-parameter
+                       (function-body-pointwise-map-p (function-definition-name definition) inputs
+                                                      (function-definition-body definition)
+                                                      seq-parameter code-parameter))))))))
+
 (defun check-library-nogood-schemas (library parent proposal ledger)
   "Check whether a unary higher-order `:lift-p t` PROPOSAL on PARENT is refuted by any
 persisted `:nogood-schema` entry in the knowledge LIBRARY. When refuted, returns
-`(VALUES primary-conflict nogood-clauses)` without running full `lift-frame`."
+`(VALUES primary-conflict nogood-clauses)` without running full `lift-frame`.
+The check pairs the i-th input element of a row with its i-th output element and calls two
+occurrences of one input with different outputs a conflict. That reading is the decoder's
+only when it maps its code over the parent's list element by element, so the check is made
+for such a decoder (`pointwise-map-decoder-p`) and for no other: of a decoder that permutes
+its list, or whose step reads more than one element, it would refute lifts that hold."
   (when (and parent
              proposal
              (decomposition-lift-p proposal)
@@ -291,10 +322,16 @@ persisted `:nogood-schema` entry in the knowledge LIBRARY. When refuted, returns
     (let* ((schemas (knowledge-entries-of-kind :nogood-schema library))
            (prop-ctype (decomposition-child-type proposal))
            (code-in (code-inputs prop-ctype))
+           (parent-inputs (schema-inputs (frame-schema (synthesis-node-frame parent))))
            (prop-norm-dec (normalize-proposal-decoder (decomposition-decoder proposal)
                                                       (decomposition-child-id proposal)
                                                       prop-ctype)))
-      (when (and schemas (= 1 (length code-in)))
+      (when (and schemas
+                 (= 1 (length code-in))
+                 (= 1 (length parent-inputs))
+                 (pointwise-map-decoder-p (decomposition-decoder proposal)
+                                          (decomposition-child-id proposal)
+                                          (caar parent-inputs)))
         (let ((matching-schema
                 (find-if (lambda (entry)
                            (let* ((meta (knowledge-entry-metadata entry))

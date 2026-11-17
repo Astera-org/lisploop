@@ -187,14 +187,9 @@ Returns the frame, the language, and held-out cases."
   (let* ((pair (tuple-type :int :int))
          (actions-type (sequence-type :int))
          (states-type (sequence-type pair))
-         (step-type (code-type (list (cons 0 pair) (cons 1 :int)) pair))
          (inputs (list (cons 0 actions-type) (cons 1 pair))))
-    (define-function :scan-pair (list (cons 0 actions-type) (cons 1 pair) (cons 2 step-type)) states-type
-      (lambda (self)
-        (let* ((actions (var 0 actions-type)) (state (var 1 pair)) (step (var 2 step-type))
-               (next (term `(code-eval ,step ,state (at ,actions 0)))))
-          (term `(if (= ,actions ()) () (cons ,next (,self (tail ,actions) ,next ,step)))
-                states-type))))
+    ;; `:scan-pair` is from the `scans` battery (library/scans.lisp).
+    (load-battery :scans :only '(:scan-pair))
     (values (simple-frame states-type inputs
                           '((((1 1) (0 2)) ((1 2) (2 3)))
                             (((1 1) (0 3)) ((1 3) (2 3)))

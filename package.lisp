@@ -150,7 +150,7 @@
    #:learn-knowledge-transformer
 
    ;; 14. bootstrap-inverters.lisp — Functorial & involution solver induction
-   #:induce-functorial-solvers #:induce-involution-solvers #:install-sequence-shift-metric
+   #:induce-functorial-solvers #:induce-involution-solvers
 
    ;; 15. condense.lisp — Lossy Stage A heuristic condensation
    #:heuristic-model #:heuristic-model-p #:heuristic-program #:heuristic-residual
@@ -173,7 +173,8 @@
    #:abstract-function-bodies #:discover-library-abstractions
 
    ;; 17. descriptors.lisp — Structural recursion shapes, M9 multi-faceted descriptors & policy scoring
-   #:function-body-length-preserving-p #:compute-function-descriptor
+   #:function-body-length-preserving-p #:function-body-pointwise-map-p
+   #:compute-function-descriptor
    #:descriptor-clause #:descriptor-clause-p #:make-descriptor-clause
    #:descriptor-clause-id #:descriptor-clause-facet #:descriptor-clause-tier
    #:descriptor-clause-status #:descriptor-clause-weight-bits #:descriptor-clause-work-cost
@@ -232,10 +233,14 @@
    ;; 23. consolidate.lisp — Trace heuristic learning & continual library consolidation
    #:make-search-trace-frame #:condense-search-heuristic #:register-knowledge-heuristic
    #:consolidate-library-functions #:consolidate-policy-descriptors
-   #:commit-synthesis-job #:consolidate-knowledge-library #:lift-field-solvers
+   #:commit-synthesis-job #:consolidate-knowledge-library #:*consolidation-pass-limit*
+   #:lift-field-solvers
    #:induce-fold-motifs #:amortize-library-entries #:*search-weight* #:*archive-epochs*
    #:archive-dependent-templates #:sampled-solver-validations
 
    ;; 24. explain.lisp — Read-only synthesis & library inspection reports
-   #:explain-synthesis-node #:explain-synthesis-job #:explain-knowledge-library))
+   #:explain-synthesis-node #:explain-synthesis-job #:explain-knowledge-library
+
+   ;; 25. batteries.lisp — Library sources that ship with the kernel
+   #:*battery-directory* #:battery-names #:read-battery #:load-battery))
 (in-package #:lisploop)

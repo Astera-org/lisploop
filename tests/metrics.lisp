@@ -6,14 +6,9 @@
 ;;; ===========================================================================
 
 (defun define-int-scan ()
-  "Register `:scan`, which threads an integer state through a sequence of actions."
-  (let* ((seq (sequence-type :int))
-         (step-type (code-type '((0 . :int) (1 . :int)) :int)))
-    (define-function :scan (list (cons 0 seq) (cons 1 :int) (cons 2 step-type)) seq
-      (lambda (self)
-        (let* ((actions (var 0 seq)) (state (var 1 :int)) (step (var 2 step-type))
-               (next (term `(code-eval ,step ,state (at ,actions 0)))))
-          (term `(if (= ,actions ()) () (cons ,next (,self (tail ,actions) ,next ,step))) seq))))))
+  "Register `:scan`, which threads an integer state through a sequence of actions, from the
+`scans` battery (library/scans.lisp)."
+  (load-battery :scans :only '(:scan)))
 
 (defun scan-frame (extra-inputs)
   "A running sum from an initial state, with EXTRA-INPUTS further integer inputs that
