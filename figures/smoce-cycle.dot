@@ -1,0 +1,17 @@
+// Section 3 of plan8.md: the unified five-stage SMOCE cycle.
+// Built to PDF by the Makefile (dot -Tpdf) and included by pandoc.
+digraph smoce {
+	graph [rankdir=TB, nodesep=0.35, ranksep=0.3, fontname="Helvetica"];
+	node [shape=box, style="rounded,filled", fillcolor="#f4f4f4", fontname="Helvetica", fontsize=10, margin="0.12,0.06"];
+	edge [arrowsize=0.7, fontname="Helvetica", fontsize=9];
+
+	F  [label="Frame Omega\n(Rows + row-key frame-edges + Availability Preorder + Metric d_L)", fillcolor="#dde8f5"];
+	C1 [label="1. Cover\nLift / Parallel Slot Cover / Canonical sort-by(k(X))"];
+	C2 [label="2. Correspond\nLocality Align + Match Constructors O(|t|)"];
+	C3 [label="3. Orient & Unwind\nAvailability tau(p) < tau(q) + Symbolic/Heuristic Solvers"];
+	C4 [label="4. Conserve\nClosed-Form LGG or Stage A/Bucket-Pair Search under d_L"];
+	C5 [label="5. Extract\nCo-Induced Pullback + Parallel Product Join + Safe let-Sharing", fillcolor="#e6f2e0"];
+
+	F -> C1 -> C2 -> C3 -> C4 -> C5;
+	C5 -> F [label="  Child subproblem(s)\l  or CEGAR refinement\l", constraint=false];
+}

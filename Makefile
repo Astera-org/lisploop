@@ -57,6 +57,7 @@ benchmark-profile: | $(RESULTS_DIR)
 	@printf 'CPU profile: %s/benchmark-profile.txt\n' '$(RESULTS_DIR)'
 
 plan7-recursion.pdf: figures/phase3-lifts.pdf
+plan8.pdf: figures/smoce-cycle.pdf
 
 figures/%.pdf: figures/%.dot
 	dot -Tpdf $< -o $@
