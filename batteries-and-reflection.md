@@ -64,6 +64,7 @@ While experimenting with [probe-bootstrap.lisp](file:///home/tlh24/.gemini/antig
 
 > [!IMPORTANT]
 > **Empirical Proof-of-Concept (Ran on `7a0d6bf` in [probe-bootstrap.lisp](file:///home/tlh24/.gemini/antigravity-cli/brain/82e4ed73-d369-4112-a990-6f7d7b3803de/scratch/probe-bootstrap.lisp)):**
+>
 > 1. **`plan9-audit.md` §4.6's Functorial-Inverter Roadblock Solved:** `plan9-audit.md` noted that anti-unifying unary witnesses `(map Y '(- X0 1))` and `(map Y '(- X0 2))` only yields `(map Y ?code)`, failing to link step operators to element solvers. When posed instead as an ordinary 2-input synthesis frame `(forward-step-code, element-solver-code) -> inverse-step-code`, **`learn-knowledge-transformer` de novo synthesizes the exact homoiconic `:code-subst` + `:code-child` functorial inverter in `52,751` work (`157` body-bits)**—with zero host AST builders!
 > 2. **`:cons` Destructuring via Library `:solver`s:** Single-position `:cons` solvers (`:solve-cons-0`, `:solve-cons-1`) already narrow `(= (cons X0 '(20 30)) '(10 20 30))` $\to$ `(= X0 '10)` in `propagate-requirements` (`narrowed = 1`, `fallback = nil`), and with heterogeneous `:at` + `:necessity`, a single joint `:cons` solver at `:position '(0 1)` subsumes `fold-equal-cons` ([requirements.lisp](file:///home/tlh24/lisploop/requirements.lisp#L324-L341))—both spine splitting and `'()` conflict detection!
 
@@ -80,15 +81,7 @@ While experimenting with [probe-bootstrap.lisp](file:///home/tlh24/.gemini/antig
 
 As you noted, *"testing is also a way of better knowing what you know."* Right now tests live solely as imperative Common Lisp `deftest` code outside the library. Introducing a declarative knowledge kind **`:spec`** (a serialized `frame` of I/O or relational test rows + optional negative/boundary rows, linked via `(:verifies spec-id entry-id)` edges) serves **three** roles simultaneously:
 
-```mermaid
-flowchart LR
-    Specs["Seed :spec Test Frames (I/O examples + finite probes)"] --> Kernel["Pure Kernel (Empty Library)"]
-    Kernel -->|"1. observe + certify + lift + guard search"| Alg["algebra.sexp & constructors.sexp (:law, :solver)"]
-    Kernel -->|"2. recursive synthesis + AU consolidation"| Seq["sequences.sexp (:map, :foldr, :foldl, :filter, :motif)"]
-    Seq -->|"3. solve concrete inversions + learn-knowledge-transformer"| Func["functors.sexp & descriptors.sexp (:transformer, :descriptor)"]
-    Func -->|"4. serialize-knowledge-library"| Battery["Bootstrapped library/*.sexp"]
-    Battery -.->|"retype / transfer -> re-verify against :spec"| SelfTest["Epistemic Self-Check & Query Refinement"]
-```
+![Bootstrapping `.sexp` batteries from first-class `:spec` test entries (source: `figures/bootstrap-pipeline.dot`).](figures/bootstrap-pipeline.pdf){width=58%}
 
 1. **Zero-Hand-Coding Bootstrap (`bootstrap/` $\to$ `library/*.sexp`):** A standalone bootstrap runner starts with `(make-knowledge-library)` (completely empty!), runs the pure kernel on seed `:spec` tasks (e.g., the 6-task list corpus `copy`, `inc-all`, `double-all`, `sum`, `length`, `product` $\to$ `discover-library-abstractions` $\to$ emergent `:map` and `:foldr`), discovers laws, conditional solvers, functor `:transformer`s, and `:descriptor`s, and writes canonical `.sexp` packets via `save-knowledge-library`.
 2. **Evidence Re-Validation Across Retyping & Domain Transfer:** When a polymorphic entry from a `.sexp` battery is instantiated at a new type or domain, its linked `:spec` entries automatically replay on the VM (and run `propose-disambiguating-query` when two candidate generalizations agree on existing rows!), upgrading or refuting conjectures with zero human intervention.
@@ -101,6 +94,7 @@ flowchart LR
 ### 3.1 Why Plan 9 Accumulated Incidental Complexity—and How Reflection Replaces It
 
 In `plan8.md`, `plan9.md`, and `plan9-audit.md`, external human/AI agents repeatedly ran the same meta-loop *by hand*:
+
 1. Run `start-heuristic-synthesis` on a probe,
 2. Inspect the execution trace (`explain-synthesis-job`, Stage A quantum trajectories, repeated failed `:relation` fits, redundant nested `(+ base1 (+ base2 Z))` proposals, colliding projections),
 3. Notice a conserved pattern or invariant in the *search behavior itself*, and
@@ -110,25 +104,17 @@ In **3-Lisp** terms, `lisploop` is already *reentrant* (synthesis calls observat
 
 ### 3.2 Three Components of a Clean Reflective Architecture
 
-```mermaid
-flowchart TD
-    Search["Base Synthesis / Search Turn (vm.lisp + synthesize.lisp)"] -->|"Reify at Checkpoint (<= 1/8 work budget)"| TraceFrame["Reified Trace Frame Omega_meta (:code, :int, :bool)"]
-    TraceFrame -->|"Op 1-4: AU, Invariant Search, Stage A/B"| MetaSynth["Reflective Synthesis on Own Behavior"]
-    MetaSynth -->|"L0: Subtree Leaf Residuals"| Tabu["Tabu / Redundancy Guards (e.g. skip nested + under +)"]
-    MetaSynth -->|"L1: Upward Symbolic Messages"| Upward["Caller Factorization: Conserved C(X,Y)=c0, Partial Regimes, DIP/UIP, Active Test Queries"]
-    MetaSynth -->|"L2/L3: Cross-Job Consolidation"| GlobalLib["Promoted Laws, Solvers, Descriptors & .sexp Batteries"]
-    Tabu -->|"Absorb into Node"| Search
-    Upward -->|"Absorb into Parent / Job"| Search
-    GlobalLib -.->|"Future Jobs"| Search
-```
+![Depth-1 reflective search loop and L0–L3 scoped absorption (source: `figures/reflective-loop.dot`).](figures/reflective-loop.pdf){width=95%}
 
 #### Component 1: Zero-Copy Reification ($\uparrow$) into Standard `frame`s
+
 With heterogeneous `:tuple` projection (§2.1.1), any slice of the kernel's own execution reifies directly into an **ordinary `frame` $\Omega_{\mathrm{meta}}$** with zero new data structures:
 
 - **Branch / Proposal Trace Frame:** Each prepared or closed node contributes a row whose `known` inputs include `(parent-decoder : :code, proposal-decoder : :code, child-inputs-sig : :int, stage-a-prog : :code, residual-bits : :int, delta-work : :int)` and whose target/outcome is `(status : :bool/:int, conflict-clause : :code, scope-sig-repeated-p : :bool)`.
 - **Intra-Node Candidate / Rewrite Trace Frame:** During enumeration or Stage A, evaluated candidates form rows `(candidate-ast : :code, bucket-id : :int, metric-work : :int, residual-vector : (:seq :int))`, linked by `pairs` across observationally equivalent candidates!
 
 #### Component 2: Generalized Reentrant Upward & Lateral Messages (Beyond UIP/DIP)
+
 Right now, `nogood-clause` (UIP/DIP) is the *only* upward symbolic channel from a child branch back to its caller—communicating only *"this projection collided on rows $(r_1, r_2)$."* Making `synthesis-message` actionable across **four symmetric message classes** turns the search DAG into a cooperative deductive-inductive network:
 
 1. **Negative / Redundancy Messages (Generalized UIP + Leaf Tabu Residuals):**
@@ -151,27 +137,30 @@ Right now, `nogood-clause` (UIP/DIP) is the *only* upward symbolic channel from 
 ### 3.3 Solving the Hard Part: Clean Scoping & Non-Divergent Absorption ($\downarrow$)
 
 You put your finger on the central design challenge:
+
 > *"It will require some intelligent means of scoping the pattern application, plus the right means of applying the synthesized expressions; the former seems a bit less well defined and will require experimentation / thinking-though."*
 
 #### A. The Four-Level Lexical × Epistemic Scope Lattice
+
 Why do naive reflective rules either under-generalize (mere memo tables) or over-generalize (false pruning / library pollution)? Because **structural scope** (what free constants/decoders a rule depends on) and **epistemic grade** (proved vs. empirical) get conflated! Separating them defines a strict **4-level scope lattice**:
 
 | Level | Scope Container | What Lives Here | Automatic Placement & Promotion Rule | Application / Soundness Contract |
 | :--- | :--- | :--- | :--- | :--- |
-| **L0: Spine / Subtree** | `synthesis-node` (inherited by descendants) | **Leaf residuals & tabu patterns** (`:relation` member sets of failed ASTs/guards, nested decoder-pair blocks `d1 ∘ d2`) | Placed at L0 whenever the synthesized pattern references the current ancestor decoder spine | Exact dedup if backed by a certified `:law` (`(+ a (+ b z)) = (+ (+ a b) z)`); otherwise **soft priority parking** (3:1 reserve preserved!) |
+| **L0: Spine / Subtree** | `synthesis-node` (inherited by descendants) | **Leaf residuals & tabu patterns** (`:relation` member sets of failed ASTs/guards, nested decoder-pair blocks `d1` $\circ$ `d2`) | Placed at L0 whenever the synthesized pattern references the current ancestor decoder spine | Exact dedup if backed by a certified `:law` (`(+ a (+ b z)) = (+ (+ a b) z)`); otherwise **soft priority parking** (3:1 reserve preserved!) |
 | **L1: Problem / Episode** | `synthesis-job` (shared across all branches of 1 task; GC'd at job end) | **Task-specific conserved quantities** $C(X,Y)=c_0$, job-pooled Stage A feature buckets, UIP clauses, partial regime hits `(mask, expr)`, active test rows | Placed at L1 whenever the expression mentions task `schema-inputs`, task literals, or holds only on the current root `frame` | **Hard constraint / exact rewrite** if verified across all root `frame` rows; **agenda heuristic / candidate seed** if partial |
 | **L2: Conditional Theory** | `*knowledge-library*` gated by `trigger` / `:describes` / `:licensed-by` | Domain metrics, conditional solvers, `:decoder-template`s, contrastive `:descriptor`s, `:motif` transfers, learned M8D residual $\hat{\Delta}$ | **Promoted L1 $\to$ L2 at consolidation** *only* when anti-unified across $\ge 2$ jobs with zero task-specific constants AND positive Levin net utility $\Delta S - \lceil \log_2(1 + W_{\mathrm{fail}} + N) \rceil > 0$; trigger = LGG of frame descriptors! | Retrieved in $O(1)$ via compositional address; uncertified narrowings always retain 3:1 `propagation-fallback` |
 | **L3: Universal Battery** | `library/*.sexp` (`:exhaustive` or `:derived` evidence) | Certified algebra & `:cons` solvers, cancellation/involution laws, functor `:transformer`s, proved structural redexes | **Promoted L2 $\to$ L3** when `certify-solver-entry`, exhaustive `validate-law`, or algebraic derivation from certified laws succeeds | Full fallback-free narrowing, symbolic unwinding, and AST normalization |
 
 #### B. Preventing Infinite Meta-Regress & Preserving Unit-Step Resumption
+
 1. **Bounded Depth-1 Reflective Tower (`*reflective-depth*` $\in \{0, 1\}$):**
    Base search runs at `*reflective-depth* = 0`. Reflective synthesis on a reified trace frame $\Omega_{\mathrm{meta}}$ runs with `*reflective-depth* = 1` (which uses existing L2/L3 library rules, AU, and Stage A, **never** spawning a depth-2 meta-meta-trace!).
 2. **Metered `staged-work` Quanta (Preserving `check-anytime-resumption`):**
    Reflective synthesis is scheduled as an ordinary agenda action (`(:reflect . scope)`) capped at a fixed fraction (e.g., $\le 1/8$) of cumulative job work and published via `stage-work` / `pay-staged-work` ([synthesize.lisp](file:///home/tlh24/lisploop/synthesize.lisp#L44-L58)). Stepping 1 work unit vs. 97 work units remains bit-for-bit identical!
 3. **Where Goals 1 & 2 Meet (Bootstrapping Global Search Laws via Reflection!):**
    During the battery-bootstrap curriculum (`make bootstrap`), running with L1$\to$L3 reflection enabled lets the kernel **discover its own universal search-pruning laws from trace data**! For instance:
-   - Observing across 2 additive tasks that `(:heuristic-additive (:heuristic-additive ...))` yields zero new solutions beyond depth 1 $\xrightarrow{\text{AU + law check against `:associative`}}$ induces a **universal L3 decoder-composition law**: *"any associative binary residual decoder $d(x, d(y, z)) = d(d(x, y), z)$ is idempotent under Stage B pullback!"*
-   - Observing across `:map` lift conflicts that element collisions refute sibling lifts $\xrightarrow{\text{UIP + `pointwise-map-decoder-p`}}$ exports the general pointwise nogood schema directly into `library/sequences.sexp`!
+   - Observing across 2 additive tasks that `(:heuristic-additive (:heuristic-additive ...))` yields zero new solutions beyond depth 1 $\xrightarrow{\text{AU + law check against }\texttt{:associative}}$ induces a **universal L3 decoder-composition law**: *"any associative binary residual decoder $d(x, d(y, z)) = d(d(x, y), z)$ is idempotent under Stage B pullback!"*
+   - Observing across `:map` lift conflicts that element collisions refute sibling lifts $\xrightarrow{\text{UIP + }\texttt{pointwise-map-decoder-p}}$ exports the general pointwise nogood schema directly into `library/sequences.sexp`!
 
 ---
 

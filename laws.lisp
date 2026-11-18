@@ -755,12 +755,12 @@ Both retain the original frame as a fallback."
 
 ;;; Symbolic unwinding: the same rules applied to expressions instead of row values.
 
-(defun simplify-symbolic-expr (expression &key library ledger)
+(defun simplify-symbolic-expr (expression &key library ledger (budget 250000))
   "EXPRESSION, an unwound closed form or guard, reduced by the kernel's own means and no
 others: `fold-constants` evaluates its closed subterms, and where LIBRARY is a knowledge
 library whose validated laws make a rewrite library for the expression's domain, those laws
 normalise it. Both keep its value and its definedness and are metered on LEDGER; a
-rewriting that does not finish within its budget leaves the folded expression."
+rewriting that does not finish within BUDGET leaves the folded expression."
   (let* ((folded (fold-constants expression :ledger ledger :budget 2000))
          (inputs (sort (expression-variables folded) #'< :key #'car))
          (rules (and (knowledge-library-p library)
@@ -770,7 +770,7 @@ rewriting that does not finish within its budget leaves the folded expression."
     (if (and rules
              (every (lambda (input) (rewrite-scope-type-p (cdr input) (rewrite-library-domain rules)))
                     inputs))
-        (let ((state (advance-rewriting (start-rewriting folded inputs rules) 4000 ledger)))
+        (let ((state (advance-rewriting (start-rewriting folded inputs rules) budget ledger)))
           (if (eq :complete (rewriting-status state)) (rewriting-value state) folded))
         folded)))
 
@@ -800,41 +800,59 @@ nil when some level has no such rule, or when a guard of the solution is false o
   (let* ((propagators (as-propagator-library library))
          (rules (and propagators (propagator-library-rules propagators)))
          (guards nil)
+         (seen nil)
          (certified-p t))
-    (flet ((checked-p (rule)
-             (and (propagator-certified-current-p rule :witness)
-                  (propagator-certified-current-p rule :uniqueness)))
-           (simplify (form) (simplify-symbolic-expr form :library library :ledger ledger)))
+    (labels ((checked-p (rule)
+               (and (propagator-certified-current-p rule :witness)
+                    (propagator-certified-current-p rule :uniqueness)))
+             (simplify (form) (simplify-symbolic-expr form :library library :ledger ledger))
+             (unwind-step-for (form)
+             (let* ((open (and (app-p form)
+                               (loop for argument in (rest form) for position from 0
+                                     when (member target-id (free-vars argument)) collect position)))
+                    (inverting (and open (null (rest open))
+                                    (remove-if-not
+                                     (lambda (rule)
+                                       (and (equal (first form) (arithmetic-propagator-operator rule))
+                                            (equal open (solver-positions (arithmetic-propagator-position rule)))
+                                            (propagator-tested-p rule :uniqueness)))
+                                     rules)))
+                    (rule (or (find-if #'checked-p inverting) (first inverting))))
+               (values rule open)))
+           (finish-solution ()
+             (let ((guards (remove-if #'unconstrained-requirement-p
+                                      (mapcar #'simplify (nreverse guards)))))
+               (unless (some #'unsatisfiable-requirement-p guards)
+                 (values (simplify constant) guards certified-p)))))
       (loop
         (when (and (var-p expression) (eql target-id (ast-id expression)))
-          (let ((guards (remove-if #'unconstrained-requirement-p
-                                   (mapcar #'simplify (nreverse guards)))))
-            (return (unless (some #'unsatisfiable-requirement-p guards)
-                      (values (simplify constant) guards certified-p)))))
-        (let* ((open (and (app-p expression)
-                          (loop for argument in (rest expression) for position from 0
-                                when (member target-id (free-vars argument)) collect position)))
-               (inverting (and open (null (rest open))
-                               (remove-if-not
-                                (lambda (rule)
-                                  (and (equal (first expression) (arithmetic-propagator-operator rule))
-                                       (equal open (solver-positions (arithmetic-propagator-position rule)))
-                                       (propagator-tested-p rule :uniqueness)))
-                                rules)))
-               (rule (or (find-if #'checked-p inverting) (first inverting))))
-          (unless rule (return nil))
-          (charge ledger :symbolic-unwinding (syntax-work expression))
-          (let ((context (loop for item in (or (arithmetic-propagator-context-map rule)
-                                               (solver-context-map (first expression)
-                                                                   (arithmetic-propagator-position rule)))
-                               for (id . nil) in (arithmetic-propagator-inputs rule)
-                               collect (cons id (if (eq item :target)
-                                                    constant
-                                                    (nth (second item) (rest expression)))))))
-            (unless (checked-p rule) (setf certified-p nil))
-            (push (instantiate (arithmetic-propagator-guard rule) context :var) guards)
-            (setf constant (instantiate (arithmetic-propagator-witness rule) context :var)
-                  expression (nth (first open) (rest expression)))))))))
+          (return (finish-solution)))
+        (when (member expression seen :test #'equal)
+          (return nil))
+        (push expression seen)
+        (let ((simp (simplify expression)))
+          (when (and (var-p simp) (eql target-id (ast-id simp)))
+            (return (finish-solution)))
+          (multiple-value-bind (chosen rule open)
+              (multiple-value-bind (r o) (unwind-step-for simp)
+                (if r
+                    (values simp r o)
+                    (unless (equal simp expression)
+                      (multiple-value-bind (r2 o2) (unwind-step-for expression)
+                        (when r2 (values expression r2 o2))))))
+            (unless rule (return nil))
+            (charge ledger :symbolic-unwinding (syntax-work chosen))
+            (let ((context (loop for item in (or (arithmetic-propagator-context-map rule)
+                                                 (solver-context-map (first chosen)
+                                                                     (arithmetic-propagator-position rule)))
+                                 for (id . nil) in (arithmetic-propagator-inputs rule)
+                                 collect (cons id (if (eq item :target)
+                                                      constant
+                                                      (nth (second item) (rest chosen)))))))
+              (unless (checked-p rule) (setf certified-p nil))
+              (push (instantiate (arithmetic-propagator-guard rule) context :var) guards)
+              (setf constant (instantiate (arithmetic-propagator-witness rule) context :var)
+                    expression (nth (first open) (rest chosen))))))))))
 
 (defparameter *sensitivity-alternatives* 4
   "The most other values of the target that `target-sensitive-p` tries on one row.")
@@ -1229,6 +1247,28 @@ each as (operator solver-entry tag-bits delta-type)."
     (let ((ordered (stable-sort (nreverse found) #'< :key #'third)))
       (subseq ordered 0 (min limit (length ordered))))))
 
+(defvar *metric-replay-templates* (make-hash-table :test #'equal)
+  "Persistent `(replay-ast . replay-inputs)` templates keyed by `((ast->sexp operator) type delta-type)`,
+cleared whenever `(vm-versions)` changes so `metric-delta` never allocates fresh ASTs per replay.")
+
+(defvar *metric-replay-versions* nil
+  "`(vm-versions)` snapshot for `*metric-replay-templates*`.")
+
+(defun metric-replay-template (operator type delta-type)
+  "Return the persistent `(VALUES replay-ast replay-inputs)` template for replaying OPERATOR."
+  (let ((versions (vm-versions)))
+    (unless (equal *metric-replay-versions* versions)
+      (clrhash *metric-replay-templates*)
+      (setf *metric-replay-versions* versions)))
+  (let* ((key (list (ast->sexp operator) type delta-type))
+         (cached (gethash key *metric-replay-templates*)))
+    (unless cached
+      (let* ((replay-ast (app operator (var 0 type) (var 1 delta-type)))
+             (replay-inputs (list (cons 0 type) (cons 1 delta-type))))
+        (setf cached (cons replay-ast replay-inputs)
+              (gethash key *metric-replay-templates*) cached)))
+    (values (car cached) (cdr cached))))
+
 (defun metric-delta (decoder predicted target type ledger)
   "The delta from which DECODER, an element of `metric-decoders` for TYPE, rebuilds TARGET
 from PREDICTED, and its price in bits, as two values; nil when the solver has no witness
@@ -1236,12 +1276,13 @@ there or its witness does not replay through the decoder."
   (destructuring-bind (operator entry tag-bits delta-type) decoder
     (let ((solved (evaluate-guarded-entry entry (list predicted target) ledger)))
       (when (and solved (eq :value (evaluation-status solved)))
-        (let* ((delta (evaluation-value solved))
-               (replay (evaluate (app operator (lit type predicted) (lit delta-type delta))
-                                 nil nil :ledger ledger)))
-          (when (and (eq :value (evaluation-status replay))
-                     (equal target (evaluation-value replay)))
-            (values delta (+ tag-bits (value-bit-size delta delta-type)))))))))
+        (let ((delta (evaluation-value solved)))
+          (multiple-value-bind (replay-ast replay-inputs)
+              (metric-replay-template operator type delta-type)
+            (let ((replay (evaluate replay-ast replay-inputs (list predicted delta) :ledger ledger)))
+              (when (and (eq :value (evaluation-status replay))
+                         (equal target (evaluation-value replay)))
+                (values delta (+ tag-bits (value-bit-size delta delta-type)))))))))))
 
 (defun metric-decoder-library (decoder)
   "A propagator library holding only the solver of DECODER, an element of `metric-decoders`."

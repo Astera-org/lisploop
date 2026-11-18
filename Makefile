@@ -7,7 +7,7 @@
 PANDOC_SUPPORT = pandoc/pdf.lua pandoc/header.tex
 PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt --lua-filter=pandoc/pdf.lua
 
-DOCS = plan8.pdf plan9.pdf architecture2.pdf tests/README.pdf plan7/plan7-recursion.pdf plan7/plan7-higher-order.pdf plan7/plan7-library.pdf plan7/plan7-m9-policy.pdf
+DOCS = plan8.pdf plan9.pdf architecture2.pdf batteries-and-reflection.pdf tests/README.pdf plan7/plan7-recursion.pdf plan7/plan7-higher-order.pdf plan7/plan7-library.pdf plan7/plan7-m9-policy.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 BENCHMARK_SECONDS ?= 300
@@ -60,8 +60,9 @@ benchmark-profile: | $(RESULTS_DIR)
 	@$(SBCL) --dynamic-space-size 2048 --script benchmark.lisp search quadratic 70 $(BENCHMARK_SECONDS) batch profile > $(RESULTS_DIR)/benchmark-profile.txt
 	@printf 'CPU profile: %s/benchmark-profile.txt\n' '$(RESULTS_DIR)'
 
-plan7-recursion.pdf: figures/phase3-lifts.pdf
+plan7/plan7-recursion.pdf: figures/phase3-lifts.pdf
 plan8.pdf: figures/smoce-cycle.pdf
+batteries-and-reflection.pdf: figures/bootstrap-pipeline.pdf figures/reflective-loop.pdf
 
 figures/%.pdf: figures/%.dot
 	dot -Tpdf $< -o $@

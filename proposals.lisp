@@ -44,12 +44,17 @@ the base definitions, polymorphically instantiates matching combinators via `ret
                                 when (seq-type-p type)
                                   collect (second type))
                           :test #'equal))
-               (out-elem (if (seq-type-p target) (second target) target))
                (retyped-defs nil))
           (dolist (def base-defs (remove-duplicates (append base-defs (nreverse retyped-defs))
                                                     :key #'function-definition-name :test #'eq :from-end t))
             (let* ((seq-spec (find-if #'seq-type-p (function-definition-inputs def) :key #'cdr))
-                   (orig-elem (and seq-spec (second (cdr seq-spec)))))
+                   (orig-elem (and seq-spec (second (cdr seq-spec))))
+                   (def-ret (function-definition-return-type def))
+                   (seq-ret-p (seq-type-p def-ret))
+                   (orig-out (if seq-ret-p (second def-ret) def-ret))
+                   (out-arg (if seq-ret-p
+                                (if (seq-type-p target) (second target) target)
+                                target)))
               (flet ((retype (in-elem &optional return-elem)
                        (let ((retyped (ignore-errors
                                        (retype-function-definition (function-definition-name def) in-elem
@@ -59,7 +64,9 @@ the base definitions, polymorphically instantiates matching combinators via `ret
                 (when orig-elem
                   (dolist (in-elem in-elems)
                     (unless (equal in-elem orig-elem) (retype in-elem))
-                    (unless (equal in-elem out-elem) (retype in-elem out-elem)))))))))))
+                    (when (and (not (equal in-elem out-arg))
+                               (not (and (equal in-elem orig-elem) (equal out-arg orig-out))))
+                      (retype in-elem out-arg)))))))))))
 
 (defun candidate-fo-argument-expressions (frame language primary-input-id param-type)
   "Return candidate AST expressions of PARAM-TYPE to supply a non-primary first-order

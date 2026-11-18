@@ -178,17 +178,18 @@ buckets on a lifted FRAME so UIP anti-unification and DIP context introduction s
   (let ((clauses (list (build-nogood-clause parent proposal primary-conflict ledger))))
     (when (and frame
                proposal
-               (decomposition-lift-p proposal)
+               (or (decomposition-lift-p proposal)
+                   (pure-projection-decomposition-p proposal))
                (eq :incompatible-rows (frame-conflict-kind primary-conflict)))
       (let ((joints (make-hash-table :test #'equal))
             ;; input tuples whose collision already has a clause
             (collided (list (frame-conflict-known primary-conflict))))
         (dolist (row (frame-rows frame))
-          (unless (member :unresolved (row-known row))
+          (unless (or (member :unresolved (row-known row))
+                      (member (row-known row) collided :test #'equal))
             (let ((folded (fold-constants (row-requirement row)
                                           :ledger ledger :budget budget)))
-              (unless (or (unsatisfiable-requirement-p folded)
-                          (member (row-known row) collided :test #'equal))
+              (unless (unsatisfiable-requirement-p folded)
                 (let ((extra-conflict
                         (nth-value 1 (join-same-input joints row folded
                                                       :ledger ledger :budget budget))))

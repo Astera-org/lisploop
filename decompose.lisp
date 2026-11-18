@@ -27,12 +27,15 @@
   "Construct outer decoder d(X, Z) = OPERATOR(base(X), Z) for a metric decoder of the library."
   (app operator base-expr residual-var))
 
-(defun metric-residual-decompositions (frame program residual language bound solver ledger debug-p)
+(defun metric-residual-decompositions (frame program residual language bound solver ledger debug-p
+                                       &key packets)
   "Stage B for the library's metric decoders: for each decoder d of the target type that
 describes the witness of some row in RESIDUAL, ((row-key . witness) ...), from what PROGRAM
-predicts there, propose Y = d(PROGRAM(X), Z). The child predicts the delta; the decoder's
-own solver, added to SOLVER, turns each pulled-back requirement into the delta it replays,
-and where it has none the requirement stays as it is."
+predicts there, propose Y = d(PROGRAM(X), Z). PACKETS, when supplied from `heuristic-packets`,
+lets Stage B recognize cached `(:metric-decoder ...)` hits from Stage A without re-evaluating
+`metric-delta` in the VM. The child predicts the delta; the decoder's own solver, added to
+SOLVER, turns each pulled-back requirement into the delta it replays, and where it has none
+the requirement stays as it is."
   (let* ((schema (frame-schema frame))
          (inputs (schema-inputs schema))
          (target (schema-target schema))
@@ -42,29 +45,41 @@ and where it has none the requirement stays as it is."
     (dolist (decoder (metric-decoders target) (nreverse proposals))
       (destructuring-bind (operator entry tag-bits delta-type) decoder
         (declare (ignore tag-bits))
-        (when (and (not (and (eq :+ (operator-name operator)) (additive-residual-type-p target)))
-                   (some (lambda (row)
-                           (let ((miss (assoc (row-key row) residual :test #'equal)))
-                             (and miss
-                                  (multiple-value-bind (predicted ok)
-                                      (eval-expr-value program inputs (row-known row) ledger)
-                                    (and ok (metric-delta decoder predicted (cdr miss) target ledger))))))
-                         (frame-rows frame)))
-          (push (make-decomposition
-                 :name (list :heuristic-metric (operator-name operator) program)
-                 :decoder (make-metric-residual-decoder operator program (var child-id delta-type))
-                 :child-id child-id
-                 :child-type delta-type
-                 :bindings (identity-bindings inputs)
-                 :language language
-                 :bound (header-bound inputs delta-type slack)
-                 :solver (as-propagator-library (list solver (metric-decoder-library decoder)))
-                 :provenance (when debug-p
-                               (list :origin :stage-b-metric
-                                     :base-program program
-                                     :decoder (operator-name operator)
-                                     :solver (knowledge-entry-id entry))))
-                proposals))))))
+        (let* ((op-sexp (ast->sexp operator))
+               (cached-hit-p
+                 (and packets
+                      (some (lambda (row)
+                              (let* ((key (row-key row))
+                                     (pkt (cdr (assoc key packets :test #'equal))))
+                                (and (consp pkt)
+                                     (eq :metric-decoder (first pkt))
+                                     (equal (second pkt) op-sexp)
+                                     (assoc key residual :test #'equal))))
+                            (frame-rows frame)))))
+          (when (and (not (and (eq :+ (operator-name operator)) (additive-residual-type-p target)))
+                     (or cached-hit-p
+                         (some (lambda (row)
+                                 (let ((miss (assoc (row-key row) residual :test #'equal)))
+                                   (and miss
+                                        (multiple-value-bind (predicted ok)
+                                            (eval-expr-value program inputs (row-known row) ledger)
+                                          (and ok (metric-delta decoder predicted (cdr miss) target ledger))))))
+                               (frame-rows frame))))
+            (push (make-decomposition
+                   :name (list :heuristic-metric (operator-name operator) program)
+                   :decoder (make-metric-residual-decoder operator program (var child-id delta-type))
+                   :child-id child-id
+                   :child-type delta-type
+                   :bindings (identity-bindings inputs)
+                   :language language
+                   :bound (header-bound inputs delta-type slack)
+                   :solver (as-propagator-library (list solver (metric-decoder-library decoder)))
+                   :provenance (when debug-p
+                                 (list :origin :stage-b-metric
+                                       :base-program program
+                                       :decoder (operator-name operator)
+                                       :solver (knowledge-entry-id entry))))
+                  proposals)))))))
 
 (defun row-active-for-guard-p (row heuristic-model)
   "True when ROW is a constrained row whose outcome under HEURISTIC-MODEL is resolved,
@@ -457,7 +472,8 @@ Returns (VALUES proposals heuristic-model)."
       (when (and additive-p (heuristic-total-p h-model) (some #'null hit-mask)
                  (not (and eff-self empty-seq-frame-p)))
         (dolist (proposal (metric-residual-decompositions frame program (heuristic-residual h-model)
-                                                          c-lang c-bound solver ledger debug-p))
+                                                          c-lang c-bound solver ledger debug-p
+                                                          :packets (heuristic-packets h-model)))
           (push proposal proposals)))
       ;; Path B2: Conditional exception-patching decoder d(X, Z) = (if G pi_hat Z) or (if G_miss Z pi_hat)
       (when (and conditional-p

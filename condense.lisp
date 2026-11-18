@@ -6,6 +6,7 @@
 (defstruct (heuristic-model (:conc-name heuristic-))
   program
   residual
+  (packets nil)
   (unresolved-keys nil)
   (exact-p nil :type boolean)
   (total-p t :type boolean)
@@ -37,10 +38,10 @@ Return the best completed model and an informative completion/cutoff message."
 ;;; The resumable search job behind condense-heuristic.
 (defstruct (heuristic-search (:constructor %make-heuristic-search))
   observation bound (ledger (make-ledger)) (phase :prepare) (debt 0) record rows outcomes
-  (resolved-rows 0) evaluation (index 0) residual (unresolved nil) (residual-bits 0) best (models nil) (run-weight 0)
+  (resolved-rows 0) evaluation (index 0) residual packets (unresolved nil) (residual-bits 0) best (models nil) (run-weight 0)
   (stop-on-exact-p nil)
   decoders ; the library's metric decoders for the target type, frozen when the search starts
-  staged)  ; a result computed ahead of its payment: a row's (witness bits), or a model
+  staged)  ; a result computed ahead of its payment: a row's (witness bits packet), or a model
 
 (defun frame-has-empty-sequence-row-p (frame)
   "True when FRAME has a sequence input Xi whose value is empty ('()) on some constrained row."
@@ -126,6 +127,8 @@ that price its relational residual are charged to LEDGER."
              (run-work (observed-expression-run-work record)))
         (make-heuristic-model
          :program program :residual residual
+         :packets (when (null (frame-metric frame))
+                    (nreverse (copy-list (heuristic-search-packets job))))
          :unresolved-keys (nreverse (copy-list (heuristic-search-unresolved job)))
          :exact-p (null residual)
          :total-p (not (null (member (observed-expression-status record)
@@ -171,6 +174,7 @@ that price its relational residual are charged to LEDGER."
                  (heuristic-search-outcomes job) (observed-expression-outcomes (heuristic-search-record job))
                  (heuristic-search-resolved-rows job) 0
                  (heuristic-search-index job) 0 (heuristic-search-residual job) nil
+                 (heuristic-search-packets job) nil
                  (heuristic-search-unresolved job) nil
                  (heuristic-search-residual-bits job) 0 (heuristic-search-phase job) :row))))
       (:row
@@ -216,13 +220,15 @@ that price its relational residual are charged to LEDGER."
                         ;; The witness is chosen now; a metric program that ran to price it
                         ;; is paid for before the choice counts.
                         (let ((private (make-ledger)))
-                          (multiple-value-bind (witness bits)
+                          (multiple-value-bind (witness bits packet)
                               (closest-row-witness job frame values type outcome private)
                             (cond ((zerop (ledger-total private))
                                    (charge-row-witness job bits)
                                    (push (cons (row-key row) witness) (heuristic-search-residual job))
+                                   (when (null (frame-metric frame))
+                                     (push (cons (row-key row) packet) (heuristic-search-packets job)))
                                    :next)
-                                  (t (setf (heuristic-search-staged job) (list witness bits)
+                                  (t (setf (heuristic-search-staged job) (list witness bits packet)
                                            (heuristic-search-debt job) (ledger-total private))
                                      :witness)))))
                        ;; No available correction witness; do not call an unresolved predicate false.
@@ -230,9 +236,11 @@ that price its relational residual are charged to LEDGER."
       (:witness
        (pay-debt (heuristic-search-debt job) 1 ledger :heuristic-metric)
        (when (zerop (heuristic-search-debt job))
-         (destructuring-bind (witness bits) (heuristic-search-staged job)
+         (destructuring-bind (witness bits packet) (heuristic-search-staged job)
            (charge-row-witness job bits)
-           (push (cons (row-key row) witness) (heuristic-search-residual job)))
+           (push (cons (row-key row) witness) (heuristic-search-residual job))
+           (when (null (frame-metric frame))
+             (push (cons (row-key row) packet) (heuristic-search-packets job))))
          (setf (heuristic-search-phase job) :next)))
       (:next
        (charge ledger :heuristic-checking)

@@ -225,26 +225,31 @@ Returns `:satisfied`, `:violated`, or `:neutral`."
                                                    :check-types-p nil)
                                 (and (eq status :value) val)))
                             pairs))))
-         (cond
-           ((null selected) :neutral)
-           ((some (lambda (pair)
-                    (multiple-value-bind (val status)
-                        (eval-entry-slot descriptor :expr (list (car pair) (cdr pair))
-                                         :ledger ledger :category :orientation
-                                         :check-types-p nil)
-                      (and (eq status :value) (null val))))
-                  selected)
-            (or (getf meta :failure) :violated))
-           ((or (null aux)
-                (some (lambda (pair)
-                        (multiple-value-bind (val status)
-                            (eval-entry-slot descriptor :aux (list (car pair) (cdr pair))
-                                             :ledger ledger :category :orientation
-                                             :check-types-p nil)
-                          (and (eq status :value) val)))
-                      selected))
-            :satisfied)
-           (t :neutral)))))))
+         (if (null selected)
+             :neutral
+             (let ((incomplete-p nil))
+               (dolist (pair selected
+                        (cond
+                          (incomplete-p :neutral)
+                          ((or (null aux)
+                               (some (lambda (pair)
+                                       (multiple-value-bind (val status)
+                                           (eval-entry-slot descriptor :aux (list (car pair) (cdr pair))
+                                                            :ledger ledger :category :orientation
+                                                            :check-types-p nil)
+                                         (and (eq status :value) val)))
+                                     selected))
+                           :satisfied)
+                          (t :neutral)))
+                 (multiple-value-bind (val status)
+                     (eval-entry-slot descriptor :expr (list (car pair) (cdr pair))
+                                      :ledger ledger :category :orientation
+                                      :check-types-p nil)
+                   (cond
+                     ((not (eq status :value))
+                      (setf incomplete-p t))
+                     ((null val)
+                      (return (or (getf meta :failure) :violated)))))))))))))
 
 (defun canonical-probe-codes (c-inputs c-sort)
   "Small closed probe ASTs for a `:code` parameter `(c-inputs -> c-sort)` used to sample a

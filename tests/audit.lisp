@@ -683,3 +683,312 @@
           (check (find-knowledge-entry :foldr=foldl/monoid))
           (check (assoc :retyped-laws (getf report :consolidated))))
         (check (unchanged-by-another-call-p :retype-domains (list (gf 5))))))))
+
+(deftest audit-descriptor-errors-never-satisfy
+  ;; A descriptor whose expression errors or fails to evaluate on any guard-selected row
+  ;; must return :neutral rather than :satisfied, while a clean nil still returns :violated.
+  (with-clean-kernel-state
+    (let* ((seq (sequence-type :int))
+           (xs (var 0 seq))
+           (y (var 1 :int))
+           (facts (signature-facts seq :int))
+           (desc (register-knowledge-entry
+                  (make-knowledge-entry
+                   :id :audit-head1-eq-target
+                   :kind :descriptor
+                   :domain :int
+                   :inputs (list (cons 0 seq) (cons 1 :int))
+                   :target :bool
+                   :expression (app (op := :int) (app (op :at seq) xs (lit :int 1)) y)
+                   :guard (lit :bool t)
+                   :status :empirical
+                   :metadata '(:concept :audit-second)))))
+      ;; Error on pairs 0 & 1 (length-1 lists), true on pair 2 -> must NOT return :satisfied.
+      (check (eq :neutral
+                 (evaluate-descriptor-entry-on-frame
+                  desc facts seq :int '(((10) . 99) ((20) . 88) ((30 40) . 40)) (make-ledger))))
+      ;; Unresolved input on pair 0, true on pair 1 -> must NOT return :satisfied.
+      (check (eq :neutral
+                 (evaluate-descriptor-entry-on-frame
+                  desc facts seq :int '((:unresolved . 0) ((30 40) . 40)) (make-ledger))))
+      ;; Error on pair 0, clean nil on pair 1 -> sound refutation still yields :violated.
+      (check (eq :violated
+                 (evaluate-descriptor-entry-on-frame
+                  desc facts seq :int '(((10) . 99) ((30 40) . 99)) (make-ledger))))
+      ;; All rows evaluate cleanly to t -> :satisfied.
+      (check (eq :satisfied
+                 (evaluate-descriptor-entry-on-frame
+                  desc facts seq :int '(((10 20) . 20) ((30 40) . 40)) (make-ledger))))
+      ;; Non-nil :aux must also never force :satisfied when :expr errored on a row.
+      (let ((desc-aux (register-knowledge-entry
+                       (make-knowledge-entry
+                        :id :audit-head1-eq-target-aux
+                        :kind :descriptor
+                        :domain :int
+                        :inputs (list (cons 0 seq) (cons 1 :int))
+                        :target :bool
+                        :expression (app (op := :int) (app (op :at seq) xs (lit :int 1)) y)
+                        :guard (lit :bool t)
+                        :auxiliary-code (lit :bool t)
+                        :status :empirical
+                        :metadata '(:concept :audit-second-aux)))))
+        (check (eq :neutral
+                   (evaluate-descriptor-entry-on-frame
+                    desc-aux facts seq :int '(((10) . 99) ((30 40) . 40)) (make-ledger))))))))
+
+(deftest audit-dip-repairs-collect-all-pure-projection-collisions
+  ;; Both collect-frame-nogood-clauses and node-dip-repairs handle pure projections with
+  ;; multiple colliding input buckets, collecting every bucket without extra folds per bucket.
+  (with-clean-kernel-state
+    (let* ((inputs '((0 . :int) (1 . :int) (2 . :int)))
+           (parent-frame (simple-frame :int inputs
+                                       '(((0 10 100) 1)
+                                         ((0 10 200) 2)
+                                         ((0 10 300) 3)
+                                         ((1 20 100) 4)
+                                         ((1 30 100) 5))))
+           (parent-node (make-synthesis-node :id 0 :frame parent-frame
+                                             :language (make-language :int inputs)))
+           (child-lang (make-language :int '((0 . :int))))
+           (prop (make-decomposition :name '(:project 0) :decoder (var 9 :int)
+                                     :child-id 9 :child-type :int
+                                     :bindings (list (cons 0 (var 0 :int)))
+                                     :language child-lang :bound 12)))
+      (multiple-value-bind (child-frame) (pullback-frame parent-frame (var 9 :int) 9 :int (list (cons 0 (var 0 :int))))
+        (multiple-value-bind (conflict) (frame-conflict-p child-frame)
+          (check conflict)
+          (let ((clauses (collect-frame-nogood-clauses parent-node prop child-frame conflict)))
+            (check (= 2 (length clauses)))
+            (check (equal '((0) (1)) (mapcar #'nogood-clause-known clauses)))
+            (check (= 2 (length (conflict-distinct-parent-row-pairs parent-frame clauses))))
+            ;; With only 0-step variables allowed, neither X1 nor X2 separates BOTH buckets;
+            ;; with :+ allowed, DIP finds (+ X1 X2) separating both buckets simultaneously.
+            (check (null (propose-dip-context-bindings parent-frame (make-language :int inputs :operators nil) clauses)))
+            (check (propose-dip-context-bindings parent-frame
+                                                 (make-language :int inputs :operators (list (op :+ :int)))
+                                                 clauses)))))
+      ;; End-to-end: node-dip-repairs launches :dip-repair directly from a colliding pure projection
+      ;; and solves the frame via the repaired child even when the root's own bound (1) cannot.
+      (let* ((inputs2 '((0 . :int) (1 . :int)))
+             (frame2 (simple-frame :int inputs2 '(((0 1) 1) ((0 2) 2) ((1 1) 1) ((1 2) 2))))
+             (lang2 (make-language :int inputs2))
+             (proj2 (make-decomposition :name '(:project 0) :decoder (var 9 :int)
+                                        :child-id 9 :child-type :int
+                                        :bindings (list (cons 0 (var 0 :int)))
+                                        :language (make-language :int '((0 . :int))) :bound 64))
+             (job (start-synthesis frame2 lang2 1 :decompositions (list proj2)
+                                                  :policy :heuristic :heuristic-budget nil)))
+        (resume-synthesis job 50000 :stop-on-first t)
+        (check (synthesis-job-best job))
+        (check (some (lambda (n)
+                       (let ((p (synthesis-node-proposal n)))
+                         (and p (consp (decomposition-name p))
+                              (eq :dip-repair (first (decomposition-name p)))
+                              (synthesis-node-search n)
+                              (search-job-best (synthesis-node-search n)))))
+                     (synthesis-job-nodes job)))))))
+
+(deftest audit-priority-predictor-adds-clamped-residual-to-mdl
+  ;; Priority predictors add a clamped [-24, 48] signed residual to analytical MDL rather than
+  ;; overwriting it, reuse precomputed program bits, and trace frames emit 6-feature signed residuals.
+  (with-clean-kernel-state
+    (let* ((inputs '((0 . :int)))
+           (frame (simple-frame :int inputs '(((1) 1) ((2) 2) ((3) 3))))
+           (lang (make-language :int inputs :operators (list (op :+ :int)) :literals '(0 1)))
+           (h-model (make-heuristic-model :program (var 0 :int)
+                                          :residual '((0 . 1))
+                                          :exact-p nil
+                                          :program-bits 10
+                                          :residual-bits 15
+                                          :run-work 2))
+           (proposal (make-decomposition :name :p :decoder (var 9 :int) :child-id 9 :child-type :int
+                                         :bindings (list (cons 0 (var 0 :int)))
+                                         :language lang :bound 20 :policy-score 4)))
+      (flet ((mk-job (pred)
+               (let* ((job (start-synthesis frame lang 20 :policy :heuristic
+                                                        :heuristic-budget nil
+                                                        :priority-predictor pred))
+                      (node (add-synthesis-node job (synthesis-job-root job) proposal)))
+                 (setf (synthesis-node-frame node) frame
+                       (synthesis-node-language node) lang
+                       (synthesis-node-heuristic node) h-model
+                       (synthesis-node-coupled-requirements node) '(:c1 :c2))
+                 (values job node))))
+        (multiple-value-bind (job0 node0) (mk-job nil)
+          (let* ((l0 (make-ledger))
+                 (mdl (node-priority job0 node0 frame lang h-model l0)))
+            (check (= mdl (node-analytical-mdl job0 node0 h-model)))
+            ;; Extreme positive & negative predictors clamp to [+48, -24] added onto MDL.
+            (multiple-value-bind (j-hi n-hi) (mk-job (lit :int 500))
+              (check (= (+ mdl 48) (node-priority j-hi n-hi frame lang h-model (make-ledger)))))
+            (multiple-value-bind (j-lo n-lo) (mk-job (lit :int -500))
+              (check (= (+ mdl -24) (node-priority j-lo n-lo frame lang h-model (make-ledger)))))
+            ;; Features 4 (policy-score=4) and 5 (coupled-count=2) are passed cleanly without
+            ;; recomputing full-path-program-bits / double-charging :composition.
+            (multiple-value-bind (j-f6 n-f6)
+                (mk-job (app (op :+ :int) (var 4 :int) (var 5 :int)))
+              (let ((l6 (make-ledger)))
+                (check (= (+ mdl 6) (node-priority j-f6 n-f6 frame lang h-model l6)))
+                (check (equal (assoc :composition (ledger-counts l0))
+                              (assoc :composition (ledger-counts l6))))))))
+        ;; Trace frame uses 6-feature schema and computes subtree-grounded signed residuals (j_real - b_mdl)
+        ;; clamped to [-24, 48] (negative when a verified descendant beats analytical B_MDL).
+        (multiple-value-bind (job win-node) (mk-job nil)
+          (let* ((root (synthesis-job-root job))
+                 (cand (make-candidate :expression (var 0 :int) :size 4 :run-work 0)))
+            (setf (synthesis-node-heuristic root) (make-heuristic-model :program (var 0 :int)
+                                                                        :program-bits 10 :residual-bits 60))
+            (synthesis-message job win-node :candidate (list :candidate cand :scope :original-root))
+            (let* ((tframe (make-search-trace-frame job :ledger (make-ledger)))
+                   (trows (frame-rows tframe)))
+              (check (= 6 (length (schema-inputs (frame-schema tframe)))))
+              (check (= 2 (length trows)))
+              (check (every (lambda (r)
+                              (let ((v (row-singleton-value r)))
+                                (and (integerp v) (<= -24 v 48))))
+                            trows))
+              ;; Both root and win-node inherit win-node's 4-bit candidate, strictly below B_MDL.
+              (check (some (lambda (r) (< (row-singleton-value r) 0)) trows)))))))))
+
+(deftest audit-metric-delta-reuses-closures-and-heuristic-packets
+  ;; 1. Zero-allocation replay in metric-delta never grows *closures* after the first call per template.
+  ;; 2. Stage A stores winning metric packets in heuristic-packets, and Stage B reuses them at zero VM work.
+  (with-clean-kernel-state
+    (let* ((k (var 0 :int)) (c (var 1 :int))
+           (solver (register-knowledge-solver
+                    (op :- :int) :id :audit-sub-1 :domain :int :position 1
+                    :witness (term `(- ,k ,c)) :certified-p nil :unique-p t)))
+      (register-metric-decoder solver :tag-bits 0)
+      (let* ((dec (first (metric-decoders :int)))
+             (*closure-evaluation* t))
+        (check (= 5 (metric-delta dec 10 5 :int (make-ledger))))
+        (let ((count-after-first (hash-table-count *closures*)))
+          (loop for p from 100 below 120
+                for target = (- p (mod p 7))
+                do (check (= (mod p 7) (metric-delta dec p target :int (make-ledger)))))
+          (check (= count-after-first (hash-table-count *closures*))))))
+    (let* ((seq (sequence-type :int))
+           (inputs (list (cons 0 seq)))
+           (xs (var 0 seq))
+           (k-seq (var 0 seq))
+           (c-seq (var 1 seq))
+           (empty-seq (lit seq nil)))
+      (define-function :audit-prepend (list (cons 0 seq) (cons 1 :int)) seq
+        (app (op :cons :int) (var 1 :int) xs))
+      (let ((prep-solver (register-knowledge-solver
+                          (op :audit-prepend) :id :audit-prepend-1 :domain :int :position 1
+                          :witness (term `(if (= ,c-seq ,empty-seq) 0 (at ,c-seq 0)))
+                          :guard (term `(if (= ,c-seq ,empty-seq) ,(lit :bool nil) ,(lit :bool t)))
+                          :unique-p nil)))
+        (register-metric-decoder prep-solver :tag-bits 1)
+        (let* ((frame (simple-frame seq inputs
+                                    '((((10 20 30)) (7 10 20 30))
+                                      (((40 50 60)) (9 40 50 60)))))
+               (language (make-language :int inputs :operators (list (op :audit-prepend)) :literals '(0 1 7)))
+               (model (condense-heuristic frame language :work-limit 40000)))
+          (check (equal xs (heuristic-program model)))
+          (check (= 2 (length (heuristic-residual model))))
+          (check (every (lambda (pair) (not (eq :metric-decoder (and (consp (cdr pair)) (first (cdr pair))))))
+                        (heuristic-residual model)))
+          (check (= 2 (length (heuristic-packets model))))
+          (check (every (lambda (pair)
+                          (and (consp (cdr pair)) (eq :metric-decoder (second pair))))
+                        (heuristic-packets model)))
+          (let* ((l-cached (make-ledger))
+                 (l-uncached (make-ledger))
+                 (p-cached (metric-residual-decompositions
+                            frame xs (heuristic-residual model) language 120 nil l-cached nil
+                            :packets (heuristic-packets model)))
+                 (p-uncached (metric-residual-decompositions
+                              frame xs (heuristic-residual model) language 120 nil l-uncached nil)))
+            (check (= 1 (length p-cached)))
+            (check (= 1 (length p-uncached)))
+            (check (zerop (ledger-total l-cached)))
+            (check (plusp (ledger-total l-uncached)))))))))
+
+(deftest audit-symbolic-unwinding-keeps-unsimplified-fallback
+  ;; When simplify-symbolic-expr rewrites a solvable 1-occurrence form into a 2-occurrence form,
+  ;; solve-equality-symbolically falls back to the unsimplified form; when simplification folds
+  ;; 2 occurrences into 1, it uses the simplified form.
+  (with-clean-kernel-state
+    (let* ((field (gf 5))
+           (k (var 0 field)) (c (var 1 field))
+           (y (var 0 field)) (a (var 1 field)) (b (var 2 field)))
+      (dolist (pos '(0 1))
+        (register-knowledge-solver (op :+ field) :domain field :position pos
+                                  :witness (term `(- ,c ,k) field) :certified-p t :unique-p t)
+        (register-knowledge-solver (op :* field) :domain field :position pos
+                                  :witness (term `(/ ,c ,k) field)
+                                  :guard (term `(if (= ,k ,(lit field 0)) ,(lit :bool nil) ,(lit :bool t)))
+                                  :certified-p t :unique-p t))
+      ;; Law 1 (1 occ -> 2 occs, smaller code): y * (a+a+a+a + 1) = y + y * (4 * a)
+      (let* ((lhs1 (term `(* ,y (+ (+ ,a (+ ,a (+ ,a ,a))) ,(lit field 1))) field))
+             (rhs1 (term `(+ ,y (* ,y (* ,(lit field 4) ,a))) field))
+             (law1 (resume-law-validation
+                    (start-law-validation (make-law field (list (cons 0 field) (cons 1 field)) lhs1 rhs1))
+                    100000)))
+        (register-knowledge-law law1)
+        ;; Law 2 (2 occs -> 1 occ, smaller code): (y * a) + (y * b) = y * (a + b)
+        (let* ((lhs2 (term `(+ (* ,y ,a) (* ,y ,b)) field))
+               (rhs2 (term `(* ,y (+ ,a ,b)) field))
+               (law2 (resume-law-validation
+                      (start-law-validation
+                       (make-law field (list (cons 0 field) (cons 1 field) (cons 2 field)) lhs2 rhs2))
+                      100000)))
+          (register-knowledge-law law2)
+          ;; Case A: simplify rewrites lhs1 -> rhs1 (2 occurrences of y); fallback unwinds lhs1 cleanly!
+          (let ((simp1 (simplify-symbolic-expr lhs1 :library *knowledge-library*)))
+            (check (= 2 (count 0 (let ((vars nil))
+                                    (map-ast (lambda (n m) (declare (ignore n))
+                                               (when (eq :var (ast-meta-kind m))
+                                                 (push (ast-meta-id m) vars))
+                                               nil)
+                                             simp1)
+                                    vars))))
+            (multiple-value-bind (sol guards certified-p)
+                (solve-equality-symbolically lhs1 (lit field 3) 0 :library *knowledge-library*)
+              (check sol)
+              (check certified-p)
+              (check (= 1 (length guards)))
+              (let ((scope (list (cons 0 field) (cons 1 field))))
+                (dolist (a-val '(0 2 3 4))
+                  (let ((y-val (result sol scope (list 0 a-val))))
+                    (check (= 3 (mod (* y-val (+ (* 4 a-val) 1)) 5))))))))
+          ;; Case B: simplify rewrites lhs2 (2 occurrences of y) -> rhs2 (1 occurrence), which unwinds!
+          (multiple-value-bind (sol2 guards2 certified2)
+              (solve-equality-symbolically lhs2 (lit field 3) 0 :library *knowledge-library*)
+            (check sol2)
+            (check certified2)
+            (check (= 1 (length guards2)))
+            (let ((scope (list (cons 0 field) (cons 1 field) (cons 2 field))))
+              (check (= 4 (result sol2 scope '(0 1 1))))
+              (check (= 3 (mod (+ (* 4 1) (* 4 1)) 5))))))))))
+
+(deftest audit-candidate-library-definitions-retypes-sequence-state
+  ;; State-returning combinators (like foldr) retain the full (:seq ...) target type when
+  ;; instantiated for sequence-typed frames, rather than stripping :seq off target.
+  (with-clean-kernel-state
+    (let* ((seq (sequence-type :int))
+           (step-type (code-type '((0 . :int) (1 . :int)) :int))
+           (xs (var 0 seq))
+           (acc (var 1 :int))
+           (step (var 2 step-type))
+           (lang (make-language :int (list (cons 0 seq)) :constants (list (lit seq nil))))
+           (frame (simple-frame seq (list (cons 0 seq)) '(((() ) ()) (((1 2)) (2 1)))))
+           (seq-state-code (code-type (list (cons 0 :int) (cons 1 seq)) seq)))
+      (define-function :audit-fold (list (cons 0 seq) (cons 1 :int) (cons 2 step-type)) :int
+        (lambda (self)
+          (app (op :if :int) (app (op := seq) xs (lit seq nil)) acc
+               (app (op :code-eval step-type) step
+                    (app (op :at seq) xs (lit :int 0))
+                    (app self (app (op :tail :int) xs) acc step)))))
+      (let* ((defs (candidate-library-definitions lang :frame frame))
+             (inst (find seq defs :key #'function-definition-return-type :test #'equal)))
+        (check inst)
+        (check (find seq (function-definition-inputs inst) :key #'cdr :test #'equal))
+        (check (find seq-state-code (function-definition-inputs inst) :key #'cdr :test #'equal))
+        (let* ((props (library-decompositions frame lang))
+               (fold-prop (find (function-definition-name inst) props
+                                :key (lambda (p) (operator-name (first (decomposition-decoder p)))))))
+          (check fold-prop)
+          (check (equal seq-state-code (decomposition-child-type fold-prop))))))))

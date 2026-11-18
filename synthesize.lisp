@@ -401,13 +401,22 @@ Its residual is priced in the node's representation, not the root's."
                           :stop-on-exact-p (or (node-in-lifted-library-branch-p node) rec-child-p)
                           :ledger ledger))))
 
-(defun full-path-program-bits (node h-model ledger)
+(defvar *precomputed-program-bits* nil
+  "Optional `(node h-model . bits)` cache binding around `node-priority` so a predictor
+that reads trace features reuses the already-computed `full-path-program-bits` without
+recomputing compositions or double-charging `:composition`.")
+
+(defun full-path-program-bits (node h-model &optional ledger)
   "The size of H-MODEL's program composed through every ancestor of NODE and described at the root."
-  (let ((root (loop for cur = node then (synthesis-node-parent cur)
-                    while (synthesis-node-parent cur)
-                    finally (return cur))))
-    (description-size (reconstruct-synthesis-candidate node (heuristic-program h-model) ledger)
-                      (schema-inputs (frame-schema (synthesis-node-frame root))))))
+  (if (and *precomputed-program-bits*
+           (eq node (first *precomputed-program-bits*))
+           (eq h-model (second *precomputed-program-bits*)))
+      (cddr *precomputed-program-bits*)
+      (let ((root (loop for cur = node then (synthesis-node-parent cur)
+                        while (synthesis-node-parent cur)
+                        finally (return cur))))
+        (description-size (reconstruct-synthesis-candidate node (heuristic-program h-model) ledger)
+                          (schema-inputs (frame-schema (synthesis-node-frame root)))))))
 
 (defun node-trace-features (node frame h-model &optional ledger)
   "Extract the 4-element integer feature vector `(program-bits residual-bits depth constrained-rows)`
@@ -422,11 +431,30 @@ for NODE's Stage A condensation H-MODEL on FRAME."
   (let ((proposal (synthesis-node-proposal node)))
     (if proposal (decomposition-policy-score proposal) 0)))
 
+(defun node-full-trace-features (node frame h-model &optional ledger)
+  "Extract the 6-element integer feature vector
+`(program-bits residual-bits depth constrained-rows policy-score coupled-count)`."
+  (append (node-trace-features node frame h-model ledger)
+          (list (node-policy-score node)
+                (length (synthesis-node-coupled-requirements node)))))
+
+(defun node-analytical-mdl (job node h-model &optional ledger)
+  "Analytical full-path MDL priority of NODE under H-MODEL (composed through every ancestor
+and priced at the root, plus residual bits, policy tie-break, coupling penalty, and run work),
+or `most-positive-fixnum` when H-MODEL is nil."
+  (if (null h-model)
+      most-positive-fixnum
+      (+ (full-path-program-bits node h-model ledger)
+         (heuristic-residual-bits h-model)
+         (if (heuristic-exact-p h-model) 0 (ash (node-policy-score node) -1))
+         (* 16 (length (synthesis-node-coupled-requirements node)))
+         (* (synthesis-job-run-weight job) (heuristic-run-work h-model)))))
+
 (defun priority-predictor-function (predictor)
   "Normalise PREDICTOR to a function of (node frame language h-model ledger), or nil for none.
 A callable is applied to the first four arguments. A `heuristic-model` or a homoiconic
-S-expression AST is evaluated in the VM on the node's trace features followed by its
-policy score and its number of coupled requirements."
+S-expression AST is evaluated in the VM on the node's 6 trace features
+`(program-bits residual-bits depth constrained-rows policy-score coupled-count)`."
   (etypecase predictor
     (null nil)
     (function (lambda (node frame language h-model ledger)
@@ -442,9 +470,7 @@ policy score and its number of coupled requirements."
          (declare (ignore language))
          (if (null h-model)
              most-positive-fixnum
-             (let* ((features (append (node-trace-features node frame h-model ledger)
-                                      (list (node-policy-score node)
-                                            (length (synthesis-node-coupled-requirements node)))))
+             (let* ((features (node-full-trace-features node frame h-model ledger))
                     (args (loop for i from 0 below arity collect (or (nth i features) 0))))
                (if fast-fn
                    (progn
@@ -455,18 +481,25 @@ policy score and its number of coupled requirements."
                      (if (and ok (integerp val)) val most-positive-fixnum))))))))))
 
 (defun node-priority (job node frame language h-model ledger)
-  "Lower is better: the job's predictor's score or, without one, the Stage A model composed
-through every ancestor and priced at the root, plus its residual bits."
-  (let ((predictor (synthesis-job-priority-predictor job)))
-    (cond
-      (predictor (funcall predictor node frame language h-model ledger))
-      (h-model
-       (+ (full-path-program-bits node h-model ledger)
-          (heuristic-residual-bits h-model)
-          (if (heuristic-exact-p h-model) 0 (ash (node-policy-score node) -1))
-          (* 16 (length (synthesis-node-coupled-requirements node)))
-          (* (synthesis-job-run-weight job) (heuristic-run-work h-model))))
-      (t most-positive-fixnum))))
+  "Lower is better: analytical full-path MDL (the Stage A model composed through every ancestor
+and priced at the root, plus residual and penalty bits) plus the predictor's clamped signed
+residual in `[-24, 48]`, or `most-positive-fixnum` when H-MODEL is nil."
+  (if (null h-model)
+      most-positive-fixnum
+      (let* ((prog-bits (full-path-program-bits node h-model ledger))
+             (*precomputed-program-bits* (list* node h-model prog-bits))
+             (mdl (+ prog-bits
+                     (heuristic-residual-bits h-model)
+                     (if (heuristic-exact-p h-model) 0 (ash (node-policy-score node) -1))
+                     (* 16 (length (synthesis-node-coupled-requirements node)))
+                     (* (synthesis-job-run-weight job) (heuristic-run-work h-model))))
+             (predictor (synthesis-job-priority-predictor job)))
+        (if predictor
+            (let ((delta (funcall predictor node frame language h-model ledger)))
+              (if (and (integerp delta) (< delta most-positive-fixnum))
+                  (+ mdl (max -24 (min 48 delta)))
+                  mdl))
+            mdl))))
 
 (defun node-library (job proposal)
   "The job's learned propagators plus any supplied with PROPOSAL; none on a fallback branch.
@@ -482,9 +515,11 @@ does not leave it holding programs prepared for another function table."
           shared))))
 
 (defun node-dip-repairs (job parent proposal nogoods ledger)
-  "DIP repairs of a lifted PROPOSAL refuted by NOGOODS, when the job can still branch under PARENT."
+  "DIP repairs of a lifted or pure-projection PROPOSAL refuted by NOGOODS, when the job can still branch under PARENT."
   (when (and nogoods
-             (decomposition-lift-p proposal)
+             proposal
+             (or (decomposition-lift-p proposal)
+                 (pure-projection-decomposition-p proposal))
              (or (heuristic-routing-p job) (node-may-expand-p job parent)))
     (dip-repaired-decompositions parent proposal nogoods
                                  :ledger ledger :debug-p (synthesis-job-debug-p job)

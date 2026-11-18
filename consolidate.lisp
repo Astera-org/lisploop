@@ -18,35 +18,72 @@ for each recorded scheduling decision in (synthesis-job-trace job)."
                                            (* search-weight (- w-final wt))))))))
 
 (defun make-search-trace-frame (jobs-or-job &key (work-scale 64) ledger)
-  "Package quantitative leaf outcomes (work spent, residual bits, exhaustion status) from
-explored branches of JOBS-OR-JOB into an ordinary `frame` over
-`((0 . :int) (1 . :int) (2 . :int) (3 . :int)) -> :int` so `condense-heuristic` can
-induce a priority predictor `\\hat{\\pi}`."
+  "Package subtree-grounded signed MDL residuals `(J_real(n) - B_MDL(n))` clamped to
+`[-24, 48]` from explored branches of JOBS-OR-JOB into an ordinary `frame` over the
+6-feature schema `((0 . :int) ... (5 . :int)) -> :int` so `condense-heuristic` can
+induce a residual priority predictor `\\hat{\\Delta}`."
   (let* ((jobs (if (listp jobs-or-job) jobs-or-job (list jobs-or-job)))
-         (inputs '((0 . :int) (1 . :int) (2 . :int) (3 . :int)))
+         (inputs '((0 . :int) (1 . :int) (2 . :int) (3 . :int) (4 . :int) (5 . :int)))
          (by-known (make-hash-table :test #'equal))
          (ordered-knowns nil))
     (dolist (job jobs)
-      (dolist (node (synthesis-job-nodes job))
-        (let ((h-model (synthesis-node-heuristic node))
-              (frame (synthesis-node-frame node)))
-          (when (and h-model frame)
-            (let* ((known (node-trace-features node frame h-model))
-                   (search (synthesis-node-search node))
-                   (search-work (if search (ledger-total (search-job-ledger search)) 0))
-                   (solved-p (or (exact-heuristic-program node job)
-                                 (and search (search-job-best search))))
-                   (outcome (+ (first known)
-                               (* 2 (second known))
-                               (floor search-work (max 1 work-scale))
-                               (if solved-p 0 10)))
-                   (existing (gethash known by-known)))
-              (charge ledger :orientation 1)
-              (if existing
-                  (setf (gethash known by-known) (min existing outcome))
-                  (progn
-                    (setf (gethash known by-known) outcome)
-                    (push known ordered-knowns))))))))
+      (let ((by-id (make-hash-table :test #'eql))
+            (min-win (make-hash-table :test #'eq))
+            (direct-work (make-hash-table :test #'eql))
+            (subtree-work (make-hash-table :test #'eq)))
+        (dolist (node (synthesis-job-nodes job))
+          (setf (gethash (synthesis-node-id node) by-id) node))
+        ;; Propagate minimum verified candidate score upward from winning nodes to ancestors.
+        (dolist (msg (synthesis-job-messages job))
+          (when (eq :candidate (message-claim msg))
+            (let ((cand (getf (message-evidence msg) :candidate))
+                  (owner (gethash (message-call-id msg) by-id)))
+              (when (and cand owner)
+                (let ((score (candidate-score cand (synthesis-job-run-weight job))))
+                  (loop for cur = owner then (synthesis-node-parent cur)
+                        while cur
+                        for prev = (gethash cur min-win)
+                        when (or (null prev) (< score prev))
+                          do (setf (gethash cur min-win) score)))))))
+        ;; Accumulate execution work per node (from trace slices and local searches) upward.
+        (let* ((chronological (reverse (synthesis-job-trace job)))
+               (w-final (ledger-total (synthesis-job-ledger job))))
+          (loop for (entry . rest) on chronological
+                for lane = (getf entry :lane)
+                for next-w = (if rest (getf (first rest) :work) w-final)
+                for delta = (max 0 (- next-w (getf entry :work 0)))
+                for nid = (cond ((integerp lane) lane)
+                                ((and (consp lane) (eq :expand (first lane))) (second lane)))
+                when nid
+                  do (incf (gethash nid direct-work 0) delta)))
+        (dolist (node (synthesis-job-nodes job))
+          (let* ((search (synthesis-node-search node))
+                 (own-work (max (gethash (synthesis-node-id node) direct-work 0)
+                                (if search (ledger-total (search-job-ledger search)) 0))))
+            (when (plusp own-work)
+              (loop for cur = node then (synthesis-node-parent cur)
+                    while cur
+                    do (incf (gethash cur subtree-work 0) own-work)))))
+        ;; Record signed bounded residuals B_MDL -> clamp(J_real - B_MDL, -24, 48) per branch.
+        (dolist (node (synthesis-job-nodes job))
+          (let ((h-model (synthesis-node-heuristic node))
+                (frame (synthesis-node-frame node)))
+            (when (and h-model frame)
+              (let* ((known (node-full-trace-features node frame h-model))
+                     (b-mdl (node-analytical-mdl job node h-model))
+                     (j-win (gethash node min-win))
+                     (w-sub (gethash node subtree-work 0))
+                     (j-real (min (+ b-mdl 48)
+                                  (+ (or j-win (+ b-mdl 24))
+                                     (floor w-sub (max 1 work-scale)))))
+                     (outcome (max -24 (min 48 (- j-real b-mdl))))
+                     (existing (gethash known by-known)))
+                (charge ledger :orientation 1)
+                (if existing
+                    (setf (gethash known by-known) (min existing outcome))
+                    (progn
+                      (setf (gethash known by-known) outcome)
+                      (push known ordered-knowns)))))))))
     (make-frame (make-schema :domain :int :inputs inputs :target :int)
                 (loop for known in (nreverse ordered-knowns)
                       for idx from 0
@@ -63,6 +100,7 @@ At deployment time, the returned predictor function evaluates `\\hat{\\pi}` in t
 discards the training residual `\\varepsilon`.
 Returns (VALUES predictor-fn heuristic-model)."
   (let* ((inputs (schema-inputs (frame-schema trace-frame)))
+         (arity (length inputs))
          (eff-limit (or description-limit (header-bound inputs :int 24)))
          (eff-lang (or language
                        (make-language :int inputs
@@ -80,7 +118,9 @@ Returns (VALUES predictor-fn heuristic-model)."
                  (declare (ignore node-lang))
                  (if (null node-h-model)
                      most-positive-fixnum
-                     (let ((features (node-trace-features node frame node-h-model)))
+                     (let* ((full (node-full-trace-features node frame node-h-model))
+                            (features (loop for i from 0 below arity
+                                            collect (or (nth i full) 0))))
                        (if fast-fn
                            (let ((val (ignore-errors (funcall fast-fn features))))
                              (if (integerp val) val most-positive-fixnum))
@@ -167,7 +207,8 @@ them from the keyword arguments."
     (assert-entry-expression-type entry)))
 
 (defun register-knowledge-heuristic (heuristic-or-program &key id (library *knowledge-library*)
-                                                            (inputs '((0 . :int) (1 . :int) (2 . :int) (3 . :int)))
+                                                            (inputs '((0 . :int) (1 . :int) (2 . :int)
+                                                                      (3 . :int) (4 . :int) (5 . :int)))
                                                             (target :int) residual edges metadata ledger)
   "Register a Stage A/M8D search priority predictor program (`heuristic-model` or AST) into LIBRARY."
   (let* ((model (and (heuristic-model-p heuristic-or-program) heuristic-or-program))
@@ -1005,6 +1046,7 @@ is false only when the limit cut them short."
                 (when (and model (heuristic-program model))
                   (note :heuristic (list (register-knowledge-heuristic
                                           model :id :default-priority-predictor
+                                          :inputs (schema-inputs (frame-schema trace-frame))
                                           :library library :ledger ledger))))))))))
     (list :library library
           :before-version before-version

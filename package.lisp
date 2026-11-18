@@ -153,7 +153,7 @@
    #:induce-functorial-solvers #:induce-involution-solvers
 
    ;; 15. condense.lisp — Lossy Stage A heuristic condensation
-   #:heuristic-model #:heuristic-model-p #:heuristic-program #:heuristic-residual
+   #:heuristic-model #:heuristic-model-p #:heuristic-program #:heuristic-residual #:heuristic-packets
    #:heuristic-exact-p #:heuristic-total-p #:heuristic-program-bits #:heuristic-residual-bits
    #:heuristic-run-work #:heuristic-score #:heuristic-alternatives #:heuristic-buckets
    #:heuristic-search #:start-heuristic-search #:resume-heuristic-search
