@@ -293,3 +293,64 @@ Add `propose-disambiguating-query(candidates &key inputs domain-guard (bound-sla
 3. **Zero-False-Pruning Galois Soundness (`tests/invariants.lisp`):** Sampled/conjectured solvers and stationary `:fix-seq` hypotheses always preserve active reserve `propagation-fallback`s (`plan8.md` §6.7); canonical search bounds cover the loosest follower; partial metric decoders (`(*, /)`, `:code-edit`) either cover all constrained rows or split conditionally; speculative non-improving branches are priority-parked, never irreversibly killed.
 4. **Permutation & Alpha-Renaming Invariance (`tests/invariants.lisp`):** `frame-rows` order and `*knowledge-library*` are never mutated mid-search; multi-type combinator retyping and tuple projections key on `(id . type)` alists.
 5. **Single-Pass Consolidation & Serialization Idempotence (`tests/invariants.lisp:400-465`):** The bounded hook/retype/lift convergence loop plus snapshot-keyed failure memos (for incompressible `:relation` tables and contrastive `:descriptor` pairs) guarantee semantic fixed-point in a single `consolidate-knowledge-library` call.
+
+---
+
+## 8. Implementation Record and Restated Gates
+
+This section records what has been built against this plan, where it departs from the text above, and the baselines that later increments are to be gated on. The Lisp source remains authoritative. Figures are from `make test`, `experiments/ledger-fingerprint.lisp` and `experiments/probes.lisp` (the probes of `plan8.md` Appendix A as a script).
+
+### 8.1 What Has Landed
+
+| Step | Scope | Tests |
+| :--- | :--- | :--- |
+| Fixes (`P9.1` items 1 to 4) | Totality as a least fixed point and for calls of undefined names; the nogood-schema zip gated on pointwise maps; `:relation` consolidation of member tables and failed-fit memo; one-call consolidation fixed point | `tests/audit.lisp` |
+| Batteries | Library sources in `library/`, read as data by `batteries.lisp` (`load-battery`); the shared test fixtures and `install-sequence-shift-metric` moved there | `tests/batteries.lisp` |
+| Kernel support for batteries | A job uses the active library's solvers by default; solver dispatch by operator index; duplicate rules merged; a job's rules survive a change of the function table | `tests/batteries.lisp` |
+| Duplicate instance | A combinator retyped to its own types is itself (`retype-function-definition`) | `tests/audit.lisp` |
+| Totality analyzer (section 5.1.A) | Facts from conditions (sequence lengths, integer bounds, non-zero); per-parameter sum measure; integer descent, halving and ascent; closed `code-eval` redexes read through; totality under a guard (`provably-total-given-p`) for metric decoders | `tests/totality.lisp` |
+| Carrying cost | Lifts scored alike are ordered function by function, smaller decoder first (`order-proposals`); the shift solver is guarded by what a shift must look like (library content) | `tests/batteries.lisp` |
+
+### 8.2 Baselines to Gate On
+
+These supersede the figures of section 1.1 wherever a later increment says "unchanged".
+
+| Probe (`experiments/probes.lisp`) | At `019736f` | Now |
+| :--- | :--- | :--- |
+| Symmetric tuple scan | `112,979` | `74,094` |
+| Conditional tuple scan | `264,353` | `220,691` |
+| Irrelevant-input scan, default budget | `34,067` | `34,067` |
+| Irrelevant-input scan, `:heuristic-budget 30000` | `62,942` | `62,942` |
+| Partially observed accumulator | `rows=3 coupled=2` | `rows=3 coupled=2` |
+
+The two tuple scans fell because their old figures included lifting the same combinator twice: `candidate-library-definitions` instantiated `:scan-tup` at the types it already had.
+
+| Task | Now |
+| :--- | :--- |
+| Shifted sequences, default heuristic budget | unsolved at `300,000` |
+| Shifted sequences, `:heuristic-budget 16000` | `105,595` (was `100,050`) |
+| Shifted sequences, `:heuristic-budget 60000` | `211,459` (was `205,914`) |
+| Add 3 to each element, only `:map` loaded | `10,587` |
+| Add 3 to each element, every battery loaded | `12,968` |
+| Symmetric tuple scan, every battery loaded | `74,886` |
+
+The shifted-sequence figures rose by about 5 percent: the solver's guard is evaluated before its correlation. On a sequence task that involves no shift the same guard removes the correlation altogether (`24,549` to `11,820` with only `:map` and the shift battery loaded).
+
+The suites are `203` kernel tests and `40` milestone tests.
+
+### 8.3 Departures from the Text Above
+
+1. **Nogood-schema zip (section 1.2, item 2).** Gated on a pointwise map (`function-body-pointwise-map-p`), not on `function-body-length-preserving-p`. A combinator whose step reads the remaining length preserves length and was still refuted wrongly.
+2. **Relations (section 1.2, item 3).** A table with a `:default` is left alone as well as a member table: condensing it changed its answers off the table.
+3. **Consolidation loop (section 4.3).** A stage reruns only when the library has changed since that stage last began. The limit is `*consolidation-pass-limit*`, 4, and the report carries `:passes` and `:fixed-point-p`.
+4. **Shift metric (section 2.2, section 7 invariant 1).** `install-sequence-shift-metric` went to `library/sequence-shift.lisp`, not to `tests/support.lisp`.
+5. **Evidence labels.** Integer uniqueness of addition and subtraction is attested `:trusted-axiom` by the arithmetic battery, where the fixture said `:derived`.
+6. **Totality (section 5.1.A).** Only the sum measure is built; lexicographic orders are not. A bound must be a literal: `(< i n)` over two variables establishes nothing. Redexes are read through in `analyze-function-body-totality` only, not in `provably-total-p` of an arbitrary expression.
+7. **Indexed dispatch (section 3.3, item 2).** One lookup is charged per conjunct, on the term's operator. Rules are not re-sorted by evidence grade within a bucket.
+
+### 8.4 Found and Left Open
+
+- **A metric decoder taxes every search of its type.** Stage A asks each decoder about every miss, on the same budget as its own enumeration. One unguarded solver more than doubled an unrelated search. The shift battery is now guarded; nothing in the kernel bounds the next one. Section 2.2 suggests a separate metric allowance.
+- **Preparation is linear in the lifts that score alike.** Every primary proposal is prepared before any is searched, unless a preparation finds an exact model. Ordering puts the simplest function first; `*max-eager-proposals-per-node*` is still unset because deferred proposals wake only when nothing else is left (section 4.1, item 3).
+- **Unchanged-library consolidation is not free.** The `:function` hook charges for its search on every run (`4,266` on the invariants library), as failed retypes and failed lifts do.
+- **The loader reads functions and solvers.** Laws, descriptors, decoder templates and transformers need forms before the host code that builds them can move.

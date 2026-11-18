@@ -232,3 +232,75 @@ rules standing: their programs are prepared again for the new function table."
                                :held-out '((((10 20)) (13 23))))
       (check (equal (vm-versions) (propagator-library-versions (synthesis-job-library job))))
       (check (equal rules (propagator-library-rules (synthesis-job-library job)))))))
+
+(defun add-three-search (setup)
+  "Search for the map that adds 3 to every element, in a language that names no combinator,
+after SETUP has filled a clean library. Returns the job."
+  (with-clean-kernel-state
+    (funcall setup)
+    (let* ((seq (sequence-type :int))
+           (inputs (list (cons 0 seq)))
+           (frame (simple-frame seq inputs '(((()) ()) (((2)) (5)) (((4 2)) (7 5)) (((-1 3 0)) (2 6 3)))))
+           (language (make-language :int inputs :operators (list (op :+ :int)) :literals '(1 3)
+                                                :constants (list (lit seq '()))))
+           (job (start-heuristic-synthesis frame language 75)))
+      (resume-synthesis job 400000 :stop-on-first t)
+      (check (synthesis-job-best job))
+      (check (expression-calls-operator-p (candidate-expression (synthesis-job-best job)) :map))
+      job)))
+
+(deftest carrying-the-library-costs-a-search-little
+  "A search that needs one combinator pays little for the rest of the library, and the same
+whatever order the library was loaded in. Two things keep it so. Lifts that the descriptors
+score alike are prepared function by function, the smaller call first, so a map is tried
+before scans from guessed states. And the shift metric's solver is guarded by what a shift
+must look like, so a sequence that is no shift of the prediction does not run its
+correlation."
+  (flet ((work (job) (ledger-total (synthesis-job-ledger job)))
+         (lifts (job)
+           (loop for node in (synthesis-job-nodes job)
+                 for proposal = (synthesis-node-proposal node)
+                 when (and proposal (decomposition-lift-p proposal))
+                   collect (ast-id (decomposition-decoder proposal))))
+         (everything ()
+           (dolist (name (battery-names)) (load-battery name))
+           (dolist (prime '(5 7)) (load-battery :arithmetic :types (list (cons '?n (gf prime)))))))
+    (let ((alone (add-three-search (lambda () (load-battery :sequences :only '(:map)))))
+          (scans-last (add-three-search (lambda () (load-battery :sequences) (load-battery :scans))))
+          (scans-first (add-three-search (lambda () (load-battery :scans) (load-battery :sequences))))
+          (shift (add-three-search (lambda () (load-battery :sequences :only '(:map))
+                                     (load-battery :sequence-shift))))
+          (all (add-three-search #'everything)))
+      ;; The map is materialized first whichever battery was registered last.
+      (check (eq :map (first (lifts scans-last))))
+      (check (eq :map (first (lifts scans-first))))
+      (check (member :scan (lifts scans-last)))
+      (check (= (work scans-last) (work scans-first)))
+      ;; No correlation is run on targets that are no shift of anything.
+      (check (metric-decoders (sequence-type :int) (synthesis-job-knowledge shift)))
+      (check (null (assoc :heuristic-metric (ledger-counts (synthesis-job-ledger shift)))))
+      ;; The whole library costs under half as much again as the one function needed.
+      (dolist (job (list scans-last shift all))
+        (check (< (work job) (* 3/2 (work alone)))))))
+  ;; The order itself: by policy score, then function by function, each function's own
+  ;; proposals and every proposal that is not a lift keeping their places.
+  (with-clean-kernel-state
+    (load-battery :sequences :only '(:map))
+    (load-battery :scans :only '(:scan))
+    (let* ((seq (sequence-type :int))
+           (unary (code-type '((0 . :int)) :int))
+           (binary (code-type '((0 . :int) (1 . :int)) :int))
+           (inputs (list (cons 0 seq)))
+           (xs (var 0 seq)))
+      (flet ((lift (name decoder child-type &optional (score 0))
+               (make-decomposition :name name :decoder decoder :child-id 1 :child-type child-type
+                                   :lift-p t :policy-score score))
+             (scan-from (state) (app (op :scan) xs (lit :int state) (var 1 binary))))
+        (let* ((scan-7 (lift :scan-7 (scan-from 7) binary))
+               (scan-0 (lift :scan-0 (scan-from 0) binary))
+               (other (make-decomposition :name :other :decoder (var 1 seq) :child-id 1 :child-type seq))
+               (map (lift :map (app (op :map) xs (var 1 unary)) unary))
+               (better (lift :better (scan-from 7) binary -5))
+               (ordered (order-proposals (list scan-7 scan-0 other map better) inputs)))
+          (check (equal '(:better :map :scan-7 :other :scan-0)
+                        (mapcar #'decomposition-name ordered))))))))

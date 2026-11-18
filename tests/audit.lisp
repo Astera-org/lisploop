@@ -683,3 +683,31 @@
           (check (find-knowledge-entry :foldr=foldl/monoid))
           (check (assoc :retyped-laws (getf report :consolidated))))
         (check (unchanged-by-another-call-p :retype-domains (list (gf 5))))))))
+
+(deftest audit-a-combinator-is-its-own-instance-at-its-own-types
+  ;; Retyping a combinator to the element and result types it already has gives the
+  ;; combinator, not a copy under another name to be proposed and lifted beside it.
+  (with-clean-kernel-state
+    (load-battery :scans :only '(:scan-pair))
+    (let* ((pair (tuple-type :int :int))
+           (actions (sequence-type :int))
+           (states (sequence-type pair))
+           (inputs (list (cons 0 actions) (cons 1 pair)))
+           (frame (simple-frame states inputs '((((1 2) (0 10)) ((1 11) (3 13))))))
+           (language (make-language :int inputs :operators (list (op :+ :int) (op :scan-pair))))
+           (definition (find-function-definition :scan-pair)))
+      (check (eq definition (retype-function-definition :scan-pair :int :return-element-type pair)))
+      (check (equal '(:scan-pair)
+                    (mapcar #'function-definition-name
+                            (candidate-library-definitions language :functions '(:scan-pair)
+                                                                    :frame frame))))
+      (check (equal '(:scan-pair) *registered-function-names*))
+      ;; At other types it is still instantiated, once.
+      (let* ((field (gf 5))
+             (field-pair (tuple-type field field))
+             (instance (retype-function-definition :scan-pair field :return-element-type field-pair)))
+        (check (not (eq instance definition)))
+        (check (equal (sequence-type field-pair) (function-definition-return-type instance)))
+        (check (eq instance
+                   (retype-function-definition :scan-pair field :return-element-type field-pair)))
+        (check (= 2 (length *registered-function-names*)))))))

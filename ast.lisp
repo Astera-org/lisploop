@@ -685,38 +685,150 @@ constantly and quoted code is sized from cached metadata."
                                  (or allow-open-code-p (provably-total-p b))))
                            (rest tuple-arg))))))))
 
-(defun non-empty-seq-expr-p (expr &optional non-empty-vars)
-  "True when sequence expression EXPR is guaranteed non-empty."
+;;; Totality: what is provably defined and terminates.
+;;;
+;;; The analysis carries facts about the variables in scope at a point of a body, each
+;;; established by the conditions on the way there:
+;;;   (:length id k)   the sequence X_id has at least k elements
+;;;   (:above id b)    the integer X_id is greater than b
+;;;   (:below id b)    the integer X_id is less than b
+;;;   (:nonzero id)    the number X_id is not zero
+;;; A fact holds of one scope. Quoted code is a scope of its own and is judged without them.
+
+(defun fact-bound (kind id facts tighter)
+  "The tightest value among the facts of KIND about X_ID in FACTS, or nil."
+  (let ((best nil))
+    (dolist (fact facts best)
+      (when (and (eq kind (first fact)) (eql id (second fact)))
+        (setf best (if best (funcall tighter best (third fact)) (third fact)))))))
+
+(defun known-length (id facts) (or (fact-bound :length id facts #'max) 0))
+(defun known-above (id facts) (fact-bound :above id facts #'max))
+(defun known-below (id facts) (fact-bound :below id facts #'min))
+
+(defun tail-chain (expr)
+  "If EXPR is `(tail^k X)` for a sequence variable X and some k >= 0, the id of X and k."
+  (let ((depth 0))
+    (loop while (and (consp expr) (eq :tail (ast-meta-id (ensure-ast-meta expr))))
+          do (incf depth)
+             (setf expr (second expr)))
+    (let ((meta (ensure-ast-meta expr)))
+      (when (and (eq :var (ast-meta-kind meta)) (seq-type-p (ast-meta-type meta)))
+        (values (ast-meta-id meta) depth)))))
+
+(defun literal-integer (expr)
+  "The value of EXPR when it is an integer literal, else nil."
+  (let ((meta (ensure-ast-meta expr)))
+    (and (eq :lit (ast-meta-kind meta)) (integerp (ast-meta-value meta)) (ast-meta-value meta))))
+
+(defun numeric-variable-id (expr)
+  "The id of EXPR when it is a variable of an integer or field type, else nil."
+  (let ((meta (ensure-ast-meta expr)))
+    (and (eq :var (ast-meta-kind meta))
+         (or (eq :int (ast-meta-type meta)) (gf-type-p (ast-meta-type meta)))
+         (ast-meta-id meta))))
+
+(defun condition-facts (condition facts)
+  "What is known once CONDITION has evaluated to true, and once it has evaluated to false,
+as two values, given FACTS before it. A condition that tells nothing leaves FACTS.
+  (= (tail^k X) '())      false: X has at least k+1 elements
+  (< 'm (length (tail^k X)))  true: X has at least m+k+1
+  (< 'b X), (< X 'b)      a bound on the integer X either way
+  (= X '0)                false: X is not zero
+and the :if encodings of not, and, or, read through to their parts."
+  (let ((meta (ensure-ast-meta condition)))
+    (if (not (eq :app (ast-meta-kind meta)))
+        (values facts facts)
+        (destructuring-bind (&optional left right other) (rest condition)
+          (flet ((literal-p (expr value)
+                   (let ((m (ensure-ast-meta expr)))
+                     (and (eq :lit (ast-meta-kind m)) (eq :bool (ast-meta-type m))
+                          (eq value (ast-meta-value m)))))
+                 (with (fact) (cons fact facts)))
+            (case (ast-meta-id meta)
+              (:=
+               (flet ((emptiness (sequence empty)
+                        (let ((m (ensure-ast-meta empty)))
+                          (and (eq :lit (ast-meta-kind m)) (seq-type-p (ast-meta-type m))
+                               (null (ast-meta-value m))
+                               (multiple-value-bind (id depth) (tail-chain sequence)
+                                 (and id (list :length id (1+ depth)))))))
+                      (zero (number zero)
+                        (let ((id (numeric-variable-id number)))
+                          (and id (eql 0 (literal-integer zero)) (list :nonzero id)))))
+                 (let ((when-false (or (emptiness left right) (emptiness right left)
+                                       (zero left right) (zero right left))))
+                   (values facts (if when-false (with when-false) facts)))))
+              (:<
+               (let ((low (literal-integer left))
+                     (high (literal-integer right))
+                     (left-id (numeric-variable-id left))
+                     (right-id (numeric-variable-id right)))
+                 (cond ((and low right-id)
+                        (values (with (list :above right-id low)) (with (list :below right-id (1+ low)))))
+                       ((and left-id high)
+                        (values (with (list :below left-id high)) (with (list :above left-id (1- high)))))
+                       ((and low (consp right) (eq :length (ast-meta-id (ensure-ast-meta right))))
+                        (multiple-value-bind (id depth) (tail-chain (second right))
+                          (values (if id (with (list :length id (+ low depth 1))) facts) facts)))
+                       (t (values facts facts)))))
+              (:if
+               (cond ((and (literal-p right nil) (literal-p other t)) ; not left
+                      (multiple-value-bind (when-true when-false) (condition-facts left facts)
+                        (values when-false when-true)))
+                     ((literal-p other nil) ; left and right
+                      (values (condition-facts right (condition-facts left facts)) facts))
+                     ((literal-p right t) ; left or other
+                      (values facts (nth-value 1 (condition-facts
+                                                  other (nth-value 1 (condition-facts left facts))))))
+                     (t (values facts facts))))
+              (otherwise (values facts facts))))))))
+
+(defun minimum-length (expr facts)
+  "A number of elements that the sequence expression EXPR is sure to have, given FACTS."
   (let ((meta (ensure-ast-meta expr)))
     (case (ast-meta-kind meta)
-      (:lit (not (null (ast-meta-value meta))))
-      (:var (and non-empty-vars (member (ast-meta-id meta) non-empty-vars :test #'eql)))
-      (:app (or (eq :cons (ast-meta-id meta))
-                (and (eq :if (ast-meta-id meta))
-                     (multiple-value-bind (then-vars else-vars)
-                         (branch-non-empty-vars (second expr) non-empty-vars)
-                       (and (non-empty-seq-expr-p (third expr) then-vars)
-                            (non-empty-seq-expr-p (fourth expr) else-vars)))))))))
+      (:lit (let ((value (ast-meta-value meta))) (if (listp value) (length value) 0)))
+      (:var (known-length (ast-meta-id meta) facts))
+      (:app (case (ast-meta-id meta)
+              (:cons (1+ (minimum-length (third expr) facts)))
+              (:tail (max 0 (1- (minimum-length (second expr) facts))))
+              (:if (multiple-value-bind (when-true when-false) (condition-facts (second expr) facts)
+                     (min (minimum-length (third expr) when-true)
+                          (minimum-length (fourth expr) when-false))))
+              (otherwise 0)))
+      (otherwise 0))))
 
-(defun operator-step-total-p (op-name arguments code-total-fn &optional non-empty-vars)
-  "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total."
+(defun nonzero-expr-p (expr facts)
+  "True when the number EXPR is sure not to be zero: a nonzero literal, or a variable that
+FACTS say is not zero or bound away from it."
+  (let ((meta (ensure-ast-meta expr)))
+    (case (ast-meta-kind meta)
+      (:lit (and (numberp (ast-meta-value meta)) (not (zerop (ast-meta-value meta)))))
+      (:var (let* ((id (ast-meta-id meta))
+                   (above (known-above id facts))
+                   (below (known-below id facts)))
+              (or (and above (>= above 0))
+                  (and below (<= below 0))
+                  (and (find-if (lambda (fact) (and (eq :nonzero (first fact)) (eql id (second fact))))
+                                facts)
+                       t)))))))
+
+(defun operator-step-total-p (op-name arguments code-total-fn &optional facts)
+  "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total,
+given FACTS about the variables in scope: division needs a divisor that is not zero, `tail`
+a sequence that is not empty, and `at` a literal index within the length that is sure."
   (case op-name
-    (:/ (and (lit-p (second arguments))
-             (not (zerop (ast-value (second arguments))))))
+    (:/ (nonzero-expr-p (second arguments) facts))
     (:at (and (lit-p (second arguments))
               (let ((idx (ast-value (second arguments)))
                     (container (first arguments))
                     (container-type (ast-type (first arguments))))
                 (and (integerp idx) (<= 0 idx)
-                     (cond
-                       ((tuple-type-p container-type)
-                        (< idx (length (rest container-type))))
-                       ((lit-p container)
-                        (< idx (length (ast-value container))))
-                       ((zerop idx)
-                        (non-empty-seq-expr-p container non-empty-vars))
-                       (t nil))))))
-    (:tail (non-empty-seq-expr-p (first arguments) non-empty-vars))
+                     (if (tuple-type-p container-type)
+                         (< idx (length (rest container-type)))
+                         (< idx (minimum-length container facts)))))))
+    (:tail (plusp (minimum-length (first arguments) facts)))
     (:code-eval (funcall code-total-fn (first arguments)))
     ((:lookup :gather :code-child :code-operator :code-bind) nil)
     (otherwise
@@ -746,17 +858,8 @@ constantly and quoted code is sized from cached metadata."
         (or (guard (second condition) (third condition))
             (guard (third condition) (second condition)))))))
 
-(defun branch-non-empty-vars (condition non-empty-vars &optional seq-param-ids)
-  "The sequence variables known to be non-empty in the then-branch and in the else-branch
-of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guard
-`(= Xi '())` makes Xi empty in the first and non-empty in the second."
-  (let ((id (empty-sequence-guard-var-id condition seq-param-ids)))
-    (if id
-        (values (remove id non-empty-vars) (adjoin id non-empty-vars))
-        (values non-empty-vars non-empty-vars))))
-
-(defun expr-total-under-non-empty-p (expr non-empty-vars)
-  "True when EXPR is provably total given that sequence variables in NON-EMPTY-VARS are non-empty."
+(defun expr-total-under-p (expr facts)
+  "True when EXPR is provably total given FACTS about its variables."
   (let ((meta (ensure-ast-meta expr)))
     (or (ast-meta-total-p meta)
         (case (ast-meta-kind meta)
@@ -766,13 +869,12 @@ of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guar
                  (args (rest expr)))
              (and op-name
                   (if (eq :if op-name)
-                      (multiple-value-bind (then-vars else-vars)
-                          (branch-non-empty-vars (first args) non-empty-vars)
-                        (and (expr-total-under-non-empty-p (first args) non-empty-vars)
-                             (expr-total-under-non-empty-p (second args) then-vars)
-                             (expr-total-under-non-empty-p (third args) else-vars)))
-                      (and (every (lambda (a) (expr-total-under-non-empty-p a non-empty-vars)) args)
-                           (operator-step-total-p op-name args #'provably-total-code-arg-p non-empty-vars))))))))))
+                      (multiple-value-bind (when-true when-false) (condition-facts (first args) facts)
+                        (and (expr-total-under-p (first args) facts)
+                             (expr-total-under-p (second args) when-true)
+                             (expr-total-under-p (third args) when-false)))
+                      (and (every (lambda (a) (expr-total-under-p a facts)) args)
+                           (operator-step-total-p op-name args #'provably-total-code-arg-p facts))))))))))
 
 (defun compute-app-meta (operator arguments)
   (let* ((op-meta (ensure-ast-meta operator))
@@ -789,12 +891,17 @@ of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guar
                              (ast-meta-total-p (if (ast-meta-value (first child-metas))
                                                    (second child-metas)
                                                    (third child-metas)))
-                             (and (ast-meta-total-p (second child-metas))
-                                  (or (ast-meta-total-p (third child-metas))
-                                      (let ((else-vars (nth-value 1 (branch-non-empty-vars
-                                                                     (first arguments) nil))))
-                                        (and else-vars
-                                             (expr-total-under-non-empty-p (third arguments) else-vars)))))))
+                             ;; A branch that is not total by itself may be total given what
+                             ;; the condition establishes on the way into it.
+                             (let ((yes-p (ast-meta-total-p (second child-metas)))
+                                   (no-p (ast-meta-total-p (third child-metas))))
+                               (or (and yes-p no-p)
+                                   (multiple-value-bind (when-true when-false)
+                                       (condition-facts (first arguments) nil)
+                                     (and (or yes-p (and when-true
+                                                         (expr-total-under-p (second arguments) when-true)))
+                                          (or no-p (and when-false
+                                                        (expr-total-under-p (third arguments) when-false)))))))))
                     (and (every #'ast-meta-total-p child-metas)
                          (operator-step-total-p op-name arguments #'provably-total-code-arg-p)))))
          (free-vars (remove-duplicates
@@ -810,14 +917,70 @@ of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guar
                    :total-p (not (null total-p))
                    :free-vars free-vars)))
 
+(defun self-call-changes (inputs arguments facts)
+  "How a self-call with ARGUMENTS moves each parameter of INPUTS, given FACTS at the call:
+  :same     the parameter is passed on as it is
+  :shorter  a sequence, passed on with elements taken off its front that it is sure to have
+  :down     an integer bounded below, passed on reduced by a literal of at least 1, or, when
+            the bound is at least 0, divided by a literal of at least 2
+  :up       an integer bounded above, passed on increased by a literal of at least 1
+  nil       anything else.
+Each is read off the argument in the parameter's own position against that same parameter:
+the tail of another parameter says nothing of this one."
+  (loop for (id . type) in inputs
+        for argument in arguments
+        collect
+        (let ((meta (ensure-ast-meta argument)))
+          (flet ((self-p (expr)
+                   (let ((m (ensure-ast-meta expr)))
+                     (and (eq :var (ast-meta-kind m)) (eql id (ast-meta-id m))))))
+            (cond
+              ((self-p argument) :same)
+              ((seq-type-p type)
+               (multiple-value-bind (variable depth) (tail-chain argument)
+                 (and (eql variable id) (<= 1 depth (known-length id facts)) :shorter)))
+              ((and (eq :int type) (eq :app (ast-meta-kind meta)) (= 2 (length (rest argument))))
+               (destructuring-bind (left right) (rest argument)
+                 (let ((step (literal-integer right))
+                       (above (known-above id facts))
+                       (below (known-below id facts)))
+                   (case (ast-meta-id meta)
+                     (:- (and (self-p left) step (>= step 1) above :down))
+                     (:/ (and (self-p left) step (>= step 2) above (>= above 0) :down))
+                     (:+ (and below
+                              (or (and (self-p left) step (>= step 1))
+                                  (and (self-p right) (literal-integer left)
+                                       (>= (literal-integer left) 1)))
+                              :up)))))))))))
+
+(defun self-calls-descend-p (sites)
+  "True when the self-calls of a body, each given as its `self-call-changes`, cannot go on
+for ever. A measure is a parameter read one way: a sequence's length, an integer's height
+above its lower bound, or its depth below its upper one. The measures that no call can
+raise are summed; the sum is a natural number, and it falls at every call that moves one
+of them the way it counts."
+  (or (null sites)
+      (let* ((slots (length (first sites)))
+             (measures (loop for slot below slots
+                             append (loop for way in '(:shorter :down :up)
+                                          when (every (lambda (site)
+                                                        (member (nth slot site) (list :same way)))
+                                                      sites)
+                                            collect (cons slot way)))))
+        (every (lambda (site)
+                 (some (lambda (measure) (eq (cdr measure) (nth (car measure) site))) measures))
+               sites))))
+
 (defun analyze-function-body-totality (name inputs body)
   "Conservative structural termination & totality check for a function definition.
-Returns (values total-p conditional-code-params)."
+Returns (values total-p conditional-code-params). Every step of BODY must be total given
+the facts its conditions establish (`condition-facts`), and its self-calls must descend
+(`self-calls-descend-p`). A `code-eval` of literal code that is not total by itself is
+read as its body with the arguments in place of its parameters, so a self-call written
+inside a binding is judged where it runs, under the facts that hold there."
   (when (null body)
     (return-from analyze-function-body-totality (values nil nil)))
-  (let ((seq-param-ids (loop for (id . type) in inputs
-                             when (seq-type-p type) collect id))
-        (decreasing-param-id nil)
+  (let ((sites nil)
         (self-call-arg-lists nil)
         (code-params nil))
     (labels ((code-arg-safe-p (arg)
@@ -833,40 +996,39 @@ Returns (values total-p conditional-code-params)."
                                      (code-arg-safe-p b)
                                      t))
                                (rest (third arg))))))
-             (walk (expr non-empty-vars)
+             (walk (expr facts)
                (case (ast-kind expr)
                  ((:lit :var) t)
                  (:app
                   (let* ((operator (first expr))
                          (op-name (and (operator-p operator) (operator-name operator)))
                          (args (rest expr)))
-                    (cond
-                      ((null op-name) nil)
-                      ((eq op-name :if)
-                       (destructuring-bind (cond-expr yes-expr no-expr) args
-                         (multiple-value-bind (then-vars else-vars)
-                             (branch-non-empty-vars cond-expr non-empty-vars seq-param-ids)
-                           (and (walk cond-expr non-empty-vars)
-                                (walk yes-expr then-vars)
-                                (walk no-expr else-vars)))))
-                      ((eq op-name name)
-                       (and (every (lambda (a) (walk a non-empty-vars)) args)
-                            (let ((matched-id
-                                    (loop for (id . nil) in inputs for arg in args
-                                          when (and (member id non-empty-vars :test #'eql)
-                                                    (app-p arg) (eq :tail (operator-name (first arg)))
-                                                    (var-p (second arg)) (eql id (ast-id (second arg))))
-                                          return id)))
-                              (and matched-id
-                                   (or (null decreasing-param-id) (eql decreasing-param-id matched-id))
-                                   (progn
-                                     (setf decreasing-param-id matched-id)
+                    (flet ((walk-all (parts) (every (lambda (part) (walk part facts)) parts)))
+                      (cond
+                        ((null op-name) nil)
+                        ((eq op-name :if)
+                         (destructuring-bind (cond-expr yes-expr no-expr) args
+                           (multiple-value-bind (when-true when-false) (condition-facts cond-expr facts)
+                             (and (walk cond-expr facts)
+                                  (walk yes-expr when-true)
+                                  (walk no-expr when-false)))))
+                        ((eq op-name name)
+                         (and (walk-all args)
+                              (progn (push (self-call-changes inputs args facts) sites)
                                      (push args self-call-arg-lists)
-                                     t)))))
-                      (t
-                       (and (every (lambda (a) (walk a non-empty-vars)) args)
-                            (operator-step-total-p op-name args #'code-arg-safe-p non-empty-vars)))))))))
-      (when (walk body nil)
+                                     t)))
+                        ((and (eq op-name :code-eval) (lit-p (first args))
+                              (not (provably-total-code-arg-p (first args))))
+                         (and (walk-all (rest args))
+                              (walk (instantiate (ast-value (first args))
+                                                 (bind-inputs (code-inputs (ast-type (first args)))
+                                                              (rest args))
+                                                 :var)
+                                    facts)))
+                        (t
+                         (and (walk-all args)
+                              (operator-step-total-p op-name args #'code-arg-safe-p facts))))))))))
+      (when (and (walk body nil) (self-calls-descend-p sites))
         (loop
           (let ((prev-count (length code-params)))
             (dolist (pos (copy-list code-params))
@@ -880,6 +1042,12 @@ Returns (values total-p conditional-code-params)."
           (return-from analyze-function-body-totality
             (values (null sorted-params) sorted-params))))
       (values nil nil))))
+
+(defun provably-total-given-p (expression condition)
+  "True when EXPRESSION is provably total wherever CONDITION, itself provably total,
+evaluates to true: a witness that divides by what its guard has found not to be zero."
+  (and (provably-total-p condition)
+       (expr-total-under-p expression (condition-facts condition nil))))
 
 (defun invalidate-app-meta ()
   "Evict cached :app metadata so redefined functions recompute totality on demand."

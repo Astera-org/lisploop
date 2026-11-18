@@ -182,7 +182,8 @@ The result is portable typed syntax; quotations introduce their own variable sco
 
 (defun retype-function-definition (def-or-name new-element-type &key new-name return-element-type
                                                                    (register-p t) auto-p)
-  "Compatibility element/result API backed by inferred constraints, not argument positions."
+  "Compatibility element/result API backed by inferred constraints, not argument positions.
+Returns the definition itself when the types asked for are the ones it already has."
   (let* ((def (if (function-definition-p def-or-name) def-or-name (find-function-definition def-or-name)))
          (template (infer-function-template def))
          (result-element (or return-element-type new-element-type))
@@ -204,15 +205,22 @@ The result is portable typed syntax; quotations introduce their own variable sco
            (new-target (fill-template-type target template bindings))
            (old (and register-p (find-function-definition instance-name)))
            (entry (and old (find-knowledge-entry instance-name))))
-      (if (and old (equal input-types (mapcar #'cdr (function-definition-inputs old)))
-               (equal new-target (function-definition-return-type old))
-               entry (equal (getf template :source)
-                            (getf (getf (knowledge-entry-metadata entry) :type-template) :source)))
-          old
-          (let ((instance (instantiate-function-template def input-types new-target
-                                                         :name instance-name :register-p register-p)))
-            (when auto-p (setf (gethash instance-name *auto-retyped-functions*) t))
-            instance)))))
+      (cond
+        ;; The types asked for are the definition's own: it is its own instance. A copy
+        ;; under another name would be proposed and lifted beside it, for the same result.
+        ((and (equal input-types (mapcar #'cdr (function-definition-inputs def)))
+              (equal new-target (function-definition-return-type def)))
+         def)
+        ((and old (equal input-types (mapcar #'cdr (function-definition-inputs old)))
+              (equal new-target (function-definition-return-type old))
+              entry (equal (getf template :source)
+                           (getf (getf (knowledge-entry-metadata entry) :type-template) :source)))
+         old)
+        (t
+         (let ((instance (instantiate-function-template def input-types new-target
+                                                        :name instance-name :register-p register-p)))
+           (when auto-p (setf (gethash instance-name *auto-retyped-functions*) t))
+           instance))))))
 
 (defun learn-knowledge-transformer (frame language description-limit work-limit
                                      &key id (library *knowledge-library*) metadata)

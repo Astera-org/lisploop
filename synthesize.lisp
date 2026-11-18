@@ -1008,11 +1008,56 @@ which are of no use apart."
                                             :key #'decomposition-slots))))
                          primaries)))))
 
+(defun decoder-bits (proposal inputs)
+  "The size of PROPOSAL's decoder over INPUTS and its child: the part of a branch's
+description that is known before the branch is prepared."
+  (let ((decoder (decomposition-decoder proposal)))
+    (if decoder
+        (let ((meta (ensure-ast-meta decoder)))
+          (+ (ast-meta-non-var-bits meta)
+             (* (ast-meta-var-count meta) (integer-length (length inputs)))))
+        0)))
+
+(defun order-proposals (proposals inputs)
+  "PROPOSALS in policy-score order. Among those the descriptors score alike, the lifts are
+taken function by function, the function whose smallest decoder is smaller first
+(`decoder-bits` over INPUTS). The lifts of one function stay in the order they were
+proposed in, which ranks its argument guesses, and a proposal of any other kind keeps its
+place among the lifts.
+A node is prepared in the order it was materialized, and a preparation that finds an exact
+model ends the search. So the order decides how many lifts are paid for before the one that
+solves the frame, and between functions it was the order the library registered them in.
+Where the data does not tell two functions apart, the one whose call says less is the
+better guess: a map before a scan from a guessed state."
+  (let ((ordered (stable-sort (copy-list proposals) #'< :key #'decomposition-policy-score)))
+    (flet ((lifted-function (proposal)
+             (and (decomposition-lift-p proposal)
+                  (decomposition-decoder proposal)
+                  (ast-id (decomposition-decoder proposal)))))
+      (loop while ordered
+            append
+            (let* ((score (decomposition-policy-score (first ordered)))
+                   (run (loop while (and ordered
+                                         (= score (decomposition-policy-score (first ordered))))
+                              collect (pop ordered)))
+                   (functions (remove-duplicates (remove nil (mapcar #'lifted-function run))
+                                                 :from-end t))
+                   (lifts (loop for function in (stable-sort
+                                                 functions #'<
+                                                 :key (lambda (function)
+                                                        (loop for proposal in run
+                                                              when (eq function (lifted-function proposal))
+                                                                minimize (decoder-bits proposal inputs))))
+                                append (remove function run :key #'lifted-function :test-not #'eq))))
+              (mapcar (lambda (proposal) (if (lifted-function proposal) (pop lifts) proposal))
+                      run))))))
+
 (defun publish-node-expansion (job node proposals)
-  "Materialize NODE's PROPOSALS in policy-score order: the primary ones now, up to
+  "Materialize NODE's PROPOSALS in the order of `order-proposals`: the primary ones now, up to
 `*max-eager-proposals-per-node*`, or failing any the first fallback. The others wait in
 `(synthesis-node-deferred-proposals node)`, primaries first, until nothing else is left to do."
-  (let* ((ordered (stable-sort (copy-list proposals) #'< :key #'decomposition-policy-score))
+  (let* ((ordered (order-proposals proposals
+                                   (schema-inputs (frame-schema (synthesis-node-frame node)))))
          (primaries (remove-if #'decomposition-fallback-p ordered))
          (fallbacks (remove-if-not #'decomposition-fallback-p ordered))
          (eager (eager-proposals primaries)))

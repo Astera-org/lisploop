@@ -12,7 +12,8 @@
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p
    #:operator-name #:operator-type #:operator-operand-type #:application-overhead
-   #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p
+   #:expression-type #:free-vars #:provably-total-p #:provably-total-given-p #:instantiate
+   #:expression-less-p
    #:function-definition #:function-definition-p #:function-definition-name
    #:function-definition-inputs #:function-definition-return-type #:function-definition-code-type
    #:function-definition-body #:function-definition-oracle-table
