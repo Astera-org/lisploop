@@ -1,0 +1,27 @@
+// Section 3.2 of batteries-and-reflection.md: depth-1 reflective search loop and L0-L3 scoping.
+// Built to PDF by the Makefile (dot -Tpdf) and included by pandoc.
+digraph reflective_loop {
+	graph [rankdir=TB, nodesep=0.45, ranksep=0.45, fontname="Helvetica"];
+	node [shape=box, style="rounded,filled", fillcolor="#f4f4f4", fontname="Helvetica", fontsize=10, margin="0.14,0.07"];
+	edge [arrowsize=0.7, fontname="Helvetica", fontsize=9];
+
+	Search     [label="Base Synthesis / Search Turn\n(vm.lisp + synthesize.lisp)", fillcolor="#dde8f5"];
+	TraceFrame [label="Reified Trace Frame Omega_meta\n(:code, :int, :bool)"];
+	MetaSynth  [label="Reflective Synthesis on Own Behavior", fillcolor="#f7ead8"];
+	Tabu       [label="L0: Tabu / Redundancy Guards\n(e.g. skip nested + under +)"];
+	Upward     [label="L1: Caller Factorization\nConserved C(X,Y)=c0, Partial Regimes,\nDIP/UIP, Active Test Queries"];
+	GlobalLib  [label="L2/L3: Promoted Laws, Solvers,\nDescriptors & .sexp Batteries", fillcolor="#e6f2e0"];
+
+	Search     -> TraceFrame [label="  Reify at Checkpoint\l  (<= 1/8 work budget)\l"];
+	TraceFrame -> MetaSynth  [label="  Op 1-4: AU, Invariant Search, Stage A/B\l"];
+
+	{ rank=same; MetaSynth; Upward; }
+
+	MetaSynth  -> Tabu      [label="Subtree Leaf \lResiduals \l"];
+	MetaSynth  -> Upward    [label="Upward Symbolic  \lMessages  \l"];
+	MetaSynth  -> GlobalLib [label="  Cross-Job Consolidation\l"];
+
+	Search:w -> Tabu:n      [dir=back, label="Absorb into Node  \l"];
+	Search:e -> Upward:n    [dir=back, label="  Absorb into Parent / Job\l"];
+	Search:e -> GlobalLib:e [dir=back, style=dashed, label="  Future Jobs\l"];
+}

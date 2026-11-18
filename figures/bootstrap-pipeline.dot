@@ -1,0 +1,22 @@
+// Section 2.3 of batteries-and-reflection.md: bootstrapping .sexp batteries from :spec entries.
+// Built to PDF by the Makefile (dot -Tpdf) and included by pandoc.
+digraph bootstrap_pipeline {
+	graph [rankdir=TB, nodesep=0.55, ranksep=0.38, fontname="Helvetica"];
+	node [shape=box, style="rounded,filled", fillcolor="#f4f4f4", fontname="Helvetica", fontsize=10, margin="0.14,0.07"];
+	edge [arrowsize=0.7, fontname="Helvetica", fontsize=9];
+
+	Specs    [label="Seed :spec Test Frames\n(I/O examples + finite probes)", fillcolor="#dde8f5"];
+	Kernel   [label="Pure Kernel\n(Empty Library)"];
+	Alg      [label="algebra.sexp & constructors.sexp\n(:law, :solver)"];
+	Seq      [label="sequences.sexp\n(:map, :foldr, :foldl, :filter, :motif)"];
+	Func     [label="functors.sexp & descriptors.sexp\n(:transformer, :descriptor)"];
+	Battery  [label="Bootstrapped library/*.sexp", fillcolor="#e6f2e0"];
+	SelfTest [label="Epistemic Self-Check &\nQuery Refinement", fillcolor="#f7ead8"];
+
+	Specs  -> Kernel;
+	Kernel -> Alg      [label=" 1. observe + certify +\l    lift + guard search \l"];
+	Kernel -> Seq      [label="  2. recursive synthesis +\l     AU consolidation\l"];
+	Seq    -> Func     [label="  3. solve concrete inversions +\l     learn-knowledge-transformer\l"];
+	Func   -> Battery  [label="  4. serialize-knowledge-library\l"];
+	Battery -> SelfTest [style=dashed, label="  retype / transfer ->\l  re-verify against :spec\l"];
+}
