@@ -23,13 +23,17 @@
 
 (defun condense-heuristic (frame language &key description-limit (work-limit 100000) (run-weight 0) stop-on-exact-p ledger)
   "Budgeted selector approximation on ORIGINAL requirements; residuals are training costs.
-Return the best completed model and an informative completion/cutoff message."
+Return the best completed model and an informative completion/cutoff message. What the
+search found and when is noted as a :stage-a event for the staged work it runs within."
   (let* ((job (start-heuristic-search frame language :description-limit description-limit
                                      :run-weight run-weight
                                      :stop-on-exact-p stop-on-exact-p))
-         (message (resume-heuristic-search job (remaining-work ledger work-limit)))
+         (limit (remaining-work ledger work-limit))
+         (message (resume-heuristic-search job limit))
          (best (heuristic-search-best job)))
     (charge ledger :heuristic-search (ledger-total (heuristic-search-ledger job)))
+    (note-event :stage-a :work-limit limit :spent (ledger-total (heuristic-search-ledger job))
+                         :trace (reverse (heuristic-search-trace job)))
     (when (and best (heuristic-search-models job))
       (setf (heuristic-alternatives best)
             (remove best (stable-sort (reverse (heuristic-search-models job)) #'heuristic-model<))))
@@ -41,7 +45,10 @@ Return the best completed model and an informative completion/cutoff message."
   (resolved-rows 0) evaluation (index 0) residual packets (unresolved nil) (residual-bits 0) best (models nil) (run-weight 0)
   (stop-on-exact-p nil)
   decoders ; the library's metric decoders for the target type, frozen when the search starts
-  staged)  ; a result computed ahead of its payment: a row's (witness bits packet), or a model
+  staged   ; a result computed ahead of its payment: a row's (witness bits packet), or a model
+  ;; What the search found and when on its own ledger, latest first: (:bucket work) for a new
+  ;; observation bucket, (:model work program-bits residual-bits run-work exact-p) for a model.
+  (trace nil))
 
 (defun frame-has-empty-sequence-row-p (frame)
   "True when FRAME has a sequence input Xi whose value is empty ('()) on some constrained row."
@@ -140,6 +147,10 @@ that price its relational residual are charged to LEDGER."
   "Keep MODEL among the job's models, and as its best when it is."
   (let ((old (heuristic-search-best job)))
     (push model (heuristic-search-models job))
+    (push (list :model (ledger-total (heuristic-search-ledger job))
+                (heuristic-program-bits model) (heuristic-residual-bits model)
+                (heuristic-run-work model) (heuristic-exact-p model))
+          (heuristic-search-trace job))
     (when (or (null old) (heuristic-model< model old))
       (setf (heuristic-search-best job) model))))
 
@@ -165,9 +176,12 @@ that price its relational residual are charged to LEDGER."
        (when (zerop (heuristic-search-debt job)) (setf (heuristic-search-phase job) :observe)))
       (:observe
        (let ((before (ledger-total (observation-job-ledger observation)))
-             (records (observation-job-records observation)))
+             (records (observation-job-records observation))
+             (buckets (observation-job-buckets observation)))
          (observation-step observation 1)
          (charge ledger :observation (- (ledger-total (observation-job-ledger observation)) before))
+         (unless (eq buckets (observation-job-buckets observation))
+           (push (list :bucket (ledger-total ledger)) (heuristic-search-trace job)))
          (unless (eq records (observation-job-records observation))
            (setf (heuristic-search-record job) (first (observation-job-records observation))
                  (heuristic-search-rows job) (frame-rows frame)

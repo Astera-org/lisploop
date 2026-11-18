@@ -5,6 +5,6 @@
   (dolist (name '("package" "ast" "knowledge" "codec" "vm" "evidence" "persistence"
                   "requirements" "frame" "enumerate" "unify" "fibers" "laws" "templates"
                   "bootstrap-inverters" "condense" "abstraction" "descriptors" "relations"
-                  "synthesize" "nogoods" "decompose" "proposals" "consolidate" "explain"
+                  "synthesize" "nogoods" "decompose" "proposals" "consolidate" "trace" "explain"
                   "batteries"))
     (load (merge-pathnames (make-pathname :name name :type "lisp") root))))

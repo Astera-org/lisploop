@@ -36,7 +36,8 @@
 ;; Privately staged result of `prepare-synthesis-node`, published once its debt is paid.
 (defstruct node-preparation
   frame language conflict reused-nogood-p fallback-p priority heuristic
-  nogoods uip-nogood dip-repairs reserve-rows)
+  nogoods uip-nogood dip-repairs reserve-rows
+  events) ; what the preparation noted (`note-event`), earliest first
 
 ;; Host work done ahead of its payment, for NODE if it belongs to one. The result stays
 ;; private until DEBT units have been charged to the job under CATEGORY; PUBLISH, a thunk
@@ -128,6 +129,11 @@ messages describe computation. Parents may consume these without trusting a heur
                                                   evidence
                                                   debug-extra))))
     (push message (synthesis-job-messages job)) message))
+
+(defun send-noted-events (job node events)
+  "Send EVENTS, which NODE's staged work noted (`note-event`), as messages of JOB."
+  (loop for (claim . evidence) in events
+        do (synthesis-message job node claim evidence)))
 
 (defun add-synthesis-node (job parent proposal)
   "Add a node that poses PROPOSAL under PARENT. The slots of one product, which share their
@@ -534,9 +540,11 @@ Stage A then prices it for routing and, when expandable, proposes the node's own
   (let* ((ledger (make-ledger))
          (proposal (synthesis-node-proposal node))
          (parent (synthesis-node-parent node))
-         (language (if proposal (decomposition-language proposal) (synthesis-node-language node))))
+         (language (if proposal (decomposition-language proposal) (synthesis-node-language node)))
+         (*noted* nil))
     (flet ((stage (&rest results)
-             (let ((prepared (apply #'make-node-preparation :language language results)))
+             (let ((prepared (apply #'make-node-preparation :language language
+                                    :events (reverse *noted*) results)))
                (setf (synthesis-node-staged node)
                      (stage-work node ledger :preparation
                                  (lambda () (finish-synthesis-preparation job node prepared)))
@@ -881,6 +889,14 @@ or its branches and search."
           (synthesis-node-heuristic node) (node-preparation-heuristic prepared))
     (when (synthesis-job-debug-p job)
       (setf (synthesis-node-provenance node) (preparation-provenance node prepared)))
+    (let ((frame (node-preparation-frame prepared)))
+      (synthesis-message job node :prepared
+                         (list :scope :child-frame
+                               :depth (node-depth node)
+                               :inputs (and frame (length (schema-inputs (frame-schema frame))))
+                               :constrained-rows (and frame (frame-constrained-row-count frame))
+                               :conflict-p (not (null (node-preparation-conflict prepared))))))
+    (send-noted-events job node (node-preparation-events prepared))
     (when (and (node-preparation-fallback-p prepared) (synthesis-node-parent node) proposal)
       (add-fallback-sibling job node))
     (if (node-preparation-conflict prepared)
@@ -1070,14 +1086,18 @@ which are of no use apart."
   (let ((ledger (synthesis-job-ledger job)))
     (if (synthesis-node-expansion node)
         (pay-staged-work (synthesis-node-staged node) ledger)
-        (let ((private (make-ledger)))
+        (let ((private (make-ledger))
+              (*noted* nil))
           (charge ledger :expansion)
           (let ((proposals (funcall (synthesis-job-expand job) job node (synthesis-node-frame node)
                                     (synthesis-node-language node) (synthesis-node-heuristic node)
-                                    private)))
+                                    private))
+                (events (reverse *noted*)))
             (setf (synthesis-node-staged node)
                   (stage-work node private :expansion
-                              (lambda () (publish-node-expansion job node proposals)))
+                              (lambda ()
+                                (send-noted-events job node events)
+                                (publish-node-expansion job node proposals)))
                   (synthesis-node-expansion node) :paying))))))
 
 (defun row-satisfaction (row expression inputs &key ledger (budget 2000))

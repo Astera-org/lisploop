@@ -218,6 +218,16 @@ a candidate that is evaluated is type-checked then, once."
 
 (defstruct message call-id claim evidence)
 
+(defvar *noted* :none
+  "What host work that is being staged has noted so far, latest first, each (claim . evidence);
+:none outside such work. Whoever stages the work sends them as messages when it is published,
+so that they become visible when the result they describe does.")
+
+(defun note-event (claim &rest evidence)
+  "Note CLAIM with EVIDENCE, a property list, for the staged work that is running, if any is."
+  (unless (eq *noted* :none)
+    (push (cons claim evidence) *noted*)))
+
 (defstruct row-job
   "State shared by the resumable jobs that draw candidate expressions, pay for their construction
 and evaluate each one on the rows of a frame. DEBT is staged host work not yet charged."

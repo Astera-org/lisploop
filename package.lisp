@@ -238,9 +238,12 @@
    #:induce-fold-motifs #:amortize-library-entries #:*search-weight* #:*archive-epochs*
    #:archive-dependent-templates #:sampled-solver-validations
 
-   ;; 24. explain.lisp — Read-only synthesis & library inspection reports
+   ;; 24. trace.lisp — The search trace as relations of object-language rows
+   #:define-trace-relation #:trace-columns #:trace-rows #:trace-frame
+
+   ;; 25. explain.lisp — Read-only synthesis & library inspection reports
    #:explain-synthesis-node #:explain-synthesis-job #:explain-knowledge-library
 
-   ;; 25. batteries.lisp — Library sources that ship with the kernel
+   ;; 26. batteries.lisp — Library sources that ship with the kernel
    #:*battery-directory* #:battery-names #:read-battery #:load-battery))
 (in-package #:lisploop)
