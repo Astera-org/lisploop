@@ -9,7 +9,7 @@
   '("core" "codec" "observations" "laws" "symbolic" "amortization"
     "lifting" "abstraction" "refactor" "recursion" "library"
     "higher-order" "audit" "invariants" "structural" "metrics" "topology" "theories" "closures"
-    "batteries" "messages"))
+    "batteries" "messages" "totality"))
 
 (defparameter *milestone-only-test-modules*
   '("guards" "compression" "algebra" "propagation" "corpus" "views"))

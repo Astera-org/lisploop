@@ -1229,8 +1229,10 @@ without current witness evidence the entry is a conjecture."
 d : (tau, delta) -> tau in its second argument, as a residual metric of tau: a value y is
 described from a prediction p by the delta q(p, y) wherever d(p, q(p, y)) = y. TAG-BITS, by
 default what applying d costs a program, is the price of choosing this decoder. The solver's
-witness must be provably total; it need not be certified, since every delta is replayed.
-Records the edge (:metric-decoder d q tag-bits) on the entry and returns it."
+witness must be provably total wherever its guard holds, the guard being total itself: a
+miss is priced by running the guard and then the witness. It need not be certified, since
+every delta is replayed. Records the edge (:metric-decoder d q tag-bits) on the entry and
+returns it."
   (let* ((entry (if (knowledge-entry-p solver) solver (find-knowledge-entry solver library)))
          (meta (and entry (knowledge-entry-metadata entry)))
          (operator (and meta (sexp->ast (getf meta :operator))))
@@ -1242,7 +1244,8 @@ Records the edge (:metric-decoder d q tag-bits) on the entry and returns it."
                  (equal '((:argument 0) :target)
                         (or (getf meta :context-map) (solver-context-map operator 1))))
             () "~S does not invert a decoder (tau, delta) -> tau in its delta" solver)
-    (assert (provably-total-p (knowledge-entry-expression entry)))
+    (assert (provably-total-given-p (knowledge-entry-expression entry) (knowledge-entry-guard entry))
+            () "The witness of ~S is not provably total where its guard holds" solver)
     (with-knowledge-library (library)
       (add-knowledge-edge entry :metric-decoder (operator-name operator) (knowledge-entry-id entry)
                           (or tag-bits (application-overhead operator))))

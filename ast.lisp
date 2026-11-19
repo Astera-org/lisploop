@@ -712,161 +712,159 @@ constantly and quoted code is sized from cached metadata."
                                  (or allow-open-code-p (provably-total-p b))))
                            (rest tuple-arg))))))))
 
-(defun rank-env-lookup (id env)
-  "Minimum guaranteed rank (sequence length or integer lower bound) of variable ID in ENV."
-  (loop for entry in env
-        when (if (consp entry) (eql id (car entry)) (eql id entry))
-          return (if (consp entry) (cdr entry) 1)
-        finally (return 0)))
+;;; Totality: what is provably defined and terminates.
+;;;
+;;; The analysis carries facts about the variables in scope at a point of a body, each
+;;; established by the conditions on the way there:
+;;;   (:length id k)   the sequence X_id has at least k elements
+;;;   (:above id b)    the integer X_id is greater than b
+;;;   (:below id b)    the integer X_id is less than b
+;;;   (:nonzero id)    the number X_id is not zero
+;;; A fact holds of one scope. Quoted code is a scope of its own and is judged without them.
 
-(defun rank-env-raise (id bound env)
-  "Raise variable ID's minimum rank in ENV to at least BOUND."
-  (if (<= bound (rank-env-lookup id env))
-      env
-      (acons id bound (remove-if (lambda (e) (eql id (if (consp e) (car e) e))) env))))
+(defun fact-bound (kind id facts tighter)
+  "The tightest value among the facts of KIND about X_ID in FACTS, or nil."
+  (let ((best nil))
+    (dolist (fact facts best)
+      (when (and (eq kind (first fact)) (eql id (second fact)))
+        (setf best (if best (funcall tighter best (third fact)) (third fact)))))))
 
-(defun seq-tail-spine (expr &optional allowed-ids)
-  "If EXPR is `(:tail ... (:tail X_id))` with `m >= 0` `:tail` steps around a sequence variable
-`X_id`, return `(VALUES id m)`."
-  (let ((depth 0)
-        (cur expr))
-    (loop
-      (let ((meta (ignore-errors (ensure-ast-meta cur))))
-        (cond
-          ((null meta) (return nil))
-          ((and (eq :var (ast-meta-kind meta))
-                (seq-type-p (ast-meta-type meta))
-                (or (null allowed-ids) (member (ast-meta-id meta) allowed-ids :test #'eql)))
-           (return (values (ast-meta-id meta) depth)))
-          ((and (eq :app (ast-meta-kind meta)) (eq :tail (ast-meta-id meta)))
-           (incf depth)
-           (setf cur (second cur)))
-          (t (return nil)))))))
+(defun known-length (id facts) (or (fact-bound :length id facts #'max) 0))
+(defun known-above (id facts) (fact-bound :above id facts #'max))
+(defun known-below (id facts) (fact-bound :below id facts #'min))
 
-(defun empty-sequence-guard-var-id (condition &optional seq-param-ids)
-  "If CONDITION is `(= Xi '())` or `(= '() Xi)` for a sequence variable Xi, return Xi's id."
+(defun tail-chain (expr)
+  "If EXPR is `(tail^k X)` for a sequence variable X and some k >= 0, the id of X and k."
+  (let ((depth 0))
+    (loop while (and (consp expr) (eq :tail (ast-meta-id (ensure-ast-meta expr))))
+          do (incf depth)
+             (setf expr (second expr)))
+    (let ((meta (ensure-ast-meta expr)))
+      (when (and (eq :var (ast-meta-kind meta)) (seq-type-p (ast-meta-type meta)))
+        (values (ast-meta-id meta) depth)))))
+
+(defun length-chain (expr)
+  "If EXPR is `(length (tail^k X))` for a sequence variable X, the id of X and k."
+  (when (and (consp expr) (eq :length (ast-meta-id (ensure-ast-meta expr))))
+    (tail-chain (second expr))))
+
+(defun literal-integer (expr)
+  "The value of EXPR when it is an integer literal, else nil."
+  (let ((meta (ensure-ast-meta expr)))
+    (and (eq :lit (ast-meta-kind meta)) (integerp (ast-meta-value meta)) (ast-meta-value meta))))
+
+(defun numeric-variable-id (expr)
+  "The id of EXPR when it is a variable of an integer or field type, else nil."
+  (let ((meta (ensure-ast-meta expr)))
+    (and (eq :var (ast-meta-kind meta))
+         (or (eq :int (ast-meta-type meta)) (gf-type-p (ast-meta-type meta)))
+         (ast-meta-id meta))))
+
+(defun condition-facts (condition facts)
+  "What is known once CONDITION has evaluated to true, and once it has evaluated to false,
+as two values, given FACTS before it. A condition that tells nothing leaves FACTS. With S
+for `(tail^k X)`:
+  (= S '())              false: X has at least k+1 elements
+  (= (length S) 'n)      true: at least k+n; false, when n is 0: at least k+1
+  (< 'm (length S))      true: at least k+m+1
+  (< (length S) 'n)      false: at least k+n
+  (< 'b X), (< X 'b)     a bound on the integer X either way
+  (= X '0)               false: X is not zero
+and the :if encodings of not, and, or, read through to their parts."
   (let ((meta (ensure-ast-meta condition)))
-    (when (and (eq :app (ast-meta-kind meta)) (eq := (ast-meta-id meta)))
-      (flet ((guard (variable empty)
-               (let ((vm (ensure-ast-meta variable)) (em (ensure-ast-meta empty)))
-                 (and (eq :var (ast-meta-kind vm))
-                      (seq-type-p (ast-meta-type vm))
-                      (or (null seq-param-ids) (member (ast-meta-id vm) seq-param-ids))
-                      (eq :lit (ast-meta-kind em)) (null (ast-meta-value em))
-                      (ast-meta-id vm)))))
-        (or (guard (second condition) (third condition))
-            (guard (third condition) (second condition)))))))
+    (if (not (eq :app (ast-meta-kind meta)))
+        (values facts facts)
+        (destructuring-bind (&optional left right other) (rest condition)
+          (flet ((literal-p (expr value)
+                   (let ((m (ensure-ast-meta expr)))
+                     (and (eq :lit (ast-meta-kind m)) (eq :bool (ast-meta-type m))
+                          (eq value (ast-meta-value m)))))
+                 (with (fact) (if fact (cons fact facts) facts))
+                 (sized (expr more)
+                   ;; EXPR being `(length (tail^k X))`: X has MORE elements beyond those k.
+                   (multiple-value-bind (id depth) (length-chain expr)
+                     (and id more (list :length id (+ depth more))))))
+            (case (ast-meta-id meta)
+              (:=
+               (flet ((emptiness (sequence empty)
+                        (let ((m (ensure-ast-meta empty)))
+                          (and (eq :lit (ast-meta-kind m)) (seq-type-p (ast-meta-type m))
+                               (null (ast-meta-value m))
+                               (multiple-value-bind (id depth) (tail-chain sequence)
+                                 (and id (list :length id (1+ depth)))))))
+                      (zero (number zero)
+                        (let ((id (numeric-variable-id number)))
+                          (and id (eql 0 (literal-integer zero)) (list :nonzero id))))
+                      (counted (length count truth)
+                        ;; A length that is n is at least n; one that is not 0 is at least 1.
+                        (let ((n (literal-integer count)))
+                          (sized length (and n (if truth
+                                                   (and (plusp n) n)
+                                                   (and (zerop n) 1)))))))
+                 (values (with (or (counted left right t) (counted right left t)))
+                         (with (or (emptiness left right) (emptiness right left)
+                                   (zero left right) (zero right left)
+                                   (counted left right nil) (counted right left nil))))))
+              (:<
+               (let ((low (literal-integer left))
+                     (high (literal-integer right))
+                     (left-id (numeric-variable-id left))
+                     (right-id (numeric-variable-id right)))
+                 (cond ((and low right-id)
+                        (values (with (list :above right-id low)) (with (list :below right-id (1+ low)))))
+                       ((and left-id high)
+                        (values (with (list :below left-id high)) (with (list :above left-id (1- high)))))
+                       (t
+                        (values (with (sized right (and low (1+ low)))) (with (sized left high)))))))
+              (:if
+               (cond ((and (literal-p right nil) (literal-p other t)) ; not left
+                      (multiple-value-bind (when-true when-false) (condition-facts left facts)
+                        (values when-false when-true)))
+                     ((literal-p other nil) ; left and right
+                      (values (condition-facts right (condition-facts left facts)) facts))
+                     ((literal-p right t) ; left or other
+                      (values facts (nth-value 1 (condition-facts
+                                                  other (nth-value 1 (condition-facts left facts))))))
+                     (t (values facts facts))))
+              (otherwise (values facts facts))))))))
 
-(defun branch-rank-env (condition env &optional allowed-ids)
-  "Refine rank environment ENV across CONDITION, returning `(VALUES then-env else-env)`.
-Tracks sequence lower bounds across `(= (tail^m X) '())`, `(= (length (tail^m X)) 'k)`, and
-`(< 'k (length (tail^m X)))`, integer lower bounds across `(< 'k N)` / `(< N 'k)`, and
-negation/conjunction."
-  (let ((meta (ignore-errors (ensure-ast-meta condition))))
-    (cond
-      ((or (null meta) (not (eq :app (ast-meta-kind meta))))
-       (values env env))
-      ((eq := (ast-meta-id meta))
-       (let ((lhs (second condition))
-             (rhs (third condition)))
-         (flet ((empty-seq-lit-p (node)
-                  (and (lit-p node) (seq-type-p (ast-type node)) (null (ast-value node))))
-                (length-spine (node)
-                  (and (app-of-p node :length) (seq-tail-spine (second node) allowed-ids)))
-                (nonneg-int-lit (node)
-                  (and (lit-p node) (eq :int (ast-type node))
-                       (integerp (ast-value node)) (<= 0 (ast-value node))
-                       (ast-value node))))
-           (cond
-             ((empty-seq-lit-p rhs)
-              (multiple-value-bind (id m) (seq-tail-spine lhs allowed-ids)
-                (if id (values env (rank-env-raise id (1+ m) env)) (values env env))))
-             ((empty-seq-lit-p lhs)
-              (multiple-value-bind (id m) (seq-tail-spine rhs allowed-ids)
-                (if id (values env (rank-env-raise id (1+ m) env)) (values env env))))
-             ((and (app-of-p lhs :length) (nonneg-int-lit rhs))
-              (multiple-value-bind (id m) (length-spine lhs)
-                (let ((k (nonneg-int-lit rhs)))
-                  (cond ((null id) (values env env))
-                        ((zerop k) (values env (rank-env-raise id (1+ m) env)))
-                        (t (values (rank-env-raise id (+ m k) env) env))))))
-             ((and (app-of-p rhs :length) (nonneg-int-lit lhs))
-              (multiple-value-bind (id m) (length-spine rhs)
-                (let ((k (nonneg-int-lit lhs)))
-                  (cond ((null id) (values env env))
-                        ((zerop k) (values env (rank-env-raise id (1+ m) env)))
-                        (t (values (rank-env-raise id (+ m k) env) env))))))
-             (t (values env env))))))
-      ((eq :< (ast-meta-id meta))
-       (let ((lhs (second condition))
-             (rhs (third condition)))
-         (cond
-           ;; `(< 'k (length S))` => then-branch has length(X) >= m + k + 1
-           ((and (lit-p lhs) (eq :int (ast-type lhs)) (app-of-p rhs :length))
-            (multiple-value-bind (id m) (seq-tail-spine (second rhs) allowed-ids)
-              (let ((need (+ (or m 0) (ast-value lhs) 1)))
-                (if (and id (<= 1 need))
-                    (values (rank-env-raise id need env) env)
-                    (values env env)))))
-           ;; `(< (length S) 'k)` => else-branch has length(X) >= m + k
-           ((and (app-of-p lhs :length) (lit-p rhs) (eq :int (ast-type rhs)))
-            (multiple-value-bind (id m) (seq-tail-spine (second lhs) allowed-ids)
-              (let ((need (+ (or m 0) (ast-value rhs))))
-                (if (and id (<= 1 need))
-                    (values env (rank-env-raise id need env))
-                    (values env env)))))
-           ;; `(< 'k N)` for integer variable N => then-branch has N >= k + 1
-           ((and (lit-p lhs) (eq :int (ast-type lhs)) (<= 0 (ast-value lhs))
-                 (var-p rhs) (eq :int (ast-type rhs))
-                 (or (null allowed-ids) (member (ast-id rhs) allowed-ids :test #'eql)))
-            (values (rank-env-raise (ast-id rhs) (1+ (ast-value lhs)) env) env))
-           ;; `(< N 'k)` for integer variable N => else-branch has N >= k
-           ((and (var-p lhs) (eq :int (ast-type lhs))
-                 (or (null allowed-ids) (member (ast-id lhs) allowed-ids :test #'eql))
-                 (lit-p rhs) (eq :int (ast-type rhs)) (<= 1 (ast-value rhs)))
-            (values env (rank-env-raise (ast-id lhs) (ast-value rhs) env)))
-           (t (values env env)))))
-      ((and (eq :if (ast-meta-id meta)) (eq :bool (ast-meta-type meta)))
-       (let ((test (second condition))
-             (yes (third condition))
-             (no (fourth condition)))
-         (cond
-           ;; `(if G 'nil 't)` (`bool-not G`) swaps branches
-           ((and (lit-p yes) (null (ast-value yes)) (lit-p no) (eq t (ast-value no)))
-            (multiple-value-bind (t-env e-env) (branch-rank-env test env allowed-ids)
-              (values e-env t-env)))
-           ;; `(if G1 G2 'nil)` (`bool-and G1 G2`) refines then-branch sequentially
-           ((and (lit-p no) (null (ast-value no)))
-            (let ((t1 (branch-rank-env test env allowed-ids)))
-              (values (branch-rank-env yes t1 allowed-ids) env)))
-           (t (values env env)))))
-      (t (values env env)))))
-
-(defun seq-expr-min-length (expr &optional env)
-  "Conservative minimum sequence length guaranteed for EXPR under rank environment ENV."
+(defun minimum-length (expr facts)
+  "A number of elements that the sequence expression EXPR is sure to have, given FACTS."
   (let ((meta (ensure-ast-meta expr)))
     (case (ast-meta-kind meta)
-      (:lit (if (seq-type-p (ast-meta-type meta)) (length (ast-meta-value meta)) 0))
-      (:var (if (seq-type-p (ast-meta-type meta)) (rank-env-lookup (ast-meta-id meta) env) 0))
-      (:app
-       (case (ast-meta-id meta)
-         (:cons (1+ (seq-expr-min-length (third expr) env)))
-         (:tail (max 0 (1- (seq-expr-min-length (second expr) env))))
-         (:if (multiple-value-bind (then-env else-env) (branch-rank-env (second expr) env)
-                (min (seq-expr-min-length (third expr) then-env)
-                     (seq-expr-min-length (fourth expr) else-env))))
-         (otherwise 0)))
+      (:lit (let ((value (ast-meta-value meta))) (if (listp value) (length value) 0)))
+      (:var (known-length (ast-meta-id meta) facts))
+      (:app (case (ast-meta-id meta)
+              (:cons (1+ (minimum-length (third expr) facts)))
+              (:tail (max 0 (1- (minimum-length (second expr) facts))))
+              (:if (multiple-value-bind (when-true when-false) (condition-facts (second expr) facts)
+                     (min (minimum-length (third expr) when-true)
+                          (minimum-length (fourth expr) when-false))))
+              (otherwise 0)))
       (otherwise 0))))
 
-(defun non-empty-seq-expr-p (expr &optional env)
-  "True when sequence expression EXPR is guaranteed non-empty under ENV."
-  (>= (seq-expr-min-length expr env) 1))
+(defun nonzero-expr-p (expr facts)
+  "True when the number EXPR is sure not to be zero: a nonzero literal, or a variable that
+FACTS say is not zero or bound away from it."
+  (let ((meta (ensure-ast-meta expr)))
+    (case (ast-meta-kind meta)
+      (:lit (and (numberp (ast-meta-value meta)) (not (zerop (ast-meta-value meta)))))
+      (:var (let* ((id (ast-meta-id meta))
+                   (above (known-above id facts))
+                   (below (known-below id facts)))
+              (or (and above (>= above 0))
+                  (and below (<= below 0))
+                  (and (find-if (lambda (fact) (and (eq :nonzero (first fact)) (eql id (second fact))))
+                                facts)
+                       t)))))))
 
-(defun operator-step-total-p (op-name arguments code-total-fn &optional env expected-type)
-  "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total."
+(defun operator-step-total-p (op-name arguments code-total-fn &optional facts expected-type)
+  "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total,
+given FACTS about the variables in scope: division needs a divisor that is not zero, `tail`
+a sequence that is not empty, and `at` a literal index within the length that is sure, or
+into a tuple slot of EXPECTED-TYPE when that is given."
   (case op-name
-    (:/ (and (lit-p (second arguments))
-             (not (zerop (ast-value (second arguments))))))
+    (:/ (nonzero-expr-p (second arguments) facts))
     (:at (and (lit-p (second arguments))
               (let ((idx (ast-value (second arguments)))
                     (container (first arguments))
@@ -876,8 +874,8 @@ negation/conjunction."
                          (and (< idx (length (rest container-type)))
                               (or (null expected-type)
                                   (equal (nth idx (rest container-type)) expected-type)))
-                         (< idx (seq-expr-min-length container env)))))))
-    (:tail (non-empty-seq-expr-p (first arguments) env))
+                         (< idx (minimum-length container facts)))))))
+    (:tail (plusp (minimum-length (first arguments) facts)))
     (:code-eval (funcall code-total-fn (first arguments)))
     ((:lookup :gather :code-child :code-operator :code-bind) nil)
     (otherwise
@@ -893,8 +891,22 @@ negation/conjunction."
            ;; registered and nothing more has no body to judge, so a call of it is not.
            (not (null (primitive-pattern op-name))))))))
 
-(defun expr-total-under-rank-env-p (expr env)
-  "True when EXPR is provably total under rank environment ENV."
+(defun empty-sequence-guard-var-id (condition &optional seq-param-ids)
+  "If CONDITION is `(= Xi '())` or `(= '() Xi)` for a sequence variable Xi, return Xi's id."
+  (let ((meta (ensure-ast-meta condition)))
+    (when (and (eq :app (ast-meta-kind meta)) (eq := (ast-meta-id meta)))
+      (flet ((guard (variable empty)
+               (let ((vm (ensure-ast-meta variable)) (em (ensure-ast-meta empty)))
+                 (and (eq :var (ast-meta-kind vm))
+                      (seq-type-p (ast-meta-type vm))
+                      (or (null seq-param-ids) (member (ast-meta-id vm) seq-param-ids))
+                      (eq :lit (ast-meta-kind em)) (null (ast-meta-value em))
+                      (ast-meta-id vm)))))
+        (or (guard (second condition) (third condition))
+            (guard (third condition) (second condition)))))))
+
+(defun expr-total-under-p (expr facts)
+  "True when EXPR is provably total given FACTS about its variables."
   (let ((meta (ensure-ast-meta expr)))
     (or (ast-meta-total-p meta)
         (case (ast-meta-kind meta)
@@ -904,14 +916,13 @@ negation/conjunction."
                  (args (rest expr)))
              (and op-name
                   (if (eq :if op-name)
-                      (multiple-value-bind (then-env else-env)
-                          (branch-rank-env (first args) env)
-                        (and (expr-total-under-rank-env-p (first args) env)
-                             (expr-total-under-rank-env-p (second args) then-env)
-                             (expr-total-under-rank-env-p (third args) else-env)))
-                      (and (every (lambda (a) (expr-total-under-rank-env-p a env)) args)
+                      (multiple-value-bind (when-true when-false) (condition-facts (first args) facts)
+                        (and (expr-total-under-p (first args) facts)
+                             (expr-total-under-p (second args) when-true)
+                             (expr-total-under-p (third args) when-false)))
+                      (and (every (lambda (a) (expr-total-under-p a facts)) args)
                            (operator-step-total-p op-name args #'provably-total-code-arg-p
-                                                  env (ast-meta-type meta)))))))))))
+                                                  facts (ast-meta-type meta)))))))))))
 
 (defun compute-app-meta (operator arguments)
   (let* ((op-meta (ensure-ast-meta operator))
@@ -928,14 +939,17 @@ negation/conjunction."
                              (ast-meta-total-p (if (ast-meta-value (first child-metas))
                                                    (second child-metas)
                                                    (third child-metas)))
-                             (multiple-value-bind (then-env else-env)
-                                 (branch-rank-env (first arguments) nil)
-                               (and (or (ast-meta-total-p (second child-metas))
-                                        (and then-env
-                                             (expr-total-under-rank-env-p (second arguments) then-env)))
-                                    (or (ast-meta-total-p (third child-metas))
-                                        (and else-env
-                                             (expr-total-under-rank-env-p (third arguments) else-env)))))))
+                             ;; A branch that is not total by itself may be total given what
+                             ;; the condition establishes on the way into it.
+                             (let ((yes-p (ast-meta-total-p (second child-metas)))
+                                   (no-p (ast-meta-total-p (third child-metas))))
+                               (or (and yes-p no-p)
+                                   (multiple-value-bind (when-true when-false)
+                                       (condition-facts (first arguments) nil)
+                                     (and (or yes-p (and when-true
+                                                         (expr-total-under-p (second arguments) when-true)))
+                                          (or no-p (and when-false
+                                                        (expr-total-under-p (third arguments) when-false)))))))))
                     (and (every #'ast-meta-total-p child-metas)
                          (operator-step-total-p op-name arguments #'provably-total-code-arg-p
                                                 nil (third sig))))))
@@ -952,13 +966,69 @@ negation/conjunction."
                    :total-p (not (null total-p))
                    :free-vars free-vars)))
 
+(defun self-call-changes (inputs arguments facts)
+  "How a self-call with ARGUMENTS moves each parameter of INPUTS, given FACTS at the call:
+  :same     the parameter is passed on as it is
+  :shorter  a sequence, passed on with elements taken off its front that it is sure to have
+  :down     an integer bounded below, passed on reduced by a literal of at least 1, or, when
+            the bound is at least 0, divided by a literal of at least 2
+  :up       an integer bounded above, passed on increased by a literal of at least 1
+  nil       anything else.
+Each is read off the argument in the parameter's own position against that same parameter:
+the tail of another parameter says nothing of this one."
+  (loop for (id . type) in inputs
+        for argument in arguments
+        collect
+        (let ((meta (ensure-ast-meta argument)))
+          (flet ((self-p (expr)
+                   (let ((m (ensure-ast-meta expr)))
+                     (and (eq :var (ast-meta-kind m)) (eql id (ast-meta-id m))))))
+            (cond
+              ((self-p argument) :same)
+              ((seq-type-p type)
+               (multiple-value-bind (variable depth) (tail-chain argument)
+                 (and (eql variable id) (<= 1 depth (known-length id facts)) :shorter)))
+              ((and (eq :int type) (eq :app (ast-meta-kind meta)) (= 2 (length (rest argument))))
+               (destructuring-bind (left right) (rest argument)
+                 (let ((step (literal-integer right))
+                       (above (known-above id facts))
+                       (below (known-below id facts)))
+                   (case (ast-meta-id meta)
+                     (:- (and (self-p left) step (>= step 1) above :down))
+                     (:/ (and (self-p left) step (>= step 2) above (>= above 0) :down))
+                     (:+ (and below
+                              (or (and (self-p left) step (>= step 1))
+                                  (and (self-p right) (literal-integer left)
+                                       (>= (literal-integer left) 1)))
+                              :up)))))))))))
+
+(defun self-calls-descend-p (sites)
+  "True when the self-calls of a body, each given as its `self-call-changes`, cannot go on
+for ever. A measure is a parameter read one way: a sequence's length, an integer's height
+above its lower bound, or its depth below its upper one. Some measure must fall at one call
+at least and rise at none. The calls at which it falls are then accounted for, and the
+rest, which leave it as it is, must descend by another measure in the same way. That is a
+lexicographic order: a call that lowers an earlier measure may do anything to a later one."
+  (or (null sites)
+      (loop for slot below (length (first sites))
+            thereis (loop for way in '(:shorter :down :up)
+                          thereis (flet ((change (site) (nth slot site)))
+                                    (and (find way sites :key #'change)
+                                         (every (lambda (site) (member (change site) (list :same way)))
+                                                sites)
+                                         (self-calls-descend-p (remove way sites :key #'change))))))))
+
 (defun analyze-function-body-totality (name inputs body)
-  "Conservative structural & lexicographic termination/totality check for a function definition.
-Returns (values total-p conditional-code-params)."
+  "Conservative structural termination & totality check for a function definition.
+Returns (values total-p conditional-code-params). Every step of BODY must be total given
+the facts its conditions establish (`condition-facts`), and its self-calls must descend
+(`self-calls-descend-p`). A `code-eval` of literal code that is not total by itself is
+read as its body with the arguments in place of its parameters, so a self-call written
+inside a binding is judged where it runs, under the facts that hold there."
   (when (null body)
     (return-from analyze-function-body-totality (values nil nil)))
-  (let ((param-ids (mapcar #'car inputs))
-        (self-calls nil)
+  (let ((sites nil)
+        (self-call-arg-lists nil)
         (code-params nil))
     (labels ((code-arg-safe-p (arg)
                (or (provably-total-code-arg-p arg)
@@ -973,77 +1043,60 @@ Returns (values total-p conditional-code-params)."
                                      (code-arg-safe-p b)
                                      t))
                                (rest (third arg))))))
-             (arg-decreases-p (spec arg env)
-               (let ((id (car spec))
-                     (type (cdr spec)))
-                 (cond
-                   ((seq-type-p type)
-                    (multiple-value-bind (sid m) (seq-tail-spine arg)
-                      (and (eql id sid) (>= m 1) (>= (rank-env-lookup id env) m))))
-                   ((eq :int type)
-                    (and (>= (rank-env-lookup id env) 1)
-                         (app-of-p arg :-)
-                         (var-p (second arg)) (eql id (ast-id (second arg)))
-                         (lit-p (third arg)) (eq :int (ast-type (third arg)))
-                         (<= 1 (ast-value (third arg))))))))
-             (arg-unchanged-p (spec arg)
-               (and (var-p arg) (eql (car spec) (ast-id arg))))
-             (calls-terminate-p ()
-               (or (null self-calls)
-                   (loop for i below (length inputs)
-                         for spec-i = (nth i inputs)
-                         thereis (or (every (lambda (call)
-                                              (arg-decreases-p spec-i (nth i (cdr call)) (car call)))
-                                            self-calls)
-                                     (loop for j below (length inputs)
-                                           for spec-j = (nth j inputs)
-                                           thereis (and (/= i j)
-                                                        (every (lambda (call)
-                                                                 (let ((env (car call))
-                                                                       (args (cdr call)))
-                                                                   (or (arg-decreases-p spec-i (nth i args) env)
-                                                                       (and (arg-unchanged-p spec-i (nth i args))
-                                                                            (arg-decreases-p spec-j (nth j args) env)))))
-                                                               self-calls)))))))
-             (walk (expr env)
+             (walk (expr facts)
                (case (ast-kind expr)
                  ((:lit :var) t)
                  (:app
                   (let* ((operator (first expr))
                          (op-name (and (operator-p operator) (operator-name operator)))
                          (args (rest expr)))
-                    (cond
-                      ((null op-name) nil)
-                      ((eq op-name :if)
-                       (destructuring-bind (cond-expr yes-expr no-expr) args
-                         (multiple-value-bind (then-env else-env)
-                             (branch-rank-env cond-expr env param-ids)
-                           (and (walk cond-expr env)
-                                (walk yes-expr then-env)
-                                (walk no-expr else-env)))))
-                      ((eq op-name name)
-                       (and (= (length args) (length inputs))
-                            (every (lambda (a) (walk a env)) args)
-                            (progn (push (cons env args) self-calls) t)))
-                      (t
-                       (and (every (lambda (a) (walk a env)) args)
-                            (operator-step-total-p op-name args #'code-arg-safe-p
-                                                   env (third (operator-type operator)))))))))))
-      (when (and (walk body nil) (calls-terminate-p))
+                    (flet ((walk-all (parts) (every (lambda (part) (walk part facts)) parts)))
+                      (cond
+                        ((null op-name) nil)
+                        ((eq op-name :if)
+                         (destructuring-bind (cond-expr yes-expr no-expr) args
+                           (multiple-value-bind (when-true when-false) (condition-facts cond-expr facts)
+                             (and (walk cond-expr facts)
+                                  (walk yes-expr when-true)
+                                  (walk no-expr when-false)))))
+                        ((eq op-name name)
+                         (and (= (length args) (length inputs))
+                              (walk-all args)
+                              (progn (push (self-call-changes inputs args facts) sites)
+                                     (push args self-call-arg-lists)
+                                     t)))
+                        ((and (eq op-name :code-eval) (lit-p (first args))
+                              (not (provably-total-code-arg-p (first args))))
+                         (and (walk-all (rest args))
+                              (walk (instantiate (ast-value (first args))
+                                                 (bind-inputs (code-inputs (ast-type (first args)))
+                                                              (rest args))
+                                                 :var)
+                                    facts)))
+                        (t
+                         (and (walk-all args)
+                              (operator-step-total-p op-name args #'code-arg-safe-p facts
+                                                     (third (operator-type operator))))))))))))
+      (when (and (walk body nil) (self-calls-descend-p sites))
         (loop
           (let ((prev-count (length code-params)))
             (dolist (pos (copy-list code-params))
-              (dolist (call self-calls)
-                (let ((call-args (cdr call)))
-                  (unless (and (< pos (length call-args))
-                               (code-arg-safe-p (nth pos call-args)))
-                    (return-from analyze-function-body-totality (values nil nil))))))
+              (dolist (call-args self-call-arg-lists)
+                (unless (and (< pos (length call-args))
+                             (code-arg-safe-p (nth pos call-args)))
+                  (return-from analyze-function-body-totality (values nil nil)))))
             (when (= (length code-params) prev-count)
               (return))))
         (let ((sorted-params (sort (copy-list code-params) #'<)))
           (return-from analyze-function-body-totality
             (values (null sorted-params) sorted-params))))
       (values nil nil))))
+
+(defun provably-total-given-p (expression condition)
+  "True when EXPRESSION is provably total wherever CONDITION, itself provably total,
+evaluates to true: a witness that divides by what its guard has found not to be zero."
+  (and (provably-total-p condition)
+       (expr-total-under-p expression (condition-facts condition nil))))
 
 (defun invalidate-app-meta ()
   "Evict cached :app metadata so redefined functions recompute totality on demand."
