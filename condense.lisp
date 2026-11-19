@@ -33,7 +33,7 @@ search found and when is noted as a :stage-a event for the staged work it runs w
          (best (heuristic-search-best job)))
     (charge ledger :heuristic-search (ledger-total (heuristic-search-ledger job)))
     (note-event :stage-a :work-limit limit :spent (ledger-total (heuristic-search-ledger job))
-                         :trace (reverse (heuristic-search-trace job)))
+                         :history (reverse (heuristic-search-history job)))
     (when (and best (heuristic-search-models job))
       (setf (heuristic-alternatives best)
             (remove best (stable-sort (reverse (heuristic-search-models job)) #'heuristic-model<))))
@@ -48,7 +48,7 @@ search found and when is noted as a :stage-a event for the staged work it runs w
   staged   ; a result computed ahead of its payment: a row's (witness bits packet), or a model
   ;; What the search found and when on its own ledger, latest first: (:bucket work) for a new
   ;; observation bucket, (:model work program-bits residual-bits run-work exact-p) for a model.
-  (trace nil))
+  (history nil))
 
 (defun frame-has-empty-sequence-row-p (frame)
   "True when FRAME has a sequence input Xi whose value is empty ('()) on some constrained row."
@@ -150,7 +150,7 @@ that price its relational residual are charged to LEDGER."
     (push (list :model (ledger-total (heuristic-search-ledger job))
                 (heuristic-program-bits model) (heuristic-residual-bits model)
                 (heuristic-run-work model) (heuristic-exact-p model))
-          (heuristic-search-trace job))
+          (heuristic-search-history job))
     (when (or (null old) (heuristic-model< model old))
       (setf (heuristic-search-best job) model))))
 
@@ -181,7 +181,7 @@ that price its relational residual are charged to LEDGER."
          (observation-step observation 1)
          (charge ledger :observation (- (ledger-total (observation-job-ledger observation)) before))
          (unless (eq buckets (observation-job-buckets observation))
-           (push (list :bucket (ledger-total ledger)) (heuristic-search-trace job)))
+           (push (list :bucket (ledger-total ledger)) (heuristic-search-history job)))
          (unless (eq records (observation-job-records observation))
            (setf (heuristic-search-record job) (first (observation-job-records observation))
                  (heuristic-search-rows job) (frame-rows frame)

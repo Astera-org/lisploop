@@ -1,11 +1,11 @@
 (in-package #:lisploop)
 
 ;;; ===========================================================================
-;;; The search trace as relations (trace.lisp): what staged work notes, when a job
-;;; publishes it, and frames built from the rows
+;;; A job's messages as rows (messages.lisp): what staged work notes, when a job sends
+;;; it, and frames built from the rows
 ;;; ===========================================================================
 
-(defun trace-scan-fixture ()
+(defun idle-input-scan-fixture ()
   "A running sum from an initial state with one input that nothing depends on (plan 8,
 probe 5), and its language. Defines `:scan`, so call it inside a clean kernel state."
   (let* ((seq (sequence-type :int))
@@ -21,7 +21,7 @@ probe 5), and its language. Defines `:scan`, so call it inside a clean kernel st
                            :operators (list (op :+ :int) (op :* :int) (op :scan))
                            :literals '(0 1)))))
 
-(defun trace-exception-fixture ()
+(defun guarded-exception-fixture ()
   "A frame over three integers whose target keeps one of them unless the other two add up
 to it (plan 8, probe 4), and its language: Stage A finds models and buckets for it in stages."
   (let ((inputs '((0 . :int) (1 . :int) (2 . :int))))
@@ -32,24 +32,24 @@ to it (plan 8, probe 4), and its language: Stage A finds models and buckets for 
                            :operators (list (op :+ :int) (op :- :int) (op := :int) (op :if :int))
                            :literals '(0 1)))))
 
-(defun stage-a-quantum-series (trace quantum spent)
-  "From TRACE, the events of a Stage A search that spent SPENT, what it had at the end of
-each quantum: (best-score-or-nil buckets)."
+(defun stage-a-quantum-series (history quantum spent)
+  "From HISTORY, what a Stage A search that spent SPENT found and when, what it had at the
+end of each quantum: (best-score-or-nil buckets)."
   (loop for end from quantum by quantum
-        collect (list (let ((scores (loop for (kind work bits residual) in trace
+        collect (list (let ((scores (loop for (kind work bits residual) in history
                                           when (and (eq kind :model) (<= work end))
                                             collect (+ bits residual))))
                         (and scores (reduce #'min scores)))
-                      (loop for (kind work) in trace
+                      (loop for (kind work) in history
                             count (and (eq kind :bucket) (<= work end))))
         until (>= end spent)))
 
 (deftest a-stage-a-search-notes-what-it-found-and-when
-  "The events `condense-heuristic` notes give, for any quantum, what the same search shows
+  "The history `condense-heuristic` notes gives, for any quantum, what the same search shows
 when it is resumed in quanta of that size: the replay that plan9-audit.md Appendix C made
 by redefining the function. Nothing is noted outside staged work."
   (with-clean-kernel-state
-    (multiple-value-bind (frame language) (trace-exception-fixture)
+    (multiple-value-bind (frame language) (guarded-exception-fixture)
       (let ((limit 6000) (quantum 500))
         (check (eq :none *noted*))
         (condense-heuristic frame language :work-limit limit :ledger (make-ledger))
@@ -71,11 +71,11 @@ by redefining the function. Nothing is noted outside staged work."
           (check (= limit (getf evidence :work-limit)))
           (check (= (ledger-total (heuristic-search-ledger job)) (getf evidence :spent)))
           ;; The search improves its model twice and adds buckets over several quanta, and
-          ;; the events tell it quantum by quantum.
+          ;; the history tells it quantum by quantum.
           (check (= 4 (length (remove-duplicates (mapcar #'first replayed)))))
           (check (< 3 (length (remove-duplicates (mapcar #'second replayed)))))
           (check (equal replayed
-                        (stage-a-quantum-series (getf evidence :trace) quantum
+                        (stage-a-quantum-series (getf evidence :history) quantum
                                                 (getf evidence :spent)))))))))
 
 (deftest a-job-publishes-noted-events-when-their-work-is-paid
@@ -83,7 +83,7 @@ by redefining the function. Nothing is noted outside staged work."
 only once the job has been charged for it. The rows do not depend on how the job was
 stepped, and the verified candidate's node leads back to the root through them."
   (with-clean-kernel-state
-    (multiple-value-bind (frame language) (trace-scan-fixture)
+    (multiple-value-bind (frame language) (idle-input-scan-fixture)
       (flet ((start ()
                (start-heuristic-synthesis frame language 90
                                           :library-proposals-p t :library-functions '(:scan))))
@@ -91,9 +91,9 @@ stepped, and the verified candidate's node leads back to the root through them."
             (check-synthesis-resumption #'start :budget 200000 :stop-on-first t)
           (check (synthesis-job-best batch))
           (dolist (relation '(:node :stage-a :stage-a-bucket :stage-a-model :verified))
-            (check (equal (trace-rows relation batch) (trace-rows relation stepped))))
-          (let ((nodes (trace-rows :node batch))
-                (searches (trace-rows :stage-a batch)))
+            (check (equal (message-rows relation batch) (message-rows relation stepped))))
+          (let ((nodes (message-rows :node batch))
+                (searches (message-rows :stage-a batch)))
             (check (equal (mapcar #'second nodes)
                           (loop for node in (synthesis-job-nodes batch)
                                 when (member (synthesis-node-phase node) '(:search :done))
@@ -103,9 +103,9 @@ stepped, and the verified candidate's node leads back to the root through them."
             (loop for (nil nil at nil spent) in searches
                   do (check (>= at spent)))
             (check (<= (reduce #'+ searches :key #'fifth) (ledger-total (synthesis-job-ledger batch))))
-            (check (trace-rows :stage-a-bucket batch))
-            (check (trace-rows :stage-a-model batch))
-            (let ((verified (trace-rows :verified batch)))
+            (check (message-rows :stage-a-bucket batch))
+            (check (message-rows :stage-a-model batch))
+            (let ((verified (message-rows :verified batch)))
               (check (= 1 (length verified)))
               (check (= (third (first verified)) (ledger-total (synthesis-job-ledger batch))))
               (check (loop for node = (second (first verified))
@@ -115,21 +115,21 @@ stepped, and the verified candidate's node leads back to the root through them."
         ;; A job stopped part way shows nothing it has not been charged for.
         (let ((job (start)))
           (resume-synthesis job 1500)
-          (check (loop for (nil nil at nil spent) in (trace-rows :stage-a job)
+          (check (loop for (nil nil at nil spent) in (message-rows :stage-a job)
                        always (<= spent at 1500))))))))
 
-(deftest a-trace-frame-is-an-ordinary-frame
+(deftest a-message-frame-is-an-ordinary-frame
   "Rows of object-language values make a frame the kernel treats like any other: its conflict
 check says whether one column is a function of others, a search finds that function, and a
 rule about the rows is an expression the VM evaluates on them."
   (let* ((columns '((:quantum . :int) (:buckets . :int) (:improved-p . :bool) (:needed-p . :bool)))
          (rows '((1 2 t t) (2 2 nil nil) (3 2 nil nil) (1 0 nil nil) (2 5 nil t) (4 5 nil t) (5 5 nil nil))))
     ;; Two rows agree on (:improved-p) and differ on :needed-p: no rule over it can be exact.
-    (let ((conflict (frame-conflict-p (trace-frame columns rows :needed-p :inputs '(:improved-p)))))
+    (let ((conflict (frame-conflict-p (message-frame columns rows :needed-p :inputs '(:improved-p)))))
       (check conflict)
       (check (eq :incompatible-rows (frame-conflict-kind conflict)))
       (check (equal '(nil) (frame-conflict-known conflict))))
-    (let* ((frame (trace-frame columns rows :needed-p :inputs '(:quantum :buckets)))
+    (let* ((frame (message-frame columns rows :needed-p :inputs '(:quantum :buckets)))
            (inputs (schema-inputs (frame-schema frame)))
            (language (make-language :int inputs :operators (list (op :< :int) (op :+ :int)) :literals '(0 1)))
            (wanted (term `(< ,(var 0 :int) ,(var 1 :int))))
@@ -143,5 +143,5 @@ rule about the rows is an expression the VM evaluates on them."
         (check (equal (mapcar #'fourth rows)
                       (loop for (quantum buckets) in rows
                             collect (eval-expr-value rule inputs (list quantum buckets)))))))
-    (raises (trace-frame columns rows :missing))
-    (raises (trace-rows :no-such-relation nil))))
+    (raises (message-frame columns rows :missing))
+    (raises (message-rows :no-such-reader nil))))

@@ -238,8 +238,8 @@
    #:induce-fold-motifs #:amortize-library-entries #:*search-weight* #:*archive-epochs*
    #:archive-dependent-templates #:sampled-solver-validations
 
-   ;; 24. trace.lisp — The search trace as relations of object-language rows
-   #:define-trace-relation #:trace-columns #:trace-rows #:trace-frame
+   ;; 24. messages.lisp — A job's messages as rows of object-language values
+   #:define-message-reader #:message-columns #:message-rows #:message-frame
 
    ;; 25. explain.lisp — Read-only synthesis & library inspection reports
    #:explain-synthesis-node #:explain-synthesis-job #:explain-knowledge-library

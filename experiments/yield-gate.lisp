@@ -1,8 +1,8 @@
 ;;; The yield gate of plan9.md section 4.2, scored against recorded searches.
 ;;;
 ;;; plan9-audit.md Appendix C made its table by redefining `condense-heuristic` to run in
-;;; quanta and log. Here the searches run untouched. The table is read off their trace
-;;; relations (trace.lisp); a gate is an object-language expression that the VM evaluates on
+;;; quanta and log. Here the searches run untouched. The table is read off the rows of their
+;;; messages (messages.lisp); a gate is an object-language expression that the VM evaluates on
 ;;; the rows; the kernel's conflict check says whether what a gate reads can tell a needed
 ;;; search from a spent one; and observation search proposes the gates that these rows allow.
 ;;; A gate that stops a needed search on a recorded row is refuted without being run. One that
@@ -51,18 +51,18 @@
                               (op :tuple *tup*) (op :at *tup*) (op :scan-tup)))))
 (defparameter *job-names* '("Symmetric tuple scan" "Conditional tuple scan"))
 
-;;; Queries over the trace relations.
+;;; Queries over the rows of the jobs' messages.
 
-(defun select (relation &rest column-values)
-  "The rows of RELATION in *jobs* whose named columns have the given values."
-  (let ((names (mapcar #'car (trace-columns relation))))
+(defun select (reader &rest column-values)
+  "The rows that the message reader READER gives for *jobs* whose named columns have the given values."
+  (let ((names (mapcar #'car (message-columns reader))))
     (remove-if-not (lambda (row)
                      (loop for (name value) on column-values by #'cddr
                            always (equal value (nth (position name names) row))))
-                   (trace-rows relation *jobs*))))
+                   (message-rows reader *jobs*))))
 
-(defun field (relation row name)
-  (nth (position name (mapcar #'car (trace-columns relation))) row))
+(defun field (reader row name)
+  (nth (position name (mapcar #'car (message-columns reader))) row))
 
 (defun winning-path (job)
   "The nodes from the one whose candidate was verified first up to the root."
@@ -108,7 +108,7 @@ at its end, with a best score of nil while there is no model."
     (and final (1+ (position final series :key #'first)))))
 
 (defun quantum-rows ()
-  (loop for stage-a in (trace-rows :stage-a *jobs*)
+  (loop for stage-a in (message-rows :stage-a *jobs*)
         append (destructuring-bind (job node at limit spent) stage-a
                  (declare (ignore limit))
                  (let* ((series (quantum-series job node at spent))
@@ -158,7 +158,7 @@ improves the best score or adds a bucket.")
 (defun search-rows (job node at)
   (remove-if-not (lambda (row) (equal (list job node at) (subseq row 0 3))) *rows*))
 
-(format t "Stage A searches in quanta of ~D, read from the trace relations.~%" *quantum*)
+(format t "Stage A searches in quanta of ~D, read from the jobs' messages.~%" *quantum*)
 (loop for job from 0 for name in *job-names*
       do (format t "~%~A (~:D work; winning path nodes ~{~D~^, ~})~%"
                  name (ledger-total (synthesis-job-ledger (nth job *jobs*))) (winning-path job))
@@ -185,7 +185,7 @@ improves the best score or adds a bucket.")
   "Report what RULE over INPUTS would have stopped: the needed searches it stops, which refute
 it, and the work it would have saved on the others."
   (let ((refuted nil) (saved 0) (spent 0))
-    (dolist (stage-a (trace-rows :stage-a *jobs*))
+    (dolist (stage-a (message-rows :stage-a *jobs*))
       (destructuring-bind (job node at limit used) stage-a
         (declare (ignore limit))
         (let* ((rows (search-rows job node at))
@@ -205,7 +205,7 @@ it, and the work it would have saved on the others."
 (dolist (inputs '((:improved-p :added-p) (:improved-p :added-p :has-model-p)
                   (:improved-p :added-p :has-model-p :inputs)
                   (:improved-p :added-p :has-model-p :inputs :quantum)))
-  (let* ((frame (trace-frame *quantum-columns* *rows* :needed-p :inputs inputs))
+  (let* ((frame (message-frame *quantum-columns* *rows* :needed-p :inputs inputs))
          (conflict (frame-conflict-p frame)))
     (format t "~%needed-p as a function of ~S: ~:[no conflict~;conflict~]~%" inputs conflict)
     (when conflict
@@ -231,7 +231,7 @@ it, and the work it would have saved on the others."
 ;;; quantum at which a search was still needed, and is then ranked by the work it stops.
 
 (defun propose-gates (inputs slack work)
-  (let* ((frame (trace-frame *quantum-columns* *rows* :needed-p :inputs inputs))
+  (let* ((frame (message-frame *quantum-columns* *rows* :needed-p :inputs inputs))
          (language (make-language :int (schema-inputs (frame-schema frame))
                                   :operators (list (op :< :int) (op := :int) (op :+ :int) (op :* :int)
                                                    (op :if :bool))
@@ -247,7 +247,7 @@ it, and the work it would have saved on the others."
           (when (every (lambda (value needed-p) (or value (not needed-p))) values needed)
             (let ((rule (observed-expression-expression (car (last (observation-bucket-members bucket)))))
                   (saved 0))
-              (dolist (stage-a (trace-rows :stage-a *jobs*))
+              (dolist (stage-a (message-rows :stage-a *jobs*))
                 (destructuring-bind (job node at limit used) stage-a
                   (declare (ignore limit))
                   (let ((stop (stop-quantum rule (search-rows job node at) inputs)))
