@@ -388,7 +388,7 @@
    automatically induce BOTH position-0 sequence inverters (`:shift/invert-0`, `:scale/invert-0`)
    and position-1 scalar parameter solvers (`:shift/invert-1`, `:scale/invert-1`).
 2. Involution `:law` entries (`(= (reverse (reverse X0)) X0)` and `(= (transpose (transpose X0)) X0)`)
-   automatically induce unary `:solver` entries via `induce-involution-solvers`.
+   automatically induce unary `:solver` entries via `induce-law-solvers`.
 3. `conserved-quantity-frame` discovers algebraic sequence invariants (`sum(shift(xs, d)) = sum(xs) + d * length(xs)`)."
   (with-clean-kernel-state
     (define-standard-int-combinators)
@@ -519,7 +519,9 @@
                (resume-law-validation inv-val 10000)
                (register-knowledge-law inv-val :id :reverse-involution)
                (induce-functorial-solvers *knowledge-library*)
-               (check (find-knowledge-entry :reverse/involution-inverter))
+               (check (find :reverse (knowledge-entries-of-kind :solver)
+                            :key (lambda (solver)
+                                   (getf (knowledge-entry-metadata solver) :operator-name))))
                (let* ((rev-frame (make-frame (make-schema :inputs nil :target seq-int)
                                              (list (make-row :key 0 :known nil
                                                              :requirement (app (op := seq-int)

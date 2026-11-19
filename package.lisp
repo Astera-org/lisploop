@@ -151,7 +151,7 @@
    #:learn-knowledge-transformer
 
    ;; 14. bootstrap-inverters.lisp — Functorial & involution solver induction
-   #:induce-functorial-solvers #:induce-involution-solvers
+   #:induce-functorial-solvers
 
    ;; 15. condense.lisp — Lossy Stage A heuristic condensation
    #:heuristic-model #:heuristic-model-p #:heuristic-program #:heuristic-residual #:heuristic-packets

@@ -443,16 +443,14 @@ persisted in the job's knowledge library."
             ;; A key names one row of the frame, so equal keys give the same row objects.
             (pushnew (cons r1 r2) pairs :test #'equal)))))))
 
-(defun candidate-dip-context-expressions (parent-frame language &key existing-bindings allow-sequence-p)
+(defun candidate-dip-context-expressions (parent-frame language &key existing-bindings)
   "Generate candidate parent-scope expressions (0-step variables and 1-step operator
 applications) that can serve as new intermediate context variables in DIP repairs."
   (let* ((inputs (schema-inputs (frame-schema parent-frame)))
          (existing-exprs (mapcar #'cdr existing-bindings))
          (candidates nil))
     (flet ((acceptable-type-p (type)
-             (and (not (code-type-p type))
-                  (or allow-sequence-p
-                      (not (seq-type-p type)))))
+             (not (or (code-type-p type) (seq-type-p type))))
            (add-cand (expr)
              (unless (member expr existing-exprs :test #'equal)
                (pushnew expr candidates :test #'equal))))
@@ -490,7 +488,7 @@ applications) that can serve as new intermediate context variables in DIP repair
 
 (defun propose-dip-context-bindings (parent-frame language nogoods
                                      &key existing-bindings (max-candidates 2)
-                                          allow-sequence-p ledger (library *knowledge-library*))
+                                          ledger (library *knowledge-library*))
   "Dual Implication Point (DIP) context introduction: inspect conflicting parent row pairs
 in NOGOODS and return up to MAX-CANDIDATES minimal total parent-scope expressions that
 separate all distinct-row conflict pairs. The `:dip-feature` entries of the knowledge
@@ -531,9 +529,8 @@ LIBRARY are tried before the grammar's own candidates."
           (if lib-separators
               (let ((deduped (remove-duplicates lib-separators :test #'equal :from-end t)))
                 (subseq deduped 0 (min max-candidates (length deduped))))
-              (let ((grammar-cands (candidate-dip-context-expressions parent-frame language
-                                                                      :existing-bindings existing-bindings
-                                                                      :allow-sequence-p allow-sequence-p))
+              (let ((grammar-cands (candidate-dip-context-expressions
+                                    parent-frame language :existing-bindings existing-bindings))
                     (separators nil))
                 (dolist (expr grammar-cands (nreverse separators))
                   (when (< (length separators) max-candidates)

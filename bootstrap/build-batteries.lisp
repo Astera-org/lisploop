@@ -3,10 +3,16 @@
 ;;;; kernel library using `:spec` synthesis, higher-order anti-unification, template
 ;;;; instantiation, observational law discovery, and conditional/law solver induction.
 
-(let ((root (merge-pathnames "../" (make-pathname :name nil :type nil :defaults *load-truename*))))
-  (load (merge-pathnames "load.lisp" root)))
+(let* ((here (make-pathname :name nil :type nil :defaults *load-truename*))
+       (root (merge-pathnames "../" here)))
+  (load (merge-pathnames "load.lisp" root))
+  (load (merge-pathnames "recursion-schemas.lisp" here)))
 
 (in-package #:lisploop)
+
+(defun synthesize-battery-function (spec &rest keys)
+  "`synthesize-spec-entry` on SPEC with the curriculum's recursion schemas on offer."
+  (apply #'synthesize-spec-entry spec :expanders (list (recursion-schema-expander)) keys))
 
 (defparameter *bootstrap-output-directory*
   (merge-pathnames "library/"
@@ -107,7 +113,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
                    (register-knowledge-entry law :library lib :ledger ledger))))
           (add-axiom :int/cancel-+-0 (term `(- (+ ,z ,k) ,k)))
           (add-axiom :int/cancel-+-1 (term `(- (+ ,k ,z) ,k)))
-          (add-axiom :int/cancel---0 (term `(+ (- ,z ,k) ,k)))
+          (add-axiom :int/cancel---0 (term `(+ ,k (- ,z ,k))))
           (add-axiom :int/cancel---1 (term `(- ,k (- ,k ,z))))))
 
       ;; 1b. Observational algebraic law discovery over GF(3), retyped & sample-validated on :int.
@@ -234,11 +240,6 @@ verify round-trip loading, and write `library/<name>.sexp`."
         (induce-conditional-solvers specs :library lib :ledger ledger)
         ;; Derive axiomatic uniqueness on addition & subtraction solvers from integer cancellation axioms.
         (induce-law-solvers lib :ledger ledger)
-        ;; Strip cross-battery `:uniqueness-from` edges before saving standalone `arithmetic.sexp`.
-        (dolist (id '(:solve-+-0 :solve-+-1 :solve---0 :solve---1))
-          (let ((s (find-knowledge-entry id lib)))
-            (setf (knowledge-entry-edges s)
-                  (remove :uniqueness-from (knowledge-entry-edges s) :key #'first))))
         (save-clean-battery :arithmetic
                             '(:solve-+-0 :solve-+-1 :solve---0 :solve---1
                               :solve-*-0 :solve-*-1 :solve-/-0 :solve-/-1)
@@ -553,7 +554,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
             (i-ops (list (op :tail :int) (op :at seq-t) (op := seq-t)
                          (op :if :int) (op :+ :int) (op :* :int))))
         (flet ((synth1 (id ret rows ops lits)
-                 (synthesize-spec-entry
+                 (synthesize-battery-function
                   (register-knowledge-spec
                    (keyword-id "SPEC/~A" id) in1 ret rows
                    :target-id id :operators ops :literals lits :constants (list (lit seq-t '()))
@@ -605,7 +606,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
               :target-id :foldr :library seq-lib :ledger ledger)
              :library seq-lib :ledger ledger)
             ;; Synthesize `:foldl`, `:filter`, `:map-adjacent` de novo from pure `:spec`s!
-            (synthesize-spec-entry
+            (synthesize-battery-function
              (register-knowledge-spec
               :spec/foldl (list (cons 0 seq-t) (cons 1 :int) (cons 2 bin-t)) :int
               (list (list (list '() 7 sub-step) 7)
@@ -622,7 +623,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
               :constants (list (lit seq-t '()))
               :library seq-lib :ledger ledger)
              :library seq-lib :ledger ledger)
-            (synthesize-spec-entry
+            (synthesize-battery-function
              (register-knowledge-spec
               :spec/filter (list (cons 0 seq-t) (cons 1 pred-t)) seq-t
               (list (list (list '() pos-pred) '())
@@ -638,7 +639,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
               :constants (list (lit seq-t '()))
               :library seq-lib :ledger ledger)
              :library seq-lib :ledger ledger)
-            (synthesize-spec-entry
+            (synthesize-battery-function
              (register-knowledge-spec
               :spec/map-adjacent (list (cons 0 seq-t) (cons 1 bin-t)) seq-t
               (list (list (list '() sub-step) '())
@@ -730,7 +731,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
          (add-step (term `(+ ,(var 0 :int) ,(var 1 :int))))
          (sub-step (term `(- ,(var 0 :int) ,(var 1 :int)))))
     (with-knowledge-library (lib)
-      (synthesize-spec-entry
+      (synthesize-battery-function
        (register-knowledge-spec
         :spec/scan (list (cons 0 seq-t) (cons 1 :int) (cons 2 bin-t)) seq-t
         (list (list (list '() 4 add-step) '())
@@ -778,7 +779,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
          (tup-t (tuple-type :int :int)))
     (with-knowledge-library (lib)
       ;; 7a. `:shift-seq`
-      (synthesize-spec-entry
+      (synthesize-battery-function
        (register-knowledge-spec
         :spec/shift-seq (list (cons 0 seq-t) (cons 1 :int)) seq-t
         '(((() 0) ()) ((() 1) ()) ((() 2) ())
@@ -795,7 +796,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
         :library lib :ledger ledger)
        :library lib :ledger ledger)
       ;; 7b. `:seq-corr`
-      (synthesize-spec-entry
+      (synthesize-battery-function
        (register-knowledge-spec
         :spec/seq-corr (list (cons 0 seq-t) (cons 1 seq-t)) :int
         '(((() ()) 0) ((() (5)) 0) (((3) ()) 0)
@@ -809,7 +810,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
         :library lib :ledger ledger)
        :library lib :ledger ledger)
       ;; 7c. `:best-shift`
-      (synthesize-spec-entry
+      (synthesize-battery-function
        (register-knowledge-spec
         :spec/best-shift (list (cons 0 seq-t) (cons 1 seq-t) (cons 2 :int)) tup-t
         '(((() (4 1) 3) (0 3)) ((() (4 1) 2) (0 2)) ((() (4 1) 1) (0 1))
@@ -823,7 +824,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
         :library lib :ledger ledger)
        :library lib :ledger ledger)
       ;; 7d. `:argmax-corr`
-      (synthesize-spec-entry
+      (synthesize-battery-function
        (register-knowledge-spec
         :spec/argmax-corr (list (cons 0 seq-t) (cons 1 seq-t)) :int
         '((((3 4 1) (4 1)) 1)
@@ -835,7 +836,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
         :library lib :ledger ledger)
        :library lib :recursive-p nil :ledger ledger)
       ;; 7e. `:last-or`
-      (synthesize-spec-entry
+      (synthesize-battery-function
        (register-knowledge-spec
         :spec/last-or (list (cons 0 seq-t) (cons 1 :int)) :int
         '(((() 7) 7) ((() 9) 9) (((4) 7) 4) (((1 4) 7) 4)

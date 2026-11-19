@@ -838,13 +838,16 @@ LIBRARY the key is registered there once as a `:locality-key` for later correspo
 (defun heuristic-expander (&key child-language guard-language child-bound guard-bound
                                 (work-limit 20000) (additive-p t) (conditional-p t)
                                 (library-proposals-p t) library-functions
-                                (dependency-proposals-p t) (structural-proposals-p t))
+                                (dependency-proposals-p t) (structural-proposals-p t)
+                                expanders)
   "An `:expand` function: each node turns its own Stage A model into Stage B additive and
 conditional residual branches, sufficient-statistic dependency projections (reusing Stage A's
 observation buckets), higher-order library combinator branches when LIBRARY-PROPOSALS-P
 is true, and the structural products and projections of its frame when STRUCTURAL-PROPOSALS-P
-is, so every proposal competes under Stage A full-path pricing and the 3:1 reserve schedule."
-  (combine-expanders
+is, so every proposal competes under Stage A full-path pricing and the 3:1 reserve schedule.
+EXPANDERS are further `:expand` functions of the caller's, whose proposals compete alike."
+  (apply
+   #'combine-expanders
    (when library-proposals-p
      (library-expander :child-language child-language :child-bound child-bound
                        :functions library-functions))
@@ -871,8 +874,9 @@ is, so every proposal competes under Stage A full-path pricing and the 3:1 reser
                                    :solver (synthesis-job-library job)
                                    :ledger ledger
                                    :debug-p (synthesis-job-debug-p job)))))
-   (when structural-proposals-p
-     (structural-expander :child-language child-language :child-bound child-bound))))
+   (append expanders
+           (list (when structural-proposals-p
+                   (structural-expander :child-language child-language :child-bound child-bound))))))
 
 (defparameter *library-code-argument-bits* 20
   "Body-bit bound for quoted sibling parameters in generic partial applications.")

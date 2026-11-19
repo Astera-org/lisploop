@@ -49,15 +49,20 @@
               :snapshot (knowledge-statement-snapshot entry)))
   entry)
 
-(defun knowledge-evidence-current-p (entry obligation &optional snapshot)
-  "A status label alone never authorizes semantic elimination. SNAPSHOT is ENTRY's present
-statement snapshot, for a caller that has already taken it."
+(defun knowledge-evidence-p (entry obligation methods snapshot)
+  "True when ENTRY's certificate, by one of METHODS, covers OBLIGATION for the statement ENTRY
+makes now. SNAPSHOT is that statement's snapshot, for a caller that has already taken it."
   (let ((certificate (knowledge-entry-certificate entry)))
     (and (listp certificate)
-         (member (getf certificate :method) '(:exhaustive :derived :trusted-axiom))
+         (member (getf certificate :method) methods)
          (member obligation (getf certificate :obligations))
          (equalp (getf certificate :snapshot)
                  (or snapshot (knowledge-statement-snapshot entry))))))
+
+(defun knowledge-evidence-current-p (entry obligation &optional snapshot)
+  "A status label alone never authorizes semantic elimination: only checked evidence of
+OBLIGATION, or an explicitly trusted axiom, for ENTRY's present statement does."
+  (knowledge-evidence-p entry obligation '(:exhaustive :derived :trusted-axiom) snapshot))
 
 (defun knowledge-evidence-tested-p (entry obligation &optional snapshot)
   "True when ENTRY carries evidence of OBLIGATION, of any grade, for the statement it makes
@@ -65,9 +70,4 @@ now: checked evidence (`knowledge-evidence-current-p`), or a :sampled certificat
 that the obligation was tested on samples and none refuted it. Sampled evidence licenses a
 conjecture that is replayed or verified where it is used. It never authorises eliminating an
 alternative: for that, ask `knowledge-evidence-current-p`."
-  (let ((certificate (knowledge-entry-certificate entry)))
-    (and (listp certificate)
-         (member (getf certificate :method) '(:exhaustive :derived :trusted-axiom :sampled))
-         (member obligation (getf certificate :obligations))
-         (equalp (getf certificate :snapshot)
-                 (or snapshot (knowledge-statement-snapshot entry))))))
+  (knowledge-evidence-p entry obligation '(:exhaustive :derived :trusted-axiom :sampled) snapshot))

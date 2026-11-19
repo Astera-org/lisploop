@@ -109,6 +109,9 @@ A key is a function whose value is minimised, or (:desc function) to maximise it
 (defun seq-type-p (type) (and (consp type) (eq :seq (first type))))
 (defun gf-type-p (type) (and (consp type) (eq :gf (first type))))
 (defun tuple-type-p (type) (and (consp type) (eq :tuple (first type))))
+(defun type-kind (type)
+  "The constructor of TYPE: itself for :int and :bool, and otherwise :gf, :tuple, :seq or :code."
+  (if (consp type) (first type) type))
 (defun code-inputs (type) (second type))
 (defun code-sort (type) (third type))
 
@@ -447,15 +450,13 @@ ranked input under `rank-le-p`, or nil when no unique top-ranked input exists."
   "One visit per value/container plus raw payload bits; independent of the codec."
   (if (eq value :unresolved)
       1
-      (1+ (case type
+      (1+ (ecase (type-kind type)
             (:int (1+ (integer-width value)))
             (:bool 1)
-            (otherwise
-             (ecase (first type)
-               (:gf (integer-width (1- (second type))))
-               (:tuple (loop for item in value for part in (rest type) sum (value-work item part)))
-               (:seq (loop for item in value sum (value-work item (second type))))
-               (:code (syntax-work value))))))))
+            (:gf (integer-width (1- (second type))))
+            (:tuple (loop for item in value for part in (rest type) sum (value-work item part)))
+            (:seq (loop for item in value sum (value-work item (second type))))
+            (:code (syntax-work value))))))
 
 (defun signed-code (value)
   (if (minusp value) (* -2 value) (1+ (* 2 value))))
@@ -472,21 +473,19 @@ ranked input under `rank-le-p`, or nil when no unique top-ranked input exists."
 (defun value-bit-size (value type)
   "The bits `emit-bit-value` writes, computed directly because candidate scoring calls this
 constantly and quoted code is sized from cached metadata."
-  (case type
+  (ecase (type-kind type)
     (:int (positive-bit-size (signed-code value)))
     (:bool 1)
-    (otherwise
-     (ecase (first type)
-       (:gf (integer-length (1- (second type))))
-       (:tuple (loop for item in value for part in (rest type) sum (value-bit-size item part)))
-       (:seq (+ (positive-bit-size (1+ (length value)))
-                (loop for item in value sum (value-bit-size item (second type)))))
-       (:code (let ((sort (code-sort type)))
-                (if (function-sort-p sort)
-                    (let ((meta (ensure-ast-meta value)))
-                      (+ (operator-name-bit-size (ast-meta-id meta))
-                         (type-bit-size (ast-meta-type meta))))
-                    (body-size value (code-inputs type)))))))))
+    (:gf (integer-length (1- (second type))))
+    (:tuple (loop for item in value for part in (rest type) sum (value-bit-size item part)))
+    (:seq (+ (positive-bit-size (1+ (length value)))
+             (loop for item in value sum (value-bit-size item (second type)))))
+    (:code (let ((sort (code-sort type)))
+             (if (function-sort-p sort)
+                 (let ((meta (ensure-ast-meta value)))
+                   (+ (operator-name-bit-size (ast-meta-id meta))
+                      (type-bit-size (ast-meta-type meta))))
+                 (body-size value (code-inputs type)))))))
 
 ;;; Operator typing
 

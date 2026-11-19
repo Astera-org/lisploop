@@ -908,20 +908,18 @@ registered function. Nil when there is none, and so no value of that sort."
   "Construct a canonical witness value belonging to TYPE. Quoted code of a value sort is
 the literal of that sort's own default; quoted code of a function sort is an operator of
 that signature (`default-operator-for-sort`)."
-  (case type
+  (ecase (type-kind type)
     (:int 0)
     (:bool nil)
-    (otherwise
-     (ecase (first type)
-       (:gf 0)
-       (:tuple (mapcar #'default-value-for-type (rest type)))
-       (:seq nil)
-       (:code (let ((sort (code-sort type)))
-                (if (function-sort-p sort)
-                    (or (default-operator-for-sort sort)
-                        (error "No operator has the signature ~S, so the type ~S has no value."
-                               sort type))
-                    (lit sort (default-value-for-type sort)))))))))
+    (:gf 0)
+    (:tuple (mapcar #'default-value-for-type (rest type)))
+    (:seq nil)
+    (:code (let ((sort (code-sort type)))
+             (if (function-sort-p sort)
+                 (or (default-operator-for-sort sort)
+                     (error "No operator has the signature ~S, so the type ~S has no value."
+                            sort type))
+                 (lit sort (default-value-for-type sort)))))))
 
 (defun collect-code-eval-calls (expr code-var)
   "Return (VALUES ground-calls non-ground-p) for all (:code-eval CODE-VAR ...) subterms in EXPR."
@@ -951,48 +949,52 @@ and equates G with a literal 'val, return (VALUES G 'val)."
             (when (equal term (first ground))
               (values (first ground) lit-node)))))))
 
+(defun record-code-eval-equations (reqs extra-knowns code-var known-evals)
+  "Record in KNOWN-EVALS, under (extra . call), the literal that a conjunct of REQS pins a
+ground call of CODE-VAR to. The first equation found for a call stands."
+  (loop for req in reqs
+        for extra in extra-knowns
+        do (dolist (conjunct (extract-conjuncts req))
+             (multiple-value-bind (call value) (extract-code-eval-equation conjunct code-var)
+               (when (and call (not (gethash (cons extra call) known-evals)))
+                 (setf (gethash (cons extra call) known-evals) value))))))
+
+(defun substitute-known-evals (conjunct extra code-var known-evals ledger)
+  "CONJUNCT with the ground calls of CODE-VAR whose values KNOWN-EVALS holds replaced by
+them, where it holds more than its own single ground call; otherwise CONJUNCT itself."
+  (multiple-value-bind (ground non-ground-p) (collect-code-eval-calls conjunct code-var)
+    (let ((result conjunct))
+      (when (or non-ground-p (rest ground))
+        (dolist (call ground)
+          (let ((value (gethash (cons extra call) known-evals)))
+            (when value
+              (charge ledger :pullback (syntax-work value))
+              (setf result (replace-subexpression result call value))))))
+      result)))
+
 (defun congruence-close-code-evals (row-reqs extra-knowns code-var &key ledger (budget 10000))
   "Iteratively propagate ground equations `(= (:code-eval CODE-VAR 'a0 ...) 'val)` across
 non-decoupled conjuncts sharing identical EXTRA-KNOWNS, folding after each substitution pass."
   (let ((reqs (copy-list row-reqs))
         (known-evals (make-hash-table :test #'equal)))
     (loop
+      (record-code-eval-equations reqs extra-knowns code-var known-evals)
       (let ((changed nil))
-        (loop for req in reqs
-              for extra in extra-knowns
-              do (dolist (c (extract-conjuncts req))
-                   (multiple-value-bind (call val-lit) (extract-code-eval-equation c code-var)
-                     (when call
-                       (let ((key (cons extra call)))
-                         (unless (gethash key known-evals)
-                           (setf (gethash key known-evals) val-lit)))))))
-        (setf reqs
-              (loop for req in reqs
-                    for extra in extra-knowns
-                    collect (let ((row-changed nil)
-                                  (new-conjuncts nil))
-                              (dolist (c (extract-conjuncts req))
-                                (multiple-value-bind (ground non-ground-p)
-                                    (collect-code-eval-calls c code-var)
-                                  (if (or non-ground-p (> (length ground) 1))
-                                      (let ((sub c))
-                                        (dolist (g-call ground)
-                                          (let ((val-lit (gethash (cons extra g-call) known-evals)))
-                                            (when val-lit
-                                              (charge ledger :pullback (syntax-work val-lit))
-                                              (setf sub (replace-subexpression sub g-call val-lit)))))
-                                        (cond ((equal sub c)
-                                               (push c new-conjuncts))
-                                              (t
-                                               (setf row-changed t changed t)
-                                               (push (fold-necessary sub ledger budget)
-                                                     new-conjuncts))))
-                                      (push c new-conjuncts))))
-                              (if row-changed
-                                  (fold-necessary (reduce #'bool-and (nreverse new-conjuncts)
-                                                          :from-end t :initial-value (lit :bool t))
-                                                  ledger budget)
-                                  req))))
+        (flet ((rewrite (req extra)
+                 (let* ((conjuncts (extract-conjuncts req))
+                        (rewritten (mapcar (lambda (conjunct)
+                                             (let ((sub (substitute-known-evals
+                                                         conjunct extra code-var known-evals ledger)))
+                                               (if (equal sub conjunct)
+                                                   conjunct
+                                                   (fold-necessary sub ledger budget))))
+                                           conjuncts)))
+                   (cond ((every #'eq rewritten conjuncts) req)
+                         (t (setf changed t)
+                            (fold-necessary (reduce #'bool-and rewritten
+                                                    :from-end t :initial-value (lit :bool t))
+                                            ledger budget))))))
+          (setf reqs (mapcar #'rewrite reqs extra-knowns)))
         (unless changed (return reqs))))))
 
 (defun extract-outermost-code-eval (expr code-var)

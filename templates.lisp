@@ -65,7 +65,7 @@ context inputs, and unknown target together for constraint-based type unificatio
     (values (app (op := (cdr target-spec)) app-expr (var (car target-spec) (cdr target-spec)))
             (cons z-id target))))
 
-(defun infer-ast-templates (inputs target ast-alist &key self-name extra-inputs)
+(defun infer-ast-templates (inputs target ast-alist &key self-name)
   "Infer polymorphic type roles across INPUTS, TARGET (when non-nil), and `(key . ast)` pairs in
 AST-ALIST by unifying primitive signature constraints. Returns a portable template plist."
   (let ((counter 0)
@@ -267,8 +267,6 @@ AST-ALIST by unifying primitive signature constraints. Returns a portable templa
                 (values (list* :app op-node nodes) out)))
              (otherwise (error "Unsupported template node ~S" expr)))))
       (let* ((shaped-inputs (scope inputs))
-             (shaped-extra (scope extra-inputs))
-             (full-env (append shaped-inputs shaped-extra))
              (shaped-target (and target (shape target)))
              (walked-asts nil))
         (dolist (pair ast-alist)
@@ -276,7 +274,7 @@ AST-ALIST by unifying primitive signature constraints. Returns a portable templa
             (let ((slot-env (if (and (eq :trigger (car pair)) shaped-inputs shaped-target)
                                 (list (cons 0 (cdr (first shaped-inputs)))
                                       (cons 1 shaped-target))
-                                full-env)))
+                                shaped-inputs)))
               (multiple-value-bind (node result)
                   (walk (cdr pair) slot-env shaped-inputs shaped-target)
                 (when (and (member (car pair) '(:expression :z-ref)) shaped-target)
@@ -323,51 +321,48 @@ AST-ALIST by unifying primitive signature constraints. Returns a portable templa
     (setf (getf tpl :source) (ast->sexp (function-definition-body def)))
     tpl))
 
+(defun entry-function-definition (entry)
+  "The definition of ENTRY, a `:function` entry: the registered one, or one made of the entry."
+  (or (find-function-definition (knowledge-entry-id entry))
+      (%make-function-definition :name (knowledge-entry-id entry)
+                                 :inputs (knowledge-entry-inputs entry)
+                                 :return-type (knowledge-entry-target entry)
+                                 :body (knowledge-entry-expression entry))))
+
 (defun infer-entry-template (entry)
   "Infer a polymorphic template across all AST slots of `knowledge-entry` ENTRY (`:function`,
-`:solver`, `:law`, `:descriptor`, `:transformer`, `:motif`, `:decoder-template`, etc.)."
-  (let* ((kind (knowledge-entry-kind entry))
-         (inputs (knowledge-entry-inputs entry))
+`:solver`, `:law`, `:descriptor`, `:transformer`, `:motif`, `:decoder-template`, etc.). A
+solver's types are tied to its operator's through the equation it solves
+(`solver-template-probe-ast`), and its template records the operator under :operator."
+  (let* ((inputs (knowledge-entry-inputs entry))
          (target (knowledge-entry-target entry))
-         (meta (knowledge-entry-metadata entry)))
-    (if (eq kind :function)
-        (infer-function-template
-         (or (find-function-definition (knowledge-entry-id entry))
-             (%make-function-definition :name (knowledge-entry-id entry)
-                                        :inputs inputs
-                                        :return-type target
-                                        :body (knowledge-entry-expression entry))))
-        (let ((extra-inputs nil)
-              (ast-alist (list (cons :expression (knowledge-entry-expression entry))
-                               (cons :guard (knowledge-entry-guard entry))
-                               (cons :trigger (knowledge-entry-trigger entry))
-                               (cons :auxiliary-code (knowledge-entry-auxiliary-code entry)))))
-          (when (and (eq kind :solver) (getf meta :operator))
-            (let* ((operator (sexp->ast (getf meta :operator)))
-                   (position (getf meta :position))
-                   (mapping (or (getf meta :context-map) (solver-context-map operator position))))
-              (multiple-value-bind (probe z-spec)
-                  (solver-template-probe-ast operator position mapping inputs target)
-                ;; Connect z-spec's type to target by making target the expression's target:
-                (push z-spec extra-inputs)
-                (push (cons :probe probe) ast-alist)
-                (let ((tpl (infer-ast-templates
-                            (append inputs (list z-spec))
-                            target
-                            (cons (cons :z-ref (var (car z-spec) (cdr z-spec))) ast-alist))))
-                  ;; Split off z-spec from :inputs and record the shaped operator node
-                  (let* ((probe-node (cdr (assoc :probe (getf tpl :asts))))
-                         (app-node (third probe-node))
-                         (op-node (second app-node)))
-                    ;; Unify z-spec with target via :z-ref vs target:
-                    (let ((z-var-type (cdr (car (last (getf tpl :inputs)))))
-                          (t-type (getf tpl :target)))
-                      (declare (ignore z-var-type t-type)))
-                    (setf (getf tpl :inputs) (butlast (getf tpl :inputs))
-                          (getf tpl :operator) op-node)
-                    (return-from infer-entry-template tpl))))))
-          (infer-ast-templates inputs target ast-alist
-                               :self-name (when (eq kind :function) (knowledge-entry-id entry)))))))
+         (meta (knowledge-entry-metadata entry))
+         (asts (list (cons :expression (knowledge-entry-expression entry))
+                     (cons :guard (knowledge-entry-guard entry))
+                     (cons :trigger (knowledge-entry-trigger entry))
+                     (cons :auxiliary-code (knowledge-entry-auxiliary-code entry)))))
+    (cond
+      ((eq :function (knowledge-entry-kind entry))
+       (infer-function-template (entry-function-definition entry)))
+      ((and (eq :solver (knowledge-entry-kind entry)) (getf meta :operator))
+       (let* ((operator (sexp->ast (getf meta :operator)))
+              (position (getf meta :position)))
+         (multiple-value-bind (probe unknown)
+             (solver-template-probe-ast operator position
+                                        (or (getf meta :context-map)
+                                            (solver-context-map operator position))
+                                        inputs target)
+           (let ((template (infer-ast-templates
+                            (append inputs (list unknown)) target
+                            (list* (cons :z-ref (var (car unknown) (cdr unknown)))
+                                   (cons :probe probe)
+                                   asts))))
+             ;; The unknown is no input of the solver; the probe applies the operator to it.
+             (setf (getf template :operator)
+                   (second (third (cdr (assoc :probe (getf template :asts)))))
+                   (getf template :inputs) (butlast (getf template :inputs)))
+             template))))
+      (t (infer-ast-templates inputs target asts)))))
 
 (defun instantiate-function-template (definition input-types target &key name (register-p t))
   "Instantiate the inferred schema against complete input/result types, including captures."
@@ -428,15 +423,9 @@ re-certify exhaustively when CERTIFY-P is true; infinite instantiations become c
                (and node (instantiate-template-ast node template eff-bindings)))))
       (case kind
         (:function
-         (let* ((src-def (or (find-function-definition (knowledge-entry-id src))
-                             (%make-function-definition
-                              :name (knowledge-entry-id src)
-                              :inputs (knowledge-entry-inputs src)
-                              :return-type (knowledge-entry-target src)
-                              :body (knowledge-entry-expression src))))
-                (def (instantiate-function-template src-def
-                                                    (mapcar #'cdr inst-inputs) inst-target
-                                                    :name id :register-p register-p)))
+         (let ((def (instantiate-function-template (entry-function-definition src)
+                                                   (mapcar #'cdr inst-inputs) inst-target
+                                                   :name id :register-p register-p)))
            (or (and register-p (find-knowledge-entry (function-definition-name def) library))
                def)))
         (:solver

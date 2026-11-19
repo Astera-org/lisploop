@@ -555,13 +555,6 @@ no rule would recognise it, so these rules are applied to a requirement before i
                (arithmetic-propagator-inputs rule)
                ledger :propagation-preparation)))))
 
-(defun extract-equality-target (conjunct)
-  "If CONJUNCT is `(= term 'c)` or a singleton `(member term '(c))`, return (VALUES term 'c)."
-  (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct :singleton-member-p t)
-    (declare (ignore term-type))
-    (when term
-      (values term lit-node))))
-
 (defun propagator-evidence (rule)
   "Whether RULE's witness, uniqueness, and necessity have current evidence, as three values.
 A rule counts only while its entry still states what the rule was prepared from; the entry's
@@ -637,15 +630,23 @@ or nil when some part has no value."
     (and (eq :value (evaluation-status check))
          (equal (ast-value target) (evaluation-value check)))))
 
-(defun solved-conjunct (rule term value)
-  "The conjunction that pins each unknown argument of TERM to its part of the witness VALUE."
-  (let ((positions (solver-positions (arithmetic-propagator-position rule))))
-    (reduce #'bool-and
-            (loop for position in positions
-                  for part in (if (rest positions) value (list value))
-                  for unknown = (nth position (rest term))
-                  collect (term `(= ,unknown ',part)))
-            :from-end t)))
+(defun solved-conjunct (rule term values)
+  "What VALUES, the distinct witnesses RULE found, leave of an equation on TERM: false when
+there is none, each unknown argument pinned to its part of the one there is, and otherwise
+the unknown, or the tuple of them, as a member of VALUES."
+  (let* ((positions (solver-positions (arithmetic-propagator-position rule)))
+         (unknowns (mapcar (lambda (position) (nth position (rest term))) positions)))
+    (cond ((null values) (lit :bool nil))
+          ((null (rest values))
+           (reduce #'bool-and
+                   (loop for unknown in unknowns
+                         for part in (if (rest positions) (first values) values)
+                         collect (term `(= ,unknown ',part)))
+                   :from-end t))
+          ((null (rest positions)) (term `(member ,(first unknowns) ',values)))
+          (t (term `(member ,(apply #'app (op :tuple (cons :tuple (mapcar #'ast-type unknowns)))
+                                    unknowns)
+                            ',values))))))
 
 (defun propagator-rules-for (library operator positions)
   "The rules of LIBRARY that invert OPERATOR, type included, at exactly POSITIONS, in the
@@ -666,85 +667,51 @@ positions, built the first time it is asked for."
 (defparameter *propagator-member-limit* 8
   "Maximum cardinality of a finite `(member term '(c1 ... cm))` set inverted by propagation.")
 
-(defun solve-learned-equality (conjunct library ledger certified-p result)
-  "Invert any typed application with the rule's declared known-context mapping.
-Multiple unknown positions use a tuple witness. A witness from a rule that CERTIFIED-P does
-not vouch for must replay forward to the target; one that does not is counted in RESULT.
-When a rule's guard rejects CONTEXT and the rule carries `:necessity` evidence, rewrites
-the infeasible equation to `'nil`. Returns `(VALUES new-conjunct rule mode)`."
-  (multiple-value-bind (term target) (extract-equality-target conjunct)
+(defun conjunct-literal-targets (conjunct)
+  "If CONJUNCT is `(= term 'c)`, or `(member term '(c1 ... cm))` with at most
+`*propagator-member-limit*` distinct values, return (VALUES term literals)."
+  (multiple-value-bind (term type literal) (match-literal-equality conjunct)
+    (declare (ignore type))
+    (cond (term (values term (list literal)))
+          ((and (app-of-p conjunct :member) (not (lit-p (second conjunct))) (lit-p (third conjunct)))
+           (let ((type (operator-operand-type (first conjunct)))
+                 (values (remove-duplicates (ast-value (third conjunct)) :test #'equal)))
+             (when (<= 1 (length values) *propagator-member-limit*)
+               (values (second conjunct) (mapcar (lambda (value) (lit type value)) values))))))))
+
+(defun solve-learned-conjunct (conjunct library ledger certified-p result)
+  "Invert a typed application that CONJUNCT equates to a literal, or confines to a bounded
+set of them, by a rule of LIBRARY with the rule's declared known-context mapping. Each value
+is settled by the rule's witness, which must replay forward to the value unless CERTIFIED-P
+vouches for the rule (one that does not is counted in RESULT), or by the rule's guard
+rejecting it when the rule carries `:necessity` evidence. Multiple unknown positions use a
+tuple witness. Returns `(VALUES new-conjunct rule used-witness-p used-necessity-p)`, or nil
+when no rule settles every value."
+  (multiple-value-bind (term targets) (conjunct-literal-targets conjunct)
     (let ((open (and term (app-p term)
                      (loop for arg in (rest term) for i from 0
                            when (or (free-vars arg) (pattern-has-holes-p arg)) collect i))))
       (when open
         (charge ledger :propagator-dispatch (+ 1 (syntax-work (first term))))
         (dolist (rule (propagator-rules-for library (first term) open))
-          (multiple-value-bind (context mapping) (solver-context-values rule term target ledger)
-            (when context
-              (multiple-value-bind (value solved-p guard-false-p)
-                  (run-learned-solver library rule context ledger)
-                (cond (solved-p
-                       (if (or (funcall certified-p rule)
-                               (witness-replays-p rule term target mapping context value ledger))
-                           (return (values (solved-conjunct rule term value) rule :solved))
-                           (incf (propagation-rejected result))))
-                      ((and guard-false-p (solver-refutes-context-p library rule context ledger))
-                       (return (values (lit :bool nil) rule :refuted))))))))))))
-
-(defun solve-learned-membership (conjunct library ledger certified-p result)
-  "Invert a bounded finite-set membership `(member (op ...) '(c1 ... cm))` (`2 <= m <= 8`)
-by unioning per-element preimages across a matching rule and dropping `:necessity`-refuted elements.
-Returns `(VALUES new-conjunct rule used-witness-p used-necessity-p)` or nil."
-  (when (and (app-of-p conjunct :member) (app-p (second conjunct)) (lit-p (third conjunct)))
-    (let* ((term (second conjunct))
-           (elem-type (operator-operand-type (first conjunct)))
-           (targets (remove-duplicates (ast-value (third conjunct)) :test #'equal))
-           (open (loop for arg in (rest term) for i from 0
-                       when (or (free-vars arg) (pattern-has-holes-p arg)) collect i)))
-      (when (and open (< 1 (length targets) (1+ *propagator-member-limit*)))
-        (charge ledger :propagator-dispatch (+ 1 (syntax-work (first term))))
-        (dolist (rule (propagator-rules-for library (first term) open))
-          (let ((witnesses nil)
-                (used-witness-p nil)
-                (used-necessity-p nil)
-                (complete-p t))
-            (dolist (c targets)
-              (let ((target-lit (lit elem-type c)))
-                (multiple-value-bind (context mapping) (solver-context-values rule term target-lit ledger)
-                  (if (null context)
-                      (progn (setf complete-p nil) (return))
-                      (multiple-value-bind (value solved-p guard-false-p)
-                          (run-learned-solver library rule context ledger)
-                        (cond
-                          (solved-p
-                           (if (or (funcall certified-p rule)
-                                   (witness-replays-p rule term target-lit mapping context value ledger))
-                               (progn (push value witnesses)
-                                      (setf used-witness-p t))
-                               (progn (incf (propagation-rejected result))
-                                      (setf complete-p nil)
-                                      (return))))
-                          ((and guard-false-p (solver-refutes-context-p library rule context ledger))
-                           (setf used-necessity-p t))
-                          (t
-                           (setf complete-p nil)
-                           (return))))))))
-            (when complete-p
-              (let* ((uniq (remove-duplicates (nreverse witnesses) :test #'equal))
-                     (positions (solver-positions (arithmetic-propagator-position rule)))
-                     (next
-                       (cond
-                         ((null uniq) (lit :bool nil))
-                         ((null (rest uniq)) (solved-conjunct rule term (first uniq)))
-                         ((null (rest positions))
-                          (let ((unknown (nth (first positions) (rest term))))
-                            (term `(member ,unknown ',uniq))))
-                         (t
-                          (let* ((unknowns (mapcar (lambda (p) (nth p (rest term))) positions))
-                                 (utype (cons :tuple (mapcar #'ast-type unknowns)))
-                                 (utup (apply #'app (op :tuple utype) unknowns)))
-                            (term `(member ,utup ',uniq)))))))
-                (return (values next rule used-witness-p used-necessity-p))))))))))
+          (let ((witnesses nil) (refuted-p nil))
+            (flet ((settle (target)
+                     (multiple-value-bind (context mapping) (solver-context-values rule term target ledger)
+                       (when context
+                         (multiple-value-bind (value solved-p guard-false-p)
+                             (run-learned-solver library rule context ledger)
+                           (cond ((not solved-p)
+                                  (and guard-false-p
+                                       (solver-refutes-context-p library rule context ledger)
+                                       (setf refuted-p t)))
+                                 ((or (funcall certified-p rule)
+                                      (witness-replays-p rule term target mapping context value ledger))
+                                  (push value witnesses))
+                                 (t (incf (propagation-rejected result)) nil)))))))
+              (when (every #'settle targets)
+                (return (values (solved-conjunct
+                                 rule term (remove-duplicates (nreverse witnesses) :test #'equal))
+                                rule (not (null witnesses)) refuted-p))))))))))
 
 (defun propagate-requirements (frame source ledger)
   "Rewrite every top-level conjunct `(= (op 'k T) 'c)` or bounded `(member (op 'k T) '(c1 ... cm))`
@@ -765,31 +732,17 @@ Both retain the original frame as a fallback."
                (let ((certified t) (changed nil) (unique t))
                  (flet ((solve (conjunct)
                           (loop
-                            (multiple-value-bind (next rule mode)
-                                (solve-learned-equality conjunct library ledger #'evidence result)
-                              (cond
-                                (next
-                                 (multiple-value-bind (rule-certified rule-unique rule-necessary)
-                                     (evidence rule)
-                                   (setf changed t conjunct next)
-                                   (ecase mode
-                                     (:solved
-                                      (setf certified (and certified rule-certified)
-                                            unique (and unique rule-unique)))
-                                     (:refuted
-                                      (setf certified (and certified rule-necessary))))))
-                                (t
-                                 (multiple-value-bind (mnext mrule used-witness-p used-necessity-p)
-                                     (solve-learned-membership conjunct library ledger #'evidence result)
-                                   (unless mnext (return conjunct))
-                                   (multiple-value-bind (rule-certified rule-unique rule-necessary)
-                                       (evidence mrule)
-                                     (setf changed t conjunct mnext)
-                                     (when used-witness-p
-                                       (setf certified (and certified rule-certified)
-                                             unique (and unique rule-unique)))
-                                     (when used-necessity-p
-                                       (setf certified (and certified rule-necessary)))))))))))
+                            (multiple-value-bind (next rule used-witness-p used-necessity-p)
+                                (solve-learned-conjunct conjunct library ledger #'evidence result)
+                              (unless next (return conjunct))
+                              (multiple-value-bind (rule-certified rule-unique rule-necessary)
+                                  (evidence rule)
+                                (setf changed t conjunct next)
+                                (when used-witness-p
+                                  (setf certified (and certified rule-certified)
+                                        unique (and unique rule-unique)))
+                                (when used-necessity-p
+                                  (setf certified (and certified rule-necessary))))))))
                    (let ((conjuncts (mapcar #'solve (extract-conjuncts (row-requirement row)))))
                      (cond ((not changed) (incf (propagation-retained result)) row)
                            (t (if certified
@@ -812,13 +765,15 @@ Both retain the original frame as a fallback."
 
 ;;; Symbolic unwinding: the same rules applied to expressions instead of row values.
 
-(defun simplify-symbolic-expr (expression &key library ledger (budget 250000))
+(defun simplify-symbolic-expr (expression &key library ledger (budget 250000) (fold-p t))
   "EXPRESSION, an unwound closed form or guard, reduced by the kernel's own means and no
 others: `fold-constants` evaluates its closed subterms, and where LIBRARY is a knowledge
 library whose validated laws make a rewrite library for the expression's domain, those laws
 normalise it. Both keep its value and its definedness and are metered on LEDGER; a
-rewriting that does not finish within BUDGET leaves the folded expression."
-  (let* ((folded (fold-constants expression :ledger ledger :budget 2000))
+rewriting that does not finish within BUDGET leaves the folded expression. Folding also
+replaces a call by its function's body, which a law stated of the function then no longer
+matches: without FOLD-P the laws are tried on EXPRESSION as it is written."
+  (let* ((folded (if fold-p (fold-constants expression :ledger ledger :budget 2000) expression))
          (inputs (sort (expression-variables folded) #'< :key #'car))
          (rules (and (knowledge-library-p library)
                      (as-rewrite-library library
@@ -1160,54 +1115,43 @@ solution exists outside `guard` / `auxiliary-code`). Returns the attested entry,
             (necessary t))
         (dotimes (index count)
           (let* ((context (law-assignment inputs index))
-                 (grun (evaluate (knowledge-entry-guard entry) inputs context :ledger ledger))
                  (expected (nth (position :target mapping) context)))
-            (unless (eq :value (evaluation-status grun))
-              (return-from certify-solver-entry (values nil t)))
-            (flet ((forward (value)
-                     (evaluate (solver-forward-expression operator position mapping context value)
-                               nil nil :ledger ledger)))
-              (cond
-                ((evaluation-value grun)
-                 (incf active)
-                 (let* ((wrun (evaluate (knowledge-entry-expression entry) inputs context :ledger ledger))
-                        (witness (evaluation-value wrun)))
-                   (unless (eq :value (evaluation-status wrun))
-                     (return-from certify-solver-entry (values nil t)))
-                   (let ((run (forward witness)))
-                     (unless (and (eq :value (evaluation-status run))
-                                  (equal expected (evaluation-value run)))
-                       (return-from certify-solver-entry (values nil t))))
-                   (when unique
-                     (dotimes (i (finite-type-cardinality target))
-                       (let* ((alternative (unrank-finite-value target i))
-                              (run (forward alternative)))
-                         (when (and (eq :value (evaluation-status run))
-                                    (equal expected (evaluation-value run))
-                                    (not (equal witness alternative)))
-                           (return-from certify-solver-entry (values nil t))))))))
-                (necessary
-                 (let ((domain-admits-p
-                         (when aux
-                           (let ((arun (evaluate aux inputs context :ledger ledger)))
-                             (if (eq :value (evaluation-status arun))
-                                 (evaluation-value arun)
-                                 :error)))))
-                   (cond
-                     ((eq domain-admits-p :error)
-                      (setf necessary nil)
-                      (when claimed-necessary
-                        (return-from certify-solver-entry (values nil t))))
-                     ((null domain-admits-p)
-                      (dotimes (i (finite-type-cardinality target))
-                        (let* ((alternative (unrank-finite-value target i))
-                               (run (forward alternative)))
-                          (when (and (eq :value (evaluation-status run))
-                                     (equal expected (evaluation-value run)))
-                            (setf necessary nil)
-                            (when claimed-necessary
-                              (return-from certify-solver-entry (values nil t)))
-                            (return))))))))))))
+            (labels ((value (expression)
+                       ;; EXPRESSION's value on CONTEXT, and whether it has one.
+                       (let ((run (evaluate expression inputs context :ledger ledger)))
+                         (values (evaluation-value run) (eq :value (evaluation-status run)))))
+                     (solves-p (candidate)
+                       (let ((run (evaluate (solver-forward-expression operator position mapping
+                                                                       context candidate)
+                                            nil nil :ledger ledger)))
+                         (and (eq :value (evaluation-status run))
+                              (equal expected (evaluation-value run)))))
+                     (solved-otherwise-p (&optional (witness nil witness-p))
+                       ;; Some value of the target type other than WITNESS solves the context.
+                       (dotimes (rank (finite-type-cardinality target))
+                         (let ((candidate (unrank-finite-value target rank)))
+                           (when (and (solves-p candidate)
+                                      (not (and witness-p (equal witness candidate))))
+                             (return t))))))
+              (multiple-value-bind (guarded guard-ok) (value (knowledge-entry-guard entry))
+                (cond
+                  ((not guard-ok) (return-from certify-solver-entry (values nil t)))
+                  (guarded
+                   (incf active)
+                   (multiple-value-bind (witness witness-ok) (value (knowledge-entry-expression entry))
+                     (unless (and witness-ok
+                                  (solves-p witness)
+                                  (not (and unique (solved-otherwise-p witness))))
+                       (return-from certify-solver-entry (values nil t)))))
+                  (necessary
+                   ;; Outside the guard, and outside the domain guard if there is one, nothing
+                   ;; may solve the context; a domain guard without a value decides nothing.
+                   (multiple-value-bind (admitted admitted-ok)
+                       (if aux (value aux) (values nil t))
+                     (when (or (not admitted-ok) (and (not admitted) (solved-otherwise-p)))
+                       (setf necessary nil)
+                       (when claimed-necessary
+                         (return-from certify-solver-entry (values nil t)))))))))))
         (when (plusp active)
           (attest-knowledge-entry entry :exhaustive
                                   (append '(:witness)

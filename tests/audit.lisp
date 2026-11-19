@@ -146,7 +146,7 @@
         (start-law-validation
          (make-law d scope (app (op :audit-collapse) (app (op :audit-collapse) x)) x
                    :guard (app (op := d) x (lit d 0)))) 100000))
-      (induce-involution-solvers *knowledge-library*)
+      (induce-law-solvers *knowledge-library*)
       (let* ((req (app (op := d) (app (op :audit-collapse) x) (lit d 0)))
              (frame (make-frame (make-schema :inputs nil :target d)
                                 (list (make-row :key 0 :known nil :requirement req))))
