@@ -96,7 +96,8 @@
     ;; 3. Populate one entry of each standard kind and verify installation + consumption
     (define-test-map-candidate-functions)
     (check (find-knowledge-entry :inc-list))
-    (check (find-knowledge-entry :inc-list/descriptor))
+    (check (find-knowledge-entry :DESC/LEN-EQ))
+    (check (entry-descriptor-necessary-p :inc-list :DESC/LEN-EQ))
     ;; Relation
     (let ((rel-entry (register-knowledge-relation
                       :bonus-table '((1 100) (2 200))
@@ -292,10 +293,11 @@
           (map-entry (find-knowledge-entry :map)))
       (check (equal (app (op :+ :int) (var 0 :int) (lit :int 1))
                     (knowledge-entry-auxiliary-code inc-entry)))
-      ;; 3. Verify behavioral `:descriptor` (`trigger`) on `:map` and `:inc-list`
+      ;; 3. Verify behavioral `:descriptor` (`trigger` + shared `:DESC/LEN-EQ`) on `:map` and `:inc-list`
       (check (knowledge-entry-trigger inc-entry))
       (check (knowledge-entry-trigger map-entry))
-      (check (find-knowledge-entry :map/descriptor))
+      (check (find-knowledge-entry :DESC/LEN-EQ))
+      (check (entry-descriptor-necessary-p map-entry :DESC/LEN-EQ))
       ;; Verify `library-decompositions` prunes `:map` when sequence lengths mismatch
       (let* ((seq-type (sequence-type :int))
              (inputs (list (cons 0 seq-type)))
@@ -387,7 +389,8 @@
                                                          :library-names '(:map))))
               (check (> (getf report :after-version) (getf report :before-version)))
               (check (find-knowledge-entry :map))
-              (check (find-knowledge-entry :map/descriptor))
+              (check (find-knowledge-entry :DESC/LEN-EQ))
+              (check (entry-descriptor-necessary-p :map :DESC/LEN-EQ))
               (check (find-knowledge-entry :map/functor))
               (check (find-knowledge-entry :map/invert-+-0))
               (check (find-knowledge-entry :default-priority-predictor)))
@@ -429,7 +432,7 @@
             (commit-synthesis-job warm-shift4-job :name :shift4-warm :library *knowledge-library*)
             (let ((s4-entry (find-knowledge-entry :shift4-warm)))
               (check s4-entry)
-              (check (find-knowledge-entry :shift4-warm/descriptor))
+              (check (entry-descriptor-necessary-p s4-entry :DESC/LEN-EQ))
               (check (equal '(14 24 34)
                             (evaluation-value (consume-knowledge-entry s4-entry '((10 20 30))))))
               (check (member '(:refactored-by :map)
@@ -649,8 +652,8 @@ or magic score constants (aligned with `plan7-m9-policy.md`)."
                              (functionp (entry-executable-expr-fn (ensure-entry-executable d)))))
                       descs))
         ;; Structurally backed shape invariant carries `:necessary` evidence; sampled step-delta stays `:empirical`
-        (check (some (lambda (d) (knowledge-evidence-current-p d :necessary)) descs))
-        (check (some (lambda (d) (not (knowledge-evidence-current-p d :necessary))) descs))
+        (check (some (lambda (d) (entry-descriptor-necessary-p fn-entry d)) descs))
+        (check (some (lambda (d) (not (entry-descriptor-necessary-p fn-entry d))) descs))
         ;; Relational scoring: constant-step frame beats non-constant equal-length frame, and
         ;; length-contracting frame is soundly pruned.
         (let ((const-delta-frame (simple-frame seq-type fn-inputs '((((1 4 9)) (6 9 14)))))

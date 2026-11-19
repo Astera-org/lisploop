@@ -16,32 +16,6 @@
       (:ast (sexp->ast (second encoded)))
       (:data (copy-tree (second encoded))))))
 
-(defun descriptor-clause->plist (clause)
-  (if (descriptor-clause-p clause)
-      (list :id (descriptor-clause-id clause)
-            :facet (descriptor-clause-facet clause)
-            :tier (descriptor-clause-tier clause)
-            :status (descriptor-clause-status clause)
-            :weight-bits (descriptor-clause-weight-bits clause)
-            :work-cost (descriptor-clause-work-cost clause))
-      (copy-tree clause)))
-
-(defun plist->descriptor-clause (plist)
-  "Rebuild a clause; a field that is absent or nil in PLIST takes the struct's default."
-  (if (descriptor-clause-p plist)
-      plist
-      (apply #'make-descriptor-clause
-             (loop for (key value) on plist by #'cddr
-                   when value append (list key value)))))
-
-(defun convert-descriptor-profile (metadata converter)
-  "A copy of the entry METADATA plist with each clause of its descriptor profile converted."
-  (let ((copy (copy-list metadata)))
-    (when (getf copy :descriptor-profile)
-      (setf (getf copy :descriptor-profile)
-            (mapcar converter (getf copy :descriptor-profile))))
-    (copy-tree copy)))
-
 (defparameter +knowledge-entry-slots+
   '((:id knowledge-entry-id :data)
     (:kind knowledge-entry-kind :data)
@@ -59,7 +33,7 @@
     (:gain knowledge-entry-gain :data)
     (:work knowledge-entry-work :data)
     (:edges knowledge-entry-edges :data)
-    (:metadata knowledge-entry-metadata :metadata))
+    (:metadata knowledge-entry-metadata :data))
   "Each slot of a `knowledge-entry` as (keyword reader encoding). The keyword is both the
 packet key and the `make-knowledge-entry` argument.")
 
@@ -70,8 +44,7 @@ packet key and the `make-knowledge-entry` argument.")
         append (list key (ecase encoding
                            (:data (copy-tree value))
                            (:ast (ast->sexp value))
-                           (:hybrid (serialize-hybrid-slot value))
-                           (:metadata (convert-descriptor-profile value #'descriptor-clause->plist))))))
+                           (:hybrid (serialize-hybrid-slot value))))))
 
 (defun sexp->knowledge-entry (plist &optional (library *knowledge-library*))
   "Reconstruct a `knowledge-entry` from its `knowledge-entry->sexp` plist representation.
@@ -82,19 +55,19 @@ A slot that is absent from PLIST takes the default of `make-knowledge-entry`."
                              (ecase encoding
                                (:data stored)
                                (:ast (sexp->ast stored))
-                               (:hybrid (deserialize-hybrid-slot stored))
-                               (:metadata (convert-descriptor-profile stored #'plist->descriptor-clause))))
+                               (:hybrid (deserialize-hybrid-slot stored))))
                when value append (list key value))))
 
-(defun serialize-knowledge-library (&optional (library *knowledge-library*))
+(defun serialize-knowledge-library (&optional (library *knowledge-library*) &key metadata)
   "Serialize LIBRARY into a self-contained homoiconic S-expression packet."
-  (list :knowledge-library
-        :encoding-version +encoding-version+
-        :version (knowledge-library-version library)
-        :function-names (copy-list (knowledge-library-function-names library))
-        :de-novo-counter (knowledge-library-de-novo-counter library)
-        :entry-counter (knowledge-library-entry-counter library)
-        :entries (mapcar #'knowledge-entry->sexp (knowledge-library-entries library))))
+  (append (list :knowledge-library
+                :encoding-version +encoding-version+
+                :version (knowledge-library-version library))
+          (when metadata (list :metadata (copy-tree metadata)))
+          (list :function-names (copy-list (knowledge-library-function-names library))
+                :de-novo-counter (knowledge-library-de-novo-counter library)
+                :entry-counter (knowledge-library-entry-counter library)
+                :entries (mapcar #'knowledge-entry->sexp (knowledge-library-entries library)))))
 
 (defun deserialize-knowledge-library (sexp &key (target-library nil) ledger)
   "Reconstruct a `knowledge-library` from a `serialize-knowledge-library` S-expression,
@@ -136,13 +109,13 @@ installing all entries in priority order (`:function` before `:law`, `:solver`, 
           (or (getf plist :version) (knowledge-library-version library)))
     library))
 
-(defun save-knowledge-library (pathname &optional (library *knowledge-library*))
+(defun save-knowledge-library (pathname &optional (library *knowledge-library*) &key metadata)
   "Write LIBRARY as a canonical homoiconic S-expression file at PATHNAME."
   (with-open-file (stream pathname :direction :output :if-exists :supersede :if-does-not-exist :create)
     (with-standard-io-syntax
       (let ((*print-circle* nil)
             (*print-pretty* t))
-        (prin1 (serialize-knowledge-library library) stream)
+        (prin1 (serialize-knowledge-library library :metadata metadata) stream)
         (terpri stream))))
   pathname)
 

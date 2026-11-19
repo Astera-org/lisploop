@@ -11,7 +11,7 @@
    #:lit #:var #:op #:app #:hole #:bool-not #:bool-and #:term #:map-ast #:app-of-p
    #:ast-meta #:ensure-ast-meta #:ast-kind #:ast-id #:ast-type #:ast-value
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p
-   #:operator-name #:operator-type #:operator-operand-type #:application-overhead
+   #:operator-name #:operator-type #:operator-operand-type #:at-container-type #:application-overhead
    #:expression-type #:free-vars #:provably-total-p #:instantiate #:expression-less-p
    #:function-definition #:function-definition-p #:function-definition-name
    #:function-definition-inputs #:function-definition-return-type #:function-definition-code-type
@@ -73,7 +73,7 @@
 
    ;; 8. frame.lisp — Frames, pullbacks, 1-to-many lifts, coordinate probes, delta packets
    #:row #:make-row #:row-key #:row-known #:row-requirement
-   #:frame #:frame-p #:make-frame #:snapshot-frame
+   #:frame #:frame-p #:make-frame #:simple-frame #:probe-frame #:snapshot-frame
    #:frame-schema #:frame-rows #:frame-pairs #:frame-anchors #:frame-edges #:hard-edges
    #:frame-conflict #:frame-conflict-p #:frame-conflict-kind #:frame-conflict-keys #:frame-conflict-known
    #:frame-constrained-row-count #:frame-min-resolved-rows
@@ -147,6 +147,7 @@
    ;; 13. templates.lisp — Polymorphic retyping, template inference & AST transformations
    #:retype-expr #:retype-law #:retype-knowledge-laws #:retype-function-definition
    #:walk-typed-ast #:infer-function-template #:instantiate-function-template
+   #:infer-entry-template #:instantiate-entry-template
    #:learn-knowledge-transformer
 
    ;; 14. bootstrap-inverters.lisp — Functorial & involution solver induction
@@ -179,6 +180,7 @@
    #:descriptor-clause-id #:descriptor-clause-facet #:descriptor-clause-tier
    #:descriptor-clause-status #:descriptor-clause-weight-bits #:descriptor-clause-work-cost
    #:derive-compositional-name #:compute-entry-descriptor-profile
+   #:entry-descriptor-necessary-p #:entry-trigger-compatible-p
    #:score-entry-by-descriptors #:library-function-descriptor-compatible-p
    #:evaluate-frame-descriptors #:frame-addressed-entries
 
@@ -230,8 +232,11 @@
    #:projection-language #:projection-row-keys #:stored-row-keys
    #:generalize-decoder-templates #:remember-motif-decoder #:decoder-template-live-p
 
-   ;; 23. consolidate.lisp — Trace heuristic learning & continual library consolidation
+   ;; 23. consolidate.lisp — Trace heuristic learning, specs, solver induction, batteries & consolidation
    #:make-search-trace-frame #:condense-search-heuristic #:register-knowledge-heuristic
+   #:make-knowledge-spec #:register-knowledge-spec #:spec-entry-frame
+   #:verify-entry-against-spec #:synthesize-spec-entry
+   #:induce-law-solvers #:induce-conditional-solver #:induce-conditional-solvers
    #:consolidate-library-functions #:consolidate-policy-descriptors
    #:commit-synthesis-job #:consolidate-knowledge-library #:*consolidation-pass-limit*
    #:lift-field-solvers
@@ -244,6 +249,6 @@
    ;; 25. explain.lisp — Read-only synthesis & library inspection reports
    #:explain-synthesis-node #:explain-synthesis-job #:explain-knowledge-library
 
-   ;; 26. batteries.lisp — Library sources that ship with the kernel
+   ;; 26. Battery packets (.sexp knowledge libraries in library/)
    #:*battery-directory* #:battery-names #:read-battery #:load-battery))
 (in-package #:lisploop)

@@ -107,8 +107,10 @@ or when HEURISTIC-MODEL has no concrete residuals and ROW is an unresolved const
                                   (and (operator-p o) (eq :< (operator-name o))))
                                 (language-operators language)))
          (domain-ops (remove-if (lambda (o)
-                                  (and (consp (operator-type o))
-                                       (eq :bool (car (last (operator-type o))))))
+                                  (and (operator-p o)
+                                       (or (member (operator-name o) '(:= :< :if))
+                                           (and (eq :tuple (operator-name o))
+                                                (not (language-operator-p language :at))))))
                                 (language-operators language)))
          (seq-empty-constants
            (loop for (nil . type) in inputs
@@ -125,16 +127,41 @@ or when HEURISTIC-MODEL has no concrete residuals and ROW is an unresolved const
 
 (defun observed-predicates (frame language bound work-limit ledger)
   "Search LANGUAGE observationally over FRAME's rows, up to BOUND bits and WORK-LIMIT work
-charged to LEDGER as guard search. Returns ((expression . row-values) ...), the shortest
-expression of each distinct Boolean behaviour found, the latest behaviour first."
-  (let* ((obs (start-observation-search (make-observation-scope frame language)))
+charged to LEDGER as guard search, plus direct 1-step `:bool` `:code-eval` predicates over
+FRAME's variables when admitted by LANGUAGE. Returns ((expression . row-values) ...)."
+  (let* ((inputs (schema-inputs (frame-schema frame)))
+         (rows (frame-rows frame))
+         (direct-code-preds
+           (loop for o in (language-operators language)
+                 when (and (operator-p o)
+                           (eq :code-eval (operator-name o))
+                           (eq :bool (third (operator-type o))))
+                   append (let* ((arg-types (second (operator-type o)))
+                                 (choices (mapcar (lambda (atype)
+                                                    (loop for (id . itype) in inputs
+                                                          when (equal itype atype)
+                                                            collect (var id itype)))
+                                                  arg-types)))
+                            (when (every #'consp choices)
+                              (loop for args in (cartesian-product-lists choices)
+                                    for expr = (apply #'app o args)
+                                    for vals = (loop for r in rows
+                                                     for run = (evaluate expr inputs (row-known r)
+                                                                         :ledger ledger)
+                                                     when (eq :value (evaluation-status run))
+                                                       collect (evaluation-value run))
+                                    when (= (length vals) (length rows))
+                                      collect (cons expr vals))))))
+         (obs (start-observation-search (make-observation-scope frame language)))
          (obs-before (ledger-total (observation-job-ledger obs))))
     (resume-observation-search obs bound work-limit)
     (charge ledger :guard-search (- (ledger-total (observation-job-ledger obs)) obs-before))
-    (loop for bucket in (observation-job-buckets obs)
-          when (eq :bool (observation-bucket-type bucket))
-            collect (cons (observed-expression-expression (car (last (observation-bucket-members bucket))))
-                          (observation-bucket-values bucket)))))
+    (append direct-code-preds
+            (loop for bucket in (observation-job-buckets obs)
+                  when (eq :bool (observation-bucket-type bucket))
+                    collect (cons (observed-expression-expression
+                                   (car (last (observation-bucket-members bucket))))
+                                  (observation-bucket-values bucket))))))
 
 (defparameter *feature-guard-bits* 32
   "Body-bit bound on an exception guard that compares two Stage A features.")
@@ -197,23 +224,48 @@ covering sound one wins (an exact separator covers every hit), then the shortest
 When the guard grammar holds no exact separator within GUARD-BOUND, the comparisons of two
 of the Stage A features in BUCKETS compete too, up to FEATURE-BOUND body bits
 (`feature-pair-predicates`)."
-  (let* ((predicates (observed-predicates (support-frame frame hit-mask ledger)
-                                          guard-language guard-bound work-limit ledger))
-         (inputs (schema-inputs (frame-schema frame)))
+  (let* ((inputs (schema-inputs (frame-schema frame)))
          (rows (frame-rows frame))
          (eff-active (or active-mask
                          (let ((constrained (mapcar #'constrained-row-p rows)))
                            (if (some #'identity constrained)
                                constrained
                                (make-list (length rows) :initial-element t)))))
-         (active-hits (loop for h in hit-mask for active-p in eff-active count (and h active-p))))
+         (all-active-p (every #'identity eff-active))
+         (active-rows (if all-active-p
+                          rows
+                          (loop for r in rows for a in eff-active when a collect r)))
+         (active-hit-mask (if all-active-p
+                              hit-mask
+                              (loop for h in hit-mask for a in eff-active when a collect h)))
+         (active-frame (if all-active-p
+                           frame
+                           (derive-frame frame :rows active-rows :pairs nil :anchors nil :edges nil)))
+         (input-buckets (when active-rows
+                          (loop for (id . type) in inputs
+                                for pos from 0
+                                for vals = (mapcar (lambda (r) (nth pos (row-known r))) active-rows)
+                                unless (member :unresolved vals)
+                                  collect (cons (var id type) vals))))
+         (active-buckets (append input-buckets
+                                 (if (or (null buckets) all-active-p)
+                                     buckets
+                                     (loop for (expr . vals) in buckets
+                                           when (= (length vals) (length rows))
+                                             collect (cons expr
+                                                           (loop for v in vals for a in eff-active
+                                                                 when a collect v))))))
+         (predicates (if active-rows
+                         (observed-predicates (support-frame active-frame active-hit-mask ledger)
+                                              guard-language guard-bound work-limit ledger)
+                         nil))
+         (active-hits (count t active-hit-mask)))
     (labels ((sound-guard (expr vals)
                ;; (expr invert-p covered-hits bits) when EXPR, in one polarity, holds on hits only.
                (let ((sound-hit-p t) (sound-miss-p t) (hits 0) (inv-hits 0))
-                 (loop for v in vals for h in hit-mask for active-p in eff-active
-                       when active-p do
-                         (if h (if v (incf hits) (incf inv-hits))
-                             (if v (setf sound-hit-p nil) (setf sound-miss-p nil))))
+                 (loop for v in vals for h in active-hit-mask do
+                   (if h (if v (incf hits) (incf inv-hits))
+                       (if v (setf sound-hit-p nil) (setf sound-miss-p nil))))
                  (when (or (and sound-hit-p (plusp hits)) (and sound-miss-p (plusp inv-hits)))
                    (let ((use-inv-p (and sound-miss-p (or (not sound-hit-p) (> inv-hits hits)))))
                      (list expr use-inv-p (if use-inv-p inv-hits hits) (description-size expr inputs))))))
@@ -223,10 +275,10 @@ of the Stage A features in BUCKETS compete too, up to FEATURE-BOUND body bits
                               when guard collect guard)
                         (list :desc #'third) #'fourth)))
       (let ((best (best-guard predicates)))
-        (when (and buckets (not (and best (= active-hits (third best)))))
+        (when (and active-buckets active-rows (not (and best (= active-hits (third best)))))
           (setf best (best-by (remove nil (list best
                                                 (best-guard (feature-pair-predicates
-                                                             buckets inputs (length rows)
+                                                             active-buckets inputs (length active-rows)
                                                              feature-bound ledger guard-language))))
                               (list :desc #'third) #'fourth)))
         (values (first best) (second best))))))
@@ -279,33 +331,45 @@ bare tails when no such call can be typed against INPUTS."
 (defun inductive-child-language (language operators constants bindings inputs self-name)
   "LANGUAGE over the child inputs that BINDINGS project from INPUTS, offering CONSTANTS and
 OPERATORS less the destructors, equality, conditional and SELF-NAME that the decoder applies."
-  (derive-language language
-                   :inputs (loop for (id . expr) in bindings
-                                 collect (cons id (expression-type expr inputs)))
-                   :operators (remove-if (lambda (o)
-                                           (and (operator-p o)
-                                                (member (operator-name o)
-                                                        (list :at :tail := :if self-name))))
-                                         operators)
-                   :constants constants))
+  (let ((child-inputs (loop for (id . expr) in bindings
+                            collect (cons id (expression-type expr inputs)))))
+    (derive-language
+     language
+     :inputs child-inputs
+     :operators (remove-if (lambda (o)
+                             (and (operator-p o)
+                                  (or (member (operator-name o) (list :at :tail :if self-name))
+                                      (and (eq := (operator-name o))
+                                           (or self-name
+                                               (< (count (operator-operand-type o) child-inputs
+                                                         :key #'cdr :test #'equal)
+                                                  2))))))
+                           operators)
+     :constants constants)))
 
 (defun lift-inductive-sequence-context (guard invert-p inputs language child-language child-id eff-self)
   "When GUARD is an empty-sequence check `(= Xi '())` with INVERT-P NIL (so the residual child
-lives in the non-empty else branch) and LANGUAGE provides `:at` and `:tail`, lift `(at Xi '0)`
+lives in the non-empty else branch) and LANGUAGE provides `:at` and/or `:tail`, lift `(at Xi '0)`
 and `(<eff-self> ... (tail Xi) ...)` (or `(tail Xi)`) into the child's bindings and grammar.
 Returns (VALUES bindings language lifted-seq-id)."
-  (let ((seq-spec (and (not invert-p)
-                       (language-operator-p language :at)
-                       (language-operator-p language :tail)
-                       (assoc (empty-sequence-guard-var-id guard (mapcar #'car inputs)) inputs))))
+  (let* ((has-at-p (language-operator-p language :at))
+         (has-tail-p (language-operator-p language :tail))
+         (seq-spec (and (not invert-p)
+                        (if eff-self (and has-at-p has-tail-p) (or has-at-p has-tail-p))
+                        (assoc (empty-sequence-guard-var-id guard (mapcar #'car inputs)) inputs))))
     (if (null seq-spec)
         (values (identity-bindings inputs) child-language nil)
         (multiple-value-bind (heads steps) (inductive-projections (list seq-spec) inputs eff-self)
-          (let ((lifted-bindings (if (rest inputs)
-                                     (append (identity-bindings inputs)
-                                             (list (cons child-id (first heads))
-                                                   (cons (1+ child-id) (first steps))))
-                                     (list (cons 0 (first heads)) (cons 1 (first steps))))))
+          (let* ((proj-exprs (append (when has-at-p heads) (when has-tail-p steps)))
+                 (lifted-bindings
+                   (if (rest inputs)
+                       (append (loop for (id . ty) in inputs
+                                     unless (and (null eff-self) (eql id (car seq-spec)))
+                                       collect (cons id (var id ty)))
+                               (loop for e in proj-exprs
+                                     for cid from child-id
+                                     collect (cons cid e)))
+                       (loop for e in proj-exprs for cid from 0 collect (cons cid e)))))
             (values lifted-bindings
                     (inductive-child-language language
                                               (language-operators language)
@@ -369,7 +433,14 @@ the lockstep recursive step `(<eff-self> (tail X_s1) (tail X_s2) ...)`."
               (when base-expr
                 (multiple-value-bind (head-exprs step-exprs)
                     (inductive-projections seq-specs inputs eff-self)
-                  (let* ((has-code-param-p (some (lambda (s) (code-type-p (cdr s))) non-seq-specs))
+                  (when (or (null eff-self)
+                            (some (lambda (r)
+                                    (every (lambda (se)
+                                             (eq :value (evaluation-status
+                                                         (evaluate se inputs (row-known r) :ledger ledger))))
+                                           step-exprs))
+                                  non-empty-rows))
+                    (let* ((has-code-param-p (some (lambda (s) (code-type-p (cdr s))) non-seq-specs))
                          (kept-non-seq-exprs
                            (loop for (oid . otype) in non-seq-specs
                                  unless (and has-code-param-p
@@ -405,7 +476,323 @@ the lockstep recursive step `(<eff-self> (tail X_s1) (tail X_s2) ...)`."
                                    (list :origin :lockstep-inductive-sequence-lift
                                          :base-program base-expr
                                          :lifted-sequence-ids (mapcar #'car seq-specs)
-                                         :lifted-bindings lifted-bindings)))))))))))))
+                                         :lifted-bindings lifted-bindings))))))))))))))
+
+(defun candidate-inductive-bases (inputs target h-model language)
+  "Ordered candidate base-case ASTs over INPUTS for TARGET."
+  (let ((cands nil))
+    (flet ((add (e) (when (and e (equal target (ignore-errors (expression-type e inputs))))
+                      (pushnew e cands :test #'equal))))
+      (when h-model
+        (add (heuristic-program h-model))
+        (dolist (alt (heuristic-alternatives h-model))
+          (add (heuristic-program alt))))
+      (dolist (s inputs)
+        (when (equal (cdr s) target)
+          (add (var (car s) (cdr s)))))
+      (add (lit target (default-value-for-type target)))
+      (when (and (tuple-type-p target)
+                 (<= 1 (length (rest target)) 3)
+                 (language-operator-p language :tuple))
+        (let ((slot-atoms
+                (mapcar (lambda (stype)
+                          (remove-duplicates
+                           (cons (lit stype (default-value-for-type stype))
+                                 (loop for (id . type) in inputs
+                                       when (equal type stype) collect (var id type)))
+                           :test #'equal))
+                        (rest target))))
+          (dolist (combo (cartesian-product-lists slot-atoms))
+            (add (apply #'app (op :tuple target) combo))))))
+    (nreverse cands)))
+
+(defun extended-inductive-decompositions (frame language c-lang h-model child-id c-bound
+                                          eff-self solver ledger debug-p)
+  "Propose lookahead (`(= (tail xs) ())`), state-threading (`foldl`/`scan`), and integer
+counter/countdown (`(+ k 1)` / `(< 0 k) -> (- k 1)`) recursive skeletons when EFF-SELF is active."
+  (when eff-self
+    (let* ((schema (frame-schema frame))
+           (inputs (schema-inputs schema))
+           (target (schema-target schema))
+           (rows (frame-rows frame))
+           (seq-specs (remove-if-not #'seq-type-p inputs :key #'cdr))
+           (base-cands (candidate-inductive-bases inputs target h-model language))
+           (proposals nil))
+      (dolist (seq-spec seq-specs (nreverse proposals))
+        (let* ((seq-id (car seq-spec))
+               (seq-type (cdr seq-spec))
+               (seq-pos (position seq-id inputs :key #'car :test #'eql))
+               (xs (var seq-id seq-type))
+               (has-seq-eq-p (some (lambda (o)
+                                     (and (operator-p o) (eq := (operator-name o))
+                                          (equal seq-type (operator-operand-type o))))
+                                   (language-operators language)))
+               (empty-rows (remove-if-not (lambda (r) (empty-sequence-row-p r seq-pos)) rows))
+               (non-empty-rows (remove-if-not
+                                (lambda (r)
+                                  (and (constrained-row-p r)
+                                       (consp (nth seq-pos (row-known r)))))
+                                rows))
+               (base0 (and has-seq-eq-p empty-rows non-empty-rows
+                           (find-if (lambda (e)
+                                      (and (every (lambda (r) (row-satisfied-p r e inputs :ledger ledger))
+                                                  empty-rows)
+                                           (notevery (lambda (r) (row-satisfied-p r e inputs :ledger ledger))
+                                                     non-empty-rows)))
+                                    base-cands))))
+          (when base0
+            ;; 1. Two-step lookahead induction: `(if (= xs ()) base0 (if (= (tail xs) ()) base1 Z_child))`
+            (when (and (= 1 (length seq-specs))
+                       (language-operator-p language :at)
+                       (language-operator-p language :tail))
+              (let* ((singleton-rows (remove-if-not
+                                      (lambda (r) (= 1 (length (nth seq-pos (row-known r)))))
+                                      non-empty-rows))
+                     (long-rows (remove-if-not
+                                 (lambda (r) (>= (length (nth seq-pos (row-known r))) 2))
+                                 non-empty-rows))
+                     (head0 (term `(at ,xs 0)))
+                     (sing-cands (remove-duplicates
+                                  (append (when (equal (second seq-type) target) (list head0))
+                                          base-cands)
+                                  :test #'equal))
+                     (base1 (and singleton-rows long-rows
+                                 (find-if (lambda (e)
+                                            (and (every (lambda (r)
+                                                          (row-satisfied-p r e inputs :ledger ledger))
+                                                        singleton-rows)
+                                                 (notevery (lambda (r)
+                                                             (row-satisfied-p r e inputs :ledger ledger))
+                                                           long-rows)))
+                                          sing-cands))))
+                (when (and base1
+                           (or (not (equal base1 base0))
+                               (and (notany (lambda (s) (equal (second seq-type) (cdr s))) inputs)
+                                    (some (lambda (o)
+                                            (and (operator-p o)
+                                                 (eq :code-eval (operator-name o))
+                                                 (let ((args (rest (second (operator-type o)))))
+                                                   (and (= 2 (length args))
+                                                        (every (lambda (at) (equal at (second seq-type)))
+                                                               args)))))
+                                          (language-operators language)))))
+                  (let* ((head1 (term `(at (tail ,xs) 0)))
+                         (rec (typed-recursive-call eff-self inputs
+                                                    (list (cons seq-id (term `(tail ,xs))))))
+                         (other-vars (loop for (id . type) in inputs
+                                           unless (eql id seq-id) collect (var id type)))
+                         (lifted-bindings
+                           (loop for e in (append (list head0 head1) other-vars (when rec (list rec)))
+                                 for cid from 0 collect (cons cid e)))
+                         (l-lang (inductive-child-language
+                                  language (language-operators c-lang)
+                                  (remove (lit seq-type '()) (language-constants c-lang) :test #'equal)
+                                  lifted-bindings inputs eff-self)))
+                    (push (make-decomposition
+                           :name (list :lookahead-inductive seq-id base0 base1)
+                           :decoder (term `(if (= ,xs ()) ,base0
+                                               (if (= (tail ,xs) ()) ,base1 ,(var child-id target))))
+                           :child-id child-id :child-type target
+                           :bindings lifted-bindings :language l-lang
+                           :bound (max c-bound (header-bound (language-inputs l-lang) target 48))
+                           :policy-score 4 :solver solver
+                           :provenance (when debug-p
+                                         (list :origin :lookahead-inductive
+                                               :sequence-id seq-id :base0 base0 :base1 base1)))
+                          proposals)))))
+            ;; 2. State-threading & counter/countdown inductions over non-code parameters
+            (when (language-operator-p language :tail)
+              (dolist (s-spec inputs)
+                (let ((s-id (car s-spec))
+                      (s-type (cdr s-spec)))
+                  (when (and (not (eql s-id seq-id))
+                             (not (seq-type-p s-type))
+                             (not (code-type-p s-type)))
+                    (let* ((s-var (var s-id s-type))
+                           (step-var (var child-id s-type))
+                           (rec-state (typed-recursive-call
+                                       eff-self inputs
+                                       (list (cons seq-id (term `(tail ,xs)))
+                                             (cons s-id step-var))))
+                           (step-exprs (append (when (language-operator-p language :at)
+                                                 (list (term `(at ,xs 0))))
+                                               (loop for (id . type) in inputs
+                                                     unless (eql id seq-id) collect (var id type))))
+                           (step-bindings (loop for e in step-exprs for cid from 0 collect (cons cid e)))
+                           (step-lang (inductive-child-language
+                                       language (language-operators c-lang)
+                                       (remove (lit seq-type '()) (language-constants c-lang) :test #'equal)
+                                       step-bindings inputs eff-self)))
+                      ;; 2a. Tail-accumulator (`foldl`): `(if (= xs ()) s (<self> (tail xs) Z_next ...))`
+                      (when (and (= 1 (length seq-specs))
+                                 rec-state
+                                 (equal s-type target)
+                                 (equal base0 s-var))
+                        (push (make-decomposition
+                               :name (list :state-fold-inductive seq-id s-id)
+                               :decoder (term `(if (= ,xs ()) ,base0 ,rec-state))
+                               :child-id child-id :child-type s-type
+                               :bindings step-bindings :language step-lang
+                               :bound (max c-bound (header-bound (language-inputs step-lang) s-type 44))
+                               :policy-score 4 :solver solver
+                               :provenance (when debug-p
+                                             (list :origin :state-fold-inductive
+                                                   :sequence-id seq-id :state-id s-id)))
+                              proposals))
+                      ;; 2b. Emit-and-thread (`scan`): `(if (= xs ()) () (cons Z_next (<self> (tail xs) Z_next ...)))`
+                      (when (and (= 1 (length seq-specs))
+                                 rec-state
+                                 (seq-type-p target)
+                                 (equal s-type (second target))
+                                 (some (lambda (sp) (code-type-p (cdr sp))) inputs)
+                                 (language-operator-p language :cons))
+                        (push (make-decomposition
+                               :name (list :state-scan-inductive seq-id s-id)
+                               :decoder (term `(if (= ,xs ()) ,(lit target nil) (cons ,step-var ,rec-state)))
+                               :child-id child-id :child-type s-type
+                               :bindings step-bindings :language step-lang
+                               :bound (max c-bound (header-bound (language-inputs step-lang) s-type 44))
+                               :policy-score 3 :solver solver
+                               :provenance (when debug-p
+                                             (list :origin :state-scan-inductive
+                                                   :sequence-id seq-id :state-id s-id)))
+                              proposals))
+                      ;; 2c. Guarded integer countdown: `(if (= xs ()) () (if (< 0 k) Z_child base_le0))`
+                      (when (and (eq s-type :int)
+                                 (language-operator-p language :<)
+                                 (language-operator-p language :-))
+                        (let* ((s-pos (position s-id inputs :key #'car :test #'eql))
+                               (le0-rows (remove-if-not
+                                          (lambda (r)
+                                            (let ((kv (nth s-pos (row-known r))))
+                                              (and (integerp kv) (<= kv 0))))
+                                          non-empty-rows))
+                               (gt0-rows (remove-if-not
+                                          (lambda (r)
+                                            (let ((kv (nth s-pos (row-known r))))
+                                              (and (integerp kv) (plusp kv))))
+                                          non-empty-rows))
+                               (base-le0 (and le0-rows gt0-rows
+                                              (find-if (lambda (e)
+                                                         (and (every (lambda (r)
+                                                                       (row-satisfied-p r e inputs :ledger ledger))
+                                                                     le0-rows)
+                                                              (notevery (lambda (r)
+                                                                          (row-satisfied-p r e inputs :ledger ledger))
+                                                                        gt0-rows)))
+                                                       base-cands)))
+                               (eff-base0 (if (and (seq-type-p target)
+                                                   (every (lambda (r)
+                                                            (row-satisfied-p r (lit target nil) inputs :ledger ledger))
+                                                          empty-rows))
+                                              (lit target nil)
+                                              base0))
+                               (rec-dec (and base-le0
+                                             (typed-recursive-call
+                                              eff-self inputs
+                                              (list (cons seq-id (term `(tail ,xs)))
+                                                    (cons s-id (term `(- ,s-var 1))))))))
+                          (when rec-dec
+                            (let* ((cd-exprs (append (when (language-operator-p language :at)
+                                                       (list (term `(at ,xs 0))))
+                                                     (loop for (id . type) in inputs
+                                                           unless (or (eql id seq-id) (eql id s-id))
+                                                             collect (var id type))
+                                                     (list rec-dec)))
+                                   (cd-bindings (loop for e in cd-exprs for cid from 0 collect (cons cid e)))
+                                   (cd-ops (remove-if (lambda (o)
+                                                        (and (operator-p o)
+                                                             (member (operator-name o) '(:< :-))))
+                                                      (language-operators c-lang)))
+                                   (cd-lang (inductive-child-language
+                                             language cd-ops (language-constants c-lang)
+                                             cd-bindings inputs eff-self)))
+                              (push (make-decomposition
+                                     :name (list :countdown-inductive seq-id s-id eff-base0 base-le0)
+                                     :decoder (term `(if (= ,xs ()) ,eff-base0
+                                                         (if (< 0 ,s-var) ,(var child-id target) ,base-le0)))
+                                     :child-id child-id :child-type target
+                                     :bindings cd-bindings :language cd-lang
+                                     :bound (max c-bound (header-bound (language-inputs cd-lang) target 64))
+                                     :policy-score -4 :solver solver
+                                     :provenance (when debug-p
+                                                   (list :origin :countdown-inductive
+                                                         :sequence-id seq-id :counter-id s-id)))
+                                    proposals)))))
+                      ;; 2d. Incrementing index recursion: `(if (= xs ()) base0 Z_child)` with `(<self> (tail xs) ... (+ s 1))`
+                      (when (and (eq s-type :int)
+                                 (language-operator-p language :+))
+                        (let ((rec-inc (typed-recursive-call
+                                        eff-self inputs
+                                        (list (cons seq-id (term `(tail ,xs)))
+                                              (cons s-id (term `(+ ,s-var 1)))))))
+                          (when rec-inc
+                            (let* ((seq-helper-calls
+                                     (loop for o in (language-operators language)
+                                           when (and (operator-p o)
+                                                     (defined-function-p (operator-name o))
+                                                     (not (eq eff-self (operator-name o)))
+                                                     (every #'seq-type-p (second (operator-type o))))
+                                             append (let ((arg-opts
+                                                            (mapcar (lambda (at)
+                                                                      (loop for (id . it) in inputs
+                                                                            when (equal it at)
+                                                                              collect (var id it)))
+                                                                    (second (operator-type o)))))
+                                                      (when (every #'consp arg-opts)
+                                                        (loop for args in (cartesian-product-lists arg-opts)
+                                                              when (loop for (a b) on args while b
+                                                                         always (< (ast-id a) (ast-id b)))
+                                                                collect (apply #'app o args))))))
+                                   (rec-projs
+                                     (when (and (tuple-type-p target)
+                                                (<= 1 (length (rest target)) 6))
+                                       (loop for stype in (rest target)
+                                             for idx from 0
+                                             collect (app (op :at (tuple-type target stype))
+                                                          rec-inc (lit :int idx)))))
+                                   (inc-exprs (append (when (and (null seq-helper-calls)
+                                                                 (language-operator-p language :at))
+                                                        (list (term `(at ,xs 0))))
+                                                      (loop for (id . type) in inputs
+                                                            unless (or (eql id seq-id)
+                                                                       (and seq-helper-calls (seq-type-p type)))
+                                                              collect (var id type))
+                                                      seq-helper-calls
+                                                      (list rec-inc)
+                                                      rec-projs))
+                                   (inc-bindings (loop for e in inc-exprs for cid from 0 collect (cons cid e)))
+                                   (inc-ops (remove-if
+                                             (lambda (o)
+                                               (and (operator-p o)
+                                                    (or (eq (operator-name o) :tail)
+                                                        (eq (operator-name o) eff-self)
+                                                        (and seq-helper-calls
+                                                             (defined-function-p (operator-name o))
+                                                             (every #'seq-type-p (second (operator-type o))))
+                                                        (eq (operator-name o) :at)
+                                                        (and (eq (operator-name o) :=)
+                                                             (equal (operator-operand-type o) seq-type)))))
+                                             (language-operators c-lang)))
+                                   (inc-lang (derive-language
+                                              language
+                                              :inputs (loop for (id . e) in inc-bindings
+                                                            collect (cons id (expression-type e inputs)))
+                                              :operators inc-ops
+                                              :constants (remove (lit seq-type '())
+                                                                 (language-constants c-lang)
+                                                                 :test #'equal))))
+                              (push (make-decomposition
+                                     :name (list :counter-inductive seq-id s-id base0)
+                                     :decoder (term `(if (= ,xs ()) ,base0 ,(var child-id target)))
+                                     :child-id child-id :child-type target
+                                     :bindings inc-bindings :language inc-lang
+                                     :bound (max c-bound (header-bound (language-inputs inc-lang) target 48))
+                                     :policy-score -2 :solver solver
+                                     :provenance (when debug-p
+                                                   (list :origin :counter-inductive
+                                                         :sequence-id seq-id :counter-id s-id)))
+                                    proposals))))))))))))))))
 
 (defun heuristic-decompositions (frame language &key heuristic-model child-language guard-language
                                                      description-limit child-bound guard-bound
@@ -424,10 +811,28 @@ Returns (VALUES proposals heuristic-model)."
          (target (schema-target schema))
          (bound (or description-limit (header-bound inputs target 18)))
          (c-bound (or child-bound bound))
-         (g-bound (or guard-bound (header-bound inputs :bool (if (>= (length inputs) 4) 22 20))))
+         (code-guard-slack (loop for o in (language-operators language)
+                                 when (and (operator-p o)
+                                           (eq :code-eval (operator-name o))
+                                           (eq :bool (third (operator-type o))))
+                                   maximize (+ 16 (application-overhead o))
+                                 finally (return 0)))
+         (g-bound (or guard-bound
+                      (header-bound inputs :bool
+                                    (max (+ 18 (* 2 (integer-length (max 0 (1- (length inputs))))))
+                                         code-guard-slack))))
          (c-lang (or child-language language))
          (eff-self (or self-name (find-oracle-operator-name language)))
-         (empty-seq-frame-p (frame-has-empty-sequence-row-p frame))
+         (has-guard-op-p (some (lambda (o)
+                                 (and (operator-p o)
+                                      (or (member (operator-name o) '(:= :<))
+                                          (eq :bool (third (operator-type o))))))
+                               (language-operators language)))
+         (empty-seq-frame-p (and (frame-has-empty-sequence-row-p frame)
+                                 (or (null eff-self)
+                                     (language-operator-p language :at)
+                                     (language-operator-p language :tail)
+                                     (not has-guard-op-p))))
          (condense-budget (if heuristic-model 0 (max 1 (if conditional-p (floor work-limit 2) work-limit))))
          (h-model (or heuristic-model
                       (condense-heuristic frame language
@@ -452,7 +857,7 @@ Returns (VALUES proposals heuristic-model)."
       (when (and additive-p (heuristic-total-p h-model) (additive-residual-type-p target)
                  (some #'null hit-mask)
                  (not (and (lit-p program) (eql 0 (ast-value program))))
-                 (not (and eff-self empty-seq-frame-p)))
+                 (not (and eff-self (or empty-seq-frame-p (tuple-type-p target)))))
         (push (make-decomposition
                :name (list :heuristic-additive program)
                :decoder (make-additive-residual-decoder program child-var target)
@@ -536,7 +941,11 @@ Returns (VALUES proposals heuristic-model)."
                                                      :stage-a-score (heuristic-score cand-model)
                                                      :stage-a-residual (heuristic-residual cand-model)
                                                      :stage-a-unresolved (heuristic-unresolved-keys cand-model))))
-                                proposals))))))))))
+                                proposals))))))))
+          (when (and empty-seq-frame-p eff-self)
+            (dolist (ext (extended-inductive-decompositions
+                          frame language c-lang h-model child-id c-bound eff-self solver ledger debug-p))
+              (push ext proposals)))))
       (values (nreverse proposals) h-model))))
 
 (defun remove-keys (keys plist)

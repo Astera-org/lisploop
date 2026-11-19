@@ -268,16 +268,28 @@ them from the keyword arguments."
            (kname (and fn-name (canonical-op-name fn-name))))
       ;; 1. Commit verified root candidate as a :function entry when named or self-recursive
       (when (and best kname)
-        (let ((root-schema (frame-schema (synthesis-node-frame root)))
-              (expr (candidate-expression best)))
-          (define-function kname (schema-inputs root-schema) (schema-target root-schema) expr)
-          (let ((fn-entry (find-knowledge-entry kname library)))
+        (let* ((root-schema (frame-schema (synthesis-node-frame root)))
+               (self-name (synthesis-job-self-name job))
+               (self-sym (and self-name (canonical-op-name self-name)))
+               (raw-expr (candidate-expression best)))
+          (define-function kname (schema-inputs root-schema) (schema-target root-schema)
+            (if (and self-sym (not (eq kname self-sym))
+                     (expression-calls-operator-p raw-expr self-sym))
+                (lambda (self) (rename-function-calls raw-expr self-sym self))
+                raw-expr))
+          (when (and self-sym (not (eq kname self-sym)))
+            (let ((placeholder (find-knowledge-entry self-sym library)))
+              (when (and placeholder (null (knowledge-entry-expression placeholder)))
+                (remove-knowledge-entry self-sym library))))
+          (let* ((fn-entry (find-knowledge-entry kname library))
+                 (expr (and fn-entry (knowledge-entry-expression fn-entry))))
             (when fn-entry
               (setf (knowledge-entry-work fn-entry)
                     (ledger-total (synthesis-job-ledger job)))
               ;; Record if the winning candidate lifted a library combinator
               (dolist (lib-fn (knowledge-library-function-names library))
                 (when (and (not (eq lib-fn kname))
+                           expr
                            (expression-calls-operator-p expr lib-fn))
                   (add-knowledge-edge fn-entry :refactored-by lib-fn)
                   (add-knowledge-edge lib-fn :abstracts kname)))
@@ -358,7 +370,7 @@ them from the keyword arguments."
     (and message
          (find (message-call-id message) (synthesis-job-nodes job) :key #'synthesis-node-id))))
 
-(defun node-library-entry (node library &optional (origins '(:library :library-filter-map)))
+(defun node-library-entry (node library &optional (origins '(:library)))
   "The entry of LIBRARY that NODE's proposal, one of ORIGINS, was made from: the function it
 lifts or, for the origin :learned-template, the decoder template it was retrieved from; or nil."
   (let ((name (and (synthesis-node-proposal node)
@@ -379,26 +391,17 @@ their siblings that conflicted or failed on matching root frames."
         (when (and (synthesis-job-best job) root (synthesis-node-frame root))
           (dolist (node (synthesis-job-nodes job))
             ;; A decoder template's descriptors are reinforced and decayed like a combinator's.
-            (let ((entry (node-library-entry node library
-                                             '(:library :library-filter-map :learned-template))))
+            (let ((entry (node-library-entry node library '(:library :learned-template))))
               (when (and entry (knowledge-entry-descriptor-profile entry))
                 (charge ledger :orientation 1)
                 (flet ((adjust (delta)
-                         ;; Move each eligible clause's weight by DELTA, in the profile and
-                         ;; in the descriptor entries that state the clause's concept.
+                         ;; Move each eligible clause's weight by DELTA in ENTRY's profile.
                          (dolist (clause (knowledge-entry-descriptor-profile entry))
                            (when (if (plusp delta)
                                      (< (descriptor-clause-weight-bits clause) 12)
                                      (and (eq :empirical (descriptor-clause-status clause))
                                           (> (descriptor-clause-weight-bits clause) 1)))
                              (incf (descriptor-clause-weight-bits clause) delta)
-                             (dolist (edge (knowledge-edges-to (knowledge-entry-id entry) :describes library))
-                               (let ((d (find-knowledge-entry (second edge) library)))
-                                 (when (and d (eq :descriptor (knowledge-entry-kind d))
-                                            (eq (descriptor-clause-id clause)
-                                                (getf (knowledge-entry-metadata d) :concept)))
-                                   (setf (getf (knowledge-entry-metadata d) :weight-bits)
-                                         (descriptor-clause-weight-bits clause)))))
                              (push (knowledge-entry-id entry) updated)))))
                   (cond ((and win-node (synthesis-descendant-p win-node node)) (adjust 1))
                         ((and (eq (synthesis-node-parent node) root)
@@ -480,8 +483,7 @@ archived."
       (dolist (job jobs)
         (let ((win-node (job-winning-node job)))
           (dolist (node (synthesis-job-nodes job))
-            (let ((entry (node-library-entry node library
-                                             '(:library :library-filter-map :library-partial)))
+            (let ((entry (node-library-entry node library '(:library :library-partial)))
                   (won-p (and win-node (synthesis-descendant-p win-node node))))
               (when entry
                 (charge ledger :orientation)
@@ -633,30 +635,26 @@ adds nothing. Returns the entries added."
                                (and (eq :int (knowledge-entry-domain entry))
                                     (equal (subseq (signature entry) 0 2) (list name position))))
                              solvers))
-            (flet ((erased (accessor)
-                     (mapcar (lambda (entry)
-                               (retype-expr (funcall accessor entry) (knowledge-entry-domain entry) :int))
-                             entries)))
-              (let* ((first-entry (first entries))
-                     (field (knowledge-entry-domain first-entry))
-                     (inputs (mapcar (lambda (input)
-                                       (cons (car input) (retype-type (cdr input) field :int)))
-                                     (knowledge-entry-inputs first-entry)))
-                     (witnesses (erased #'knowledge-entry-expression))
-                     (guards (erased #'knowledge-entry-guard))
-                     ;; The field operator at the type it has once its field is erased.
-                     (operator (ignore-errors
-                                (op name (retype-type
-                                          (ast-type (sexp->ast (getf (knowledge-entry-metadata first-entry)
-                                                                     :operator)))
-                                          field :int))))
-                     (prime (reduce #'max entries
-                                    :key (lambda (entry) (second (knowledge-entry-domain entry)))))
-                     (residues (loop for value from (- (floor prime 2)) to (floor prime 2)
-                                     collect value)))
-                (when (and operator
-                           (not (pattern-has-holes-p (anti-unify witnesses inputs ledger)))
-                           (not (pattern-has-holes-p (anti-unify guards inputs ledger))))
+            (let ((lifted-candidates
+                    (mapcar (lambda (entry)
+                              (ignore-errors
+                               (instantiate-entry-template entry :domain :int :certify-p nil
+                                                           :register-p nil :library library)))
+                            entries)))
+              (when (every #'knowledge-entry-p lifted-candidates)
+                (let* ((first-lifted (first lifted-candidates))
+                       (inputs (knowledge-entry-inputs first-lifted))
+                       (witnesses (mapcar #'knowledge-entry-expression lifted-candidates))
+                       (guards (mapcar #'knowledge-entry-guard lifted-candidates))
+                       (operator (ignore-errors
+                                  (sexp->ast (getf (knowledge-entry-metadata first-lifted) :operator))))
+                       (prime (reduce #'max entries
+                                      :key (lambda (entry) (second (knowledge-entry-domain entry)))))
+                       (residues (loop for value from (- (floor prime 2)) to (floor prime 2)
+                                       collect value)))
+                  (when (and operator
+                             (not (pattern-has-holes-p (anti-unify witnesses inputs ledger)))
+                             (not (pattern-has-holes-p (anti-unify guards inputs ledger))))
                   (multiple-value-bind (witness-validation uniqueness-validation)
                       (sampled-solver-validations operator position context-map inputs
                                                   (first witnesses) (first guards) residues ledger)
@@ -690,7 +688,7 @@ adds nothing. Returns the entries added."
                                                                         uniqueness-validation))
                                                          0)))))
                         (push (register-knowledge-entry entry :library library :ledger ledger)
-                              added)))))))))))))
+                              added))))))))))))))
 
 ;;; Theory motifs: functions refactored through one fold whose steps share a star of laws,
 ;;; associativity and an identity on both sides, are instances of one theory. What is found
@@ -1056,3 +1054,1184 @@ is false only when the limit cut them short."
           :passes passes
           :fixed-point-p fixed-point-p
           :work (ledger-total ledger))))
+
+;;; ============================================================================
+;;; `:spec` Knowledge Kind, Solver Induction, Functorial Transformers & Batteries
+;;; ============================================================================
+
+(defun encode-spec-rows (inputs target rows &optional (target-kind :function))
+  "Encode `((known expected) ...)` into portable S-expression literal ASTs so `:code` values
+round-trip cleanly without uninterned symbols."
+  (loop for (known expected) in rows
+        do (assert (= (length known) (length inputs)))
+           (assert (every #'value-p known (mapcar #'cdr inputs)))
+           (assert (or (and (eq expected :none) (eq target-kind :solver))
+                       (value-p expected target)))
+        collect (list (loop for val in known
+                            for (nil . ty) in inputs
+                            collect (ast->sexp (lit ty val)))
+                      (if (eq expected :none)
+                          :none
+                          (ast->sexp (lit target expected))))))
+
+(defun spec-entry-rows (spec-entry)
+  "Decode `(known expected)` rows stored in `knowledge-entry-residual` of `:spec` SPEC-ENTRY."
+  (loop for (enc-known enc-exp) in (knowledge-entry-residual spec-entry)
+        collect (list (mapcar (lambda (s) (ast-value (sexp->ast s))) enc-known)
+                      (if (eq enc-exp :none)
+                          :none
+                          (ast-value (sexp->ast enc-exp))))))
+
+(define-knowledge-kind :spec
+  (:priority 5)
+  (:passive t)
+  (:validate (entry library)
+    (declare (ignore library))
+    (let ((inputs (knowledge-entry-inputs entry))
+          (target (knowledge-entry-target entry))
+          (tkind (getf (knowledge-entry-metadata entry) :target-kind :function)))
+      (assert (valid-inputs-p inputs))
+      (assert (valid-type-p target))
+      (dolist (row (spec-entry-rows entry))
+        (destructuring-bind (known expected) row
+          (assert (= (length known) (length inputs)))
+          (assert (every #'value-p known (mapcar #'cdr inputs)))
+          (assert (or (and (eq expected :none) (eq tkind :solver))
+                      (value-p expected target)))))))
+  (:consume (entry context ledger)
+    (let* ((spec-edge (first (knowledge-edges-from entry :specifies)))
+           (target-id (second spec-edge))
+           (target-entry (and target-id (find-knowledge-entry target-id))))
+      (if target-entry
+          (consume-knowledge-entry target-entry context :ledger ledger)
+          (let ((hit (assoc context (spec-entry-rows entry) :test #'equal)))
+            (if (and hit (not (eq :none (second hit))))
+                (evaluate (lit (knowledge-entry-target entry) (second hit)) nil nil :ledger ledger)
+                (make-evaluation :status :unresolved)))))))
+
+(defun make-knowledge-spec (id inputs target rows &key domain target-id (target-kind :function)
+                                                       operators literals constants
+                                                       edges metadata (library *knowledge-library*))
+  "Create an unregistered `:spec` `knowledge-entry` over INPUTS -> TARGET with ROWS."
+  (let* ((eff-domain (or domain
+                         (infer-domain-from-types (cons target (mapcar #'cdr inputs)))
+                         :int))
+         (enc-rows (encode-spec-rows inputs target rows target-kind))
+         (eff-edges (append (when target-id
+                              (list (list :specifies (canonical-op-name target-id))))
+                            edges)))
+    (make-knowledge-entry
+     :id (canonical-op-name id)
+     :kind :spec
+     :domain eff-domain
+     :inputs (copy-tree inputs)
+     :target (copy-tree target)
+     :residual enc-rows
+     :status :validated
+     :edges eff-edges
+     :metadata (append (list :target-kind target-kind)
+                       (when operators (list :operators (mapcar #'ast->sexp operators)))
+                       (when literals (list :literals (copy-tree literals)))
+                       (when constants (list :constants (mapcar #'ast->sexp constants)))
+                       metadata)
+     :library library)))
+
+(defun register-knowledge-spec (id inputs target rows &rest keys
+                                &key (library *knowledge-library*) ledger &allow-other-keys)
+  "Register a `:spec` entry in LIBRARY."
+  (register-knowledge-entry
+   (apply #'make-knowledge-spec id inputs target rows
+          (remove-keys '(:ledger) keys))
+   :library library :ledger ledger))
+
+(defun spec-entry-frame (spec-entry &key ledger)
+  "Build an exact synthesis `frame` from positive `(known expected)` rows of SPEC-ENTRY."
+  (declare (ignore ledger))
+  (let ((inputs (knowledge-entry-inputs spec-entry))
+        (target (knowledge-entry-target spec-entry))
+        (pos-rows (remove-if (lambda (r) (eq :none (second r))) (spec-entry-rows spec-entry))))
+    (simple-frame target inputs pos-rows)))
+
+(defun verify-entry-against-spec (entry spec-entry &key (library *knowledge-library*) ledger)
+  "Replay every row of `:spec` SPEC-ENTRY against ENTRY (`:function`, `:solver`, or `:transformer`)
+on the VM, signalling an error if any example fails or fails to replay."
+  (with-knowledge-library (library)
+    (let* ((ent (if (knowledge-entry-p entry) entry (find-knowledge-entry entry library)))
+           (id (and ent (knowledge-entry-id ent)))
+           (kind (and ent (knowledge-entry-kind ent)))
+           (inputs (knowledge-entry-inputs ent))
+           (target (knowledge-entry-target ent)))
+      (assert ent () "Missing knowledge entry ~S for spec ~S" entry (knowledge-entry-id spec-entry))
+      (dolist (row (spec-entry-rows spec-entry) t)
+        (destructuring-bind (known expected) row
+          (ecase kind
+            (:function
+             (let* ((call (apply #'app (op id)
+                                 (loop for val in known
+                                       for (nil . ty) in inputs
+                                       collect (lit ty val))))
+                    (run (evaluate call nil nil :ledger ledger)))
+               (assert (and (eq :value (evaluation-status run))
+                            (equal expected (evaluation-value run)))
+                       () "Function ~S failed spec example ~S => ~S (got ~S)"
+                       id known expected (evaluation-value run))))
+            (:transformer
+             (let ((run (consume-knowledge-entry ent known :library library :ledger ledger)))
+               (assert (and run (eq :value (evaluation-status run))
+                            (equal expected (evaluation-value run)))
+                       () "Transformer ~S failed spec example ~S" id known)))
+            (:solver
+             (let* ((meta (knowledge-entry-metadata ent))
+                    (operator (sexp->ast (getf meta :operator)))
+                    (pos (getf meta :position))
+                    (cmap (or (getf meta :context-map) (solver-context-map operator pos)))
+                    (solved (evaluate-guarded-entry ent known ledger)))
+               (if (eq expected :none)
+                   (assert (null solved) ()
+                           "Solver ~S failed negative spec example ~S => :none (got ~S)"
+                           id known solved)
+                   (progn
+                     (assert (and solved
+                                  (eq :value (evaluation-status solved))
+                                  (equal expected (evaluation-value solved)))
+                             () "Solver ~S failed spec example ~S => ~S (got ~S)"
+                             id known expected (and solved (evaluation-value solved)))
+                     (let* ((fwd (solver-forward-expression operator pos cmap known expected))
+                            (frun (evaluate fwd nil nil :ledger ledger))
+                            (tpos (position :target cmap))
+                            (want (nth tpos known)))
+                       (assert (and (eq :value (evaluation-status frun))
+                                    (equal want (evaluation-value frun)))
+                               () "Solver ~S witness ~S failed forward replay on ~S"
+                               id expected known))))))))))))
+
+(defun synthesize-spec-entry (spec-entry &key (library *knowledge-library*)
+                                              (bound 130) (budget 350000)
+                                              (heuristic-budget 15000) (recursive-p t)
+                                              (ledger (make-ledger)))
+  "Synthesize the `:function` specified by `:spec` SPEC-ENTRY de novo, commit it into LIBRARY,
+and verify every spec row on the VM."
+  (with-knowledge-library (library)
+    (let* ((spec (if (knowledge-entry-p spec-entry) spec-entry (find-knowledge-entry spec-entry library)))
+           (spec-edge (first (knowledge-edges-from spec :specifies library)))
+           (fn-name (or (second spec-edge) (knowledge-entry-id spec)))
+           (meta (knowledge-entry-metadata spec))
+           (inputs (knowledge-entry-inputs spec))
+           (domain (or (knowledge-entry-domain spec) :int))
+           (ops (mapcar #'sexp->ast (getf meta :operators)))
+           (lits (getf meta :literals))
+           (consts (mapcar #'sexp->ast (getf meta :constants)))
+           (frame (spec-entry-frame spec :ledger ledger))
+           (lang (make-language domain inputs :operators ops :literals lits :constants consts))
+           (job (if recursive-p
+                    (start-recursive-synthesis frame lang bound
+                                               :self-name fn-name
+                                               :max-depth 2
+                                               :heuristic-budget heuristic-budget)
+                    (start-heuristic-synthesis frame lang bound :max-depth 2))))
+      (resume-synthesis job budget :stop-on-first t)
+      (charge ledger :synthesis (ledger-total (synthesis-job-ledger job)))
+      (assert (synthesis-job-best job) () "Failed to synthesize spec ~S within budget ~D" fn-name budget)
+      (commit-synthesis-job job :library library :name fn-name :ledger ledger)
+      (let ((fn-entry (find-knowledge-entry fn-name library)))
+        (verify-entry-against-spec fn-entry spec :library library :ledger ledger)
+        fn-entry))))
+
+;;; ----------------------------------------------------------------------------
+;;; Conditional & Algebraic Law Solver Induction
+;;; ----------------------------------------------------------------------------
+
+(defun synthesize-boolean-separator (frame hit-mask guard-language bound work-limit ledger)
+  "Synthesize an exact Boolean expression separating `T` rows from `NIL` rows of HIT-MASK on FRAME
+via observational feature + pair-predicate extraction and greedy MDL decision-list induction,
+falling back to Stage A/B synthesis when no one-sided implicant exists."
+  (let* ((rows (frame-rows frame))
+         (row-count (length rows))
+         (total-hits (count t hit-mask)))
+    (when (zerop total-hits)
+      (return-from synthesize-boolean-separator (lit :bool nil)))
+    (when (= total-hits row-count)
+      (return-from synthesize-boolean-separator (lit :bool t)))
+    (let* ((inputs (schema-inputs (frame-schema frame)))
+           (atomic-g-ops (remove-if (lambda (o)
+                                      (and (operator-p o) (eq :if (operator-name o))))
+                                    (language-operators guard-language)))
+           (atomic-g-lang (derive-language guard-language :operators atomic-g-ops))
+           (obs (start-observation-search (make-observation-scope frame atomic-g-lang)))
+           (obs-before (ledger-total (observation-job-ledger obs)))
+           (obs-bound (max bound (header-bound inputs :bool 38)))
+           (obs-budget (min (floor work-limit 2) 20000))
+           (dom (language-domain atomic-g-lang))
+           (dom-frame (unless (eq dom :bool)
+                        (probe-frame dom inputs (mapcar #'row-known rows))))
+           (dom-obs (when dom-frame
+                      (start-observation-search (make-observation-scope dom-frame atomic-g-lang))))
+           (dom-before (if dom-obs (ledger-total (observation-job-ledger dom-obs)) 0)))
+      (resume-observation-search obs obs-bound obs-budget)
+      (charge ledger :guard-search (- (ledger-total (observation-job-ledger obs)) obs-before))
+      (when dom-obs
+        (resume-observation-search dom-obs (header-bound inputs dom 28) (min (floor work-limit 3) 12000))
+        (charge ledger :guard-search (- (ledger-total (observation-job-ledger dom-obs)) dom-before)))
+      (let* ((bool-preds nil)
+             (feat-buckets (loop for (id . type) in inputs
+                                 for pos from 0
+                                 for vals = (mapcar (lambda (r) (nth pos (row-known r))) rows)
+                                 unless (member :unresolved vals)
+                                   collect (cons (var id type) vals))))
+        (dolist (bucket (observation-job-buckets obs))
+          (let ((vals (observation-bucket-values bucket))
+                (expr (observed-expression-expression (car (last (observation-bucket-members bucket))))))
+            (when (= (length vals) row-count)
+              (push (cons expr vals) bool-preds))))
+        (when dom-obs
+          (dolist (bucket (observation-job-buckets dom-obs))
+            (let ((vals (observation-bucket-values bucket))
+                  (expr (observed-expression-expression (car (last (observation-bucket-members bucket))))))
+              (when (= (length vals) row-count)
+                (push (cons expr vals) feat-buckets)))))
+        (let* ((pair-preds (feature-pair-predicates (nreverse feat-buckets) inputs row-count
+                                                    54 ledger guard-language))
+               (candidates (loop for (expr . vals) in (append (nreverse bool-preds) pair-preds)
+                                 collect (list expr (coerce vals 'vector)
+                                               (description-size expr inputs))))
+               (hit-vec (coerce (mapcar (lambda (h) (not (null h))) hit-mask) 'vector))
+               (all-idxs (loop for i below row-count collect i)))
+          (labels ((induce-list (idxs depth)
+                     (let ((pos-cnt (count-if (lambda (i) (aref hit-vec i)) idxs)))
+                       (cond
+                         ((zerop pos-cnt) (lit :bool nil))
+                         ((= pos-cnt (length idxs)) (lit :bool t))
+                         ((>= depth 5) nil)
+                         (t
+                          ;; 1. Exact single-predicate separator on active rows?
+                          (let ((exact nil))
+                            (dolist (cand candidates)
+                              (destructuring-bind (expr vvec bits) cand
+                                (let ((same-p t) (inv-p t))
+                                  (dolist (i idxs)
+                                    (let ((v (not (null (aref vvec i))))
+                                          (h (aref hit-vec i)))
+                                      (unless (eq v h) (setf same-p nil))
+                                      (when (eq v h) (setf inv-p nil))))
+                                  (when (or same-p inv-p)
+                                    (let* ((ast (if same-p expr (bool-not expr)))
+                                           (abits (if same-p bits (description-size ast inputs))))
+                                      (when (or (null exact) (< abits (second exact)))
+                                        (setf exact (list ast abits))))))))
+                            (when exact
+                              (return-from induce-list (first exact))))
+                          ;; 2. Best one-sided implicant (`expr=t => hit=b` or `expr=nil => hit=b`).
+                          (let ((best nil))
+                            (dolist (cand candidates)
+                              (destructuring-bind (expr vvec bits) cand
+                                (let ((t-pos 0) (t-neg 0) (f-pos 0) (f-neg 0))
+                                  (dolist (i idxs)
+                                    (if (aref vvec i)
+                                        (if (aref hit-vec i) (incf t-pos) (incf t-neg))
+                                        (if (aref hit-vec i) (incf f-pos) (incf f-neg))))
+                                  (flet ((consider (cov polarity branch-val)
+                                           (when (and (plusp cov)
+                                                      (or (null best)
+                                                          (> cov (first best))
+                                                          (and (= cov (first best))
+                                                               (< bits (second best)))))
+                                             (setf best (list cov bits expr polarity branch-val)))))
+                                    (when (zerop t-neg) (consider t-pos :when-true t))
+                                    (when (zerop f-neg) (consider f-pos :when-false t))
+                                    (when (zerop t-pos) (consider t-neg :when-true nil))
+                                    (when (zerop f-pos) (consider f-neg :when-false nil))))))
+                            (when best
+                              (destructuring-bind (cov bits expr polarity branch-val) best
+                                (declare (ignore cov bits))
+                                (let* ((vvec (second (find expr candidates :key #'first :test #'equal)))
+                                       (rem (remove-if (lambda (i)
+                                                         (if (eq polarity :when-true)
+                                                             (not (null (aref vvec i)))
+                                                             (null (aref vvec i))))
+                                                       idxs))
+                                       (sub (induce-list rem (1+ depth))))
+                                  (when sub
+                                    (if (eq polarity :when-true)
+                                        (term `(if ,expr ,(lit :bool branch-val) ,sub))
+                                        (term `(if ,expr ,sub ,(lit :bool branch-val))))))))))))))
+            (let ((dl (induce-list all-idxs 0)))
+              (when dl
+                (return-from synthesize-boolean-separator dl)))))))
+    ;; Fallback for non-implicant Boolean formulas (e.g. pure parity/XOR).
+    (let* ((s-frame (support-frame frame hit-mask ledger))
+           (s-inputs (schema-inputs (frame-schema s-frame)))
+           (s-consts (remove-duplicates
+                      (append (list (lit :bool t) (lit :bool nil))
+                              (language-constants guard-language))
+                      :test #'equal))
+           (s-ops (remove-duplicates (cons (op :if :bool) (language-operators guard-language))
+                                     :test #'equal))
+           (s-lang (derive-language guard-language :operators s-ops :constants s-consts))
+           (job (start-heuristic-synthesis s-frame s-lang
+                                           (max bound (header-bound s-inputs :bool 48))
+                                           :max-depth 2
+                                           :additive-p nil
+                                           :condense-budget (min 12000 (floor work-limit 3)))))
+      (resume-synthesis job (max 1 (- work-limit 25000)) :stop-on-first t)
+      (charge ledger :guard-search (ledger-total (synthesis-job-ledger job)))
+      (and (synthesis-job-best job)
+           (candidate-expression (synthesis-job-best job))))))
+
+(defun default-solver-witness-language (domain inputs target)
+  "Default witness search grammar for inverting an operator over DOMAIN and INPUTS -> TARGET."
+  (let* ((ops (list (op :+ domain) (op :- domain) (op :* domain) (op :/ domain)))
+         (seq-ops (loop for (nil . ty) in inputs
+                        when (seq-type-p ty)
+                          append (list (op :at ty) (op :tail (second ty)) (op :length (second ty)))))
+         (tup-ops (when (tuple-type-p target) (list (op :tuple target)))))
+    (make-language (if (or (eq domain :int) (gf-type-p domain)) domain :int)
+                   inputs
+                   :operators (remove-duplicates (append ops seq-ops tup-ops) :test #'equal)
+                   :literals (if (eq domain :int) '(0 1) :all))))
+
+(defun induce-conditional-solver (operator &key id (position :unary) domain spec
+                                                witness-language guard-language
+                                                (bound 70) (work-limit 60000) (guard-work-limit 120000)
+                                                (unique-p t) finite-unique-p metric-p
+                                                (certified-p nil certified-supplied-p)
+                                                edges metadata
+                                                (library *knowledge-library*) (ledger (make-ledger)))
+  "Induce a `:solver` entry (witness, uniqueness/exception guard, and optional domain guard)
+for OPERATOR at POSITION either from `:spec` SPEC (positive witness rows + `:none` rows) or
+by exhaustive fiber analysis when DOMAIN and all context/target types are finite."
+  (with-knowledge-library (library)
+    (let* ((op-ast (cond ((operator-p operator) operator)
+                         ((defined-function-p (canonical-op-name operator))
+                          (op (canonical-op-name operator)))
+                         (t (op (canonical-op-name operator) (or domain :int)))))
+           (eff-domain (or domain
+                           (and (knowledge-entry-p spec) (knowledge-entry-domain spec))
+                           (infer-domain-from-types
+                            (cons (third (operator-type op-ast)) (second (operator-type op-ast))))
+                           :int))
+           (cmap (solver-context-map op-ast position))
+           (inputs (solver-context-types op-ast cmap))
+           (unknowns (mapcar (lambda (p) (nth p (second (operator-type op-ast))))
+                             (solver-positions position)))
+           (target (if (rest unknowns) (cons :tuple unknowns) (first unknowns)))
+           (finite-p (every #'finite-type-p (cons target (mapcar #'cdr inputs))))
+           (pos-rows nil)
+           (multi-rows nil)
+           (empty-rows nil))
+      (cond
+        (spec
+         (let ((rows (if (knowledge-entry-p spec) (spec-entry-rows spec) spec)))
+           (dolist (r rows)
+             (if (eq :none (second r))
+                 (push (first r) empty-rows)
+                 (push r pos-rows)))
+           (setf pos-rows (nreverse pos-rows)
+                 empty-rows (nreverse empty-rows))))
+        (t
+         (assert finite-p () "induce-conditional-solver requires SPEC on infinite types ~S" inputs)
+         (let ((ctx-count (finite-type-cardinality (inputs-tuple-type inputs)))
+               (tgt-count (finite-type-cardinality target))
+               (tpos (position :target cmap)))
+           (dotimes (ci ctx-count)
+             (let* ((ctx (law-assignment inputs ci))
+                    (want (nth tpos ctx))
+                    (hits nil))
+               (dotimes (ti tgt-count)
+                 (let* ((cand (unrank-finite-value target ti))
+                        (fwd (solver-forward-expression op-ast position cmap ctx cand))
+                        (run (evaluate fwd nil nil :ledger ledger)))
+                   (when (and (eq :value (evaluation-status run))
+                              (equal want (evaluation-value run)))
+                     (push cand hits))))
+               (cond ((null hits) (push ctx empty-rows))
+                     ((null (rest hits)) (push (list ctx (first hits)) pos-rows))
+                     (t (push ctx multi-rows)))))
+           (setf pos-rows (nreverse pos-rows)
+                 multi-rows (nreverse multi-rows)
+                 empty-rows (nreverse empty-rows)))))
+      (assert pos-rows () "No solvable unique fibers for ~S at ~S" op-ast position)
+      (let* ((w-frame (simple-frame target inputs pos-rows))
+             (w-lang (or witness-language (default-solver-witness-language eff-domain inputs target)))
+             (w-bound (max bound (header-bound inputs target 52)))
+             (w-job (start-search w-frame w-lang))
+             (_ (resume-search w-job w-bound work-limit))
+             (_2 (charge ledger :synthesis (ledger-total (search-job-ledger w-job))))
+             (best-w (search-job-best w-job)))
+        (declare (ignore _ _2))
+        (assert best-w () "Failed to synthesize witness for ~S at ~S" op-ast position)
+        (let* ((witness (candidate-expression best-w))
+               (neg-knowns (append multi-rows empty-rows))
+               (all-rows (append (mapcar #'first pos-rows) neg-knowns))
+               (all-frame (probe-frame :bool inputs all-rows))
+               (g-lang (or guard-language (default-guard-language all-frame w-lang)))
+               (g-bound (header-bound inputs :bool 40))
+               (guard (if (null neg-knowns)
+                          (lit :bool t)
+                          (synthesize-boolean-separator
+                           all-frame
+                           (append (make-list (length pos-rows) :initial-element t)
+                                   (make-list (length neg-knowns) :initial-element nil))
+                           g-lang g-bound guard-work-limit ledger)))
+               (domain-guard
+                 (when (and multi-rows empty-rows)
+                   (synthesize-boolean-separator
+                    all-frame
+                    (append (make-list (+ (length pos-rows) (length multi-rows)) :initial-element t)
+                            (make-list (length empty-rows) :initial-element nil))
+                    g-lang g-bound guard-work-limit ledger)))
+                (eff-cert-p (if certified-supplied-p certified-p finite-p))
+                (eff-meta (append (when finite-unique-p (list :finite-unique-p t)) metadata)))
+          (assert guard () "Failed to synthesize guard for ~S at ~S" op-ast position)
+          (let ((solver (register-knowledge-solver
+                         op-ast
+                         :id id :library library
+                         :domain eff-domain :inputs inputs :target target :position position
+                         :witness witness :guard guard
+                         :domain-guard domain-guard
+                         :certified-p eff-cert-p
+                         :unique-p unique-p
+                         :necessary-p (and finite-p (not (null empty-rows)))
+                         :edges (append (when (knowledge-entry-p spec)
+                                          (list (list :induced-from-spec (knowledge-entry-id spec))))
+                                        edges)
+                         :metadata eff-meta
+                         :ledger ledger)))
+            (when metric-p
+              (register-metric-decoder solver :library library))
+            (when (knowledge-entry-p spec)
+              (verify-entry-against-spec solver spec :library library :ledger ledger))
+            solver))))))
+
+(defun induce-conditional-solvers (specs-or-operators &key domain (positions '(0 1))
+                                                           (library *knowledge-library*)
+                                                           (ledger (make-ledger)))
+  "Batch-induce `:solver` entries across either a list of `:spec` entries or a list of operators
+over finite DOMAIN across POSITIONS."
+  (let ((added nil))
+    (dolist (item specs-or-operators (nreverse added))
+      (if (knowledge-entry-p item)
+          (let* ((meta (knowledge-entry-metadata item))
+                 (spec-edge (first (knowledge-edges-from item :specifies library)))
+                 (sid (or (second spec-edge) (knowledge-entry-id item)))
+                 (w-ops (and (getf meta :operators) (mapcar #'sexp->ast (getf meta :operators))))
+                 (g-ops (and (getf meta :guard-operators)
+                             (mapcar #'sexp->ast (getf meta :guard-operators))))
+                 (lits (getf meta :literals))
+                 (consts (mapcar #'sexp->ast (getf meta :constants)))
+                 (inps (knowledge-entry-inputs item))
+                 (dom (or (knowledge-entry-domain item) :int)))
+            (push (induce-conditional-solver
+                   (sexp->ast (getf meta :inverts))
+                   :id sid
+                   :position (getf meta :position :unary)
+                   :domain dom
+                   :spec item
+                   :witness-language (when w-ops
+                                       (make-language (if (or (eq dom :int) (gf-type-p dom)) dom :int)
+                                                      inps :operators w-ops :literals (or lits '(0 1))
+                                                      :constants consts))
+                   :guard-language (when g-ops
+                                     (default-guard-language
+                                      (probe-frame :bool inps (mapcar #'first (spec-entry-rows item)))
+                                      (make-language (if (or (eq dom :int) (gf-type-p dom)) dom :int)
+                                                     inps :operators g-ops :literals (or lits '(0 1))
+                                                     :constants consts)))
+                   :unique-p (getf meta :unique-p)
+                   :finite-unique-p (getf meta :finite-unique-p)
+                   :metric-p (getf meta :metric-p)
+                   :certified-p (getf meta :certified-p)
+                   :library library :ledger ledger)
+                  added))
+          (dolist (pos positions)
+            (push (induce-conditional-solver item :position pos :domain domain
+                                                  :library library :ledger ledger)
+                  added))))))
+
+(defun library-commutative-operators (library)
+  "Operators governed by an active unguarded commutativity `:law` `(op x y) = (op y x)` in LIBRARY."
+  (let ((ops nil))
+    (dolist (law (knowledge-entries-of-kind :law library) ops)
+      (when (and (knowledge-entry-active-p law)
+                 (not (eq :refuted (knowledge-entry-status law)))
+                 (unconstrained-requirement-p (knowledge-entry-guard law))
+                 (= 2 (length (knowledge-entry-inputs law)))
+                 (app-of-p (knowledge-entry-expression law) :=))
+        (let ((lhs (second (knowledge-entry-expression law)))
+              (rhs (third (knowledge-entry-expression law))))
+          (when (and (app-p lhs) (app-p rhs)
+                     (= 3 (length lhs)) (= 3 (length rhs))
+                     (equal (first lhs) (first rhs))
+                     (var-p (second lhs)) (var-p (third lhs))
+                     (not (equal (second lhs) (third lhs)))
+                     (equal (second lhs) (third rhs))
+                     (equal (third lhs) (second rhs)))
+            (pushnew (first lhs) ops :test #'equal)))))))
+
+(defun alpha-equivalent-ast-p (expr1 inputs1 expr2 inputs2 &key commutative-ops)
+  "True when EXPR1 over INPUTS1 and EXPR2 over INPUTS2 are identical up to a bijection of variables
+and optional binary operator commutativity in COMMUTATIVE-OPS."
+  (and (= (length inputs1) (length inputs2))
+       (labels ((copy-ht (ht)
+                  (let ((c (make-hash-table :test #'eql)))
+                    (maphash (lambda (k v) (setf (gethash k c) v)) ht)
+                    c))
+                (same (a b fwd rev)
+                  (and (eq (ast-kind a) (ast-kind b))
+                       (equal (ast-type a) (ast-type b))
+                       (ecase (ast-kind a)
+                         (:lit (and (equal (ast-value a) (ast-value b)) (list fwd rev)))
+                         (:op (and (equal a b) (list fwd rev)))
+                         (:hole (and (eql (ast-id a) (ast-id b)) (list fwd rev)))
+                         (:var (let ((id1 (ast-id a))
+                                     (id2 (ast-id b)))
+                                 (multiple-value-bind (m m-p) (gethash id1 fwd)
+                                   (if m-p
+                                       (and (eql m id2) (list fwd rev))
+                                       (and (null (nth-value 1 (gethash id2 rev)))
+                                            (let ((nf (copy-ht fwd))
+                                                  (nr (copy-ht rev)))
+                                              (setf (gethash id1 nf) id2
+                                                    (gethash id2 nr) id1)
+                                              (list nf nr)))))))
+                         (:app (and (= (length a) (length b))
+                                    (let ((st0 (same (first a) (first b) fwd rev)))
+                                      (when st0
+                                        (flet ((same-seq (as bs st)
+                                                 (loop with cur = st
+                                                       for x in as for y in bs
+                                                       do (setf cur (and cur (same x y (first cur) (second cur))))
+                                                       while cur
+                                                       finally (return cur))))
+                                          (or (same-seq (rest a) (rest b) st0)
+                                              (and (= 3 (length a))
+                                                   (or (and (operator-p (first a))
+                                                            (eq := (operator-name (first a))))
+                                                       (member (first a) commutative-ops :test #'equal))
+                                                   (same-seq (list (second a) (third a))
+                                                             (list (third b) (second b))
+                                                             st0))))))))))))
+         (not (null (same expr1 expr2
+                          (make-hash-table :test #'eql)
+                          (make-hash-table :test #'eql)))))))
+
+(defun induce-law-solvers (library &key (ledger (make-ledger)))
+  "Extract algebraic `:solver` entries and `:uniqueness` certificates from active `:law` entries:
+1. Unary involutions `(= (f (f x)) x)` -> `<FN>/INVOLUTION-INVERTER`.
+2. Right-inverse sufficiency laws `(= (op ... W ...) c)` -> new `:solver` when none exists yet.
+3. Left-cancellation laws `(= W(known..., (op ... z ...)) z)` -> `:uniqueness` obligation on
+   existing solvers (preserving `:trusted-axiom` when the cancellation law is an axiom, or
+   recording `:derived` when exhaustively validated)."
+  (let ((induced nil)
+        (comm-ops (library-commutative-operators library)))
+    (dolist (law-entry (knowledge-entries-of-kind :law library))
+      (when (and (knowledge-entry-active-p law-entry)
+                 (not (eq :refuted (knowledge-entry-status law-entry)))
+                 (app-of-p (knowledge-entry-expression law-entry) :=))
+        (let* ((eq-expr (knowledge-entry-expression law-entry))
+               (inputs (knowledge-entry-inputs law-entry))
+               (lhs (second eq-expr))
+               (rhs (third eq-expr))
+               (cert-p (knowledge-evidence-current-p law-entry :equivalence))
+               (tested-p (knowledge-evidence-tested-p law-entry :equivalence)))
+          ;; 1. Unary involution `(= (f (f x)) x)`
+          (when (= 1 (length inputs))
+            (let* ((tau (cdar inputs))
+                   (x0 (var (caar inputs) tau))
+                   (nested (cond ((equal rhs x0) lhs)
+                                 ((equal lhs x0) rhs))))
+              (when (and nested (app-p nested) (operator-p (first nested))
+                         (= 1 (length (rest nested)))
+                         (let ((inner (second nested)))
+                           (and (app-p inner) (equal (first nested) (first inner))
+                                (= 1 (length (rest inner))) (equal (second inner) x0))))
+                (let* ((fn-op (first nested))
+                       (solver-id (keyword-id "~A/INVOLUTION-INVERTER" (operator-name fn-op)))
+                       (guard (instantiate (knowledge-entry-guard law-entry)
+                                           (list (cons (caar inputs) (var 0 tau))) :var)))
+                  (unless (find-knowledge-entry solver-id library)
+                    (push (register-knowledge-solver
+                           fn-op :id solver-id :library library
+                           :domain (or (knowledge-entry-domain law-entry) tau)
+                           :inputs (list (cons 0 tau)) :target tau :position :unary
+                           :witness (app fn-op (var 0 tau)) :guard guard
+                           :certified-p cert-p
+                           :unique-p (and cert-p (equal guard (lit :bool t)))
+                           :edges (list (list :induced-by (knowledge-entry-id law-entry)))
+                           :ledger ledger)
+                          induced))))))
+          ;; 2. Right-inverse sufficiency law `(= (op a_0 ... W ... a_{n-1}) c)`
+          (when tested-p
+            (dolist (pair (list (cons lhs rhs) (cons rhs lhs)))
+              (let ((call (car pair))
+                    (c-var (cdr pair)))
+                (when (and (var-p c-var) (app-p call) (operator-p (first call))
+                           (>= (length (rest call)) 2))
+                  (let* ((op-ast (first call))
+                         (args (rest call))
+                         (arity (length args)))
+                    (dotimes (pos arity)
+                      (let* ((w-expr (nth pos args))
+                             (other-args (loop for a in args for i from 0
+                                               unless (= i pos) collect a))
+                             (all-vars (cons c-var other-args)))
+                        (when (and (every #'var-p all-vars)
+                                   (= arity (length (remove-duplicates (mapcar #'ast-id all-vars))))
+                                   (= arity (length inputs))
+                                   (not (equal w-expr c-var)))
+                          (let* ((dom (or (knowledge-entry-domain law-entry) :int))
+                                 (already-p
+                                   (some (lambda (s)
+                                           (let ((m (knowledge-entry-metadata s)))
+                                             (and (equal dom (knowledge-entry-domain s))
+                                                  (eq (operator-name op-ast) (getf m :operator-name))
+                                                  (eql pos (getf m :position)))))
+                                         (knowledge-entries-of-kind :solver library))))
+                            (unless already-p
+                              (let* ((cmap (solver-context-map op-ast pos))
+                                     (s-inputs (solver-context-types op-ast cmap))
+                                     (subst (loop for item in cmap
+                                                  for (sid . sty) in s-inputs
+                                                  for src-var = (if (eq item :target)
+                                                                    c-var
+                                                                    (nth (second item) args))
+                                                  collect (cons (ast-id src-var) (var sid sty))))
+                                     (s-wit (instantiate w-expr subst :var))
+                                     (s-guard (instantiate (knowledge-entry-guard law-entry) subst :var))
+                                     (sid (keyword-id "SOLVE-~A-~D/LAW" (operator-name op-ast) pos))
+                                     (entry (make-knowledge-solver
+                                             op-ast :id sid :library library :domain dom
+                                             :inputs s-inputs :position pos
+                                             :witness s-wit :guard s-guard
+                                             :unique-p nil
+                                             :edges (list (list :induced-by (knowledge-entry-id law-entry)))
+                                             :ledger ledger)))
+                                (attest-knowledge-entry entry (if cert-p :derived :sampled) '(:witness))
+                                (when cert-p (setf (knowledge-entry-status entry) :validated))
+                                (push (register-knowledge-entry entry :library library :ledger ledger)
+                                      induced))))))))))))
+          ;; 3. Left-cancellation uniqueness law `(= W(known..., (op ... z ...)) z)`
+          (when (and cert-p (unconstrained-requirement-p (knowledge-entry-guard law-entry)))
+            (dolist (solver (knowledge-entries-of-kind :solver library))
+              (when (and (knowledge-entry-active-p solver)
+                         (equal (knowledge-entry-domain law-entry) (knowledge-entry-domain solver))
+                         (not (knowledge-evidence-current-p solver :uniqueness)))
+                (let* ((meta (knowledge-entry-metadata solver))
+                       (op-ast (sexp->ast (getf meta :operator)))
+                       (pos (getf meta :position))
+                       (positions (solver-positions pos)))
+                  (when (and op-ast (null (rest positions)))
+                    (let* ((p (first positions))
+                           (cmap (or (getf meta :context-map) (solver-context-map op-ast p)))
+                           (s-inputs (knowledge-entry-inputs solver))
+                           (z-id (next-child-id s-inputs))
+                           (z-type (knowledge-entry-target solver))
+                           (z-var (var z-id z-type))
+                           (fwd-args (loop for idx below (length (second (operator-type op-ast)))
+                                           collect (if (= idx p)
+                                                       z-var
+                                                       (let ((inp (nth (position (list :argument idx) cmap
+                                                                                 :test #'equal)
+                                                                       s-inputs)))
+                                                         (var (car inp) (cdr inp))))))
+                           (fwd-call (apply #'app op-ast fwd-args))
+                           (t-inp (nth (position :target cmap) s-inputs))
+                           (subst (loop for (id . ty) in s-inputs
+                                        collect (cons id (if (eql id (car t-inp))
+                                                             fwd-call
+                                                             (var id ty)))))
+                           (composed (instantiate (knowledge-entry-expression solver) subst :var))
+                           (c-inputs (append (remove (car t-inp) s-inputs :key #'car)
+                                             (list (cons z-id z-type))))
+                           (cand-eq (term `(= ,composed ,z-var)))
+                           (cand-eq-rev (term `(= ,z-var ,composed))))
+                      (when (or (alpha-equivalent-ast-p eq-expr inputs cand-eq c-inputs
+                                                        :commutative-ops comm-ops)
+                                (alpha-equivalent-ast-p eq-expr inputs cand-eq-rev c-inputs
+                                                        :commutative-ops comm-ops))
+                        (let* ((law-method (getf (knowledge-entry-certificate law-entry) :method))
+                               (method (if (eq law-method :trusted-axiom) :trusted-axiom :derived))
+                               (was-witness-current (knowledge-evidence-current-p solver :witness)))
+                          (charge ledger :law-checking 1)
+                          (setf (getf (knowledge-entry-metadata solver) :unique-p) t)
+                          (attest-knowledge-entry
+                           solver method
+                           (append (when was-witness-current '(:witness)) '(:uniqueness)))
+                          (unless was-witness-current
+                            (setf (knowledge-entry-status solver) :conjecture
+                                  (getf (knowledge-entry-metadata solver) :certified-p) nil))
+                          (with-knowledge-library (library)
+                            (add-knowledge-edge solver :uniqueness-from (knowledge-entry-id law-entry))
+                            (clrhash (knowledge-library-propagator-libraries library))))))))))))))
+    (nreverse induced)))
+
+(defun induce-involution-solvers (library &key (ledger (make-ledger)))
+  "Backwards-compatible alias delegating to `induce-law-solvers`."
+  (induce-law-solvers library :ledger ledger))
+
+;;; ----------------------------------------------------------------------------
+;;; Battery `.sexp` Packet Loader (`library/*.sexp`)
+;;; ----------------------------------------------------------------------------
+
+(defparameter *battery-directory*
+  (merge-pathnames (make-pathname :directory '(:relative "library"))
+                   (make-pathname :name nil :type nil
+                                  :defaults (or *compile-file-truename* *load-truename*
+                                                *default-pathname-defaults*)))
+  "Directory holding auto-generated `.sexp` knowledge-library battery packets.")
+
+(defvar *battery-packets* (make-hash-table :test #'equal)
+  "Cached `.sexp` battery packets: namestring -> (write-date packet).")
+
+(defun battery-names ()
+  "The sorted keyword names of all `.sexp` battery packets in `*battery-directory*`."
+  (sort (mapcar (lambda (path) (keyword-id "~:@(~A~)" (pathname-name path)))
+                (directory (merge-pathnames (make-pathname :name :wild :type "sexp")
+                                            *battery-directory*)))
+        #'string< :key #'symbol-name))
+
+(defun read-battery (name)
+  "Read and cache the `.sexp` knowledge-library packet for battery NAME."
+  (let* ((bname (canonical-op-name name))
+         (path (merge-pathnames (make-pathname :name (string-downcase (symbol-name bname))
+                                               :type "sexp")
+                                *battery-directory*))
+         (date (and (probe-file path) (file-write-date path)))
+         (cached (gethash (namestring path) *battery-packets*)))
+    (assert date () "No battery packet ~S at ~A" name path)
+    (unless (and cached (eql date (first cached)))
+      (with-open-file (stream path :direction :input)
+        (with-standard-io-syntax
+          (let* ((*read-eval* nil)
+                 (packet (read stream nil nil)))
+            (assert (and (consp packet) (eq :knowledge-library (first packet)))
+                    () "Malformed battery packet at ~A" path)
+            (let ((meta (getf (rest packet) :metadata)))
+              (when (and meta (getf meta :battery))
+                (assert (eq bname (canonical-op-name (getf meta :battery)))
+                        () "Battery ~A declares name ~S, expected ~S"
+                        path (getf meta :battery) bname)))
+            (setf cached (list date packet)
+                  (gethash (namestring path) *battery-packets*) cached)))))
+    (second cached)))
+
+(defun rename-entry-calls (entry renames)
+  "Return a shallow copy of ENTRY with any non-self defined function calls in RENAMES renamed."
+  (let* ((self-id (knowledge-entry-id entry))
+         (active-renames (loop for (old . new) in renames
+                               when (and (not (eq old new))
+                                         (not (eq old self-id))
+                                         (defined-function-p new))
+                                 collect (cons old new))))
+    (if (null active-renames)
+        entry
+        (let ((copy (copy-knowledge-entry entry))
+              (meta (copy-list (knowledge-entry-metadata entry))))
+          (flet ((rw (ast)
+                   (when ast
+                     (let ((cur ast))
+                       (loop for (old . new) in active-renames
+                             do (setf cur (rename-function-calls cur old (op new))))
+                       cur))))
+            (setf (knowledge-entry-expression copy) (rw (knowledge-entry-expression entry))
+                  (knowledge-entry-guard copy) (rw (knowledge-entry-guard entry))
+                  (knowledge-entry-trigger copy) (rw (knowledge-entry-trigger entry))
+                  (knowledge-entry-auxiliary-code copy) (rw (knowledge-entry-auxiliary-code entry)))
+            (when (getf meta :operator)
+              (let* ((op-ast (sexp->ast (getf meta :operator)))
+                     (hit (assoc (operator-name op-ast) active-renames :test #'eq)))
+                (when hit
+                  (setf (getf meta :operator) (ast->sexp (op (cdr hit)))
+                        (getf meta :operator-name) (cdr hit)))))
+            (setf (knowledge-entry-metadata copy) meta)
+            copy)))))
+
+(defun install-battery-entry-default (src-entry battery renames library ledger)
+  "Install SRC-ENTRY at its default types into LIBRARY, re-certifying finite solvers."
+  (let* ((renamed (rename-entry-calls src-entry renames))
+         (id (knowledge-entry-id src-entry))
+         (kind (knowledge-entry-kind renamed)))
+    (case kind
+      (:function
+       (define-function id (knowledge-entry-inputs renamed) (knowledge-entry-target renamed)
+         (lambda (self)
+           (rename-function-calls (knowledge-entry-expression renamed) id self)))
+       (let ((fn-entry (find-knowledge-entry id library)))
+         (add-knowledge-edge fn-entry :from-battery battery)
+         fn-entry))
+      (:solver
+       (let* ((meta (knowledge-entry-metadata renamed))
+              (op-ast (sexp->ast (getf meta :operator)))
+              (inputs (knowledge-entry-inputs renamed))
+              (target (knowledge-entry-target renamed))
+              (finite-p (every #'finite-type-p (cons target (mapcar #'cdr inputs))))
+              (metric-edge (first (knowledge-edges-from src-entry :metric-decoder)))
+              (built (if finite-p
+                         (make-knowledge-solver
+                          op-ast :id id :library library
+                          :domain (knowledge-entry-domain renamed)
+                          :inputs inputs :target target
+                          :position (getf meta :position)
+                          :context-map (getf meta :context-map)
+                          :witness (knowledge-entry-expression renamed)
+                          :guard (knowledge-entry-guard renamed)
+                          :domain-guard (knowledge-entry-auxiliary-code renamed)
+                          :certified-p t
+                          :unique-p (if (getf meta :finite-unique-p) t (getf meta :unique-p))
+                          :necessary-p (getf meta :necessary-p)
+                          :edges (remove :from-battery (knowledge-entry-edges src-entry) :key #'first)
+                          :ledger ledger)
+                         (copy-knowledge-entry renamed)))
+              (reg (register-knowledge-entry built :library library :ledger ledger)))
+         (add-knowledge-edge reg :from-battery battery)
+         (when metric-edge
+           (register-metric-decoder reg :library library :tag-bits (fourth metric-edge)))
+         reg))
+      (:descriptor
+       (let* ((existing (find-knowledge-entry id library))
+              (c (copy-knowledge-entry renamed)))
+         (when (and existing (eq :descriptor (knowledge-entry-kind existing)))
+           (let* ((old-nec (getf (knowledge-entry-metadata existing) :necessary-for))
+                  (new-meta (copy-list (knowledge-entry-metadata c)))
+                  (merged (copy-list (getf new-meta :necessary-for))))
+             (dolist (pair old-nec)
+               (unless (assoc (car pair) merged :test #'eq)
+                 (push pair merged)))
+             (setf (getf new-meta :necessary-for) merged
+                   (knowledge-entry-metadata c) new-meta
+                   (knowledge-entry-edges c)
+                   (remove-duplicates
+                    (append (knowledge-edges-from existing :describes library)
+                            (knowledge-entry-edges c))
+                    :test #'equal))))
+         (let ((reg (register-knowledge-entry c :library library :ledger ledger)))
+           (add-knowledge-edge reg :from-battery battery)
+           reg)))
+      (otherwise
+       (let* ((c (copy-knowledge-entry renamed))
+              (reg (register-knowledge-entry c :library library :ledger ledger)))
+         (add-knowledge-edge reg :from-battery battery)
+         reg)))))
+
+(defun load-battery (name &key types domain only (library *knowledge-library*)
+                               ledger (check-examples-p t))
+  "Load `.sexp` battery packet NAME into LIBRARY, optionally instantiating its type parameters
+via TYPES / DOMAIN or restricting to ONLY, verifying attached `:spec` rows at default types."
+  (let* ((battery (canonical-op-name name))
+         (packet (read-battery battery))
+         (bmeta (getf (rest packet) :metadata))
+         (parameters (getf bmeta :parameters))
+         (src-lib (deserialize-knowledge-library packet :ledger ledger))
+         (primary-entries
+           (remove-if-not (lambda (e)
+                            (and (not (eq :spec (knowledge-entry-kind e)))
+                                 (or (null bmeta)
+                                     (member (list :from-battery battery)
+                                             (knowledge-entry-edges e) :test #'equal))))
+                          (knowledge-library-entries src-lib)))
+         (wanted (mapcar #'canonical-op-name only)))
+    (assert (every (lambda (binding)
+                     (find (symbol-name (car binding)) parameters
+                           :key (lambda (p) (symbol-name (first p))) :test #'string=))
+                   types)
+            () "Battery ~S has parameters ~S, not ~S" name (mapcar #'first parameters) types)
+    (assert (subsetp wanted (mapcar #'knowledge-entry-id primary-entries))
+            () "Battery ~S has no entry ~S"
+            name (set-difference wanted (mapcar #'knowledge-entry-id primary-entries)))
+    (let* ((resolved-params
+             (loop for (param default) in parameters
+                   for given = (assoc (symbol-name param) types
+                                      :key #'symbol-name :test #'string=)
+                   collect (cons param (cond (given (cdr given))
+                                             (domain domain)
+                                             (t default)))))
+           (slugs
+             (cond (resolved-params
+                    (loop for (nil default) in parameters
+                          for (nil . actual) in resolved-params
+                          unless (equal actual default)
+                            collect (type-slug actual)))
+                   ((and domain (not (eq domain :int)))
+                    (list (type-slug domain)))))
+           (eff-domain (or domain (and resolved-params (cdar resolved-params))))
+           (selected (if only
+                         (remove-if-not (lambda (e) (member (knowledge-entry-id e) wanted))
+                                        primary-entries)
+                         primary-entries))
+           (renames (loop for e in selected
+                          for sid = (knowledge-entry-id e)
+                          collect (cons sid (if slugs
+                                                (keyword-id "~A/~{~A~^-~}" sid slugs)
+                                                sid))))
+           (src-fn-names (mapcar #'knowledge-entry-id
+                                 (knowledge-entries-of-kind :function src-lib))))
+      ;; Check intra-battery function dependencies before installing anything into LIBRARY.
+      (with-knowledge-library (library)
+        (dolist (e selected)
+          (dolist (slot-ast (list (knowledge-entry-expression e)
+                                  (knowledge-entry-guard e)
+                                  (knowledge-entry-trigger e)
+                                  (knowledge-entry-auxiliary-code e)))
+            (when slot-ast
+              (dolist (callee (collect-expression-operators slot-ast))
+                (when (and (member callee src-fn-names :test #'eq)
+                           (not (eq callee (knowledge-entry-id e))))
+                  (assert (or (assoc callee renames :test #'eq)
+                              (defined-function-p callee))
+                          () "Battery entry ~S requires ~S to be loaded"
+                          (knowledge-entry-id e) callee))))))
+        (let ((installed-by-src (make-hash-table :test #'eq))
+              (ordered (stable-sort (copy-list selected) #'<
+                                    :key (lambda (e) (knowledge-kind-priority (knowledge-entry-kind e))))))
+          (dolist (e ordered)
+            (let* ((src-id (knowledge-entry-id e))
+                   (dst-id (cdr (assoc src-id renames :test #'eq)))
+                   (installed
+                     (if (null slugs)
+                         (install-battery-entry-default e battery renames library ledger)
+                         (let* ((renamed (rename-entry-calls e renames))
+                                (inst (instantiate-entry-template
+                                       renamed :domain eff-domain :id dst-id
+                                       :register-p t :certify-p t
+                                       :library library :ledger ledger))
+                                (metric-edge (first (knowledge-edges-from e :metric-decoder src-lib))))
+                           (add-knowledge-edge inst :from-battery battery)
+                           (when metric-edge
+                             (register-metric-decoder inst :library library
+                                                           :tag-bits (fourth metric-edge)))
+                           inst))))
+              (setf (gethash src-id installed-by-src) installed)))
+          (when (and check-examples-p (null slugs))
+            (dolist (spec (knowledge-entries-of-kind :spec src-lib))
+              (let* ((s-edge (first (knowledge-edges-from spec :specifies src-lib)))
+                     (target-id (second s-edge))
+                     (inst (and target-id (gethash target-id installed-by-src))))
+                (when inst
+                  (verify-entry-against-spec inst spec :library library :ledger ledger)))))
+          (loop for e in selected
+                collect (gethash (knowledge-entry-id e) installed-by-src)))))))
+
+;;; ----------------------------------------------------------------------------
+;;; Second-Order `:functor` & `:transformer`-Driven Solver Induction
+;;; ----------------------------------------------------------------------------
+
+(defvar *cached-functor-library* nil
+  "Cached isolated library of `functors.sexp` transformers `(write-date . library)`.")
+
+(defun functor-transformer-library (library)
+  "Return LIBRARY when it holds `:functor/*` transformers, or the cached `functors.sexp` library."
+  (if (find-knowledge-entry :functor/map-guard-0 library)
+      library
+      (let* ((path (merge-pathnames (make-pathname :name "functors" :type "sexp")
+                                    *battery-directory*))
+             (date (and (probe-file path) (file-write-date path))))
+        (when date
+          (unless (and *cached-functor-library* (eql date (car *cached-functor-library*)))
+            (setf *cached-functor-library*
+                  (cons date (deserialize-knowledge-library (read-battery :functors)))))
+          (cdr *cached-functor-library*)))))
+
+(defun run-functor-transformer (id elem-type args tlib ledger)
+  "Instantiate polymorphic `:transformer` ID at ELEM-TYPE and execute it on ARGS in the VM."
+  (let* ((src (and tlib (find-knowledge-entry id tlib)))
+         (inst (and src (if (eq elem-type :int)
+                            src
+                            (instantiate-entry-template src :domain elem-type
+                                                        :register-p nil :certify-p nil
+                                                        :library tlib :ledger ledger))))
+         (run (and inst (evaluate-guarded-entry inst args ledger))))
+    (assert (and run (eq :value (evaluation-status run)))
+            () "Functor transformer ~S failed on ~S at ~S" id args elem-type)
+    (evaluation-value run)))
+
+(defun map-like-combinator-signature (fdef)
+  "If FDEF is a higher-order list-mapping combinator taking `(X0 : (:seq elem))` and
+`(X1 : (:code ((0 . elem)) elem))` and returning `(:seq elem)` via `function-body-length-preserving-p`,
+return `(VALUES elem-type seq-type code-type)`."
+  (when (and (function-definition-p fdef)
+             (function-definition-body fdef)
+             (= 2 (length (function-definition-inputs fdef))))
+    (let* ((inps (function-definition-inputs fdef))
+           (t0 (cdr (first inps)))
+           (t1 (cdr (second inps)))
+           (ret (function-definition-return-type fdef)))
+      (when (and (seq-type-p t0)
+                 (equal t0 ret)
+                 (code-type-p t1)
+                 (= 1 (length (code-inputs t1)))
+                 (eql 0 (caar (code-inputs t1)))
+                 (equal (second t0) (cdar (code-inputs t1)))
+                 (equal (second t0) (code-sort t1))
+                 (function-body-length-preserving-p (function-definition-name fdef)
+                                                    (function-definition-body fdef)))
+        (values (second t0) t0 t1)))))
+
+(defun extract-pointwise-binary-step (src-entry elem-type seq-type)
+  "If `:function` entry SRC-ENTRY has signature `((0 . seq-type) (1 . elem-type)) -> seq-type`
+and applies a binary scalar operator `(op elem param)` or `(op param elem)` to each element
+of `X0` with parameter `X1`, return `(VALUES op-name elem-pos param-pos)`."
+  (let ((expr (knowledge-entry-expression src-entry))
+        (aux (knowledge-entry-auxiliary-code src-entry))
+        (v0 (var 0 elem-type))
+        (v1 (var 1 elem-type)))
+    (flet ((binary-step (step element parameter)
+             (when (and (app-p step) (operator-p (first step)) (= 2 (length (rest step))))
+               (cond ((and (equal (second step) element) (equal (third step) parameter))
+                      (list (operator-name (first step)) 0 1))
+                     ((and (equal (second step) parameter) (equal (third step) element))
+                      (list (operator-name (first step)) 1 0))))))
+      (when (and (equal (knowledge-entry-inputs src-entry)
+                        (list (cons 0 seq-type) (cons 1 elem-type)))
+                 (equal seq-type (knowledge-entry-target src-entry)))
+        (values-list
+         (or (and aux (binary-step aux v0 v1))
+             (and (app-p expr) (= 2 (length (rest expr)))
+                  (app-of-p (third expr) :code-subst)
+                  (lit-p (second (third expr)))
+                  (binary-step (ast-value (second (third expr))) v0 v1))
+             (and (app-of-p expr :if)
+                  (app-of-p (fourth expr) :cons)
+                  (binary-step (second (fourth expr)) (term `(at ,(var 0 seq-type) 0)) v1))))))))
+
+(defun induce-combinator-solvers (library ledger map-name elem-type seq-type src-ctype elem-solvers)
+  "Register `:functor` for MAP-NAME and lift ELEM-SOLVERS through `:functor/*` VM `:transformer`s."
+  (let ((functor-id (keyword-id "~A/FUNCTOR" map-name))
+        (map-inputs (list (cons 0 src-ctype) (cons 1 seq-type)))
+        (tlib (functor-transformer-library library))
+        (induced nil))
+    (assert tlib () "Functorial solver induction requires functors.sexp or :functor/* transformers")
+    (labels
+        ((new-p (id) (null (find-knowledge-entry id library)))
+         (induce (id function esolver &rest fields)
+           (push (apply #'register-knowledge-solver function
+                        :id id :library library :ledger ledger
+                        :unique-p (getf (knowledge-entry-metadata esolver) :unique-p t)
+                        :edges (list (list :induced-by functor-id (knowledge-entry-id esolver)))
+                        fields)
+                 induced))
+         (element-solver (operator position)
+           (find-if (lambda (solver)
+                      (let ((meta (knowledge-entry-metadata solver)))
+                        (and (eq operator (getf meta :operator-name))
+                             (eql position (getf meta :position)))))
+                    elem-solvers))
+         (map-inverter (esolver)
+           (let* ((meta (knowledge-entry-metadata esolver))
+                  (op-name (operator-name (sexp->ast (getf meta :operator))))
+                  (elem-pos (getf meta :position))
+                  (pattern (app (op op-name elem-type) (var 0 elem-type) (var 1 elem-type)))
+                  (ewit (knowledge-entry-expression esolver))
+                  (guard-tid (if (zerop elem-pos) :functor/map-guard-0 :functor/map-guard-1))
+                  (inv-tid (if (zerop elem-pos) :functor/map-inverse-0 :functor/map-inverse-1))
+                  (wit-tid (if (zerop elem-pos) :functor/map-witness-0 :functor/map-witness-1))
+                  (guard (run-functor-transformer guard-tid elem-type (list pattern ewit) tlib ledger))
+                  (inverse (run-functor-transformer inv-tid elem-type (list pattern ewit) tlib ledger))
+                  (witness (run-functor-transformer wit-tid elem-type
+                                                    (list (op map-name) pattern ewit) tlib ledger))
+                  (id (keyword-id "~A/INVERT-~A-~D" map-name op-name elem-pos)))
+             (when (new-p id)
+               (induce id map-name esolver :domain elem-type :inputs map-inputs
+                       :target seq-type :position 0 :witness witness :guard guard))
+             (dolist (edge (knowledge-edges-from map-name :abstracts library))
+               (dolist (src-fn (rest edge))
+                 (refactored-inverter src-fn esolver guard inverse)))))
+         (refactored-inverter (src-fn esolver guard inverse)
+           (let* ((src-entry (find-knowledge-entry src-fn library))
+                  (step (and src-entry
+                             (= 1 (length (knowledge-entry-inputs src-entry)))
+                             (knowledge-entry-auxiliary-code src-entry)))
+                  (id (keyword-id "~A/INVERTER" src-fn)))
+             (when (and step (new-p id))
+               (let ((grun (evaluate guard map-inputs (list step nil) :ledger ledger)))
+                 (when (and (eq :value (evaluation-status grun)) (evaluation-value grun))
+                   (let ((irun (evaluate inverse (list (cons 0 src-ctype)) (list step) :ledger ledger)))
+                     (when (eq :value (evaluation-status irun))
+                       (let ((uwit (run-functor-transformer :functor/unary-map-witness elem-type
+                                                            (list (op map-name) (evaluation-value irun))
+                                                            tlib ledger)))
+                         (induce id src-fn esolver :domain elem-type
+                                 :inputs (list (cons 0 seq-type)) :target seq-type :position :unary
+                                 :witness uwit)))))))))
+         (pointwise-inverters (src-entry)
+           (multiple-value-bind (operator elem-pos param-pos)
+               (extract-pointwise-binary-step src-entry elem-type seq-type)
+             (when operator
+               (let* ((src-fn (knowledge-entry-id src-entry))
+                      (seq-solver (element-solver operator elem-pos))
+                      (seq-id (keyword-id "~A/INVERT-0" src-fn))
+                      (param-solver (element-solver operator param-pos))
+                      (param-id (keyword-id "~A/INVERT-1" src-fn)))
+                 (when (and seq-solver (new-p seq-id))
+                   (let* ((swit (run-functor-transformer :functor/pointwise-seq-witness elem-type
+                                                         (list (op map-name)
+                                                               (knowledge-entry-expression seq-solver))
+                                                         tlib ledger))
+                          (e-guard (knowledge-entry-guard seq-solver))
+                          (sguard (if (member 1 (free-vars e-guard)) (lit :bool t) e-guard)))
+                     (induce seq-id src-fn seq-solver :domain seq-type
+                             :inputs (list (cons 0 elem-type) (cons 1 seq-type)) :target seq-type
+                             :position 0 :witness swit :guard sguard)))
+                 (when (and param-solver (new-p param-id))
+                   (let ((pwit (run-functor-transformer :functor/pointwise-param-witness elem-type
+                                                        (list (knowledge-entry-expression param-solver))
+                                                        tlib ledger))
+                         (pguard (run-functor-transformer :functor/pointwise-param-guard elem-type
+                                                          (list (knowledge-entry-guard param-solver))
+                                                          tlib ledger)))
+                     (induce param-id src-fn param-solver :domain seq-type
+                             :inputs (list (cons 0 seq-type) (cons 1 seq-type)) :target elem-type
+                             :position 1 :witness pwit :guard pguard))))))))
+      (when (new-p functor-id)
+        (push (register-knowledge-entry
+               (make-knowledge-entry
+                :id functor-id :kind :functor :domain elem-type
+                :inputs map-inputs :target seq-type
+                :expression (app (op map-name) (var 1 seq-type) (var 0 src-ctype))
+                :status :conjecture
+                :metadata (list :origin :functor-transformer :combinator map-name)
+                :edges (list (list :lifts-inverter map-name))
+                :library library)
+               :library library :ledger ledger)
+              induced))
+      (map-inverter (first elem-solvers))
+      (mapc #'pointwise-inverters (knowledge-entries-of-kind :function library))
+      (mapc #'map-inverter (rest elem-solvers))
+      (nreverse induced))))
+
+(defun induce-functorial-solvers (library &key (ledger (make-ledger)))
+  "Induce `:functor` theories and sequence/pointwise/algebraic `:solver` entries in LIBRARY
+by executing `:functor/*` `:transformer` programs in the VM and scanning `:law` entries."
+  (with-knowledge-library (library)
+    (let ((induced nil))
+      (dolist (fn-entry (knowledge-entries-of-kind :function library))
+        (let ((map-name (knowledge-entry-id fn-entry)))
+          (multiple-value-bind (elem-type seq-type src-ctype)
+              (map-like-combinator-signature
+               (or (gethash map-name (knowledge-library-functions library))
+                   (find-function-definition map-name)))
+            (let ((elem-solvers
+                    (and elem-type
+                         (remove-if-not
+                          (lambda (s)
+                            (and (equal elem-type (knowledge-entry-domain s))
+                                 (equal elem-type (knowledge-entry-target s))
+                                 (equal (knowledge-entry-inputs s)
+                                        (list (cons 0 elem-type) (cons 1 elem-type)))
+                                 (member (getf (knowledge-entry-metadata s) :position) '(0 1))))
+                          (knowledge-entries-of-kind :solver library)))))
+              (when elem-solvers
+                (setf induced
+                      (nconc induced
+                             (induce-combinator-solvers library ledger map-name elem-type seq-type
+                                                        src-ctype elem-solvers))))))))
+      (nconc induced
+             (induce-law-solvers library :ledger ledger)
+             (induce-solvers-from-transformers library ledger)))))
+
+(define-knowledge-kind :functor
+  (:priority 40)
+  (:validate (entry library)
+    (declare (ignore library))
+    (assert-entry-expression-type entry))
+  (:consolidate (entries library ledger)
+    (declare (ignore entries))
+    (induce-functorial-solvers library :ledger ledger)))

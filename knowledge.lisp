@@ -62,15 +62,24 @@ A :passive kind's entries mention functions without being uses of them (`entry-l
                             #'< :key #'knowledge-kind-spec-priority))
          ',kind))))
 
-;;; Entries and libraries
+;;; Entries and libraries (descriptor profile clauses are pure portable plists)
 
-(defstruct descriptor-clause
-  id
-  (facet :shape-delta)
-  (tier 1 :type fixnum)
-  (status :empirical)
-  (weight-bits 2 :type fixnum)
-  (work-cost 1 :type fixnum))
+(defun make-descriptor-clause (&key id (facet :shape-delta) (tier 1) (status :empirical)
+                                    (weight-bits 2) (work-cost 1) snapshot)
+  (append (list :id id :facet facet :tier tier :status status
+                :weight-bits weight-bits :work-cost work-cost)
+          (when snapshot (list :snapshot snapshot))))
+
+(defun descriptor-clause-p (clause)
+  (and (consp clause) (keywordp (first clause)) (not (null (getf clause :id)))))
+
+(defun descriptor-clause-id (clause) (getf clause :id))
+(defun descriptor-clause-facet (clause) (getf clause :facet :shape-delta))
+(defun descriptor-clause-tier (clause) (getf clause :tier 1))
+(defun descriptor-clause-status (clause) (getf clause :status :empirical))
+(defun descriptor-clause-weight-bits (clause) (getf clause :weight-bits 2))
+(defun (setf descriptor-clause-weight-bits) (value clause) (setf (getf clause :weight-bits) value))
+(defun descriptor-clause-work-cost (clause) (getf clause :work-cost 1))
 
 (defstruct (knowledge-entry (:constructor %make-knowledge-entry))
   id
@@ -413,6 +422,25 @@ running each kind's `:install` hook in priority order."
       (incf (knowledge-library-version library))))
   library)
 
+(defun detach-entry-from-auto-descriptors (id library)
+  "Remove ID from `:describes` edges of `:auto-descriptor` entries in LIBRARY, deleting any
+auto-descriptor that no longer describes any entry."
+  (dolist (edge (copy-list (knowledge-edges-to id :describes library)))
+    (let ((d (find-knowledge-entry (second edge) library)))
+      (when (and d (eq :descriptor (knowledge-entry-kind d))
+                 (getf (knowledge-entry-metadata d) :auto-descriptor))
+        (unindex-knowledge-entry d library)
+        (setf (knowledge-entry-edges d)
+              (loop for dedge in (knowledge-entry-edges d)
+                    if (eq :describes (first dedge))
+                      when (remove id (rest dedge) :test #'eq)
+                        collect (cons :describes (remove id (rest dedge) :test #'eq))
+                    else collect dedge))
+        (if (knowledge-edges-from d :describes library)
+            (index-knowledge-entry d library)
+            (setf (knowledge-library-entries library)
+                  (delete d (knowledge-library-entries library) :test #'eq)))))))
+
 (defun register-knowledge-entry (entry &key (library *knowledge-library*) ledger)
   "Validate, install, and index `knowledge-entry` ENTRY into LIBRARY via its declarative kind spec.
 An entry with the same ID is replaced in place in the entry list."
@@ -427,15 +455,7 @@ An entry with the same ID is replaced in place in the entry list."
         (cond (existing
                (when (and (not (eq (knowledge-entry-kind existing) kind))
                           (member (knowledge-entry-kind existing) '(:function :decoder-template)))
-                 (dolist (edge (copy-list (knowledge-edges-to id :describes library)))
-                   (let ((d (find-knowledge-entry (second edge) library)))
-                     (when (and d (eq :descriptor (knowledge-entry-kind d))
-                                (getf (knowledge-entry-metadata d) :auto-descriptor)
-                                (equal (list (list :describes id))
-                                       (knowledge-edges-from d :describes library)))
-                       (unindex-knowledge-entry d library)
-                       (setf (knowledge-library-entries library)
-                             (delete d (knowledge-library-entries library) :test #'eq))))))
+                 (detach-entry-from-auto-descriptors id library))
                (unindex-knowledge-entry existing library)
                (when (and (eq :function (knowledge-entry-kind existing)) (not (eq :function kind)))
                  (remhash id *function-definitions*)
@@ -452,18 +472,13 @@ An entry with the same ID is replaced in place in the entry list."
         entry))))
 
 (defun remove-knowledge-entry (id &optional (library *knowledge-library*) ledger)
-  "Remove entry ID (and any auto-derived descriptors describing only ID) from LIBRARY."
+  "Remove entry ID (and detach/prune auto-derived descriptors describing ID) from LIBRARY."
   (let* ((kid (canonical-op-name id))
          (existing (find-knowledge-entry kid library)))
     (when existing
+      (detach-entry-from-auto-descriptors kid library)
       (setf (knowledge-library-entries library)
-            (remove-if (lambda (e)
-                         (or (eq e existing)
-                             (and (eq :descriptor (knowledge-entry-kind e))
-                                  (getf (knowledge-entry-metadata e) :auto-descriptor)
-                                  (equal (list (list :describes kid))
-                                         (knowledge-edges-from e :describes library)))))
-                       (knowledge-library-entries library)))
+            (delete existing (knowledge-library-entries library) :test #'eq))
       (remhash existing *knowledge-entry-owners*)
       (rebuild-knowledge-library-indexes library ledger)
       t)))

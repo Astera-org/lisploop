@@ -324,8 +324,8 @@ features that Stage A already evaluated separates the exceptions without running
 
 (deftest let-call-canonicalizes-ids-and-inlines-closed-singletons
   "Let-sharing renumbers bound variables to `0 .. k-1` in first-occurrence order so alpha-renamed
-child ids produce identical ASTs, inlines closed single-use total bindings, and leaves
-heterogeneous tuple inputs untouched when listing homogeneous component bindings."
+child ids produce identical ASTs, inlines closed single-use total bindings, and projects both
+heterogeneous and homogeneous tuple inputs in `component-bindings`."
   (let* ((inputs '((0 . :int)))
          (x0 (var 0 :int))
          (big (term `(+ ,x0 (* (+ ,x0 1) (+ ,x0 1))))))
@@ -340,9 +340,14 @@ heterogeneous tuple inputs untouched when listing homogeneous component bindings
       (check (app-of-p shared :code-eval))
       (check (= 2 (length (rest shared))))
       (check (= (result shared inputs '(3)) (+ (* 2 (+ 3 (* 4 4))) 7))))
-    ;; 3. Heterogeneous tuple inputs do not crash `component-bindings` (1 untouched + 2 projected = 3).
-    (let ((mixed-inputs (list (cons 0 (tuple-type :int :bool)) (cons 1 (tuple-type :int :int)))))
-      (check (= 3 (length (component-bindings mixed-inputs)))))))
+    ;; 3. Heterogeneous and homogeneous non-empty tuple inputs project to typed components; empty tuples stay whole.
+    (let* ((mixed-inputs (list (cons 0 (tuple-type :int :bool))
+                               (cons 1 (tuple-type :int :int))
+                               (cons 2 (tuple-type))))
+           (bindings (component-bindings mixed-inputs)))
+      (check (= 5 (length bindings)))
+      (check (equal '(:int :bool :int :int (:tuple))
+                    (mapcar (lambda (b) (expression-type (cdr b) mixed-inputs)) bindings))))))
 
 (deftest constructor-au-handles-operator-holes-and-lowered-literals
   "Constructor-AU synthesizes `:fn` operator holes when target trees share arguments across

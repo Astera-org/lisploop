@@ -31,7 +31,8 @@
           :target (copy-tree (knowledge-entry-target entry))
           :code (mapcar #'ast->sexp exprs)
           :context (copy-tree (list (getf meta :operator) (getf meta :position)
-                                   (getf meta :context-map) (getf meta :unique-p)))
+                                   (getf meta :context-map) (getf meta :unique-p)
+                                   (getf meta :necessary-p)))
           :dependencies (expression-dependencies
                          (append exprs
                                  (loop for edge in (knowledge-entry-edges entry)

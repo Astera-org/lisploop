@@ -190,7 +190,7 @@
    bifunctor `:map` lifting and `:code-subst` closure capture.
 3. Matrix-Vector Product ($(Mv)_i = \\sum_j M_{i,j} v_j$) via `:map` over rows composed with `:dot-product`.
 4. 2D Row/Grid Reductions (`row-sums` and `matrix-sum`).
-5. Filter-Map comprehension (`[2*x + 1 for x in xs if x > 0]`) via `filter-map-decompositions`."
+5. Filter-Map comprehension (`[2*x + 1 for x in xs if x > 0]`) via `:comprehension/filter-map`."
   (with-clean-kernel-state
     (define-standard-int-combinators)
          (let* ((seq-int (sequence-type :int))

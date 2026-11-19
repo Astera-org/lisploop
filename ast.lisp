@@ -191,20 +191,27 @@ does not determine, or nil. The codec emits the type bound to it after the opcod
 
 (defun operator-encoded-type (name type)
   "The part of TYPE, the parameter of operator NAME, that is emitted in the bitstream, or nil."
-  (let ((variable (encoded-variable name)))
-    (and variable
-         (cdr (assoc variable (match-type-pattern (first (primitive-pattern name)) type))))))
+  (if (eq name :at)
+      (at-container-type type)
+      (let ((variable (encoded-variable name)))
+        (and variable
+             (cdr (assoc variable (match-type-pattern (first (primitive-pattern name)) type)))))))
 
 (defun operator-decoded-type (name result read-type)
   "The inverse of `operator-encoded-type`: the parameter of operator NAME in an application
 of type RESULT, calling READ-TYPE for the part that was emitted."
-  (let ((pattern (primitive-pattern name))
-        (variable (encoded-variable name)))
-    (if pattern
-        (sublis (match-type-pattern (third pattern) result
-                                    (and variable (list (cons variable (funcall read-type)))))
-                (first pattern))
-        result)))
+  (if (eq name :at)
+      (let ((container (funcall read-type)))
+        (if (tuple-type-p container)
+            (tuple-type container result)
+            container))
+      (let ((pattern (primitive-pattern name))
+            (variable (encoded-variable name)))
+        (if pattern
+            (sublis (match-type-pattern (third pattern) result
+                                        (and variable (list (cons variable (funcall read-type)))))
+                    (first pattern))
+            result))))
 
 (defstruct (function-definition (:constructor %make-function-definition))
   name inputs return-type body oracle-table total-p conditional-code-params)
@@ -272,15 +279,34 @@ of type RESULT, calling READ-TYPE for the part that was emitted."
        (every (lambda (part) (equal part (second type))) (cddr type))))
 
 (defun normalize-at-container-type (type)
-  "Normalize `:at` operand type: accepts `(:seq tau)`, homogeneous `(:tuple tau ... tau)`,
-or element type `tau` (normalized to `(:seq tau)`)."
+  "Normalize `:at` operand type:
+- `(:seq tau)` stays `(:seq tau)` (element type `tau`);
+- `(:tuple tup-type slot-type)` with `slot-type` among `tup-type`'s slots stays as-is;
+- homogeneous `(:tuple tau ... tau)` normalizes to `(:tuple (:tuple tau ... tau) tau)`;
+- any scalar/non-tuple element type `tau` normalizes to `(:seq tau)`."
   (assert (valid-type-p type))
-  (if (or (seq-type-p type) (homogeneous-tuple-type-p type))
-      type
-      (sequence-type type)))
+  (cond
+    ((seq-type-p type) type)
+    ((and (tuple-type-p type)
+          (= 3 (length type))
+          (tuple-type-p (second type))
+          (rest (second type))
+          (member (third type) (rest (second type)) :test #'equal))
+     type)
+    ((homogeneous-tuple-type-p type)
+     (tuple-type type (second type)))
+    (t
+     (assert (not (tuple-type-p type)) ()
+             "Heterogeneous or empty tuple ~S in `:at` requires `(:tuple tup-type slot-type)`." type)
+     (sequence-type type))))
+
+(defun at-container-type (type)
+  (let ((norm (normalize-at-container-type type)))
+    (if (tuple-type-p norm) (second norm) norm)))
 
 (defun at-container-element-type (type)
-  (second (normalize-at-container-type type)))
+  (let ((norm (normalize-at-container-type type)))
+    (if (tuple-type-p norm) (third norm) (second norm))))
 
 (defun valid-type-p (type)
   (or (member type '(:int :bool))
@@ -483,7 +509,7 @@ constantly and quoted code is sized from cached metadata."
       (:tuple
        (assert (tuple-type-p type))
        (sig (rest type) type))
-      (:at (sig (list type :int) (at-container-element-type type)))
+      (:at (sig (list (at-container-type type) :int) (at-container-element-type type)))
       (:code-eval
        (assert (expression-code-p type))
        (sig (cons type (mapcar #'cdr (code-inputs type)))
@@ -581,7 +607,9 @@ constantly and quoted code is sized from cached metadata."
                               :syntax-work (1+ (if (or (defined-function-p kname)
                                                        (member kname *registered-function-names*))
                                                    1
-                                                   (type-work norm-type)))
+                                                   (type-work (if (eq kname :at)
+                                                                  (at-container-type norm-type)
+                                                                  norm-type))))
                               :total-p t :free-vars nil)))))))
 
 (defun operator-p (term)
@@ -685,52 +713,36 @@ constantly and quoted code is sized from cached metadata."
                                  (or allow-open-code-p (provably-total-p b))))
                            (rest tuple-arg))))))))
 
-(defun non-empty-seq-expr-p (expr &optional non-empty-vars)
-  "True when sequence expression EXPR is guaranteed non-empty."
-  (let ((meta (ensure-ast-meta expr)))
-    (case (ast-meta-kind meta)
-      (:lit (not (null (ast-meta-value meta))))
-      (:var (and non-empty-vars (member (ast-meta-id meta) non-empty-vars :test #'eql)))
-      (:app (or (eq :cons (ast-meta-id meta))
-                (and (eq :if (ast-meta-id meta))
-                     (multiple-value-bind (then-vars else-vars)
-                         (branch-non-empty-vars (second expr) non-empty-vars)
-                       (and (non-empty-seq-expr-p (third expr) then-vars)
-                            (non-empty-seq-expr-p (fourth expr) else-vars)))))))))
+(defun rank-env-lookup (id env)
+  "Minimum guaranteed rank (sequence length or integer lower bound) of variable ID in ENV."
+  (loop for entry in env
+        when (if (consp entry) (eql id (car entry)) (eql id entry))
+          return (if (consp entry) (cdr entry) 1)
+        finally (return 0)))
 
-(defun operator-step-total-p (op-name arguments code-total-fn &optional non-empty-vars)
-  "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total."
-  (case op-name
-    (:/ (and (lit-p (second arguments))
-             (not (zerop (ast-value (second arguments))))))
-    (:at (and (lit-p (second arguments))
-              (let ((idx (ast-value (second arguments)))
-                    (container (first arguments))
-                    (container-type (ast-type (first arguments))))
-                (and (integerp idx) (<= 0 idx)
-                     (cond
-                       ((tuple-type-p container-type)
-                        (< idx (length (rest container-type))))
-                       ((lit-p container)
-                        (< idx (length (ast-value container))))
-                       ((zerop idx)
-                        (non-empty-seq-expr-p container non-empty-vars))
-                       (t nil))))))
-    (:tail (non-empty-seq-expr-p (first arguments) non-empty-vars))
-    (:code-eval (funcall code-total-fn (first arguments)))
-    ((:lookup :gather :code-child :code-operator :code-bind) nil)
-    (otherwise
-     (let ((def (find-function-definition op-name)))
-       (if def
-           (or (function-definition-total-p def)
-               (and (function-definition-conditional-code-params def)
-                    (every (lambda (param-idx)
-                             (and (< param-idx (length arguments))
-                                  (funcall code-total-fn (nth param-idx arguments))))
-                           (function-definition-conditional-code-params def))))
-           ;; Without a definition: a primitive not ruled on above is total. A name that is
-           ;; registered and nothing more has no body to judge, so a call of it is not.
-           (not (null (primitive-pattern op-name))))))))
+(defun rank-env-raise (id bound env)
+  "Raise variable ID's minimum rank in ENV to at least BOUND."
+  (if (<= bound (rank-env-lookup id env))
+      env
+      (acons id bound (remove-if (lambda (e) (eql id (if (consp e) (car e) e))) env))))
+
+(defun seq-tail-spine (expr &optional allowed-ids)
+  "If EXPR is `(:tail ... (:tail X_id))` with `m >= 0` `:tail` steps around a sequence variable
+`X_id`, return `(VALUES id m)`."
+  (let ((depth 0)
+        (cur expr))
+    (loop
+      (let ((meta (ignore-errors (ensure-ast-meta cur))))
+        (cond
+          ((null meta) (return nil))
+          ((and (eq :var (ast-meta-kind meta))
+                (seq-type-p (ast-meta-type meta))
+                (or (null allowed-ids) (member (ast-meta-id meta) allowed-ids :test #'eql)))
+           (return (values (ast-meta-id meta) depth)))
+          ((and (eq :app (ast-meta-kind meta)) (eq :tail (ast-meta-id meta)))
+           (incf depth)
+           (setf cur (second cur)))
+          (t (return nil)))))))
 
 (defun empty-sequence-guard-var-id (condition &optional seq-param-ids)
   "If CONDITION is `(= Xi '())` or `(= '() Xi)` for a sequence variable Xi, return Xi's id."
@@ -746,17 +758,144 @@ constantly and quoted code is sized from cached metadata."
         (or (guard (second condition) (third condition))
             (guard (third condition) (second condition)))))))
 
-(defun branch-non-empty-vars (condition non-empty-vars &optional seq-param-ids)
-  "The sequence variables known to be non-empty in the then-branch and in the else-branch
-of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guard
-`(= Xi '())` makes Xi empty in the first and non-empty in the second."
-  (let ((id (empty-sequence-guard-var-id condition seq-param-ids)))
-    (if id
-        (values (remove id non-empty-vars) (adjoin id non-empty-vars))
-        (values non-empty-vars non-empty-vars))))
+(defun branch-rank-env (condition env &optional allowed-ids)
+  "Refine rank environment ENV across CONDITION, returning `(VALUES then-env else-env)`.
+Tracks sequence lower bounds across `(= (tail^m X) '())`, `(= (length (tail^m X)) 'k)`, and
+`(< 'k (length (tail^m X)))`, integer lower bounds across `(< 'k N)` / `(< N 'k)`, and
+negation/conjunction."
+  (let ((meta (ignore-errors (ensure-ast-meta condition))))
+    (cond
+      ((or (null meta) (not (eq :app (ast-meta-kind meta))))
+       (values env env))
+      ((eq := (ast-meta-id meta))
+       (let ((lhs (second condition))
+             (rhs (third condition)))
+         (flet ((empty-seq-lit-p (node)
+                  (and (lit-p node) (seq-type-p (ast-type node)) (null (ast-value node))))
+                (length-spine (node)
+                  (and (app-of-p node :length) (seq-tail-spine (second node) allowed-ids)))
+                (nonneg-int-lit (node)
+                  (and (lit-p node) (eq :int (ast-type node))
+                       (integerp (ast-value node)) (<= 0 (ast-value node))
+                       (ast-value node))))
+           (cond
+             ((empty-seq-lit-p rhs)
+              (multiple-value-bind (id m) (seq-tail-spine lhs allowed-ids)
+                (if id (values env (rank-env-raise id (1+ m) env)) (values env env))))
+             ((empty-seq-lit-p lhs)
+              (multiple-value-bind (id m) (seq-tail-spine rhs allowed-ids)
+                (if id (values env (rank-env-raise id (1+ m) env)) (values env env))))
+             ((and (app-of-p lhs :length) (nonneg-int-lit rhs))
+              (multiple-value-bind (id m) (length-spine lhs)
+                (let ((k (nonneg-int-lit rhs)))
+                  (cond ((null id) (values env env))
+                        ((zerop k) (values env (rank-env-raise id (1+ m) env)))
+                        (t (values (rank-env-raise id (+ m k) env) env))))))
+             ((and (app-of-p rhs :length) (nonneg-int-lit lhs))
+              (multiple-value-bind (id m) (length-spine rhs)
+                (let ((k (nonneg-int-lit lhs)))
+                  (cond ((null id) (values env env))
+                        ((zerop k) (values env (rank-env-raise id (1+ m) env)))
+                        (t (values (rank-env-raise id (+ m k) env) env))))))
+             (t (values env env))))))
+      ((eq :< (ast-meta-id meta))
+       (let ((lhs (second condition))
+             (rhs (third condition)))
+         (cond
+           ;; `(< 'k (length S))` => then-branch has length(X) >= m + k + 1
+           ((and (lit-p lhs) (eq :int (ast-type lhs)) (app-of-p rhs :length))
+            (multiple-value-bind (id m) (seq-tail-spine (second rhs) allowed-ids)
+              (let ((need (+ (or m 0) (ast-value lhs) 1)))
+                (if (and id (<= 1 need))
+                    (values (rank-env-raise id need env) env)
+                    (values env env)))))
+           ;; `(< (length S) 'k)` => else-branch has length(X) >= m + k
+           ((and (app-of-p lhs :length) (lit-p rhs) (eq :int (ast-type rhs)))
+            (multiple-value-bind (id m) (seq-tail-spine (second lhs) allowed-ids)
+              (let ((need (+ (or m 0) (ast-value rhs))))
+                (if (and id (<= 1 need))
+                    (values env (rank-env-raise id need env))
+                    (values env env)))))
+           ;; `(< 'k N)` for integer variable N => then-branch has N >= k + 1
+           ((and (lit-p lhs) (eq :int (ast-type lhs)) (<= 0 (ast-value lhs))
+                 (var-p rhs) (eq :int (ast-type rhs))
+                 (or (null allowed-ids) (member (ast-id rhs) allowed-ids :test #'eql)))
+            (values (rank-env-raise (ast-id rhs) (1+ (ast-value lhs)) env) env))
+           ;; `(< N 'k)` for integer variable N => else-branch has N >= k
+           ((and (var-p lhs) (eq :int (ast-type lhs))
+                 (or (null allowed-ids) (member (ast-id lhs) allowed-ids :test #'eql))
+                 (lit-p rhs) (eq :int (ast-type rhs)) (<= 1 (ast-value rhs)))
+            (values env (rank-env-raise (ast-id lhs) (ast-value rhs) env)))
+           (t (values env env)))))
+      ((and (eq :if (ast-meta-id meta)) (eq :bool (ast-meta-type meta)))
+       (let ((test (second condition))
+             (yes (third condition))
+             (no (fourth condition)))
+         (cond
+           ;; `(if G 'nil 't)` (`bool-not G`) swaps branches
+           ((and (lit-p yes) (null (ast-value yes)) (lit-p no) (eq t (ast-value no)))
+            (multiple-value-bind (t-env e-env) (branch-rank-env test env allowed-ids)
+              (values e-env t-env)))
+           ;; `(if G1 G2 'nil)` (`bool-and G1 G2`) refines then-branch sequentially
+           ((and (lit-p no) (null (ast-value no)))
+            (let ((t1 (branch-rank-env test env allowed-ids)))
+              (values (branch-rank-env yes t1 allowed-ids) env)))
+           (t (values env env)))))
+      (t (values env env)))))
 
-(defun expr-total-under-non-empty-p (expr non-empty-vars)
-  "True when EXPR is provably total given that sequence variables in NON-EMPTY-VARS are non-empty."
+(defun seq-expr-min-length (expr &optional env)
+  "Conservative minimum sequence length guaranteed for EXPR under rank environment ENV."
+  (let ((meta (ensure-ast-meta expr)))
+    (case (ast-meta-kind meta)
+      (:lit (if (seq-type-p (ast-meta-type meta)) (length (ast-meta-value meta)) 0))
+      (:var (if (seq-type-p (ast-meta-type meta)) (rank-env-lookup (ast-meta-id meta) env) 0))
+      (:app
+       (case (ast-meta-id meta)
+         (:cons (1+ (seq-expr-min-length (third expr) env)))
+         (:tail (max 0 (1- (seq-expr-min-length (second expr) env))))
+         (:if (multiple-value-bind (then-env else-env) (branch-rank-env (second expr) env)
+                (min (seq-expr-min-length (third expr) then-env)
+                     (seq-expr-min-length (fourth expr) else-env))))
+         (otherwise 0)))
+      (otherwise 0))))
+
+(defun non-empty-seq-expr-p (expr &optional env)
+  "True when sequence expression EXPR is guaranteed non-empty under ENV."
+  (>= (seq-expr-min-length expr env) 1))
+
+(defun operator-step-total-p (op-name arguments code-total-fn &optional env expected-type)
+  "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total."
+  (case op-name
+    (:/ (and (lit-p (second arguments))
+             (not (zerop (ast-value (second arguments))))))
+    (:at (and (lit-p (second arguments))
+              (let ((idx (ast-value (second arguments)))
+                    (container (first arguments))
+                    (container-type (ast-type (first arguments))))
+                (and (integerp idx) (<= 0 idx)
+                     (if (tuple-type-p container-type)
+                         (and (< idx (length (rest container-type)))
+                              (or (null expected-type)
+                                  (equal (nth idx (rest container-type)) expected-type)))
+                         (< idx (seq-expr-min-length container env)))))))
+    (:tail (non-empty-seq-expr-p (first arguments) env))
+    (:code-eval (funcall code-total-fn (first arguments)))
+    ((:lookup :gather :code-child :code-operator :code-bind) nil)
+    (otherwise
+     (let ((def (find-function-definition op-name)))
+       (if def
+           (or (function-definition-total-p def)
+               (and (function-definition-conditional-code-params def)
+                    (every (lambda (param-idx)
+                             (and (< param-idx (length arguments))
+                                  (funcall code-total-fn (nth param-idx arguments))))
+                           (function-definition-conditional-code-params def))))
+           ;; Without a definition: a primitive not ruled on above is total. A name that is
+           ;; registered and nothing more has no body to judge, so a call of it is not.
+           (not (null (primitive-pattern op-name))))))))
+
+(defun expr-total-under-rank-env-p (expr env)
+  "True when EXPR is provably total under rank environment ENV."
   (let ((meta (ensure-ast-meta expr)))
     (or (ast-meta-total-p meta)
         (case (ast-meta-kind meta)
@@ -766,13 +905,14 @@ of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guar
                  (args (rest expr)))
              (and op-name
                   (if (eq :if op-name)
-                      (multiple-value-bind (then-vars else-vars)
-                          (branch-non-empty-vars (first args) non-empty-vars)
-                        (and (expr-total-under-non-empty-p (first args) non-empty-vars)
-                             (expr-total-under-non-empty-p (second args) then-vars)
-                             (expr-total-under-non-empty-p (third args) else-vars)))
-                      (and (every (lambda (a) (expr-total-under-non-empty-p a non-empty-vars)) args)
-                           (operator-step-total-p op-name args #'provably-total-code-arg-p non-empty-vars))))))))))
+                      (multiple-value-bind (then-env else-env)
+                          (branch-rank-env (first args) env)
+                        (and (expr-total-under-rank-env-p (first args) env)
+                             (expr-total-under-rank-env-p (second args) then-env)
+                             (expr-total-under-rank-env-p (third args) else-env)))
+                      (and (every (lambda (a) (expr-total-under-rank-env-p a env)) args)
+                           (operator-step-total-p op-name args #'provably-total-code-arg-p
+                                                  env (ast-meta-type meta)))))))))))
 
 (defun compute-app-meta (operator arguments)
   (let* ((op-meta (ensure-ast-meta operator))
@@ -789,14 +929,17 @@ of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guar
                              (ast-meta-total-p (if (ast-meta-value (first child-metas))
                                                    (second child-metas)
                                                    (third child-metas)))
-                             (and (ast-meta-total-p (second child-metas))
-                                  (or (ast-meta-total-p (third child-metas))
-                                      (let ((else-vars (nth-value 1 (branch-non-empty-vars
-                                                                     (first arguments) nil))))
-                                        (and else-vars
-                                             (expr-total-under-non-empty-p (third arguments) else-vars)))))))
+                             (multiple-value-bind (then-env else-env)
+                                 (branch-rank-env (first arguments) nil)
+                               (and (or (ast-meta-total-p (second child-metas))
+                                        (and then-env
+                                             (expr-total-under-rank-env-p (second arguments) then-env)))
+                                    (or (ast-meta-total-p (third child-metas))
+                                        (and else-env
+                                             (expr-total-under-rank-env-p (third arguments) else-env)))))))
                     (and (every #'ast-meta-total-p child-metas)
-                         (operator-step-total-p op-name arguments #'provably-total-code-arg-p)))))
+                         (operator-step-total-p op-name arguments #'provably-total-code-arg-p
+                                                nil (third sig))))))
          (free-vars (remove-duplicates
                      (loop for m in child-metas append (copy-list (ast-meta-free-vars m))))))
     (make-ast-meta :kind :app :id op-name :type (third sig)
@@ -811,14 +954,12 @@ of an `if` on CONDITION, as two values, given NON-EMPTY-VARS before it. The guar
                    :free-vars free-vars)))
 
 (defun analyze-function-body-totality (name inputs body)
-  "Conservative structural termination & totality check for a function definition.
+  "Conservative structural & lexicographic termination/totality check for a function definition.
 Returns (values total-p conditional-code-params)."
   (when (null body)
     (return-from analyze-function-body-totality (values nil nil)))
-  (let ((seq-param-ids (loop for (id . type) in inputs
-                             when (seq-type-p type) collect id))
-        (decreasing-param-id nil)
-        (self-call-arg-lists nil)
+  (let ((param-ids (mapcar #'car inputs))
+        (self-calls nil)
         (code-params nil))
     (labels ((code-arg-safe-p (arg)
                (or (provably-total-code-arg-p arg)
@@ -833,7 +974,39 @@ Returns (values total-p conditional-code-params)."
                                      (code-arg-safe-p b)
                                      t))
                                (rest (third arg))))))
-             (walk (expr non-empty-vars)
+             (arg-decreases-p (spec arg env)
+               (let ((id (car spec))
+                     (type (cdr spec)))
+                 (cond
+                   ((seq-type-p type)
+                    (multiple-value-bind (sid m) (seq-tail-spine arg)
+                      (and (eql id sid) (>= m 1) (>= (rank-env-lookup id env) m))))
+                   ((eq :int type)
+                    (and (>= (rank-env-lookup id env) 1)
+                         (app-of-p arg :-)
+                         (var-p (second arg)) (eql id (ast-id (second arg)))
+                         (lit-p (third arg)) (eq :int (ast-type (third arg)))
+                         (<= 1 (ast-value (third arg))))))))
+             (arg-unchanged-p (spec arg)
+               (and (var-p arg) (eql (car spec) (ast-id arg))))
+             (calls-terminate-p ()
+               (or (null self-calls)
+                   (loop for i below (length inputs)
+                         for spec-i = (nth i inputs)
+                         thereis (or (every (lambda (call)
+                                              (arg-decreases-p spec-i (nth i (cdr call)) (car call)))
+                                            self-calls)
+                                     (loop for j below (length inputs)
+                                           for spec-j = (nth j inputs)
+                                           thereis (and (/= i j)
+                                                        (every (lambda (call)
+                                                                 (let ((env (car call))
+                                                                       (args (cdr call)))
+                                                                   (or (arg-decreases-p spec-i (nth i args) env)
+                                                                       (and (arg-unchanged-p spec-i (nth i args))
+                                                                            (arg-decreases-p spec-j (nth j args) env)))))
+                                                               self-calls)))))))
+             (walk (expr env)
                (case (ast-kind expr)
                  ((:lit :var) t)
                  (:app
@@ -844,36 +1017,28 @@ Returns (values total-p conditional-code-params)."
                       ((null op-name) nil)
                       ((eq op-name :if)
                        (destructuring-bind (cond-expr yes-expr no-expr) args
-                         (multiple-value-bind (then-vars else-vars)
-                             (branch-non-empty-vars cond-expr non-empty-vars seq-param-ids)
-                           (and (walk cond-expr non-empty-vars)
-                                (walk yes-expr then-vars)
-                                (walk no-expr else-vars)))))
+                         (multiple-value-bind (then-env else-env)
+                             (branch-rank-env cond-expr env param-ids)
+                           (and (walk cond-expr env)
+                                (walk yes-expr then-env)
+                                (walk no-expr else-env)))))
                       ((eq op-name name)
-                       (and (every (lambda (a) (walk a non-empty-vars)) args)
-                            (let ((matched-id
-                                    (loop for (id . nil) in inputs for arg in args
-                                          when (and (member id non-empty-vars :test #'eql)
-                                                    (app-p arg) (eq :tail (operator-name (first arg)))
-                                                    (var-p (second arg)) (eql id (ast-id (second arg))))
-                                          return id)))
-                              (and matched-id
-                                   (or (null decreasing-param-id) (eql decreasing-param-id matched-id))
-                                   (progn
-                                     (setf decreasing-param-id matched-id)
-                                     (push args self-call-arg-lists)
-                                     t)))))
+                       (and (= (length args) (length inputs))
+                            (every (lambda (a) (walk a env)) args)
+                            (progn (push (cons env args) self-calls) t)))
                       (t
-                       (and (every (lambda (a) (walk a non-empty-vars)) args)
-                            (operator-step-total-p op-name args #'code-arg-safe-p non-empty-vars)))))))))
-      (when (walk body nil)
+                       (and (every (lambda (a) (walk a env)) args)
+                            (operator-step-total-p op-name args #'code-arg-safe-p
+                                                   env (third (operator-type operator)))))))))))
+      (when (and (walk body nil) (calls-terminate-p))
         (loop
           (let ((prev-count (length code-params)))
             (dolist (pos (copy-list code-params))
-              (dolist (call-args self-call-arg-lists)
-                (unless (and (< pos (length call-args))
-                             (code-arg-safe-p (nth pos call-args)))
-                  (return-from analyze-function-body-totality (values nil nil)))))
+              (dolist (call self-calls)
+                (let ((call-args (cdr call)))
+                  (unless (and (< pos (length call-args))
+                               (code-arg-safe-p (nth pos call-args)))
+                    (return-from analyze-function-body-totality (values nil nil))))))
             (when (= (length code-params) prev-count)
               (return))))
         (let ((sorted-params (sort (copy-list code-params) #'<)))
@@ -1148,6 +1313,14 @@ known (nil marks an argument that is not), or else off the EXPECTED result type.
                   (and (tuple-type-p expected)
                        (= (length types) (length (rest expected)))
                        expected)))
+      (:at (let ((container (first types)))
+             (cond
+               ((tuple-type-p container)
+                (cond (expected (tuple-type container expected))
+                      ((homogeneous-tuple-type-p container)
+                       (tuple-type container (second container)))))
+               ((seq-type-p container) container)
+               (expected (sequence-type expected)))))
       (:code-match (tuple-of (first types) (second types)))
       (:code-child (tuple-of (first types) expected))
       ((:code-bind :code-subst) (tuple-of (first types) (second types) expected))
@@ -1187,13 +1360,23 @@ requires at that position, or EXPECTED at the top."
                   (built (loop for raw in (rest form) for index from 0
                                collect (cond (declared (term raw (nth index declared)))
                                              ((and (eq name :if) (zerop index)) (term raw :bool))
+                                             ((and (eq name :at) (= index 1)) (term raw :int))
                                              (t (ignore-errors (term raw))))))
+                  (inferred-expected
+                    (or expected
+                        (and (eq name :at)
+                             (first built) (tuple-type-p (ast-type (first built)))
+                             (second built) (lit-p (second built))
+                             (let ((idx (ast-value (second built)))
+                                   (slots (rest (ast-type (first built)))))
+                               (and (integerp idx) (<= 0 idx) (< idx (length slots))
+                                    (nth idx slots))))))
                   (operator (cond (head-meta head)
                                   (declared (op name))
                                   (t (let ((parameter (operator-parameter-from-arguments
                                                        name
                                                        (mapcar (lambda (node) (and node (ast-type node))) built)
-                                                       expected)))
+                                                       inferred-expected)))
                                        (assert parameter () "Cannot infer the type of ~S in ~S." head form)
                                        (op name parameter)))))
                   (wanted (or declared (second (operator-type operator))))

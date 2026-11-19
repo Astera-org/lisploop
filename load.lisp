@@ -4,7 +4,6 @@
 (let ((root (make-pathname :name nil :type nil :defaults *load-truename*)))
   (dolist (name '("package" "ast" "knowledge" "codec" "vm" "evidence" "persistence"
                   "requirements" "frame" "enumerate" "unify" "fibers" "laws" "templates"
-                  "bootstrap-inverters" "condense" "abstraction" "descriptors" "relations"
-                  "synthesize" "nogoods" "decompose" "proposals" "consolidate" "messages" "explain"
-                  "batteries"))
+                  "condense" "abstraction" "descriptors" "relations"
+                  "synthesize" "nogoods" "decompose" "proposals" "consolidate" "messages" "explain"))
     (load (merge-pathnames (make-pathname :name name :type "lisp") root))))

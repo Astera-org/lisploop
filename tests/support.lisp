@@ -39,17 +39,6 @@ registered names, de-novo counter, and knowledge entries) and restore outer stat
           (when (eq :value (evaluation-status run))
             (evaluation-value run)))))
 
-(defun simple-frame (type inputs examples &key lookup-p)
-  (make-frame (make-schema :inputs inputs :target type :lookup-p lookup-p)
-              (loop for (known target) in examples for key from 0 collect
-                (make-row :key key :known known :requirement (set-requirement type (list target))))))
-
-(defun probe-frame (type inputs known-values)
-  (make-frame (make-schema :inputs inputs :target type)
-              (loop for known in known-values for key from 0 collect
-                (make-row :key key :known (copy-tree known)
-                          :requirement (lit :bool t)))))
-
 (defun check-codec-roundtrip (expression inputs)
   (let ((bits (encode-model expression inputs)))
     (check (= (length bits) (description-size expression inputs)))
@@ -544,8 +533,13 @@ subtraction are unique by axiom."
 
 (defun define-standard-int-combinators (&key (which '(:map :foldr :filter)))
   "Register the standard higher-order combinators over `(:seq :int)` named by WHICH in the
-active library, from the `sequences` battery (library/sequences.lisp), in its order."
-  (load-battery :sequences :only which))
+active library, from the `sequences` battery (`library/sequences.sexp`), in its order."
+  (let ((entries
+          (load-battery :sequences
+                        :only (if (and (member :map which) (member :filter which))
+                                  (append which '(:comprehension/filter-map))
+                                  which))))
+    (remove-if-not (lambda (e) (eq :function (knowledge-entry-kind e))) entries)))
 
 (defun install-sequence-shift-metric ()
   "Load the `sequence-shift` battery (library/sequence-shift.lisp) into the active library:

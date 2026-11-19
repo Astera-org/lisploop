@@ -195,36 +195,67 @@ INPUT-ID and a single allowed output."
                       (not (member :unresolved (row-known row))))
               collect (cons (nth pos (row-known row)) (first allowed))))))
 
+(defvar *polymorphic-descriptor-executables* (make-hash-table :test #'eq :weakness :key)
+  "Transient weak cache of polymorphically instantiated `:descriptor` entries per `(seq-type, target)`.")
+
+(defun resolve-descriptor-for-types (descriptor seq-type target)
+  "Return DESCRIPTOR when its `inputs` already match `(seq-type, target)`, or a cached
+polymorphically instantiated `:descriptor` entry when its template unifies with `(seq-type, target)`."
+  (let ((inputs (knowledge-entry-inputs descriptor)))
+    (cond
+      ((and (= 2 (length inputs))
+            (equal seq-type (cdr (first inputs)))
+            (equal target (cdr (second inputs))))
+       descriptor)
+      ((and (= 2 (length inputs)) seq-type target)
+       (let* ((key (list seq-type target
+                         (knowledge-entry-expression descriptor)
+                         (knowledge-entry-guard descriptor)
+                         (knowledge-entry-auxiliary-code descriptor)))
+              (bucket (gethash descriptor *polymorphic-descriptor-executables*))
+              (cached (assoc key bucket :test #'equal)))
+         (if cached
+             (and (knowledge-entry-p (cdr cached)) (cdr cached))
+             (let ((inst (ignore-errors
+                          (instantiate-entry-template descriptor
+                                                      :input-types (list seq-type target)
+                                                      :target :bool
+                                                      :certify-p nil
+                                                      :register-p nil))))
+               (when inst (sync-entry-executable inst))
+               (setf (gethash descriptor *polymorphic-descriptor-executables*)
+                     (acons key (or inst :incompatible) bucket))
+               inst)))))))
+
 (defun evaluate-descriptor-entry-on-frame (descriptor frame-facts seq-type target pairs ledger)
-  "Evaluate a `:descriptor` knowledge-entry on PAIRS via its synchronized `entry-executable`.
-Returns `:satisfied`, `:violated`, or `:neutral`."
+  "Evaluate a (possibly polymorphic) `:descriptor` knowledge-entry on PAIRS via its
+synchronized `entry-executable`. Returns `:satisfied`, `:violated`, or `:neutral`."
   (let* ((meta (knowledge-entry-metadata descriptor))
          (req-facts (getf meta :frame-facts))
-         (inputs (knowledge-entry-inputs descriptor))
-         (guard (knowledge-entry-guard descriptor))
-         (aux (knowledge-entry-auxiliary-code descriptor))
-         (trivial-guard-p (equal guard (lit :bool t))))
+         (active (and (subsetp req-facts frame-facts)
+                      (resolve-descriptor-for-types descriptor seq-type target))))
     (cond
       ((not (subsetp req-facts frame-facts)) (or (getf meta :mismatch) :neutral))
-      ((not (and (= 2 (length inputs))
-                 (equal seq-type (cdr (first inputs)))
-                 (equal target (cdr (second inputs)))))
+      ((null active)
        (when ledger (charge ledger :orientation 1))
        :neutral)
       ((null pairs)
        (when ledger (charge ledger :orientation 1))
        :neutral)
       (t
-       (let ((selected (if trivial-guard-p
-                           pairs
-                           (remove-if-not
-                            (lambda (pair)
-                              (multiple-value-bind (val status)
-                                  (eval-entry-slot descriptor :guard (list (car pair) (cdr pair))
-                                                   :ledger ledger :category :orientation
-                                                   :check-types-p nil)
-                                (and (eq status :value) val)))
-                            pairs))))
+       (let* ((guard (knowledge-entry-guard active))
+              (aux (knowledge-entry-auxiliary-code active))
+              (trivial-guard-p (equal guard (lit :bool t)))
+              (selected (if trivial-guard-p
+                            pairs
+                            (remove-if-not
+                             (lambda (pair)
+                               (multiple-value-bind (val status)
+                                   (eval-entry-slot active :guard (list (car pair) (cdr pair))
+                                                    :ledger ledger :category :orientation
+                                                    :check-types-p nil)
+                                 (and (eq status :value) val)))
+                             pairs))))
          (if (null selected)
              :neutral
              (let ((incomplete-p nil))
@@ -234,7 +265,7 @@ Returns `:satisfied`, `:violated`, or `:neutral`."
                           ((or (null aux)
                                (some (lambda (pair)
                                        (multiple-value-bind (val status)
-                                           (eval-entry-slot descriptor :aux (list (car pair) (cdr pair))
+                                           (eval-entry-slot active :aux (list (car pair) (cdr pair))
                                                             :ledger ledger :category :orientation
                                                             :check-types-p nil)
                                          (and (eq status :value) val)))
@@ -242,7 +273,7 @@ Returns `:satisfied`, `:violated`, or `:neutral`."
                            :satisfied)
                           (t :neutral)))
                  (multiple-value-bind (val status)
-                     (eval-entry-slot descriptor :expr (list (car pair) (cdr pair))
+                     (eval-entry-slot active :expr (list (car pair) (cdr pair))
                                       :ledger ledger :category :orientation
                                       :check-types-p nil)
                    (cond
@@ -575,8 +606,117 @@ observation search over its sampled I/O PAIRS and certifying specs backed by str
     (:algebraic
      (if pairs :satisfied :neutral))))
 
+(defun generalize-descriptor-ast (ast new-inputs)
+  "Rebuild descriptor AST over shallower representative NEW-INPUTS when type-safe."
+  (when ast
+    (ignore-errors
+     (let ((rebuilt
+             (map-ast
+              (lambda (node meta)
+                (case (ast-meta-kind meta)
+                  (:var (let ((spec (assoc (ast-meta-id meta) new-inputs)))
+                          (and spec (var (car spec) (cdr spec)))))
+                  (:lit (when (and (seq-type-p (ast-meta-type meta))
+                                   (null (ast-meta-value meta)))
+                          (lit '(:seq :int) nil)))
+                  (:app (let* ((name (operator-name (first node)))
+                               (args (rest node))
+                               (arg-types (mapcar (lambda (a) (expression-type a new-inputs)) args)))
+                          (case name
+                            ((:+ :- :* :/ :< :=)
+                             (apply #'app (op name (first arg-types)) args))
+                            (:if (apply #'app (op :if (second arg-types)) args))
+                            (:length (app (op :length (second (first arg-types))) (first args)))
+                            (:at (apply #'app (op :at (first arg-types)) args))
+                            (:member (apply #'app (op :member (first arg-types)) args))
+                            (otherwise nil))))
+                  (otherwise nil)))
+              ast)))
+       (and rebuilt (expression-type rebuilt new-inputs) rebuilt)))))
+
+(defun canonicalize-auto-descriptor (raw)
+  "Normalize auto-descriptor RAW to shallow `(:seq :int)` / `:int` representative inputs
+whenever instantiating that shallow template back at RAW's concrete inputs reproduces RAW
+bit-identically (so 2D and 1D batteries share the same polymorphic `:DESC/*` entry)."
+  (let* ((orig-inputs (knowledge-entry-inputs raw))
+         (in0 (cdr (first orig-inputs)))
+         (in1 (cdr (second orig-inputs)))
+         (base-inputs (list (cons 0 (if (seq-type-p in0) '(:seq :int) :int))
+                            (cons 1 (cond ((seq-type-p in1) '(:seq :int))
+                                          ((eq in1 :bool) :bool)
+                                          (t :int))))))
+    (if (equal orig-inputs base-inputs)
+        raw
+        (let* ((g-expr (generalize-descriptor-ast (knowledge-entry-expression raw) base-inputs))
+               (g-guard (generalize-descriptor-ast (knowledge-entry-guard raw) base-inputs))
+               (orig-aux (knowledge-entry-auxiliary-code raw))
+               (g-aux (and orig-aux (generalize-descriptor-ast orig-aux base-inputs))))
+          (if (and g-expr g-guard (or (null orig-aux) g-aux))
+              (let* ((cand (let ((c (copy-knowledge-entry raw)))
+                             (setf (knowledge-entry-domain c) :int
+                                   (knowledge-entry-inputs c) base-inputs
+                                   (knowledge-entry-expression c) g-expr
+                                   (knowledge-entry-guard c) g-guard
+                                   (knowledge-entry-auxiliary-code c) g-aux)
+                             c))
+                     (roundtrip (ignore-errors
+                                 (instantiate-entry-template cand
+                                                             :input-types (list in0 in1)
+                                                             :target :bool
+                                                             :certify-p nil
+                                                             :register-p nil))))
+                (if (and roundtrip
+                         (equal (knowledge-entry-expression roundtrip)
+                                (knowledge-entry-expression raw))
+                         (equal (knowledge-entry-guard roundtrip)
+                                (knowledge-entry-guard raw))
+                         (equal (knowledge-entry-auxiliary-code roundtrip)
+                                (knowledge-entry-auxiliary-code raw)))
+                    cand
+                    raw))
+              raw)))))
+
+(defun descriptor-templates-compatible-p (left right)
+  "True when `:descriptor` LEFT instantiates cleanly to RIGHT's inputs/ASTs and shares
+identical metadata semantics (`:frame-facts`, `:mismatch`, `:failure`)."
+  (let ((m1 (knowledge-entry-metadata left))
+        (m2 (knowledge-entry-metadata right)))
+    (and (equal (getf m1 :frame-facts) (getf m2 :frame-facts))
+         (eq (getf m1 :mismatch) (getf m2 :mismatch))
+         (eq (getf m1 :failure) (getf m2 :failure))
+         (let ((inst (ignore-errors
+                      (instantiate-entry-template
+                       left
+                       :input-types (mapcar #'cdr (knowledge-entry-inputs right))
+                       :target (knowledge-entry-target right)
+                       :certify-p nil
+                       :register-p nil))))
+           (and inst
+                (equal (knowledge-entry-expression inst) (knowledge-entry-expression right))
+                (equal (knowledge-entry-guard inst) (knowledge-entry-guard right))
+                (equal (knowledge-entry-auxiliary-code inst)
+                       (knowledge-entry-auxiliary-code right)))))))
+
+(defun attach-descriptor-target (descriptor target-id library)
+  "Ensure TARGET-ID is listed in DESCRIPTOR's `:describes` edge and indexed in LIBRARY."
+  (let* ((ktarget (canonical-op-name target-id))
+         (existing-edge (first (knowledge-edges-from descriptor :describes library))))
+    (cond
+      ((null existing-edge)
+       (add-knowledge-edge descriptor :describes ktarget))
+      ((not (member ktarget (rest existing-edge) :test #'eq))
+       (unindex-knowledge-entry descriptor library)
+       (setf (knowledge-entry-edges descriptor)
+             (substitute (append existing-edge (list ktarget))
+                         existing-edge
+                         (knowledge-entry-edges descriptor)
+                         :test #'eq))
+       (index-knowledge-entry descriptor library)
+       (invalidate-knowledge-caches library)))
+    descriptor))
+
 (defun prune-auto-descriptors-for-entry (entry library)
-  "Remove stale `:auto-descriptor` entries previously generated for ENTRY before re-installing."
+  "Detach ENTRY from shared `:auto-descriptor` entries before re-installing its profile."
   (let* ((kname (knowledge-entry-id entry))
          (auto-ids (loop for edge in (knowledge-edges-to kname :describes library)
                          for d = (find-knowledge-entry (second edge) library)
@@ -584,12 +724,7 @@ observation search over its sampled I/O PAIRS and certifying specs backed by str
                                    (getf (knowledge-entry-metadata d) :auto-descriptor))
                            collect (knowledge-entry-id d))))
     (when auto-ids
-      (dolist (did auto-ids)
-        (let ((d (find-knowledge-entry did library)))
-          (when d
-            (unindex-knowledge-entry d library)
-            (setf (knowledge-library-entries library)
-                  (delete d (knowledge-library-entries library) :test #'eq)))))
+      (detach-entry-from-auto-descriptors kname library)
       (setf (knowledge-entry-edges entry)
             (remove-if (lambda (edge)
                          (and (eq :described-by (first edge))
@@ -598,50 +733,135 @@ observation search over its sampled I/O PAIRS and certifying specs backed by str
                        (knowledge-entry-edges entry))))))
 
 (defun register-entry-io-descriptors (entry io-specs seq-type library)
-  "Install synthesized I/O descriptor specs as `:descriptor` `knowledge-entry` items in LIBRARY."
+  "Install or reuse shared polymorphic `:descriptor` entries in LIBRARY for ENTRY's IO-SPECS.
+Returns an alist `((spec-id . descriptor-entry) ...)`."
   (let* ((kname (knowledge-entry-id entry))
          (target (knowledge-entry-target entry))
          (rel-inputs (list (cons 0 seq-type) (cons 1 target)))
-         (primary-id (and (eq :function (knowledge-entry-kind entry))
-                          (keyword-id "~A/DESCRIPTOR" kname)))
-         (primary-claimed-p (and primary-id
-                                 (let ((existing (find-knowledge-entry primary-id library)))
-                                   (and existing
-                                        (not (getf (knowledge-entry-metadata existing) :auto-descriptor))
-                                        (knowledge-evidence-current-p existing :necessary))))))
+         (installed nil))
     (prune-auto-descriptors-for-entry entry library)
-    (dolist (spec io-specs)
+    (dolist (spec io-specs (nreverse installed))
       (destructuring-bind (&key id facet tier weight-bits work-cost frame-facts
                                 guard holds witness failure necessary-p)
           spec
-        (let* ((use-primary-p (and primary-id necessary-p (not primary-claimed-p)))
-               (desc-id (if use-primary-p
-                            (progn (setf primary-claimed-p t) primary-id)
-                            (keyword-id "~A/~A" kname id)))
-               (raw (make-knowledge-entry
-                     :id desc-id
-                     :kind :descriptor
-                     :domain (knowledge-entry-domain entry)
-                     :inputs rel-inputs
-                     :target :bool
-                     :expression holds
-                     :guard (or guard (lit :bool t))
-                     :auxiliary-code witness
-                     :status :empirical
-                     :certificate (when necessary-p '(:kind :structural-descriptor))
-                     :edges (list (list :describes kname))
-                     :metadata (list :auto-descriptor t :concept id :facet facet :tier tier
-                                     :weight-bits weight-bits :work-cost work-cost
-                                     :frame-facts frame-facts :failure failure)
-                     :library library)))
-          (register-knowledge-entry
-           (if necessary-p (attest-knowledge-entry raw :derived '(:necessary)) raw)
-           :library library)
-          (add-knowledge-edge entry :described-by desc-id))))))
+        (declare (ignore necessary-p))
+        (let* ((raw (canonicalize-auto-descriptor
+                     (make-knowledge-entry
+                      :id id
+                      :kind :descriptor
+                      :domain (knowledge-entry-domain entry)
+                      :inputs rel-inputs
+                      :target :bool
+                      :expression holds
+                      :guard (or guard (lit :bool t))
+                      :auxiliary-code witness
+                      :status :empirical
+                      :edges (list (list :describes kname))
+                      :metadata (list :auto-descriptor t :concept id :facet facet :tier tier
+                                      :weight-bits weight-bits :work-cost work-cost
+                                      :frame-facts frame-facts :failure failure)
+                      :library library)))
+               (existing (find-knowledge-entry id library))
+               (chosen
+                 (cond
+                   ((and existing
+                         (eq :descriptor (knowledge-entry-kind existing))
+                         (descriptor-templates-compatible-p existing raw))
+                    (attach-descriptor-target existing kname library))
+                   (existing
+                    (let ((qualified (keyword-id "~A/~A" kname id)))
+                      (setf (knowledge-entry-id raw) qualified)
+                      (register-knowledge-entry raw :library library)))
+                   (t
+                    (register-knowledge-entry raw :library library)))))
+          (add-knowledge-edge entry :described-by (knowledge-entry-id chosen))
+          (push (cons id chosen) installed))))))
+
+(defun descriptor-predicate-snapshot (descriptor)
+  "Intrinsic semantic snapshot of a `:descriptor` entry's predicate, independent of which
+entries currently share its `:describes` edge."
+  (let ((exprs (list (knowledge-entry-expression descriptor)
+                     (knowledge-entry-guard descriptor)
+                     (knowledge-entry-trigger descriptor)
+                     (knowledge-entry-auxiliary-code descriptor)))
+        (meta (knowledge-entry-metadata descriptor)))
+    (list :semantics (list +simulator-version+ +encoding-version+)
+          :kind (knowledge-entry-kind descriptor)
+          :domain (copy-tree (knowledge-entry-domain descriptor))
+          :inputs (copy-tree (knowledge-entry-inputs descriptor))
+          :target (copy-tree (knowledge-entry-target descriptor))
+          :code (mapcar #'ast->sexp exprs)
+          :meta (list (copy-tree (getf meta :frame-facts))
+                      (getf meta :mismatch)
+                      (getf meta :failure))
+          :dependencies (expression-dependencies exprs))))
+
+(defun entry-descriptor-pair-snapshot (entry descriptor)
+  (let ((fn-deps (and (eq :function (knowledge-entry-kind entry))
+                      (defined-function-p (knowledge-entry-id entry))
+                      (expression-dependencies (list (op (knowledge-entry-id entry)))))))
+    (list (knowledge-statement-snapshot entry)
+          fn-deps
+          (descriptor-predicate-snapshot descriptor))))
+
+(defun entry-descriptor-necessary-p (entry-or-id desc-or-id &optional (library *knowledge-library*))
+  "True when DESCRIPTOR is a current necessary condition of ENTRY-OR-ID: either DESCRIPTOR
+carries its own current `:necessary` certificate, or ENTRY-OR-ID's `:descriptor-profile`
+attests `:status :necessary` with a current `(entry, descriptor)` statement snapshot."
+  (let ((entry (if (knowledge-entry-p entry-or-id)
+                   entry-or-id
+                   (and entry-or-id library (find-knowledge-entry entry-or-id library))))
+        (desc (if (knowledge-entry-p desc-or-id)
+                  desc-or-id
+                  (and desc-or-id library (find-knowledge-entry desc-or-id library)))))
+    (and desc
+         (or (knowledge-evidence-current-p desc :necessary)
+             (and entry
+                  (let* ((did (knowledge-entry-id desc))
+                         (concept (getf (knowledge-entry-metadata desc) :concept))
+                         (clause (find-if (lambda (c)
+                                            (or (eq (descriptor-clause-id c) did)
+                                                (and concept (eq (descriptor-clause-id c) concept))))
+                                          (knowledge-entry-descriptor-profile entry))))
+                    (and clause
+                         (eq :necessary (descriptor-clause-status clause))
+                         (getf clause :snapshot)
+                         (equalp (getf clause :snapshot)
+                                 (entry-descriptor-pair-snapshot entry desc)))))))))
+
+(defun entry-trigger-compatible-p (entry frame seq-input-id &optional ledger)
+  "Fast-gate conditional ENTRY via its `knowledge-entry-trigger` AST over `(seq-in, out)`.
+Returns NIL only when concrete `(in . out)` pairs exist and some pair evaluates cleanly to `NIL`."
+  (let ((trigger (and (knowledge-entry-p entry) (knowledge-entry-trigger entry))))
+    (if (null trigger)
+        t
+        (let* ((schema (frame-schema frame))
+               (seq-type (cdr (assoc seq-input-id (schema-inputs schema))))
+               (target (schema-target schema))
+               (pairs (and seq-type (frame-concrete-pairs frame seq-input-id))))
+          (if (null pairs)
+              t
+              (let* ((src-seq (cdr (find-if #'seq-type-p (knowledge-entry-inputs entry) :key #'cdr)))
+                     (src-targ (knowledge-entry-target entry))
+                     (probe (and src-seq src-targ
+                                 (resolve-descriptor-for-types
+                                  (make-knowledge-entry :kind :descriptor
+                                                        :inputs (list (cons 0 src-seq) (cons 1 src-targ))
+                                                        :target :bool
+                                                        :expression trigger)
+                                  seq-type target))))
+                (or (null probe)
+                    (every (lambda (pair)
+                             (multiple-value-bind (val status)
+                                 (eval-entry-slot probe :expr (list (car pair) (cdr pair))
+                                                  :ledger ledger :category :orientation
+                                                  :check-types-p nil)
+                               (or (not (eq status :value)) val)))
+                           pairs))))))))
 
 (defun compute-entry-descriptor-profile (entry &optional (library *knowledge-library*) ledger)
-  "Synthesize and register `:descriptor` entries for ENTRY, assemble its `descriptor-clause`
-profile and secondary `compositional-name`, and index them in LIBRARY."
+  "Synthesize and register shared polymorphic `:descriptor` entries for ENTRY, assemble its
+portable `:descriptor-profile` plist list and `compositional-name`, and index them in LIBRARY."
   (when (knowledge-entry-p entry)
     (let* ((kname (knowledge-entry-id entry))
            (kind (knowledge-entry-kind entry))
@@ -658,14 +878,21 @@ profile and secondary `compositional-name`, and index them in LIBRARY."
             (setf (knowledge-entry-trigger entry) (compute-function-descriptor fdef)))))
       (let* ((pairs (sample-entry-io-pairs entry seq-spec ledger))
              (io-specs (synthesize-io-descriptor-specs entry shape-facts pairs ho-p ledger))
-             (io-clauses (loop for spec in io-specs
-                               collect (make-descriptor-clause
-                                        :id (getf spec :id)
-                                        :facet (getf spec :facet)
-                                        :tier (getf spec :tier)
-                                        :status (if (getf spec :necessary-p) :necessary :empirical)
-                                        :weight-bits (getf spec :weight-bits)
-                                        :work-cost (getf spec :work-cost))))
+             (installed (when (and library seq-spec (eq entry (find-knowledge-entry kname library)))
+                          (register-entry-io-descriptors entry io-specs (cdr seq-spec) library)))
+             (io-clauses
+               (loop for spec in io-specs
+                     for desc = (cdr (assoc (getf spec :id) installed))
+                     for nec-p = (getf spec :necessary-p)
+                     collect (make-descriptor-clause
+                              :id (if desc (knowledge-entry-id desc) (getf spec :id))
+                              :facet (getf spec :facet)
+                              :tier (getf spec :tier)
+                              :status (if nec-p :necessary :empirical)
+                              :weight-bits (getf spec :weight-bits)
+                              :work-cost (getf spec :work-cost)
+                              :snapshot (when (and nec-p desc)
+                                          (entry-descriptor-pair-snapshot entry desc)))))
              (alg-clauses
                (when library
                  (append
@@ -679,8 +906,6 @@ profile and secondary `compositional-name`, and index them in LIBRARY."
              (clauses (append (list (type-facet-clause ho-p (not (null seq-spec)) target))
                               io-clauses
                               alg-clauses)))
-        (when (and library seq-spec (eq entry (find-knowledge-entry kname library)))
-          (register-entry-io-descriptors entry io-specs (cdr seq-spec) library))
         (setf (knowledge-entry-descriptor-profile entry) clauses
               (knowledge-entry-compositional-name entry) (derive-compositional-name entry clauses))
         (when library
@@ -690,10 +915,8 @@ profile and secondary `compositional-name`, and index them in LIBRARY."
 (defun evaluate-frame-descriptors (frame seq-input-id &key (library *knowledge-library*) ledger
                                                            describing (max-tier 2))
   "The verdict of the `:descriptor` entries of LIBRARY on FRAME, read through its input
-SEQ-INPUT-ID, as an alist (descriptor-id . verdict) with verdicts :satisfied, :violated and
-:neutral. Only descriptors of tier at most MAX-TIER are evaluated and, when DESCRIBING is
-given, only those that describe one of those entry ids. Descriptors that state the same
-thing, as several entries of one concept do, are evaluated once."
+SEQ-INPUT-ID, as an alist `(descriptor-id . verdict)` with verdicts `:satisfied`, `:violated`,
+and `:neutral`. Shared polymorphic descriptors are stored once in LIBRARY and evaluated once."
   (let* ((schema (frame-schema frame))
          (seq-type (cdr (assoc seq-input-id (schema-inputs schema))))
          (target (schema-target schema))
@@ -707,8 +930,7 @@ thing, as several entries of one concept do, are evaluated once."
                         (some (lambda (edge) (intersection (rest edge) describing))
                               (knowledge-edges-from descriptor :describes library))))
             collect (cons (knowledge-entry-id descriptor)
-                          (let ((statement (list (knowledge-entry-inputs descriptor)
-                                                 (knowledge-entry-expression descriptor)
+                          (let ((statement (list (knowledge-entry-expression descriptor)
                                                  (knowledge-entry-guard descriptor)
                                                  (knowledge-entry-auxiliary-code descriptor)
                                                  (getf meta :frame-facts)
@@ -726,16 +948,14 @@ thing, as several entries of one concept do, are evaluated once."
                                                                     :library library :ledger ledger)))
   "The entries of LIBRARY that FRAME addresses: those indexed under a concept that one of
 their descriptors shows FRAME to satisfy (`find-knowledge-entries-by-address`), each with the
-number of such concepts, most first, as ((entry . count) ...). VERDICTS is the result of
-`evaluate-frame-descriptors`."
+number of such concepts, most first, as `((entry . count) ...)`."
   (let ((counts nil))
     (loop for (descriptor-id . verdict) in verdicts
           for descriptor = (find-knowledge-entry descriptor-id library)
-          for concept = (and descriptor (getf (knowledge-entry-metadata descriptor) :concept))
+          for concept = (and descriptor (or (getf (knowledge-entry-metadata descriptor) :concept)
+                                            descriptor-id))
           when (and concept (eq :satisfied verdict))
             do (dolist (entry (find-knowledge-entries-by-address concept library))
-                 ;; The concept is indexed for every entry that has it; the frame speaks only
-                 ;; for the entries this descriptor describes.
                  (when (member (knowledge-entry-id entry)
                                (loop for edge in (knowledge-edges-from descriptor :describes library)
                                      append (rest edge)))
@@ -748,17 +968,15 @@ number of such concepts, most first, as ((entry . count) ...). VERDICTS is the r
                                         verdicts)
   "Evaluate the `:descriptor` entries and structural/algebraic profile clauses of ENTRY-OR-ID on FRAME.
 Returns `(VALUES compatible-p policy-delta-bits matched-clause-ids)`; lower delta is better.
-Only current `:necessary`-attested `:descriptor` entries on a unary-FO `:function` can reject an
-entry with `compatible-p = NIL`; uncertified descriptors act purely as soft policy hints.
-VERDICTS, from `evaluate-frame-descriptors` on the same frame and input, supplies the verdict
-of each descriptor it lists, which is then not evaluated again."
+Only current `:necessary` descriptors on a unary-FO `:function` can reject an entry with
+`compatible-p = NIL`; uncertified descriptors act purely as soft policy hints."
   (let* ((fn-name (if (knowledge-entry-p entry-or-id)
                       (knowledge-entry-id entry-or-id)
                       (canonical-op-name entry-or-id)))
          (entry (if (knowledge-entry-p entry-or-id)
                     entry-or-id
                     (and library (find-knowledge-entry fn-name library))))
-         (clauses (and entry (not necessary-only-p)
+         (clauses (and entry
                        (or (knowledge-entry-descriptor-profile entry)
                            (compute-entry-descriptor-profile entry library ledger))))
          (schema (frame-schema frame))
@@ -791,7 +1009,7 @@ of each descriptor it lists, which is then not evaluated again."
             (:violated
              (incf delta (ceiling (descriptor-clause-weight-bits clause) 2)))))))
     (dolist (desc descriptors)
-      (let ((certified-p (knowledge-evidence-current-p desc :necessary)))
+      (let ((certified-p (entry-descriptor-necessary-p entry desc library)))
         (unless (and necessary-only-p (not certified-p))
           (let ((verdict (let ((known (assoc (knowledge-entry-id desc) verdicts)))
                            (if known
@@ -802,8 +1020,12 @@ of each descriptor it lists, which is then not evaluated again."
               (return-from score-entry-by-descriptors (values nil most-positive-fixnum nil)))
             (unless necessary-only-p
               (let* ((meta (knowledge-entry-metadata desc))
-                     (cid (getf meta :concept))
-                     (clause (and cid (find cid clauses :key #'descriptor-clause-id)))
+                     (did (knowledge-entry-id desc))
+                     (cid (or (getf meta :concept) did))
+                     (clause (find-if (lambda (c)
+                                        (or (eq (descriptor-clause-id c) did)
+                                            (eq (descriptor-clause-id c) cid)))
+                                      clauses))
                      (weight (if clause
                                  (descriptor-clause-weight-bits clause)
                                  (or (getf meta :weight-bits) 0))))

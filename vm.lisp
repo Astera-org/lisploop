@@ -238,8 +238,17 @@ the work of its arguments, plus what its own traversal, copying or matching can 
        (let* ((items (coerce (first values) 'vector)) (length (length items)))
          (mapcar (lambda (index) (aref items (checked-position index length))) (second values))))
       (:at
-       (let* ((items (first values)) (length (length items)))
-         (nth (checked-position (second values) length) items)))
+       (let* ((items (first values))
+              (index (checked-position (second values) (length items)))
+              (elem (nth index items))
+              (container-type (at-container-type type)))
+         (when (tuple-type-p container-type)
+           (let ((slot-type (nth index (rest container-type)))
+                 (expected-type (third (operator-type operator))))
+             (unless (equal slot-type expected-type)
+               (error "Tuple slot ~D has type ~S, expected ~S"
+                      index slot-type expected-type))))
+         elem))
       (otherwise (execute-symbolic-primitive name type values)))))
 
 (defun validation-work (expression inputs values)

@@ -87,8 +87,8 @@
               (raw (pullback-frame parent decoder 9 domain bindings))
               (result (propagate-requirements raw (discovery-propagator-library discovery (make-ledger)) (make-ledger)))
               (rows (frame-rows (propagation-frame result))))
-        (check (= 1 (propagation-narrowed result)))
-        (check (= 4 (propagation-retained result)))
+        (check (= (if (eq name :*) 2 1) (propagation-narrowed result)))
+        (check (= (if (eq name :*) 3 4) (propagation-retained result)))
         (check (equal '((3) (4) (4) (0) (2)) (mapcar #'row-known rows)))
         (check (equal (list (cons 3 domain)) (schema-inputs (frame-schema (propagation-frame result)))))
         (loop for before in (frame-rows raw) for after in rows do

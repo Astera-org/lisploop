@@ -143,166 +143,11 @@ child's header. With LIFT-P nil the child is the plain value CHILD-ID over the b
      :lift-p lift-p :solver solver :fallback-p fallback-p :policy-score policy-score
      :provenance provenance)))
 
-(defparameter *filter-map-policy-score* -18
-  "Policy score of a filter-map proposal, whose predicate already aligns every row.")
-
 (defparameter *partial-application-policy-score* 8
   "Policy score of a partial application whose sibling arguments are enumerated guesses.")
 
 (defparameter *learned-template-policy-score* 6
   "Policy score of a remembered decoder context, before its descriptor evidence.")
-
-(defun aligned-filter-predicate (slices child-inputs language ledger)
-  "The shortest Boolean expression over CHILD-INPUTS (an element, then the pass-through
-values) that keeps, on every slice (in-val out-val extra-vals), as many elements as the
-output has, such that kept elements map to output elements consistently. Comparisons of
-two atoms are tried directly; only when none aligns is the comparison grammar searched
-observationally. Returns nil when neither offers a predicate."
-  (let* ((domain (language-domain language))
-         (elem-rows (loop with key = -1
-                          for (in-val nil extra-vals) in slices
-                          append (loop for x in in-val
-                                       collect (make-row :key (incf key)
-                                                         :known (cons x (copy-tree extra-vals))
-                                                         :requirement (lit :bool t)))))
-         (eq-ops (cons (op := domain) (mapcar (lambda (spec) (op := (cdr spec))) child-inputs)))
-         (lt-ops (remove-if-not (lambda (o) (and (operator-p o) (eq :< (operator-name o))))
-                                (language-operators language)))
-         (cmp-ops (remove-duplicates (append lt-ops eq-ops) :test #'equal))
-         (literals (if (listp (language-literals language))
-                       (remove-duplicates (append '(0 1) (language-literals language)) :test #'equal)
-                       '(0 1)))
-         (atoms (append (loop for (id . type) in child-inputs collect (var id type))
-                        (loop for v in literals when (value-p v domain) collect (lit domain v)))))
-    (labels ((aligned-p (vals keep)
-               ;; VALS holds a predicate's value on each element row, in slice order.
-               (let ((seen (make-hash-table :test #'equal)))
-                 (loop for (in-val out-val extra-vals) in slices
-                       for kept = (loop for x in in-val
-                                        when (eq keep (and (pop vals) t))
-                                          collect x)
-                       always (and (= (length kept) (length out-val))
-                                   (loop for x in kept
-                                         for y in out-val
-                                         for key = (cons x extra-vals)
-                                         always (equal y (if (nth-value 1 (gethash key seen))
-                                                             (gethash key seen)
-                                                             (setf (gethash key seen) y))))))))
-             (best-aligned (observations)
-               ;; OBSERVATIONS pairs expressions with their row values; either polarity may align.
-               (let ((valid nil))
-                 (loop for (expr . vals) in observations
-                       do (dolist (keep '(t nil))
-                            (when (aligned-p vals keep)
-                              (let ((predicate (if keep expr (bool-not expr))))
-                                (push (cons (description-size predicate child-inputs) predicate) valid)))))
-                 (cdr (best-by valid #'car))))
-             (row-values (expr)
-               (loop for row in elem-rows
-                     for run = (evaluate expr child-inputs (row-known row) :ledger ledger)
-                     when (eq :value (evaluation-status run))
-                       collect (evaluation-value run))))
-      (when elem-rows
-        (or (best-aligned
-             (loop for cmp in cmp-ops
-                   for type = (operator-operand-type cmp)
-                   append (loop for (a b) in (cartesian-product-lists (list atoms atoms))
-                                for comparison = (and (equal (ast-type a) type)
-                                                      (equal (ast-type b) type)
-                                                      (not (equal a b))
-                                                      (or (var-p a) (var-p b))
-                                                      (app cmp a b))
-                                for vals = (and comparison (row-values comparison))
-                                when (and comparison (= (length vals) (length elem-rows)))
-                                  collect (cons comparison vals))))
-            (best-aligned
-             (observed-predicates (make-frame (make-schema :inputs child-inputs :target :bool) elem-rows)
-                                  (derive-language language :inputs child-inputs
-                                                            :operators cmp-ops
-                                                            :literals literals
-                                                            :constants nil)
-                                  (header-bound child-inputs :bool 20) 3000 ledger)))))))
-
-(defun filter-map-decompositions (frame base-lang defs child-id c-bound solver ledger debug-p)
-  "When FRAME transforms a filtered subsequence of a sequence input (`|out| <= |in|` on all rows,
-`|out| < |in|` on at least one row, and outputs are not a pure subsequence of inputs), propose
-composed `(:map (:filter X_p pred) Z_mapper)` `:lift-p t` decompositions."
-  (let* ((inputs (schema-inputs (frame-schema frame)))
-         (target (schema-target (frame-schema frame)))
-         (proposals nil))
-    (when (seq-type-p target)
-      (loop
-        for (p-id . seq-type) in inputs
-        for p-pos from 0
-        when (seq-type-p seq-type)
-          do (let* ((in-elem (second seq-type))
-                    (ret-elem (second target))
-                    ;; (row in-val out-val) for each row that fixes both sequences
-                    (examples (loop for row in (frame-rows frame)
-                                    for in-val = (nth p-pos (row-known row))
-                                    for (out-val found-p) = (multiple-value-list (row-singleton-value row))
-                                    when (and found-p (listp in-val) (listp out-val))
-                                      collect (list row in-val out-val))))
-               (flet ((combinator (return-type sort)
-                        ;; A two-parameter definition over SEQ-TYPE and elementwise code of SORT.
-                        (find-if (lambda (d)
-                                   (let ((code (first (code-parameters d))))
-                                     (and code
-                                          (equal (function-definition-return-type d) return-type)
-                                          (= 2 (length (function-definition-inputs d)))
-                                          (find seq-type (function-definition-inputs d)
-                                                :key #'cdr :test #'equal)
-                                          (equal (code-inputs (cdr code)) (list (cons 0 in-elem)))
-                                          (equal (code-sort (cdr code)) sort))))
-                                 defs))
-                      (call (def code-argument seq-argument)
-                        (if (code-type-p (cdr (first (function-definition-inputs def))))
-                            (app (op (function-definition-name def)) code-argument seq-argument)
-                            (app (op (function-definition-name def)) seq-argument code-argument))))
-                 (let ((map-def (combinator target ret-elem))
-                       (filter-def (combinator seq-type :bool)))
-                   (when (and examples map-def filter-def
-                              (every (lambda (e) (<= (length (third e)) (length (second e)))) examples)
-                              (some (lambda (e) (< (length (third e)) (length (second e)))) examples)
-                              (or (not (equal in-elem ret-elem))
-                                  (some (lambda (e) (set-difference (third e) (second e) :test #'equal))
-                                        examples)))
-                     (let* ((map-code-type (cdr (first (code-parameters map-def))))
-                            (filter-code-type (cdr (first (code-parameters filter-def))))
-                            (bindings (passthrough-bindings map-code-type inputs (list p-id)))
-                            (child-inputs (append (code-inputs map-code-type)
-                                                  (loop for (id . expression) in bindings
-                                                        collect (cons id (ast-type expression)))))
-                            (predicate
-                              (aligned-filter-predicate
-                               (loop for (row in-val out-val) in examples
-                                     collect (list in-val out-val
-                                                   (evaluate-row-bindings bindings inputs (row-known row)
-                                                                          :ledger ledger
-                                                                          :allow-unresolved-p t)))
-                               child-inputs base-lang ledger)))
-                       (when predicate
-                         (let* ((map-name (function-definition-name map-def))
-                                (filter-name (function-definition-name filter-def))
-                                (predicate-code
-                                  (compose-lifted-model (var child-id filter-code-type) child-id
-                                                        filter-code-type predicate bindings ledger))
-                                (decoder
-                                  (call map-def
-                                        (var child-id map-code-type)
-                                        (call filter-def predicate-code (var p-id seq-type)))))
-                           (push (lifted-decomposition
-                                  (list :library-filter-map map-name filter-name predicate)
-                                  decoder child-id map-code-type bindings base-lang c-bound solver
-                                  :policy-score *filter-map-policy-score*
-                                  :provenance (when debug-p
-                                                (list :origin :filter-map-expander
-                                                      :map map-name
-                                                      :filter filter-name
-                                                      :predicate predicate
-                                                      :decoder decoder)))
-                                 proposals))))))))))
-    (nreverse proposals)))
 
 (defun library-decompositions (frame language &key child-language child-bound
                                                    self-name functions solver knowledge ledger
@@ -393,8 +238,7 @@ job, or from the active one when there is none."
                                                              :policy-score policy-score
                                                              :matched-descriptors matched-clauses)))
                                         proposals)))))))))))))))
-    (append (filter-map-decompositions frame base-lang defs child-id c-bound solver ledger debug-p)
-            (nreverse proposals)
+    (append (nreverse proposals)
             (partial-library-decompositions frame base-lang defs child-id c-bound solver ledger)
             (learned-decoder-decompositions frame base-lang c-bound solver ledger
                                             :library (or knowledge *knowledge-library*)))))
@@ -542,14 +386,14 @@ compress multi-input level sets are proposed."
   "The most components a tuple, or holes a constructor, may have to be posed slot by slot.")
 
 (defun component-bindings (inputs)
-  "Bindings for a child that sees each of INPUTS, a small homogeneous tuple being replaced
+  "Bindings for a child that sees each of INPUTS, a small non-empty tuple being replaced
 by its components `(at X 'j)`. The child's inputs are numbered from 0 in the order of
 INPUTS, whatever ids INPUTS carry. Returns (VALUES bindings projected-types)."
   (let ((next -1)
         (projected nil))
     (values
      (loop for (id . type) in inputs
-           append (if (and (homogeneous-tuple-type-p type)
+           append (if (and (tuple-type-p type) (rest type)
                            (<= (length (rest type)) *product-arity-limit*))
                       (progn (pushnew type projected :test #'equal)
                              (loop for index below (length (rest type))
@@ -565,7 +409,10 @@ INPUTS, whatever ids INPUTS carry. Returns (VALUES bindings projected-types)."
                    :operators (remove-if (lambda (operator)
                                            (and (operator-p operator)
                                                 (member (operator-name operator) '(:at :tuple))
-                                                (member (operator-operand-type operator) dropped-types
+                                                (member (if (eq :at (operator-name operator))
+                                                            (at-container-type (operator-operand-type operator))
+                                                            (operator-operand-type operator))
+                                                        dropped-types
                                                         :test #'equal)))
                                          (language-operators language))))
 
@@ -1273,59 +1120,278 @@ and not refuted."
                        (not (eq :refuted (knowledge-entry-status source))))))
               (knowledge-edges-from entry :licensed-by library))))
 
+(defun instantiate-decoder-template-for-frame (entry frame)
+  "Yield `(entry ...)` covering ENTRY and any sequence-element polymorphic instantiations
+matching FRAME's sequence input and target types."
+  (let* ((inputs (schema-inputs (frame-schema frame)))
+         (target (schema-target (frame-schema frame)))
+         (tpl-seq (find-if #'seq-type-p (knowledge-entry-inputs entry) :key #'cdr))
+         (tpl-target (knowledge-entry-target entry)))
+    (if (equal target tpl-target)
+        (let ((param-match-p
+                (or (null tpl-seq)
+                    (some (lambda (s) (equal (cdr s) (cdr tpl-seq))) inputs))))
+          (if param-match-p
+              (list entry)
+              (loop for (nil . stype) in (remove-duplicates inputs :key #'cdr :test #'equal)
+                    when (seq-type-p stype)
+                      append (let ((inst (retype-decoder-template-entry entry (second stype)
+                                                                        (if (seq-type-p target)
+                                                                            (second target)
+                                                                            target))))
+                               (when inst (list inst))))))
+        (when (and tpl-seq (seq-type-p tpl-target) (seq-type-p target))
+          (loop for (nil . stype) in (remove-duplicates inputs :key #'cdr :test #'equal)
+                when (seq-type-p stype)
+                  append (let ((inst (retype-decoder-template-entry entry (second stype) (second target))))
+                           (when inst (list inst))))))))
+
+(defun retype-decoder-template-entry (entry in-elem out-elem)
+  "Retype sequence `:decoder-template` ENTRY to input element IN-ELEM and output element OUT-ELEM."
+  (let* ((expr (knowledge-entry-expression entry))
+         (renames nil))
+    (dolist (dep-pair (getf (knowledge-entry-metadata entry) :dependencies))
+      (let* ((fname (first dep-pair))
+             (def (find-function-definition fname))
+             (ret (and def (function-definition-return-type def)))
+             (new-def (and def
+                           (ignore-errors
+                            (if (and (seq-type-p ret)
+                                     (some (lambda (p)
+                                             (and (code-type-p (cdr p))
+                                                  (not (eq :bool (code-sort (cdr p))))))
+                                           (function-definition-inputs def)))
+                                (retype-function-definition fname in-elem
+                                                            :return-element-type out-elem
+                                                            :auto-p t)
+                                (retype-function-definition fname in-elem :auto-p t))))))
+        (when (and new-def (not (eq fname (function-definition-name new-def))))
+          (push (cons fname (function-definition-name new-def)) renames))))
+    (let* ((renamed-entry
+             (if (null renames)
+                 entry
+                 (let ((copy (copy-knowledge-entry entry)))
+                   (loop for (old . new) in renames
+                         do (setf expr (rename-function-calls expr old (op new))))
+                   (setf (knowledge-entry-expression copy) expr)
+                   copy)))
+           (tpl (infer-entry-template renamed-entry))
+           (tpl-seq (find-if #'seq-type-p (getf tpl :inputs) :key #'cdr))
+           (tpl-tgt (getf tpl :target))
+           (bindings nil))
+      (when tpl-seq
+        (setf bindings (bind-template-type (second (cdr tpl-seq)) in-elem bindings)))
+      (when (seq-type-p tpl-tgt)
+        (setf bindings (bind-template-type (second tpl-tgt) out-elem bindings)))
+      (ignore-errors
+       (instantiate-entry-template renamed-entry :bindings bindings
+                                   :id (knowledge-entry-id entry)
+                                   :register-p nil :certify-p nil)))))
+
+(defun multi-hole-decoder-decompositions (entry frame language bound solver ledger score)
+  "Propose conflict-free lifted decompositions for a 2-hole `:decoder-template` ENTRY
+whose `:child-ids` are `(pred-cid map-cid)` with `pred-cid` a `:bool`-returning `:code` hole."
+  (let* ((meta (knowledge-entry-metadata entry))
+         (child-ids (getf meta :child-ids))
+         (c1-id (first child-ids))
+         (c2-id (second child-ids))
+         (c1-type (cdr (assoc c1-id (knowledge-entry-inputs entry))))
+         (c2-type (cdr (assoc c2-id (knowledge-entry-inputs entry))))
+         (params (remove-if (lambda (s) (member (car s) child-ids)) (knowledge-entry-inputs entry)))
+         (inputs (schema-inputs (frame-schema frame)))
+         (target (schema-target (frame-schema frame)))
+         (cid (next-child-id inputs))
+         (eff-score (or (getf meta :policy-score) score))
+         (proposals nil))
+    (when (and (= 2 (length child-ids))
+               (code-type-p c1-type) (eq :bool (code-sort c1-type))
+               (code-type-p c2-type))
+      (let ((options (mapcar (lambda (param)
+                               (loop for (id . type) in inputs
+                                     when (equal type (cdr param)) collect (var id type)))
+                             params)))
+        (map-cartesian-options
+         options
+         (lambda (args)
+           (let* ((seq-arg (find-if (lambda (a) (seq-type-p (ast-type a))) args))
+                  (p-id (and seq-arg (ast-id seq-arg)))
+                  (p-pos (and p-id (position p-id inputs :key #'car :test #'eql)))
+                  (examples (when p-pos
+                              (loop for row in (frame-rows frame)
+                                    for in-val = (nth p-pos (row-known row))
+                                    for (out-val found-p) = (multiple-value-list (row-singleton-value row))
+                                    when (and found-p (listp in-val))
+                                      collect (list row in-val out-val)))))
+             (when (and examples
+                        (or (not (getf meta :strict-contraction-p))
+                            (and (seq-type-p target)
+                                 (every (lambda (e) (<= (length (third e)) (length (second e)))) examples)
+                                 (some (lambda (e) (< (length (third e)) (length (second e)))) examples)
+                                 (or (not (equal (second (ast-type seq-arg)) (second target)))
+                                     (some (lambda (e) (set-difference (third e) (second e) :test #'equal))
+                                           examples)))))
+               (let* ((passthrough (passthrough-bindings
+                                    c2-type inputs
+                                    (loop for a in args when (var-p a) collect (ast-id a))))
+                      (elem-inputs (append (code-inputs c1-type)
+                                           (loop for (id . e) in passthrough
+                                                 collect (cons id (ast-type e)))))
+                      (slices (loop for (row in-val out-val) in examples
+                                    for extra = (evaluate-row-bindings passthrough inputs (row-known row)
+                                                                       :ledger ledger
+                                                                       :allow-unresolved-p t)
+                                    collect (list in-val out-val extra)))
+                      (elem-rows (loop with key = -1
+                                       for (in-val nil extra) in slices
+                                       append (loop for x in in-val
+                                                    collect (make-row :key (incf key)
+                                                                      :known (cons x (copy-tree extra))
+                                                                      :requirement (lit :bool t)))))
+                      (has-nonempty-out-p (and (seq-type-p target)
+                                               (some (lambda (s) (consp (second s))) slices)))
+                      (domain (language-domain language))
+                      (eq-ops (cons (op := domain) (mapcar (lambda (s) (op := (cdr s))) elem-inputs)))
+                      (lt-ops (remove-if-not (lambda (o) (and (operator-p o) (eq :< (operator-name o))))
+                                             (language-operators language)))
+                      (cmp-ops (remove-duplicates (append lt-ops eq-ops) :test #'equal))
+                      (lits (if (listp (language-literals language))
+                                (remove-duplicates (append '(0 1) (language-literals language)) :test #'equal)
+                                '(0 1)))
+                      (atoms (append (loop for (id . ty) in elem-inputs collect (var id ty))
+                                     (loop for v in lits when (value-p v domain) collect (lit domain v)))))
+                 (when elem-rows
+                   (labels ((count-compatible-p (vals keep)
+                              (or (not (seq-type-p target))
+                                  (loop for (in-val out-val nil) in slices
+                                        always (= (loop for nil in in-val
+                                                        count (eq keep (and (pop vals) t)))
+                                                  (length out-val)))))
+                            (try-observations (observations)
+                              (let ((cands nil))
+                                (loop for (expr . vals) in observations
+                                      do (dolist (keep '(t nil))
+                                           (when (count-compatible-p (copy-list vals) keep)
+                                             (let ((pred (if keep expr (bool-not expr))))
+                                               (push (cons (description-size pred elem-inputs) pred) cands)))))
+                                (dolist (pair (stable-sort (nreverse cands) #'< :key #'car))
+                                  (let* ((pred (cdr pair))
+                                         (pred-code (compose-lifted-model (var cid c1-type) cid c1-type
+                                                                          pred passthrough ledger))
+                                         (subst (list* (cons c1-id pred-code)
+                                                       (cons c2-id (var cid c2-type))
+                                                       (mapcar #'cons (mapcar #'car params) args)))
+                                         (decoder (instantiate (knowledge-entry-expression entry) subst :var)))
+                                    (charge ledger :template-retrieval (syntax-work decoder))
+                                    (when (ignore-errors (expression-type decoder (acons cid c2-type inputs)))
+                                      (let ((lifted (lift-frame frame decoder cid c2-type passthrough
+                                                                ledger 4000 4)))
+                                        (when (and (or (not has-nonempty-out-p)
+                                                       (plusp (frame-constrained-row-count lifted)))
+                                                   (null (nth-value 0 (frame-conflict-p lifted :ledger ledger))))
+                                          (return (values decoder pred)))))))))
+                            (row-values (expr)
+                              (loop for r in elem-rows
+                                    for run = (evaluate expr elem-inputs (row-known r) :ledger ledger)
+                                    when (eq :value (evaluation-status run))
+                                      collect (evaluation-value run))))
+                     (multiple-value-bind (decoder pred)
+                         (try-observations
+                          (loop for cmp in cmp-ops
+                                for ty = (operator-operand-type cmp)
+                                append (loop for (a b) in (cartesian-product-lists (list atoms atoms))
+                                             for comp = (and (equal (ast-type a) ty)
+                                                             (equal (ast-type b) ty)
+                                                             (not (equal a b))
+                                                             (or (var-p a) (var-p b))
+                                                             (app cmp a b))
+                                             for vals = (and comp (row-values comp))
+                                             when (and comp (= (length vals) (length elem-rows)))
+                                               collect (cons comp vals))))
+                       (unless decoder
+                         (multiple-value-setq (decoder pred)
+                           (try-observations
+                            (observed-predicates
+                             (make-frame (make-schema :inputs elem-inputs :target :bool) elem-rows)
+                             (derive-language language :inputs elem-inputs :operators cmp-ops
+                                                       :literals lits :constants nil)
+                             (header-bound elem-inputs :bool 20) 3000 ledger))))
+                       (when decoder
+                         (push (lifted-decomposition
+                                (list :learned-template (knowledge-entry-id entry) pred)
+                                decoder cid c2-type passthrough language bound solver
+                                :lift-p t :slack 24 :fallback-p t
+                                :policy-score eff-score)
+                               proposals))))))))))))
+    (nreverse proposals)))
+
 (defun learned-decoder-decompositions (frame language bound solver ledger
                                        &key (library *knowledge-library*))
   "Retrieve the `:decoder-template` entries of LIBRARY that are active and live
-(`decoder-template-live-p`) and whose target is FRAME's, under every renaming of their
-parameters onto FRAME's inputs of the same types: the templates solved tasks were seen to
-use, and those the library derived from them or from its laws at consolidation. At most
-`*library-partial-proposal-limit*` are returned."
+(`decoder-template-live-p`) and whose target matches (or polymorphically instantiates to)
+FRAME's, under every renaming of their parameters onto FRAME's inputs of the same types:
+single-hole remembered/motif templates and multi-hole `:child-ids` comprehension templates.
+At most `*library-partial-proposal-limit*` are returned."
   (let* ((inputs (schema-inputs (frame-schema frame)))
          (target (schema-target (frame-schema frame)))
          (cid (next-child-id inputs))
          (proposals nil))
-    (dolist (entry (knowledge-entries-of-kind :decoder-template library) (nreverse proposals))
-      (let* ((meta (knowledge-entry-metadata entry))
-             (old-cid (getf meta :child-id))
-             (ctype (cdr (assoc old-cid (knowledge-entry-inputs entry))))
-             (params (remove old-cid (knowledge-entry-inputs entry) :key #'car))
-             (stored-bindings (getf meta :bindings))
-             (required (getf meta :requires-input)))
-        (when (and (knowledge-entry-active-p entry)
-                   ctype
-                   (equal target (knowledge-entry-target entry))
-                   (or (null required)
-                       (some (lambda (spec) (type-mentions-p (cdr spec) required)) inputs))
-                   (decoder-template-live-p entry library))
-          (let ((options (mapcar (lambda (param)
-                                   (loop for (id . type) in inputs
-                                         when (equal type (cdr param)) collect (var id type)))
-                                 params))
-                (score (+ *learned-template-policy-score*
-                          (nth-value 1 (score-entry-by-descriptors
-                                        entry frame (caar inputs) :ledger ledger)))))
-            (map-cartesian-options
-             options
-             (lambda (args)
-               (when (>= (length proposals) *library-partial-proposal-limit*)
-                 (return-from learned-decoder-decompositions (nreverse proposals)))
-               (let* ((substitution (acons old-cid (var cid ctype)
-                                           (mapcar #'cons (mapcar #'car params) args)))
-                      (decoder (instantiate (knowledge-entry-expression entry) substitution :var))
-                      (bindings (if (eq :identity stored-bindings)
-                                    (identity-bindings inputs)
-                                    (mapcar (lambda (b)
-                                              (cons (car b)
-                                                    (instantiate (sexp->ast (cdr b)) substitution :var)))
-                                            stored-bindings))))
-                 (charge ledger :template-retrieval (syntax-work decoder))
-                 (when (ignore-errors (expression-type decoder (acons cid ctype inputs)))
-                   (push (lifted-decomposition
-                          (list :learned-template (knowledge-entry-id entry))
-                          decoder cid ctype bindings language bound solver
-                          :lift-p (getf meta :lift-p) :slack 24 :fallback-p t
-                          :policy-score score)
-                         proposals)))))))))))
+    (dolist (raw-entry (knowledge-entries-of-kind :decoder-template library) (nreverse proposals))
+      (when (and (knowledge-entry-active-p raw-entry)
+                 (decoder-template-live-p raw-entry library))
+        (dolist (entry (instantiate-decoder-template-for-frame raw-entry frame))
+          (let* ((meta (knowledge-entry-metadata entry))
+                 (child-ids (getf meta :child-ids))
+                 (old-cid (getf meta :child-id))
+                 (ctype (cdr (assoc old-cid (knowledge-entry-inputs entry))))
+                 (params (remove old-cid (knowledge-entry-inputs entry) :key #'car))
+                 (stored-bindings (getf meta :bindings))
+                 (required (getf meta :requires-input))
+                 (score (+ *learned-template-policy-score*
+                           (nth-value 1 (score-entry-by-descriptors
+                                         raw-entry frame (caar inputs) :ledger ledger)))))
+            (cond
+              ((and (consp child-ids) (rest child-ids)
+                    (equal target (knowledge-entry-target entry))
+                    (let ((seq-spec (find-if #'seq-type-p inputs :key #'cdr)))
+                      (or (null seq-spec)
+                          (entry-trigger-compatible-p entry frame (car seq-spec) ledger))))
+               (dolist (p (multi-hole-decoder-decompositions entry frame language bound solver ledger score))
+                 (when (>= (length proposals) *library-partial-proposal-limit*)
+                   (return-from learned-decoder-decompositions (nreverse proposals)))
+                 (push p proposals)))
+              ((and ctype
+                    (equal target (knowledge-entry-target entry))
+                    (or (null required)
+                        (some (lambda (spec) (type-mentions-p (cdr spec) required)) inputs))
+                    (let ((seq-spec (find-if #'seq-type-p inputs :key #'cdr)))
+                      (or (null seq-spec)
+                          (entry-trigger-compatible-p entry frame (car seq-spec) ledger))))
+               (let ((options (mapcar (lambda (param)
+                                        (loop for (id . type) in inputs
+                                              when (equal type (cdr param)) collect (var id type)))
+                                      params)))
+                 (map-cartesian-options
+                  options
+                  (lambda (args)
+                    (when (>= (length proposals) *library-partial-proposal-limit*)
+                      (return-from learned-decoder-decompositions (nreverse proposals)))
+                    (let* ((substitution (acons old-cid (var cid ctype)
+                                                (mapcar #'cons (mapcar #'car params) args)))
+                           (decoder (instantiate (knowledge-entry-expression entry) substitution :var))
+                           (bindings (if (eq :identity stored-bindings)
+                                         (identity-bindings inputs)
+                                         (mapcar (lambda (b)
+                                                   (cons (car b)
+                                                         (instantiate (sexp->ast (cdr b)) substitution :var)))
+                                                 stored-bindings))))
+                      (charge ledger :template-retrieval (syntax-work decoder))
+                      (when (ignore-errors (expression-type decoder (acons cid ctype inputs)))
+                        (push (lifted-decomposition
+                               (list :learned-template (knowledge-entry-id entry))
+                               decoder cid ctype bindings language bound solver
+                               :lift-p (getf meta :lift-p) :slack 24 :fallback-p t
+                               :policy-score (or (getf meta :policy-score) score))
+                              proposals))))))))))))))
 
 (defun remember-successful-decompositions (job library ledger)
   (let* ((best (synthesis-job-best job))

@@ -71,6 +71,22 @@ the inputs that remain is kept, along with the order relation and target availab
                 rows :pairs pairs :anchors anchors :edges effective-edges
                 :metric effective-metric)))
 
+(defun simple-frame (type inputs examples &key lookup-p)
+  "Construct an exact singleton-requirement frame over INPUTS -> TYPE from `((known target) ...)`."
+  (make-frame (make-schema :inputs inputs :target type :lookup-p lookup-p)
+              (loop for (known target) in examples
+                    for key from 0
+                    collect (make-row :key key :known known
+                                      :requirement (set-requirement type (list target))))))
+
+(defun probe-frame (type inputs known-values)
+  "Construct an unconstrained observation frame over INPUTS -> TYPE from `(known ...)`."
+  (make-frame (make-schema :inputs inputs :target type)
+              (loop for known in known-values
+                    for key from 0
+                    collect (make-row :key key :known (copy-tree known)
+                                      :requirement (lit :bool t)))))
+
 (defun binding-inputs (bindings inputs)
   "The input list ((id . type) ...) of a child whose inputs BINDINGS, an alist of child
 input ids to expressions over INPUTS, compute."
@@ -723,10 +739,37 @@ by substitution or, when a binding that is not a leaf is mentioned more than onc
           for count = (gethash node counts)
           when (> count 1) collect (cons node count))))
 
+(defun max-path-occurrences (expression subterm)
+  "Maximum number of times SUBTERM can be evaluated along a single execution path of EXPRESSION."
+  (cond ((equal expression subterm) 1)
+        ((app-of-p expression :if)
+         (+ (max-path-occurrences (second expression) subterm)
+            (max (max-path-occurrences (third expression) subterm)
+                 (max-path-occurrences (fourth expression) subterm))))
+        ((app-p expression)
+         (loop for arg in (rest expression)
+               sum (max-path-occurrences arg subterm)))
+        (t 0)))
+
+(defun oracle-call-subterm-p (expression)
+  "True when EXPRESSION directly or transitively calls a function backed by an active oracle table."
+  (some (lambda (name)
+          (let ((def (find-function-definition name)))
+            (and def (function-definition-oracle-table def) t)))
+        (collect-expression-operators expression)))
+
+(defun has-path-repeated-oracle-call-p (expression)
+  "True when EXPRESSION evaluates some oracle-backed recursive subterm more than once on one path."
+  (some (lambda (pair)
+          (and (oracle-call-subterm-p (car pair))
+               (>= (max-path-occurrences expression (car pair)) 2)))
+        (repeated-subterms expression)))
+
 (defun share-repeated-subterms (expression width)
   "EXPRESSION with compound subterms that it computes more than once evaluated once each and
 passed to quoted code (`let-call`), where that is smaller at WIDTH bits a variable
-reference; EXPRESSION itself otherwise. The let has the value and the definedness of
+reference (or eliminates an exponential path-repeated recursive oracle call); EXPRESSION
+itself otherwise. The let has the value and the definedness of
 EXPRESSION by the rules of `let-call`: its body is provably total by itself, and a subterm
 that is not is demanded on every path. A let has a price of its own that one subterm may
 not repay and two may, so the search starts from the `*shared-subterm-limit*` subterms
@@ -745,8 +788,13 @@ where it also stands outside it."
                                                                            (length ranked)))
                               for id from next-id
                               collect (cons subterm id)))
+               (must-share (loop for (subterm . nil) in current
+                                 when (and (oracle-call-subterm-p subterm)
+                                           (>= (max-path-occurrences expression subterm) 2))
+                                   collect subterm))
                (best expression)
                (best-bits (scoped-bits expression width))
+               (best-clears-oracle-p (null must-share))
                (current-bits nil))
           (labels ((shared (subterms)
                      (let-call (map-ast (lambda (node meta)
@@ -760,17 +808,25 @@ where it also stands outside it."
                      ;; The bits of SUBTERMS bound under a let, or nil when there is no such let.
                      (let ((form (and subterms (shared subterms))))
                        (when form
-                         (let ((bits (scoped-bits form width)))
-                           (when (< bits best-bits) (setf best form best-bits bits))
+                         (let ((bits (scoped-bits form width))
+                               (clears-p (or (null must-share)
+                                             (not (has-path-repeated-oracle-call-p form)))))
+                           (when (if best-clears-oracle-p
+                                     (and clears-p (< bits best-bits))
+                                     (or clears-p (< bits best-bits)))
+                             (setf best form
+                                   best-bits bits
+                                   best-clears-oracle-p clears-p))
                            bits)))))
             (setf current-bits (consider current))
             (loop while (rest current)
                   do (let ((next nil) (next-bits nil))
                        (dolist (item current)
-                         (let* ((subset (remove item current :test #'eq))
-                                (bits (consider subset)))
-                           (when (and bits (or (null next-bits) (< bits next-bits)))
-                             (setf next subset next-bits bits))))
+                         (unless (member (car item) must-share :test #'equal)
+                           (let* ((subset (remove item current :test #'eq))
+                                  (bits (consider subset)))
+                             (when (and bits (or (null next-bits) (< bits next-bits)))
+                               (setf next subset next-bits bits)))))
                        (cond ((and next-bits (or (null current-bits) (< next-bits current-bits)))
                               (setf current next current-bits next-bits))
                              ;; No let binds all of these: let go of the one that saves least.
@@ -792,7 +848,7 @@ scope."
   (let* ((inline (instantiate decoder
                               (list (cons child-id (instantiate child-model bindings :var))) :var))
          (width (reference-width inputs (unless inputs inline)))
-         (child (bind-model child-model bindings width))
+         (child (share-repeated-subterms (bind-model child-model bindings width) width))
          (variables (expression-variables decoder))
          ;; The decoder as a let of its child, whose other arguments are its own variables.
          (bound (bind-model decoder
@@ -800,7 +856,12 @@ scope."
                                   collect (cons id (if (eql id child-id) child (var id type))))
                             width))
          (shared (share-repeated-subterms inline width))
-         (model (if (< (scoped-bits shared width) (scoped-bits bound width)) shared bound)))
+         (shared-oracle-p (has-path-repeated-oracle-call-p shared))
+         (bound-oracle-p (has-path-repeated-oracle-call-p bound))
+         (model (cond ((and shared-oracle-p (not bound-oracle-p)) bound)
+                      ((and bound-oracle-p (not shared-oracle-p)) shared)
+                      ((< (scoped-bits shared width) (scoped-bits bound width)) shared)
+                      (t bound))))
     (charge ledger :composition (syntax-work model))
     model))
 

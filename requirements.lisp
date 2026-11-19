@@ -273,10 +273,12 @@ to be a literal and the constructor's parts to be safe to drop or reorder."
         (funcall rule state whole inner other)))))
 
 (defun fold-at-tuple (state whole tuple index)
-  "`(at (tuple e0 ... ek) 'i)` is `ei`."
-  (declare (ignore state whole))
+  "`(at (tuple e0 ... ek) 'i)` is `ei` when slot `i` has WHOLE's type."
+  (declare (ignore state))
   (let ((i (ast-value index)))
-    (and (integerp i) (< -1 i (length (rest tuple))) (nth i (rest tuple)))))
+    (and (integerp i) (< -1 i (length (rest tuple)))
+         (let ((part (nth i (rest tuple))))
+           (and (equal (ast-type part) (ast-type whole)) part)))))
 
 (defun fold-at-cons (state whole pair index)
   "`(at (cons head tail) 'i)` is `head` when i is 0 and `(at tail 'i-1)` after that."
