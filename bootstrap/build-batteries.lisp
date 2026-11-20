@@ -656,6 +656,58 @@ verify round-trip loading, and write `library/<name>.sexp`."
               :constants (list (lit seq-t '()))
               :library seq-lib :ledger ledger)
              :library seq-lib :ledger ledger)
+            ;; The index list of a sequence, counted from a start: the coordinates a positional
+            ;; rule is written over, as in `(map (positions xs 0) ...)`. Every recursive call the
+            ;; definition makes on these rows is itself a row.
+            (synthesize-battery-function
+             (register-knowledge-spec
+              :spec/positions (list (cons 0 seq-t) (cons 1 :int)) seq-t
+              '(((() 0) ()) ((() 1) ()) ((() 2) ()) ((() 3) ()) ((() 4) ())
+                (((7) 2) (2)) (((4) 3) (3)) (((7) 0) (0))
+                (((6 7) 1) (1 2)) (((9 4) 2) (2 3)) (((5 6 7) 0) (0 1 2)))
+              :target-id :positions
+              :operators (list (op :cons :int) (op :tail :int) (op :at seq-t) (op := seq-t)
+                               (op :if seq-t) (op :+ :int))
+              :literals '(0 1)
+              :constants (list (lit seq-t '()))
+              :library seq-lib :ledger ledger)
+             :library seq-lib :ledger ledger)
+            ;; The inverter of a read at an unknown index: `(= (at xs Z) c)` holds of every
+            ;; position of xs that holds c, so the solver's witness is that list of positions and
+            ;; not one of them (`:set-valued-p`). The witness is synthesized over (xs, c, the
+            ;; index list of xs); the curriculum then writes the index list as `(positions xs 0)`.
+            (let* ((with-index (list (cons 0 seq-t) (cons 1 :int) (cons 2 seq-t)))
+                   (fibers '((((5 6 7 5) 5) (0 3)) (((5 6 7 5) 6) (1)) (((5 6 7 5) 9) ()) ((() 3) ())
+                             (((4 4 4) 4) (0 1 2)) (((1 2) 2) (1)) (((3 1 3) 3) (0 2)) (((3 1 3) 1) (1))))
+                   (job (start-heuristic-synthesis
+                         (simple-frame seq-t with-index
+                                       (loop for (known positions) in fibers
+                                             collect (list (append known
+                                                                   (list (loop for i below (length (first known))
+                                                                               collect i)))
+                                                           positions)))
+                         (make-language :int with-index
+                                        :operators (list (op :at seq-t) (op := :int))
+                                        :literals '(0) :constants (list (lit seq-t '())))
+                         170 :max-depth 3 :heuristic-budget 8000 :library-functions '(:filter))))
+              (resume-synthesis job 500000 :stop-on-first t)
+              (charge ledger :synthesis (ledger-total (synthesis-job-ledger job)))
+              (assert (synthesis-job-best job) () "Failed to synthesize the witness of :at in its index")
+              (let* ((xs (var 0 seq-t))
+                     (witness (instantiate (candidate-expression (synthesis-job-best job))
+                                           (list (cons 2 (term `(positions ,xs 0))))
+                                           :var))
+                     (solver (register-knowledge-solver
+                              (op :at seq-t) :id :solve-at-1 :domain :int :position 1 :target :int
+                              :witness witness :certified-p nil :unique-p t :necessary-p t
+                              :metadata (list :set-valued-p t)
+                              :library seq-lib :ledger ledger)))
+                ;; Evidence by sample: on every row the witness is the whole list of positions.
+                (assert (loop for (known positions) in fibers
+                              always (multiple-value-bind (value ok)
+                                         (eval-expr-value witness (knowledge-entry-inputs solver) known ledger)
+                                       (and ok (equal positions value)))))
+                (attest-knowledge-entry solver :sampled '(:witness :uniqueness :necessity))))
             ;; Register `:comprehension/filter-map` multi-hole `:decoder-template`!
             (let* ((fm-expr (app (op :map)
                                  (app (op :filter) (var 0 seq-t) (var 1 pred-t))
@@ -710,7 +762,7 @@ verify round-trip loading, and write `library/<name>.sexp`."
               (save-clean-battery :descriptors desc-ids seq-lib
                                   :parameters '((?a :int)) :ledger ledger))
             (save-clean-battery :sequences
-                                '(:map :foldr :foldl :filter :map-adjacent
+                                '(:map :foldr :foldl :filter :map-adjacent :positions :solve-at-1
                                   :comprehension/filter-map :foldr=foldl/monoid)
                                 seq-lib
                                 :parameters '((?a :int))

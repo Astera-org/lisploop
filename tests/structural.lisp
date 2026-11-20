@@ -388,6 +388,78 @@ are first-order scalars."
         (check-synthesized-model expr frame
                                  :held-out (list (list '(11) (term `(+ ,x 11)))))))))
 
+(deftest a-boolean-frame-is-given-features-of-its-domain
+  "A frame whose target is Boolean has Boolean Stage A features, which no comparison is made
+of. Its guard search observes features of the language's domain type instead, so a rule about
+such a frame can compare an input with a literal or one measure of its inputs with another."
+  ;; Division over a field: the rows where a quotient exists are those whose divisor is not 0.
+  (let* ((field (gf 5))
+         (inputs (list (cons 0 field) (cons 1 field)))
+         (rows (loop for k below 5 append (loop for c below 5 collect (list k c))))
+         (frame (probe-frame :bool inputs rows))
+         (zero-divisor (loop for (k nil) in rows collect (= k 0)))
+         (language (make-language field inputs
+                                  :operators (list (op := field) (op :* field) (op :+ field)
+                                                   (op :- field) (op :/ field)))))
+    (multiple-value-bind (guard invert-p)
+        (find-sound-exception-guard frame zero-divisor language (header-bound inputs :bool 20)
+                                    20000 (make-ledger))
+      (check guard)
+      (check (loop for known in rows for hit-p in zero-divisor
+                   always (eq hit-p (not (eq invert-p (result guard inputs known))))))))
+  ;; A condition every output of a length-preserving function meets, found as the guard that
+  ;; holds only of input and output pairs that do not belong together.
+  (let* ((seq (sequence-type :int))
+         (inputs (list (cons 0 seq) (cons 1 seq)))
+         (pairs '((() ()) ((2) (3)) ((-1 2 5) (0 3 6)) ((10 13 19) (11 14 20)) ((2) (4))
+                  ((-1 2 5) (-2 4 10))))
+         (mismatches (remove-duplicates
+                      (loop for (x nil) in pairs
+                            append (loop for (nil y) in pairs
+                                         unless (member (list x y) pairs :test #'equal)
+                                           collect (list x y)))
+                      :test #'equal))
+         (frame (probe-frame :bool inputs (append pairs mismatches)))
+         (mask (append (mapcar (constantly nil) pairs) (mapcar (constantly t) mismatches)))
+         (language (make-language :int inputs
+                                  :operators (list (op :length :int) (op := :int) (op :< :int)
+                                                   (op :- :int) (op := seq))
+                                  :literals '(0 1) :constants (list (lit seq '())))))
+    ;; Two lengths compared take 49 body bits: within the bound on a comparison, and past
+    ;; a bound of 32.
+    (check (null (find-sound-exception-guard frame mask language (header-bound inputs :bool 20)
+                                             40000 (make-ledger) :feature-bound 32)))
+    (multiple-value-bind (guard invert-p)
+        (find-sound-exception-guard frame mask language (header-bound inputs :bool 20)
+                                    40000 (make-ledger))
+      ;; Its negation holds on every pair that belongs together.
+      (check (equal guard (term `(= (length ,(var 0 seq)) (length ,(var 1 seq))))))
+      (check invert-p)
+      (check (every (lambda (known) (result guard inputs known)) pairs))
+      (check (some (lambda (known) (not (result guard inputs known))) mismatches)))))
+
+(deftest a-conjunction-is-two-conditional-splits
+  "A Boolean frame with a list among its inputs is split like any other: the rule that a base
+case must answer every empty-list row holds only where a function is being defined."
+  (let* ((seq (sequence-type :int))
+         (inputs (list (cons 0 :int) (cons 1 seq)))
+         (rows (loop for n in '(-1 0 1 3) append (loop for x in '(() (1) (2 3)) collect (list n x))))
+         (labels (loop for (n x) in rows collect (and (< 0 n) (null x))))
+         (frame (support-frame (probe-frame :bool inputs rows) labels))
+         (language (make-language :int inputs
+                                  :operators (list (op :< :int) (op := :int) (op := seq)
+                                                   (op :length :int) (op :if :bool))
+                                  :literals '(0 1)
+                                  :constants (list (lit seq '()) (lit :bool t) (lit :bool nil))))
+         (job (start-heuristic-synthesis frame language (header-bound inputs :bool 48)
+                                         :max-depth 3 :additive-p nil
+                                         :guard-bound (header-bound inputs :bool 40))))
+    (resume-synthesis job 120000 :stop-on-first t)
+    (let ((rule (and (synthesis-job-best job) (candidate-expression (synthesis-job-best job)))))
+      (check rule)
+      (check (loop for known in rows for label in labels
+                   always (eq (not (null label)) (not (null (result rule inputs known)))))))))
+
 (deftest feature-guards-templates-and-coupled-products-stay-sound
   "Feature-pair guards obey the guard language's operators; product proposals do not pollute
 decoder templates while single-difference templates anti-unify; and coupled non-Cartesian

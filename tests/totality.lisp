@@ -195,6 +195,20 @@ inside is judged where it runs: under the guard that made the fuel non-empty."
                 :int)))
       (check (not (certified-p :spins))))))
 
+(deftest modulus-keeps-an-index-in-range
+  "`mod` takes the sign of its divisor, so a count taken modulo a positive length is a
+position. Like division it is defined where its divisor is not zero, and total where that
+is known."
+  (let ((a (var 0 :int)) (n (var 1 :int)))
+    (check (= 1 (result (term `(mod 7 3)))))
+    (check (= 2 (result (term `(mod -1 3)))))
+    (check (= 0 (result (term `(mod 6 3)))))
+    (check (eq :error (evaluation-status (evaluate (term `(mod 5 0)) nil nil))))
+    (check (provably-total-p (term `(mod ,a 3))))
+    (check (not (provably-total-p (term `(mod ,a ,n)))))
+    (check (provably-total-p (term `(if (< 0 ,n) (mod ,a ,n) 0) :int)))
+    (check (not (provably-total-p (term `(if (< ,n 1) (mod ,a ,n) 0) :int))))))
+
 (deftest a-guard-makes-what-it-guards-total
   "Division is total where the divisor is known not to be zero, whether a condition around
 it says so or the guard of the solver whose witness it is."

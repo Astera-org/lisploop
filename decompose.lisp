@@ -163,8 +163,9 @@ FRAME's variables when admitted by LANGUAGE. Returns ((expression . row-values) 
                                    (car (last (observation-bucket-members bucket))))
                                   (observation-bucket-values bucket))))))
 
-(defparameter *feature-guard-bits* 32
-  "Body-bit bound on an exception guard that compares two Stage A features.")
+(defparameter *feature-guard-bits* 54
+  "Body-bit bound on a guard that compares two features: room for one measure of an input
+against one of another, as two lengths are.")
 
 (defun language-admits-expression-p (expression language)
   "True when EXPRESSION is written in LANGUAGE: over its inputs, with its operators, and with
@@ -215,6 +216,27 @@ is evaluated."
                   (offer (term `(< ,right ,left)) (mapcar #'< right-values left-values))))))
     (nreverse predicates)))
 
+(defun domain-feature-buckets (frame language work-limit ledger)
+  "The behaviours on FRAME's rows of the small expressions of LANGUAGE's domain type that
+involve no conditional, as ((expression . row-values) ...), oldest first: features for
+`feature-pair-predicates` to compare. The search is charged to LEDGER as guard search, up to
+WORK-LIMIT."
+  (let* ((inputs (schema-inputs (frame-schema frame)))
+         (domain (language-domain language))
+         (rows (frame-rows frame))
+         (atomic (derive-language
+                  language
+                  :operators (remove-if (lambda (o) (and (operator-p o) (eq :if (operator-name o))))
+                                        (language-operators language))))
+         (obs (start-observation-search
+               (make-observation-scope (probe-frame domain inputs (mapcar #'row-known rows)) atomic))))
+    (resume-observation-search obs (header-bound inputs domain 28) work-limit)
+    (charge ledger :guard-search (ledger-total (observation-job-ledger obs)))
+    (loop for bucket in (reverse (observation-job-buckets obs))
+          when (= (length rows) (length (observation-bucket-values bucket)))
+            collect (cons (observed-expression-expression (car (last (observation-bucket-members bucket))))
+                          (observation-bucket-values bucket)))))
+
 (defun find-sound-exception-guard (frame hit-mask guard-language guard-bound work-limit ledger
                                    &key active-mask buckets (feature-bound *feature-guard-bits*))
   "Synthesize a Boolean guard G(X) separating hit and miss rows.
@@ -223,9 +245,21 @@ INVERT-P is T, G(X) is NIL only on hits. Guards are grouped observationally; the
 covering sound one wins (an exact separator covers every hit), then the shortest.
 When the guard grammar holds no exact separator within GUARD-BOUND, the comparisons of two
 of the Stage A features in BUCKETS compete too, up to FEATURE-BOUND body bits
-(`feature-pair-predicates`)."
+(`feature-pair-predicates`). A frame whose target is Boolean has Boolean Stage A features,
+which no comparison is made of; when BUCKETS hold none of GUARD-LANGUAGE's domain type, a
+third of WORK-LIMIT goes to observing some (`domain-feature-buckets`)."
   (let* ((inputs (schema-inputs (frame-schema frame)))
          (rows (frame-rows frame))
+         (domain (language-domain guard-language))
+         (feature-work (if (and (eq :bool (schema-target (frame-schema frame)))
+                                (notany (lambda (bucket) (equal domain (ast-type (car bucket)))) buckets)
+                                (notany (lambda (row) (member :unresolved (row-known row))) rows))
+                           (floor work-limit 3)
+                           0))
+         (buckets (if (plusp feature-work)
+                      (append buckets (domain-feature-buckets frame guard-language feature-work ledger))
+                      buckets))
+         (work-limit (max 1 (- work-limit feature-work)))
          (eff-active (or active-mask
                          (let ((constrained (mapcar #'constrained-row-p rows)))
                            (if (some #'identity constrained)
@@ -586,7 +620,10 @@ Returns (VALUES proposals heuristic-model)."
                               (let ((mask (heuristic-hit-mask frame m)))
                                 (and (some #'identity mask)
                                      (some #'null mask)
+                                     ;; A base case answers every empty-sequence row; a
+                                     ;; frame that defines no function has no base case.
                                      (or (not empty-seq-frame-p)
+                                         (null eff-self)
                                          (model-satisfies-empty-sequence-rows-p frame mask)))))))
                      (cand-model (find-if valid-base-p candidates)))
                 (when cand-model

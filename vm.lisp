@@ -103,7 +103,7 @@ value, error and work, however its budget is sliced.")
       1
       (let ((a (integer-width (first values)))
             (b (integer-width (second values))))
-        (+ (if (member name '(:* :/)) (* a b) (max a b))
+        (+ (if (member name '(:* :/ :mod)) (* a b) (max a b))
            (if (consp type)
                (expt (integer-length (second type)) (if (eq name :/) 3 2)) 0)))))
 
@@ -138,7 +138,7 @@ the work of its arguments, plus what its own traversal, copying or matching can 
         (type (operator-operand-type operator)))
     (cond
       ((or (eq name :code-eval) (defined-function-p name)) 1)
-      ((member name '(:+ :* :- :/ :<)) (arithmetic-cost name type values))
+      ((member name '(:+ :* :- :/ :mod :<)) (arithmetic-cost name type values))
       (t
        (let* ((weights (mapcar #'value-work values (second (operator-type operator))))
               (base (1+ (reduce #'+ weights))))
@@ -210,10 +210,12 @@ the work of its arguments, plus what its own traversal, copying or matching can 
   (let ((name (operator-name operator))
         (type (operator-operand-type operator)))
     (case name
-      ((:+ :* :- :/)
+      ((:+ :* :- :/ :mod)
        (let* ((a (first values)) (b (second values))
               (result (ecase name
                         (:+ (+ a b)) (:* (* a b)) (:- (- a b))
+                        ;; The modulus takes the sign of its divisor: an index stays in range.
+                        (:mod (mod a b))
                         (:/ (if (eq type :int) (truncate a b)
                                 (* a (field-reciprocal b (second type))))))))
          (if (eq type :int) result (mod result (second type)))))

@@ -141,7 +141,8 @@ A key is a function whose value is minimised, or (:desc function) to maximise it
     (:tail ?t ((:seq ?t)) (:seq ?t))
     (:length ?t ((:seq ?t)) :int)
     (:< :int (:int :int) :bool)
-    (:code-eval ?t (?t . _) _))
+    (:code-eval ?t (?t . _) _)
+    (:mod :int (:int :int) :int))
   "Every primitive operator, in opcode order, as (name parameter argument-types result-type).
 The last three are patterns over type variables, the parameter being the type an operator
 symbol carries. ?n stands for :int or a prime field, ?c for a code type, ?e for the code
@@ -860,11 +861,12 @@ FACTS say is not zero or bound away from it."
 
 (defun operator-step-total-p (op-name arguments code-total-fn &optional facts expected-type)
   "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total,
-given FACTS about the variables in scope: division needs a divisor that is not zero, `tail`
+given FACTS about the variables in scope: division and modulus need a divisor that is not
+zero, `tail`
 a sequence that is not empty, and `at` a literal index within the length that is sure, or
 into a tuple slot of EXPECTED-TYPE when that is given."
   (case op-name
-    (:/ (nonzero-expr-p (second arguments) facts))
+    ((:/ :mod) (nonzero-expr-p (second arguments) facts))
     (:at (and (lit-p (second arguments))
               (let ((idx (ast-value (second arguments)))
                     (container (first arguments))

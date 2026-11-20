@@ -424,6 +424,51 @@ evidence discipline."
                         *knowledge-library* (make-ledger))))
         (check (zerop (propagation-narrowed res-wide)))))))
 
+(deftest the-index-list-is-a-learned-library-function
+  "`:positions` gives the coordinates of a sequence from a start. It is synthesized by the
+bootstrap from a spec, loads with its examples, and is total: the sequence shortens at
+every call, whatever the counter does."
+  (with-clean-kernel-state
+    (load-battery :sequences :only '(:positions))
+    (let ((seq (sequence-type :int))
+          (definition (find-function-definition :positions)))
+      (check (function-definition-total-p definition))
+      (check (equal '(5 6 7 8) (result (app (op :positions) (lit seq '(4 4 4 4)) (lit :int 5)))))
+      (check (equal '(0 1 2) (result (app (op :positions) (lit seq '(9 8 7)) (lit :int 0)))))
+      (check (null (result (app (op :positions) (lit seq '()) (lit :int 3))))))))
+
+(deftest a-read-at-an-unknown-index-narrows-to-the-positions-that-hold-the-value
+  "`:solve-at-1` inverts `(at xs Z)` in its index. Its witness, synthesized by the bootstrap
+from the learned `:filter` and `:positions`, lists every position of xs that holds the value,
+so the requirement becomes membership in that list, an equation when there is one position,
+and false when there is none. Its evidence is sampled, so each narrowing keeps its fallback."
+  (with-clean-kernel-state
+    (load-battery :sequences)
+    (let ((seq (sequence-type :int))
+          (solver (find-knowledge-entry :solve-at-1))
+          (z (var 0 :int)))
+      (check (getf (knowledge-entry-metadata solver) :set-valued-p))
+      (check (eq :int (knowledge-entry-target solver)))
+      (check (knowledge-evidence-tested-p solver :witness))
+      (check (not (knowledge-evidence-current-p solver :witness)))
+      (flet ((narrowed (xs value)
+               (let ((propagation
+                       (propagate-requirements
+                        (make-frame (make-schema :inputs '((0 . :int)) :target :int)
+                                    (list (make-row :key 0 :known '(0)
+                                                    :requirement (term `(= (at ,(lit seq xs) ,z) ,value)))))
+                        *knowledge-library* (make-ledger))))
+                 (check (= 1 (propagation-suggested propagation)))
+                 (check (zerop (propagation-narrowed propagation)))
+                 (check (propagation-fallback propagation))
+                 (row-requirement (first (frame-rows (propagation-frame propagation)))))))
+        (let ((two (narrowed '(5 6 7 5) 5)))
+          (check (accepts two 0))
+          (check (accepts two 3))
+          (check (not (accepts two 1))))
+        (check (equal (term `(= ,z 1)) (narrowed '(5 6 7 5) 6)))
+        (check (equal (lit :bool nil) (narrowed '(5 6 7 5) 9)))))))
+
 (deftest step1-rank-environment-totality-and-terminating-recursions
   "Rank-environment static totality certifies nested-tail lookahead (`:map-adjacent`),
 integer countdowns (`(< 0 n)` -> `(- n 1)`), and multi-argument lexicographic recursions,

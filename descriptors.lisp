@@ -623,7 +623,7 @@ observation search over its sampled I/O PAIRS and certifying specs backed by str
                                (args (rest node))
                                (arg-types (mapcar (lambda (a) (expression-type a new-inputs)) args)))
                           (case name
-                            ((:+ :- :* :/ :< :=)
+                            ((:+ :- :* :/ :mod :< :=)
                              (apply #'app (op name (first arg-types)) args))
                             (:if (apply #'app (op :if (second arg-types)) args))
                             (:length (app (op :length (second (first arg-types))) (first args)))

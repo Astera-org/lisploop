@@ -1265,36 +1265,26 @@ falling back to Stage A/B synthesis when no one-sided implicant exists."
            (obs-before (ledger-total (observation-job-ledger obs)))
            (obs-bound (max bound (header-bound inputs :bool 38)))
            (obs-budget (min (floor work-limit 2) 20000))
-           (dom (language-domain atomic-g-lang))
-           (dom-frame (unless (eq dom :bool)
-                        (probe-frame dom inputs (mapcar #'row-known rows))))
-           (dom-obs (when dom-frame
-                      (start-observation-search (make-observation-scope dom-frame atomic-g-lang))))
-           (dom-before (if dom-obs (ledger-total (observation-job-ledger dom-obs)) 0)))
+           (feat-buckets nil))
       (resume-observation-search obs obs-bound obs-budget)
       (charge ledger :guard-search (- (ledger-total (observation-job-ledger obs)) obs-before))
-      (when dom-obs
-        (resume-observation-search dom-obs (header-bound inputs dom 28) (min (floor work-limit 3) 12000))
-        (charge ledger :guard-search (- (ledger-total (observation-job-ledger dom-obs)) dom-before)))
-      (let* ((bool-preds nil)
-             (feat-buckets (loop for (id . type) in inputs
-                                 for pos from 0
-                                 for vals = (mapcar (lambda (r) (nth pos (row-known r))) rows)
-                                 unless (member :unresolved vals)
-                                   collect (cons (var id type) vals))))
+      ;; Features to compare: the inputs, then small expressions of the domain type.
+      (setf feat-buckets
+            (append (reverse (loop for (id . type) in inputs
+                                   for pos from 0
+                                   for vals = (mapcar (lambda (r) (nth pos (row-known r))) rows)
+                                   unless (member :unresolved vals)
+                                     collect (cons (var id type) vals)))
+                    (reverse (domain-feature-buckets frame atomic-g-lang
+                                                     (min (floor work-limit 3) 12000) ledger))))
+      (let* ((bool-preds nil))
         (dolist (bucket (observation-job-buckets obs))
           (let ((vals (observation-bucket-values bucket))
                 (expr (observed-expression-expression (car (last (observation-bucket-members bucket))))))
             (when (= (length vals) row-count)
               (push (cons expr vals) bool-preds))))
-        (when dom-obs
-          (dolist (bucket (observation-job-buckets dom-obs))
-            (let ((vals (observation-bucket-values bucket))
-                  (expr (observed-expression-expression (car (last (observation-bucket-members bucket))))))
-              (when (= (length vals) row-count)
-                (push (cons expr vals) feat-buckets)))))
-        (let* ((pair-preds (feature-pair-predicates (nreverse feat-buckets) inputs row-count
-                                                    54 ledger guard-language))
+        (let* ((pair-preds (feature-pair-predicates feat-buckets inputs row-count
+                                                    *feature-guard-bits* ledger guard-language))
                (candidates (loop for (expr . vals) in (append (nreverse bool-preds) pair-preds)
                                  collect (list expr (coerce vals 'vector)
                                                (description-size expr inputs))))
@@ -1469,13 +1459,26 @@ by exhaustive fiber analysis when DOMAIN and all context/target types are finite
                (all-frame (probe-frame :bool inputs all-rows))
                (g-lang (or guard-language (default-guard-language all-frame w-lang)))
                (g-bound (header-bound inputs :bool 40))
-               (guard (if (null neg-knowns)
-                          (lit :bool t)
-                          (synthesize-boolean-separator
-                           all-frame
-                           (append (make-list (length pos-rows) :initial-element t)
-                                   (make-list (length neg-knowns) :initial-element nil))
-                           g-lang g-bound guard-work-limit ledger)))
+               (solvable (append (make-list (length pos-rows) :initial-element t)
+                                 (make-list (length neg-knowns) :initial-element nil)))
+               ;; The witness run forward, compared with the target: where it holds, the
+               ;; witness is one.
+               (replay (multiple-value-bind (equation unknown)
+                           (solver-template-probe-ast op-ast position cmap inputs target)
+                         (instantiate equation (list (cons (car unknown) witness)) :var)))
+               (guard (cond ((null neg-knowns) (lit :bool t))
+                            ;; A replay that cannot fail and tells the rows apart is the guard:
+                            ;; it is exact for this witness wherever it is asked, not only on
+                            ;; the rows a guard would be induced from.
+                            ((and (provably-total-p replay)
+                                  (every (lambda (known solvable-p)
+                                           (multiple-value-bind (value ok)
+                                               (eval-expr-value replay inputs known ledger)
+                                             (and ok (eq solvable-p (not (null value))))))
+                                         all-rows solvable))
+                             replay)
+                            (t (synthesize-boolean-separator all-frame solvable g-lang g-bound
+                                                             guard-work-limit ledger))))
                (domain-guard
                  (when (and multi-rows empty-rows)
                    (synthesize-boolean-separator

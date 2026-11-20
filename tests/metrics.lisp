@@ -233,10 +233,12 @@ which the decoder's solver exposes row by row. Without the pair the target is ou
                   (check (plusp (propagation-suggested propagation)))
                   (check (plusp (propagation-ambiguous propagation)))
                   (check (propagation-fallback propagation))
-                  ;; On the fourth row the best correlation is at the wrong place: that delta
-                  ;; does not replay, and the row keeps its requirement, which only 3 meets.
+                  ;; On the fourth row the best correlation is at the wrong place. The solver's
+                  ;; guard is its witness replayed, so it does not hold there: nothing is
+                  ;; suggested and then rejected, and the row keeps its requirement, which
+                  ;; only 3 meets.
                   (check (equal '(2 0 1 nil 1) (mapcar #'row-singleton-value (frame-rows narrowed))))
-                  (check (plusp (propagation-rejected propagation)))
+                  (check (zerop (propagation-rejected propagation)))
                   (let ((kept (row-requirement (fourth (frame-rows narrowed)))))
                     (check (accepts kept 3))
                     (check (not (accepts kept 1))))

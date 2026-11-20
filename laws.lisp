@@ -630,6 +630,13 @@ or nil when some part has no value."
     (and (eq :value (evaluation-status check))
          (equal (ast-value target) (evaluation-value check)))))
 
+(defun solver-set-valued-p (rule)
+  "True when RULE's witness is the list of every solution of its equation, in place of one
+solution: reading a sequence at an unknown index has as many as the value has places."
+  (let ((source (arithmetic-propagator-source rule)))
+    (and (knowledge-entry-p source)
+         (getf (knowledge-entry-metadata source) :set-valued-p))))
+
 (defun solved-conjunct (rule term values)
   "What VALUES, the distinct witnesses RULE found, leave of an equation on TERM: false when
 there is none, each unknown argument pinned to its part of the one there is, and otherwise
@@ -682,7 +689,8 @@ positions, built the first time it is asked for."
 (defun solve-learned-conjunct (conjunct library ledger certified-p result)
   "Invert a typed application that CONJUNCT equates to a literal, or confines to a bounded
 set of them, by a rule of LIBRARY with the rule's declared known-context mapping. Each value
-is settled by the rule's witness, which must replay forward to the value unless CERTIFIED-P
+is settled by the rule's witness (or by every member of it, for a rule whose witness lists
+all solutions, `solver-set-valued-p`), which must replay forward to the value unless CERTIFIED-P
 vouches for the rule (one that does not is counted in RESULT), or by the rule's guard
 rejecting it when the rule carries `:necessity` evidence. Multiple unknown positions use a
 tuple witness. Returns `(VALUES new-conjunct rule used-witness-p used-necessity-p)`, or nil
@@ -704,6 +712,18 @@ when no rule settles every value."
                                   (and guard-false-p
                                        (solver-refutes-context-p library rule context ledger)
                                        (setf refuted-p t)))
+                                 ;; A list of every solution: each is a witness. An empty one
+                                 ;; refutes the value only with evidence that the list is whole.
+                                 ((solver-set-valued-p rule)
+                                  (cond ((null value)
+                                         (and (propagator-tested-p rule :necessity) (setf refuted-p t)))
+                                        ((or (funcall certified-p rule)
+                                             (every (lambda (member)
+                                                      (witness-replays-p rule term target mapping
+                                                                         context member ledger))
+                                                    value))
+                                         (dolist (member value t) (push member witnesses)))
+                                        (t (incf (propagation-rejected result)) nil)))
                                  ((or (funcall certified-p rule)
                                       (witness-replays-p rule term target mapping context value ledger))
                                   (push value witnesses))
@@ -1080,8 +1100,11 @@ version-fresh `rewrite-library` for DOMAIN (or NIL if no validated rules exist).
                    (mapcar #'cdr (solver-context-types operator mapping))))
     (assert (equal (knowledge-entry-target entry)
                    (if (= 1 (length positions)) (first unknown-types) (cons :tuple unknown-types))))
-    (assert (equal (knowledge-entry-target entry)
-                   (expression-type (knowledge-entry-expression entry) (knowledge-entry-inputs entry))))
+    ;; The witness gives the unknown, or for a set-valued solver the list of all it can be.
+    (assert (equal (expression-type (knowledge-entry-expression entry) (knowledge-entry-inputs entry))
+                   (if (getf meta :set-valued-p)
+                       (sequence-type (knowledge-entry-target entry))
+                       (knowledge-entry-target entry))))
     (when (knowledge-entry-auxiliary-code entry)
       (assert (eq :bool (expression-type (knowledge-entry-auxiliary-code entry)
                                          (knowledge-entry-inputs entry)))))))
