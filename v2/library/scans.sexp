@@ -1,0 +1,150 @@
+(:KNOWLEDGE-LIBRARY :ENCODING-VERSION 7 :VERSION 21 :METADATA (:BATTERY :SCANS)
+ :FUNCTION-NAMES (:SCAN :SCAN-PAIR) :DE-NOVO-COUNTER 0 :ENTRY-COUNTER 0
+ :ENTRIES
+ ((:ID :SCAN :KIND :FUNCTION :DOMAIN :INT :INPUTS
+   ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) :TARGET
+   (:SEQ :INT) :EXPRESSION
+   (:APP (:OP :IF (:SEQ :INT))
+    (:APP (:OP := (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT (:SEQ :INT) NIL))
+    (:LIT (:SEQ :INT) NIL)
+    (:APP (:OP :CONS :INT)
+     (:APP (:OP :CODE-EVAL (:CODE ((0 . :INT) (1 . :INT)) :INT))
+      (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:VAR 1 :INT)
+      (:APP (:OP :AT (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 0)))
+     (:APP
+      (:OP :SCAN
+       (:CODE ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT))
+        (:SEQ :INT)))
+      (:APP (:OP :TAIL :INT) (:VAR 0 (:SEQ :INT)))
+      (:APP (:OP :CODE-EVAL (:CODE ((0 . :INT) (1 . :INT)) :INT))
+       (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:VAR 1 :INT)
+       (:APP (:OP :AT (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 0)))
+      (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT)))))
+   :GUARD (:LIT :BOOL T) :TRIGGER NIL :RESIDUAL NIL :AUXILIARY-CODE NIL :STATUS
+   :VALIDATED :CERTIFICATE NIL :BITS 211 :GAIN 0 :WORK 263277 :EDGES
+   ((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY)
+    (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SCANS))
+   :METADATA
+   (:COMPOSITIONAL-NAME :FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP
+    :DESCRIPTOR-PROFILE
+    ((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NECESSARY
+      :WEIGHT-BITS 2 :WORK-COST 1)
+     (:ID :DESC/LEN-EQ :FACET :SHAPE-DELTA :TIER 1 :STATUS :EMPIRICAL
+      :WEIGHT-BITS 6 :WORK-COST 2)
+     (:ID :DESC/EMPTY->EMPTY :FACET :BOUNDARY :TIER 1 :STATUS :EMPIRICAL
+      :WEIGHT-BITS 4 :WORK-COST 2)
+     (:ID :DESC/POINTWISE-MAP :FACET :SAMPLED-CONTENT :TIER 2 :STATUS
+      :EMPIRICAL :WEIGHT-BITS 5 :WORK-COST 6))
+    :TOTAL-P NIL :CONDITIONAL-CODE-PARAMS (2)))
+  (:ID :SCAN-PAIR :KIND :FUNCTION :DOMAIN :INT :INPUTS
+   ((0 :SEQ :INT) (1 :TUPLE :INT :INT)
+    (2 :CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT)))
+   :TARGET (:SEQ (:TUPLE :INT :INT)) :EXPRESSION
+   (:APP (:OP :IF (:SEQ (:TUPLE :INT :INT)))
+    (:APP (:OP := (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT (:SEQ :INT) NIL))
+    (:LIT (:SEQ (:TUPLE :INT :INT)) NIL)
+    (:APP (:OP :CONS (:TUPLE :INT :INT))
+     (:APP
+      (:OP :CODE-EVAL
+       (:CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT)))
+      (:VAR 2 (:CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT)))
+      (:VAR 1 (:TUPLE :INT :INT))
+      (:APP (:OP :AT (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 0)))
+     (:APP
+      (:OP :SCAN-PAIR
+       (:CODE
+        ((0 :SEQ :INT) (1 :TUPLE :INT :INT)
+         (2 :CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT)))
+        (:SEQ (:TUPLE :INT :INT))))
+      (:APP (:OP :TAIL :INT) (:VAR 0 (:SEQ :INT)))
+      (:APP
+       (:OP :CODE-EVAL
+        (:CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT)))
+       (:VAR 2 (:CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT)))
+       (:VAR 1 (:TUPLE :INT :INT))
+       (:APP (:OP :AT (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 0)))
+      (:VAR 2 (:CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT))))))
+   :GUARD (:LIT :BOOL T) :TRIGGER NIL :RESIDUAL NIL :AUXILIARY-CODE NIL :STATUS
+   :VALIDATED :CERTIFICATE NIL :BITS 251 :GAIN 0 :WORK 138 :EDGES
+   ((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY)
+    (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SCANS))
+   :METADATA
+   (:COMPOSITIONAL-NAME :FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP
+    :DESCRIPTOR-PROFILE
+    ((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NECESSARY
+      :WEIGHT-BITS 2 :WORK-COST 1)
+     (:ID :DESC/LEN-EQ :FACET :SHAPE-DELTA :TIER 1 :STATUS :EMPIRICAL
+      :WEIGHT-BITS 6 :WORK-COST 2)
+     (:ID :DESC/EMPTY->EMPTY :FACET :BOUNDARY :TIER 1 :STATUS :EMPIRICAL
+      :WEIGHT-BITS 4 :WORK-COST 2)
+     (:ID :DESC/POINTWISE-MAP :FACET :SAMPLED-CONTENT :TIER 2 :STATUS
+      :EMPIRICAL :WEIGHT-BITS 5 :WORK-COST 6))
+    :TOTAL-P NIL :CONDITIONAL-CODE-PARAMS (2)))
+  (:ID :SPEC/SCAN :KIND :SPEC :DOMAIN :INT :INPUTS
+   ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) :TARGET
+   (:SEQ :INT) :EXPRESSION NIL :GUARD (:LIT :BOOL T) :TRIGGER NIL :RESIDUAL
+   (:DATA
+    ((((:LIT (:SEQ :INT) NIL) (:LIT :INT 4)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :+ :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) NIL))
+     (((:LIT (:SEQ :INT) NIL) (:LIT :INT 5)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :+ :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) NIL))
+     (((:LIT (:SEQ :INT) NIL) (:LIT :INT 2)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :+ :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) NIL))
+     (((:LIT (:SEQ :INT) (3)) (:LIT :INT 2)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :+ :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) (5)))
+     (((:LIT (:SEQ :INT) (-1 3)) (:LIT :INT 3)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :+ :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) (2 5)))
+     (((:LIT (:SEQ :INT) (2 -1 3)) (:LIT :INT 1)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :+ :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) (3 2 5)))
+     (((:LIT (:SEQ :INT) NIL) (:LIT :INT 6)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :- :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) NIL))
+     (((:LIT (:SEQ :INT) (4)) (:LIT :INT 10)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :- :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) (6)))
+     (((:LIT (:SEQ :INT) (1 4)) (:LIT :INT 11)
+       (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT)
+        (:APP (:OP :- :INT) (:VAR 0 :INT) (:VAR 1 :INT))))
+      (:LIT (:SEQ :INT) (10 6)))))
+   :AUXILIARY-CODE NIL :STATUS :VALIDATED :CERTIFICATE NIL :BITS 0 :GAIN 0
+   :WORK 0 :EDGES ((:SPECIFIES :SCAN)) :METADATA
+   (:TARGET-KIND :FUNCTION :OPERATORS
+    ((:OP :CONS :INT) (:OP :TAIL :INT) (:OP :AT (:SEQ :INT))
+     (:OP := (:SEQ :INT)) (:OP :IF (:SEQ :INT))
+     (:OP :CODE-EVAL (:CODE ((0 . :INT) (1 . :INT)) :INT)))
+    :CONSTANTS ((:LIT (:SEQ :INT) NIL))))
+  (:ID :SPEC/SCAN-PAIR :KIND :SPEC :DOMAIN :INT :INPUTS
+   ((0 :SEQ :INT) (1 :TUPLE :INT :INT)
+    (2 :CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT)))
+   :TARGET (:SEQ (:TUPLE :INT :INT)) :EXPRESSION NIL :GUARD (:LIT :BOOL T)
+   :TRIGGER NIL :RESIDUAL
+   (:DATA
+    ((((:LIT (:SEQ :INT) (1 1)) (:LIT (:TUPLE :INT :INT) (0 10))
+       (:LIT (:CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT))
+        (:APP (:OP :TUPLE (:TUPLE :INT :INT))
+         (:APP (:OP :+ :INT)
+          (:APP (:OP :AT (:TUPLE (:TUPLE :INT :INT) :INT))
+           (:VAR 0 (:TUPLE :INT :INT)) (:LIT :INT 0))
+          (:VAR 1 :INT))
+         (:APP (:OP :+ :INT)
+          (:APP (:OP :AT (:TUPLE (:TUPLE :INT :INT) :INT))
+           (:VAR 0 (:TUPLE :INT :INT)) (:LIT :INT 1))
+          (:VAR 1 :INT)))))
+      (:LIT (:SEQ (:TUPLE :INT :INT)) ((1 11) (2 12))))))
+   :AUXILIARY-CODE NIL :STATUS :VALIDATED :CERTIFICATE NIL :BITS 0 :GAIN 0
+   :WORK 0 :EDGES ((:SPECIFIES :SCAN-PAIR)) :METADATA
+   (:TARGET-KIND :FUNCTION))))

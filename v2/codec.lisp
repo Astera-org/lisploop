@@ -1,0 +1,221 @@
+(in-package #:lisploop)
+
+;;; Module 2: codec.lisp
+;;; Prefix-coded binary serialization & O(1) size queries over homoiconic S-expressions.
+;;; Positive integers use delta coding: gamma(bit-length), then the low bits.
+
+(defconstant +encoding-version+ 7)
+(defconstant +opcode-width+ 4)
+
+(defun emitted-bits (emitter &rest arguments)
+  "The number of bits EMITTER writes for ARGUMENTS, counted without building a packet."
+  (let ((bits 0))
+    (apply emitter (append arguments (list (lambda (width value)
+                                             (declare (ignore value))
+                                             (incf bits width)))))
+    bits))
+
+(defun emit-operator-name (name emit)
+  (let ((index (or (operator-index name) (error "Unknown operator ~S" name))))
+    (funcall emit +opcode-width+ (min 15 index))
+    (when (>= index 15) (emit-positive (- index 14) emit))))
+
+(defun emit-operator-code (name type emit)
+  "Emit operator NAME and the part of its parameter TYPE that a decoder cannot infer."
+  (let ((encoded-type (operator-encoded-type name type)))
+    (emit-operator-name name emit)
+    (when encoded-type
+      (emit-bit-type encoded-type emit))))
+
+(defun emit-operator (operator emit)
+  (let ((meta (ensure-ast-meta operator)))
+    (assert (eq :op (ast-meta-kind meta)))
+    (emit-operator-code (ast-meta-id meta) (ast-meta-type meta) emit)))
+
+(defun operator-name-bit-size (name) (emitted-bits #'emit-operator-name name))
+(defun operator-bit-size (name type) (emitted-bits #'emit-operator-code name type))
+(defun type-bit-size (type) (emitted-bits #'emit-bit-type type))
+
+(defun emit-positive (value emit)
+  (let* ((width (integer-length value)) (length-width (integer-length width)))
+    (assert (plusp value))
+    (funcall emit (1- length-width) 0)
+    (funcall emit length-width width)
+    (funcall emit (1- width) (ldb (byte (1- width) 0) value))))
+
+(defun emit-bit-type (type emit)
+  (ecase (type-kind type)
+    (:int (funcall emit 3 0))
+    (:bool (funcall emit 3 1))
+    (:gf (funcall emit 3 2) (emit-positive (second type) emit))
+    (:tuple (funcall emit 3 3) (emit-positive (length type) emit)
+            (dolist (part (rest type)) (emit-bit-type part emit)))
+    (:seq (funcall emit 3 4) (emit-bit-type (second type) emit))
+    (:code
+     (funcall emit 3 5) (emit-bit-inputs (code-inputs type) emit)
+     (let ((sort (code-sort type)))
+       (funcall emit 1 (if (function-sort-p sort) 1 0))
+       (if (function-sort-p sort)
+           (progn (emit-positive (1+ (length (second sort))) emit)
+                  (mapc (lambda (arg) (emit-bit-type arg emit)) (second sort))
+                  (emit-bit-type (third sort) emit))
+           (emit-bit-type sort emit))))))
+
+(defun emit-bit-value (value type emit)
+  (ecase (type-kind type)
+    (:int (emit-positive (signed-code value) emit))
+    (:bool (funcall emit 1 (if value 1 0)))
+    (:gf (funcall emit (integer-length (1- (second type))) value))
+    (:tuple (loop for item in value for part in (rest type) do (emit-bit-value item part emit)))
+    (:seq (emit-positive (1+ (length value)) emit)
+          (dolist (item value) (emit-bit-value item (second type) emit)))
+    (:code (if (function-sort-p (code-sort type))
+               (let ((meta (ensure-ast-meta value)))
+                 (emit-operator-name (ast-meta-id meta) emit)
+                 (emit-bit-type (ast-meta-type meta) emit))
+               (emit-bit-expression value (code-inputs type) (code-sort type) emit)))))
+
+(defun emit-bit-inputs (inputs emit)
+  (emit-positive (1+ (length inputs)) emit)
+  (dolist (input inputs)
+    (emit-positive (1+ (car input)) emit)
+    (emit-bit-type (cdr input) emit)))
+
+(defun emit-bit-header (inputs type emit)
+  (emit-positive +encoding-version+ emit)
+  (emit-bit-inputs inputs emit)
+  (emit-bit-type type emit))
+
+(defun header-size (inputs type)
+  (emitted-bits #'emit-bit-header (input-alist inputs) type))
+
+(defun header-bound (inputs type slack)
+  "A description bound that leaves SLACK bits for the body after the header of INPUTS and TYPE."
+  (+ (header-size inputs type) slack))
+
+(defun emit-bit-expression (expression inputs type emit)
+  (let* ((meta (ensure-ast-meta expression))
+         (tag (ast-meta-kind meta)))
+    (funcall emit 2 (ecase tag (:var 0) (:lit 1) (:app 2)))
+    (ecase tag
+      (:var (funcall emit (integer-length (max 0 (1- (length inputs))))
+                     (or (position (ast-meta-id meta) inputs :key #'car)
+                         (error "Undeclared variable"))))
+      (:lit (emit-bit-value (ast-meta-value meta) type emit))
+      (:app
+       (let ((operator (first expression)))
+         (emit-operator operator emit)
+         (loop for child in (rest expression)
+               for child-type in (second (operator-type operator)) do
+                 (emit-bit-expression child inputs child-type emit)))))))
+
+(defun emit-bit-model (expression inputs emit)
+  (let ((norm-inputs (input-alist inputs)))
+    (assert (valid-inputs-p norm-inputs))
+    (let ((type (expression-type expression norm-inputs)))
+      (emit-bit-header norm-inputs type emit)
+      (emit-bit-expression expression norm-inputs type emit))))
+
+(defun description-size (expression &optional inputs)
+  "Exact packet length in bits, including the schema; O(1) via cached AST metadata."
+  (let ((norm-inputs (input-alist inputs)))
+    (assert (valid-inputs-p norm-inputs))
+    (let ((type (expression-type expression norm-inputs)))
+      (+ (header-size norm-inputs type)
+         (body-size expression norm-inputs)))))
+
+(defun encode-model (expression &optional inputs)
+  (let ((bits (make-array 0 :element-type 'bit :adjustable t :fill-pointer 0)))
+    (emit-bit-model expression inputs
+                    (lambda (width value)
+                      (loop for index downfrom (1- width) to 0 do
+                        (vector-push-extend (ldb (byte 1 index) value) bits))))
+    bits))
+
+(defun decode-model (bits)
+  "Decode the fixed packet format; return expression and declared input schema.
+Reject truncation, trailing bits, unused codes and unsupported versions."
+  (assert (typep bits 'bit-vector))
+  (let ((cursor 0))
+    (labels ((take-bits (width)
+               (assert (<= (+ cursor width) (length bits)) () "Truncated bit packet")
+               (let ((value 0))
+                 (dotimes (i width value)
+                   (setf value (+ (* 2 value) (aref bits cursor)))
+                   (incf cursor))))
+             (positive ()
+               (let ((zeros 0))
+                 (loop while (zerop (take-bits 1)) do (incf zeros))
+                 (let ((width (+ (ash 1 zeros) (take-bits zeros))))
+                   (assert (<= (1- width) (- (length bits) cursor)) () "Truncated integer")
+                   (+ (ash 1 (1- width)) (take-bits (1- width))))))
+             (read-inputs ()
+               (let ((count (1- (positive))))
+                 (assert (<= count (- (length bits) cursor)))
+                 (loop repeat count collect (cons (1- (positive)) (read-type)))))
+             (read-operator-name ()
+               (let* ((prefix (take-bits +opcode-width+))
+                      (index (if (= 15 prefix) (+ 14 (positive)) prefix)))
+                 (or (operator-by-index index) (error "Unused operator code"))))
+             (read-type ()
+               (ecase (take-bits 3)
+                 (0 :int) (1 :bool) (2 (gf (positive)))
+                 (3 (let ((arity (1- (positive))))
+                      (assert (<= arity (- (length bits) cursor)))
+                      (cons :tuple (loop repeat arity collect (read-type)))))
+                 (4 (sequence-type (read-type)))
+                 (5 (let* ((inputs (read-inputs)) (function-p (= 1 (take-bits 1)))
+                           (sort (if function-p
+                                     (let ((count (1- (positive))))
+                                       (assert (<= count (- (length bits) cursor)))
+                                       (list :fn (loop repeat count collect (read-type)) (read-type)))
+                                     (read-type))))
+                      (code-type inputs sort)))))
+             (read-value (type)
+               (case type
+                 (:int (decode-signed-code (positive))) (:bool (= 1 (take-bits 1)))
+                 (otherwise
+                  (ecase (first type)
+                    (:gf (let ((value (take-bits (integer-length (1- (second type))))))
+                           (assert (< value (second type))) value))
+                    (:tuple (mapcar #'read-value (rest type)))
+                    (:seq (loop repeat (1- (positive)) collect (read-value (second type))))
+                    (:code (if (function-sort-p (code-sort type))
+                               (op (read-operator-name) (read-type))
+                               (read-expression (code-inputs type) (code-sort type))))))))
+             (read-expression (inputs type)
+               (ecase (take-bits 2)
+                 (0 (let* ((slot (take-bits (integer-length (max 0 (1- (length inputs))))))
+                           (input (nth slot inputs)))
+                      (assert (and input (equal type (cdr input))))
+                      (var (car input) type)))
+                 (1 (lit type (read-value type)))
+                 (2
+                  (let* ((name (read-operator-name))
+                         (operator (op name (operator-decoded-type name type #'read-type))))
+                    (assert (equal type (third (operator-type operator))))
+                    (apply #'app operator
+                           (mapcar (lambda (child-type) (read-expression inputs child-type))
+                                   (second (operator-type operator)))))))))
+      (assert (= +encoding-version+ (positive)) () "Unsupported encoding version")
+      (let* ((inputs (read-inputs))
+             (type (read-type))
+             (expression (read-expression inputs type)))
+        (assert (= cursor (length bits)) () "Trailing bits")
+        (assert (equalp bits (encode-model expression inputs)) () "Noncanonical packet")
+        (values expression inputs)))))
+
+(defun expression-less-p (left right inputs)
+  "Compare two expressions by O(1) description-size, breaking ties by canonical packet bits."
+  (let ((norm-inputs (input-alist inputs)))
+    (and (not (equal left right))
+         (let ((left-size (description-size left norm-inputs))
+               (right-size (description-size right norm-inputs)))
+           (or (< left-size right-size)
+               (and (= left-size right-size)
+                    (let* ((left-bits (encode-model left norm-inputs))
+                           (right-bits (encode-model right norm-inputs))
+                           (first-difference (mismatch left-bits right-bits)))
+                      (and first-difference
+                           (< (aref left-bits first-difference)
+                              (aref right-bits first-difference))))))))))
