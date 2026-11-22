@@ -116,6 +116,7 @@ A :passive kind's entries mention functions without being uses of them (`entry-l
   (rewrite-libraries (make-hash-table :test #'equal))
   (propagator-libraries (make-hash-table :test #'equal))
   (compositional-index (make-hash-table :test #'eq))
+  (op-props (make-hash-table :test #'equal)) ; law-activated (:assoc :comm :id :cancel), empty at t=0
   priority-predictor
   (entry-counter 0 :type fixnum))
 

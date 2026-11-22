@@ -129,14 +129,15 @@ is demanded in TARGET-TEMPLATE, so call-by-value errors are never dropped."
 ;;; Folding: a budgeted walk that evaluates closed subterms and applies structural rules.
 (defstruct (fold-state (:conc-name fold-))
   "One `fold-constants` traversal: the walk and evaluation steps left in its budget, the
-ledger they are charged to, the contract, the fiber cap, and the number of elements already
-unfolded along the enclosing `:cons` spine or conjunction."
-  remaining ledger contract max-fibers (spine-depth 0))
+ledger they are charged to, the contract, the fiber cap, the number of elements already
+unfolded along the enclosing `:cons` spine or conjunction, and an optional `(lhs rhs-lit)`
+memo table under `:necessary` preventing $2^N$ selective-branch re-unfolding."
+  remaining ledger contract max-fibers (spine-depth 0) memo)
 
 (defun unfoldable-parts-p (parts contract)
   "True when a fold rule may drop or reorder every expression in PARTS: each is provably
-total or, under the :necessary CONTRACT, built from holes, total constructors, `:code-eval`
-and structurally terminating functions without unguarded partial primitives."
+total or, under the :necessary CONTRACT, built from holes, total constructors, `:code-eval`,
+container cover primitives, and structurally terminating functions."
   (every (lambda (expr)
            (or (provably-total-p expr)
                (and (eq contract :necessary)
@@ -144,6 +145,7 @@ and structurally terminating functions without unguarded partial primitives."
                         (and (app-p expr)
                              (unfoldable-parts-p (rest expr) contract)
                              (or (hole-p (first expr))
+                                 (member (ast-id expr) '(:at :gather :iota :where :tabulate :evolve))
                                  (operator-step-total-p (ast-id expr) (rest expr)
                                                         (lambda (c) (provably-total-code-arg-p c t)))))))))
          parts))
@@ -195,9 +197,16 @@ simplified where that cannot drop or reorder a partial computation."
            (yes (fold-walk-at-depth
                  state (+ (fold-spine-depth state) (if (equal (fourth expr) false) 1 0))
                  (if code-eval-cond-p (replace-subexpression raw-yes condition true) raw-yes)))
-           (no (fold-walk state (if code-eval-cond-p
-                                    (replace-subexpression (fourth expr) condition false)
-                                    (fourth expr))))
+           (no-seed (if (eq :necessary (fold-contract state))
+                        (propagate-conjunct-equalities
+                         (list (term `(= ,condition ,false)))
+                         (if code-eval-cond-p
+                             (replace-subexpression (fourth expr) condition false)
+                             (fourth expr)))
+                        (if code-eval-cond-p
+                            (replace-subexpression (fourth expr) condition false)
+                            (fourth expr))))
+           (no (fold-walk state no-seed))
            (rebuilt (app (first expr) condition yes no))
            (bool-p (eq :bool (ast-type rebuilt))))
       (cond
@@ -206,14 +215,41 @@ simplified where that cannot drop or reorder a partial computation."
         ((and (eq :necessary (fold-contract state)) (equal yes false) (equal no false)) false)
         ;; Knowing that a condition is code does not prove that running
         ;; it terminates or succeeds. Equal branches may discard only
-        ;; a total condition; branch-local assumptions above still
-        ;; retain the original condition's evaluation.
-        ((and (provably-total-p condition) (equal yes no)) yes)
+        ;; a total condition, except under `:necessary` when `condition` is unfoldable.
+        ((and (or (provably-total-p condition)
+                  (and (eq :necessary (fold-contract state))
+                       (unfoldable-parts-p (list condition) :necessary)))
+              (equal yes no))
+         yes)
         ((and (equal yes true) (equal no false)) condition)
         ((and bool-p (equal yes false) (not (equal no false))
-              (or (provably-total-p condition) code-eval-cond-p))
+              (or (provably-total-p condition) code-eval-cond-p
+                  (and (eq :necessary (fold-contract state))
+                       (unfoldable-parts-p (list condition) :necessary))))
          (let ((neg-cond (term `(= ,condition ,false))))
            (if (equal no true) neg-cond (bool-and neg-cond no))))
+        ;; Under `:necessary`, factor common conjuncts `Y_c \cap N_c` out of complementary Boolean branches.
+        ((and bool-p (eq :necessary (fold-contract state))
+              (not (equal yes false)) (not (equal no false))
+              (not (equal yes true)) (not (equal no true))
+              (let* ((y-cs (extract-conjuncts yes))
+                     (n-cs (extract-conjuncts no))
+                     (shared (remove-if-not (lambda (c)
+                                              (and (member c n-cs :test #'equal)
+                                                   (unfoldable-parts-p (list c) :necessary)))
+                                            y-cs)))
+                (when shared
+                  (let ((y-rem (reduce #'bool-and
+                                       (remove-if (lambda (c) (member c shared :test #'equal)) y-cs)
+                                       :from-end t :initial-value true))
+                        (n-rem (reduce #'bool-and
+                                       (remove-if (lambda (c) (member c shared :test #'equal)) n-cs)
+                                       :from-end t :initial-value true)))
+                    (reduce #'bool-and shared
+                            :from-end t
+                            :initial-value (if (equal y-rem n-rem)
+                                               y-rem
+                                               (app (first expr) condition y-rem n-rem))))))))
         ;; Set filtering/reordering is safe only for a total conjunction.
         ((and bool-p (equal no false) (provably-total-p condition) (provably-total-p yes))
          (simplify-conjunction state rebuilt condition yes))
@@ -235,6 +271,22 @@ it is closed, else apply a structural rule, narrow a literal membership, or unfo
          (if (eq :value (evaluation-status run))
              (lit (ast-type rebuilt) (evaluation-value run))
              rebuilt)))
+      ;; Memoize `(= call literal)` under `:necessary` when fiber cap is off or at root spine depth,
+      ;; cutting selective-combinator (`:filter`, etc.) unfolding from 2^|X| to <= (|X|+1)(|Y|+1).
+      ((and (eq := op-name) (fold-memo state)
+            (or (null (fold-max-fibers state)) (zerop (fold-spine-depth state)))
+            (let ((lhs (if (lit-p (first args)) (second args) (first args)))
+                  (rhs (if (lit-p (first args)) (first args) (second args))))
+              (and (app-p lhs) (lit-p rhs)
+                   (multiple-value-bind (cached hit-p) (gethash (list lhs rhs) (fold-memo state))
+                     (if hit-p
+                         cached
+                         (let* ((before (fold-remaining state))
+                                (ans (or (apply-fold-rule state rebuilt)
+                                         (try-unfold-call state rebuilt))))
+                           (when (and (plusp (fold-remaining state)) (< (fold-remaining state) before))
+                             (setf (gethash (list lhs rhs) (fold-memo state)) ans))
+                           ans)))))))
       ((apply-fold-rule state rebuilt))
       ((and (eq :member op-name) (lit-p (second args)))
        (let ((values (remove-duplicates (ast-value (second args)) :test #'equal)))
@@ -250,10 +302,15 @@ it is closed, else apply a structural rule, narrow a literal membership, or unfo
 to test whether `library/constructors.sexp` can carry their load (Stage 0 E0b).")
 
 (defparameter *fold-rules*
-  '((:at (:tuple . fold-at-tuple) (:cons . fold-at-cons))
+  '((:at (:tuple . fold-at-tuple) (:cons . fold-at-cons)
+         (:iota . fold-at-iota) (:tabulate . fold-at-tabulate))
     (:tail (:cons . fold-tail-cons))
-    (:length (:cons . fold-length-cons))
+    (:length (:cons . fold-length-cons) (:iota . fold-length-iota)
+             (:tabulate . fold-length-tabulate) (:gather . fold-length-gather)
+             (:evolve . fold-length-evolve))
     (:= (:tuple . fold-equal-tuple) (:cons . fold-equal-cons) (:if . fold-equal-if)
+        (:gather . fold-equal-gather) (:tabulate . fold-equal-tabulate)
+        (:evolve . fold-equal-evolve)
         (:code-apply . fold-equal-code-apply) (:code-subst . fold-equal-code-subst))
     (:member (:tuple . fold-member-tuple)))
   "The structural rules, as (outer-operator (inner-constructor . function) ...): each takes
@@ -306,6 +363,104 @@ to be a literal and the constructor's parts to be safe to drop or reorder."
   "`(length (cons head tail))` is `(+ 1 (length tail))`."
   (declare (ignore other))
   (fold-rewalk state whole (term `(+ 1 (length ,(third pair))))))
+
+(defun fold-at-iota (state whole iota-call index)
+  "`(at (iota 'n) 'i)` is `'i` when `0 <= i < n`."
+  (declare (ignore state whole))
+  (let ((n (and (lit-p (second iota-call)) (ast-value (second iota-call))))
+        (i (ast-value index)))
+    (when (and (integerp n) (integerp i) (<= 0 i) (< i n))
+      (lit :int i))))
+
+(defun fold-at-tabulate (state whole tab-call index)
+  "`(at (tabulate 'n f) 'i)` is `(code-eval f 'i)` when `0 <= i < n`."
+  (let ((n (and (lit-p (second tab-call)) (ast-value (second tab-call))))
+        (i (ast-value index)))
+    (when (and (integerp n) (integerp i) (<= 0 i) (< i n))
+      (fold-rewalk state whole (term `(code-eval ,(third tab-call) ,i)) t))))
+
+(defun fold-length-iota (state whole iota-call other)
+  (declare (ignore state whole other))
+  (let ((n (and (lit-p (second iota-call)) (ast-value (second iota-call)))))
+    (when (integerp n) (lit :int (max 0 n)))))
+
+(defun fold-length-tabulate (state whole tab-call other)
+  (declare (ignore state whole other))
+  (let ((n (and (lit-p (second tab-call)) (ast-value (second tab-call)))))
+    (when (integerp n) (lit :int (max 0 n)))))
+
+(defun fold-length-gather (state whole gather-call other)
+  (declare (ignore other))
+  (when (eq :necessary (fold-contract state))
+    (fold-rewalk state whole (term `(length ,(third gather-call))) t)))
+
+(defun fold-length-evolve (state whole evolve-call other)
+  (declare (ignore other))
+  (when (eq :necessary (fold-contract state))
+    (fold-rewalk state whole (term `(length ,(second evolve-call))) t)))
+
+(defun fold-equal-gather (state whole gather-call literal)
+  "Under `:necessary`, `(= (gather 'src Z) 'ys)` splits into `(= (length Z) m)` conjoined with
+coordinate preimage fibers `Z[j] in {i | src[i] = ys[j]}`."
+  (when (and (eq :necessary (fold-contract state)) (lit-p (second gather-call)))
+    (let* ((xs (ast-value (second gather-call)))
+           (idx-seq (third gather-call))
+           (ys (ast-value literal))
+           (m (length ys))
+           (fibers (loop for y in ys
+                         collect (loop for x in xs for i from 0
+                                       when (equal x y) collect i))))
+      (if (some #'null fibers)
+          (lit :bool nil)
+          (let ((coord-conj
+                  (reduce #'bool-and
+                          (loop for j from 0 below m
+                                for pre in fibers
+                                for at-j = (term `(at ,idx-seq ,j))
+                                collect (if (rest pre)
+                                            (term `(member ,at-j ',pre))
+                                            (term `(= ,at-j ,(first pre)))))
+                          :from-end t :initial-value (lit :bool t))))
+            (fold-rewalk state whole (bool-and (term `(= (length ,idx-seq) ,m)) coord-conj) t))))))
+
+(defun fold-equal-tabulate (state whole tab-call literal)
+  "Under `:necessary`, `(= (tabulate 'n f) 'ys)` unrolls to `(= (code-eval f 'j) 'yj)` across fibers."
+  (when (and (eq :necessary (fold-contract state)) (lit-p (second tab-call)))
+    (let* ((n (max 0 (ast-value (second tab-call))))
+           (f (third tab-call))
+           (ys (ast-value literal))
+           (cap (or (fold-max-fibers state) n)))
+      (if (/= n (length ys))
+          (lit :bool nil)
+          (fold-rewalk state whole
+                       (reduce #'bool-and
+                               (loop for j from 0 below (min n cap)
+                                     for y in ys
+                                     collect (term `(= (code-eval ,f ,j) ',y)))
+                               :from-end t :initial-value (lit :bool t))
+                       t)))))
+
+(defun fold-equal-evolve (state whole evolve-call literal)
+  "Under `:necessary`, `(= (evolve 'xs s0 f) 'ys)` unrolls along the observed trajectory `ys`."
+  (when (and (eq :necessary (fold-contract state)) (lit-p (second evolve-call)))
+    (let* ((xs (ast-value (second evolve-call)))
+           (s0 (third evolve-call))
+           (f (fourth evolve-call))
+           (ys (ast-value literal))
+           (s-type (ast-type s0))
+           (cap (or (fold-max-fibers state) (length xs))))
+      (if (/= (length xs) (length ys))
+          (lit :bool nil)
+          (fold-rewalk state whole
+                       (reduce #'bool-and
+                               (loop for j from 0 below (min (length xs) cap)
+                                     for x in xs
+                                     for y in ys
+                                     for prev = s0 then (lit s-type prev-y)
+                                     for prev-y = y
+                                     collect (term `(= (code-eval ,f ,prev ',x) ',y)))
+                               :from-end t :initial-value (lit :bool t))
+                       t)))))
 
 (defun fold-equal-tuple (state whole tuple literal)
   "`(= (tuple e0 ... ek) '(v0 ... vk))` is the conjunction of every `(= ei 'vi)`."
@@ -545,5 +700,6 @@ many elements while retaining all already-unfolded prefix conjuncts."
   (assert (and (integerp budget) (not (minusp budget))))
   (when (eq contract :necessary) (assert (eq :bool (ast-type expression))))
   (fold-walk (make-fold-state :remaining budget :ledger ledger :contract contract
-                              :max-fibers max-fibers)
+                              :max-fibers max-fibers
+                              :memo (when (eq contract :necessary) (make-hash-table :test #'equal)))
              expression))

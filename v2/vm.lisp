@@ -137,14 +137,17 @@ the work of its arguments, plus what its own traversal, copying or matching can 
   (let ((name (operator-name operator))
         (type (operator-operand-type operator)))
     (cond
-      ((or (eq name :code-eval) (defined-function-p name)) 1)
+      ((or (member name '(:code-eval :tabulate :evolve)) (defined-function-p name)) 1)
+      ((eq name :iota)
+       (+ 1 (integer-width (first values)) (max 0 (first values))))
       ((member name '(:+ :* :- :/ :mod :<)) (arithmetic-cost name type values))
       (t
        (let* ((weights (mapcar #'value-work values (second (operator-type operator))))
               (base (1+ (reduce #'+ weights))))
          (case name
-           ;; Nested substitutions and failed matches are paid for in advance.
-           ((:code-match :code-bind :code-subst) (+ base (* (first weights) (second weights))))
+           ;; Nested substitutions, anti-unification, and failed matches are paid for in advance.
+           ((:code-match :code-bind :code-subst :code-anti-unify)
+            (+ base (* (first weights) (second weights))))
            (:code-less (* 4 (+ base (type-work type))))
            ((:gather :at)
             ;; Each access compares an index with the length of the container.
@@ -169,9 +172,34 @@ the work of its arguments, plus what its own traversal, copying or matching can 
                    s next-s next-s (- s (* q next-s))))
         finally (return (mod s modulus))))
 
+(declaim (ftype function code-anti-unify-values))
+
 (defun execute-symbolic-primitive (name type values)
   (case name
     (:code-kind (ecase (ast-kind (first values)) (:var 0) (:lit 1) (:app 2) (:op 3)))
+    (:code-arity (let ((source (first values))) (if (app-p source) (length (rest source)) 0)))
+    (:code-var
+     (let* ((idx (first values))
+            (scope (code-inputs type))
+            (sort (code-sort type))
+            (spec (assoc idx scope)))
+       (assert (and (integerp idx) spec (equal (cdr spec) sort)))
+       (var idx sort)))
+    (:code-var-id
+     (let ((source (first values)))
+       (assert (var-p source))
+       (ast-id source)))
+    (:code-quote
+     (let ((val (first values))
+           (sort (code-sort type)))
+       (assert (value-p val sort))
+       (lit sort (copy-tree val))))
+    (:code-value
+     (let ((source (first values)))
+       (assert (and (lit-p source) (equal (ast-type source) (code-sort type))))
+       (copy-tree (ast-value source))))
+    (:code-anti-unify
+     (code-anti-unify-values (first values) (second values) (second type) (third type)))
     (:code-total (not (null (provably-total-p (first values)))))
     (:code-less (not (null (expression-less-p (first values) (second values) (code-inputs type)))))
     (:code-operator
@@ -231,6 +259,9 @@ the work of its arguments, plus what its own traversal, copying or matching can 
       (:length (length (first values)))
       (:concat (loop for part in (first values) append (copy-list part)))
       (:member (not (null (member (first values) (second values) :test #'equal))))
+      (:iota (loop for i from 0 below (max 0 (first values)) collect i))
+      (:where (loop for item in (second values) for i from 0
+                    when (equal item (first values)) collect i))
       (:lookup
        (let ((entry (assoc (first values) (second values) :test #'equal)))
          (if entry
@@ -271,7 +302,7 @@ the declaration and the value of every input."
              (if (lit-p expression)
                  (1+ (value-work (ast-value expression) (ast-type expression)))
                  1)))
-    ((:branch :restore-env) 1)
+    ((:branch :restore-env :tabulate-step :evolve-step) 1)
     (:apply (primitive-cost (second task)
                             (reverse (subseq (evaluation-stack state) 0 (third task)))))
     ;; A closure has already run this evaluation: what is left is to pay for it.
@@ -324,6 +355,33 @@ the declaration and the value of every input."
            (evaluation-tasks state)))
     (:restore-env
      (setf (evaluation-environment state) (second task)))
+    (:tabulate-step
+     (destructuring-bind (idx count code-expr orig-env acc) (rest task)
+       (let ((val (pop (evaluation-stack state)))
+             (next-idx (1+ idx)))
+         (if (< next-idx count)
+             (progn
+               (push (list :tabulate-step next-idx count code-expr orig-env (cons val acc))
+                     (evaluation-tasks state))
+               (setf (evaluation-environment state) (list (cons 0 next-idx)))
+               (push (list :eval code-expr) (evaluation-tasks state)))
+             (progn
+               (setf (evaluation-environment state) orig-env)
+               (push (nreverse (cons val acc)) (evaluation-stack state)))))))
+    (:evolve-step
+     (destructuring-bind (rest-items code-expr orig-env acc) (rest task)
+       (let ((next-state (pop (evaluation-stack state))))
+         (if rest-items
+             (progn
+               (push (list :evolve-step (cdr rest-items) code-expr orig-env (cons next-state acc))
+                     (evaluation-tasks state))
+               (setf (evaluation-environment state)
+                     (list (cons 0 (copy-tree next-state))
+                           (cons 1 (copy-tree (car rest-items)))))
+               (push (list :eval code-expr) (evaluation-tasks state)))
+             (progn
+               (setf (evaluation-environment state) orig-env)
+               (push (nreverse (cons next-state acc)) (evaluation-stack state)))))))
     (:apply
      (let* ((operator (second task))
             (name (operator-name operator))
@@ -339,6 +397,35 @@ the declaration and the value of every input."
             (let ((code-expr (first ordered-values)))
               (assert (value-p code-expr type))
               (call-body (code-inputs type) (rest ordered-values) code-expr)))
+           ((eq name :tabulate)
+            (let ((count (first ordered-values))
+                  (code-expr (second ordered-values)))
+              (assert (and (integerp count)
+                           (value-p code-expr (code-type '((0 . :int)) type))))
+              (if (<= count 0)
+                  (push nil (evaluation-stack state))
+                  (progn
+                    (push (list :tabulate-step 0 count code-expr (evaluation-environment state) nil)
+                          (evaluation-tasks state))
+                    (setf (evaluation-environment state) (list (cons 0 0)))
+                    (push (list :eval code-expr) (evaluation-tasks state))))))
+           ((eq name :evolve)
+            (let ((items (first ordered-values))
+                  (init-state (second ordered-values))
+                  (code-expr (third ordered-values))
+                  (elem-type (second type))
+                  (state-type (third type)))
+              (assert (value-p code-expr (code-type (list (cons 0 state-type) (cons 1 elem-type))
+                                                    state-type)))
+              (if (null items)
+                  (push nil (evaluation-stack state))
+                  (progn
+                    (push (list :evolve-step (cdr items) code-expr (evaluation-environment state) nil)
+                          (evaluation-tasks state))
+                    (setf (evaluation-environment state)
+                          (list (cons 0 (copy-tree init-state))
+                                (cons 1 (copy-tree (car items)))))
+                    (push (list :eval code-expr) (evaluation-tasks state))))))
            ((defined-function-p name)
             (let ((def (find-function-definition name)))
               (cond
@@ -513,7 +600,10 @@ the rules of `expression-type`."
                               (prog1 (funcall body values)
                                 (incf *closure-work*))))))))  ; the :restore-env
                    ((and (member name +operator-names+)
-                         (not (member name '(:code-kind :code-child :code-operator :code-apply
+                         (not (member name '(:tabulate :evolve
+                                             :code-kind :code-arity :code-var :code-var-id
+                                             :code-quote :code-value :code-anti-unify
+                                             :code-child :code-operator :code-apply
                                              :code-match :code-bind :code-subst :code-total
                                              :code-less))))
                     ;; The :apply of a primitive, priced and run by the VM's own functions.

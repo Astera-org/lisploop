@@ -40,9 +40,10 @@ the base definitions, polymorphically instantiates matching combinators via `ret
         (let* ((schema (frame-schema frame))
                (target (schema-target schema))
                (in-elems (remove-duplicates
-                          (loop for (nil . type) in (schema-inputs schema)
-                                when (seq-type-p type)
-                                  collect (second type))
+                          (append (when (defined-function-p :positions) (list :int))
+                                  (loop for (nil . type) in (schema-inputs schema)
+                                        when (seq-type-p type)
+                                          collect (second type)))
                           :test #'equal))
                (retyped-defs nil))
           (dolist (def base-defs (remove-duplicates (append base-defs (nreverse retyped-defs))
@@ -239,9 +240,203 @@ job, or from the active one when there is none."
                                                              :matched-descriptors matched-clauses)))
                                         proposals)))))))))))))))
     (append (nreverse proposals)
+            (container-cover-decompositions frame language base-lang defs functions self-name child-id c-bound slack solver ledger debug-p)
             (partial-library-decompositions frame base-lang defs child-id c-bound solver ledger)
             (learned-decoder-decompositions frame base-lang c-bound solver ledger
                                             :library (or knowledge *knowledge-library*)))))
+
+(defun infer-sequence-length-delta (pairs)
+  "If non-empty `(seq-in . seq-out)` PAIRS satisfy `|out| = max(0, |in| - d)` for a single
+constant offset `d in {0, 1, 2, 3}` with at least one non-empty output, return `d`; else NIL."
+  (when pairs
+    (loop for d in '(0 1 2 3)
+          when (and (some (lambda (p) (plusp (length (cdr p)))) pairs)
+                    (every (lambda (p)
+                             (and (listp (car p)) (listp (cdr p))
+                                  (= (length (cdr p)) (max 0 (- (length (car p)) d)))))
+                           pairs))
+            return d)))
+
+(defun container-cover-decompositions (frame language base-lang defs functions self-name child-id c-bound slack solver ledger debug-p)
+  "Stage 1 E1 Container & Index Cover Proposals:
+  1. `:tabulate` over `(length xs)` / `(- (length xs) d)` (or `:int` input `n`),
+  2. `(map (positions xs 0) W)` / guarded `(map (positions (tail^d xs) 0) W)` / `(filter (positions xs 0) W)`,
+  3. `(gather xs Z)` index-lens pullback when output elements come from `xs`."
+  (let* ((schema (frame-schema frame))
+         (inputs (schema-inputs schema))
+         (target (schema-target schema))
+         (proposals nil))
+    (when (seq-type-p target)
+      (let* ((out-elem (second target))
+             (code-t (code-type '((0 . :int)) out-elem))
+             (child-var (var child-id code-t))
+             (has-tabulate-p (language-operator-p language :tabulate))
+             (has-gather-p (language-operator-p language :gather))
+             (pos-def (and (or (null functions) (member :positions functions :test #'eq))
+                           (not (eq self-name :positions))
+                           (let ((e (find-knowledge-entry :positions)))
+                             (or (null e) (knowledge-entry-active-p e)))
+                           (find-function-definition :positions)))
+             (map-def (find-if (lambda (d)
+                                 (and d
+                                      (member (function-definition-name d) '(:map) :test #'eq)
+                                      (equal (function-definition-return-type d) target)))
+                               defs))
+             (flt-def (and (equal target '(:seq :int))
+                           (find :filter defs :key #'function-definition-name :test #'eq))))
+        ;; A. Sequence-indexed covers over each sequence input `xs`
+        (dolist (p-spec inputs)
+          (when (seq-type-p (cdr p-spec))
+            (let* ((p-id (car p-spec))
+                   (in-seq-t (cdr p-spec))
+                   (in-elem (second in-seq-t))
+                   (xs (var p-id in-seq-t))
+                   (pairs (frame-concrete-pairs frame p-id))
+                   (delta (infer-sequence-length-delta pairs))
+                   (child-ops (let ((ops (copy-list (language-operators base-lang))))
+                                (dolist (extra (list (op :at in-seq-t) (op :length in-elem)
+                                                     (op :+ :int) (op :- :int)))
+                                  (when (or (language-operator-p language (operator-name extra))
+                                            (member (operator-name extra) '(:at :length :+)))
+                                    (pushnew extra ops :test #'equal)))
+                                ops))
+                   (idx-child-lang (derive-language base-lang :operators child-ops)))
+              ;; 1. `:tabulate` cover `(tabulate len-expr W)`
+              (when (and has-tabulate-p delta)
+                (let* ((len-expr (if (zerop delta)
+                                     (term `(length ,xs))
+                                     (term `(- (length ,xs) ,delta))))
+                       (decoder (app (op :tabulate out-elem) len-expr child-var))
+                       (bindings (passthrough-bindings code-t inputs)))
+                  (push (lifted-decomposition
+                         (list :tabulate-cover p-id delta) decoder child-id code-t
+                         bindings idx-child-lang c-bound solver
+                         :slack (+ slack 8)
+                         :policy-score -14
+                         :provenance (when debug-p (list :origin :container-cover :decoder decoder)))
+                        proposals)))
+              ;; 2. `(map (positions ...) W)` cover when `:map` and `:positions` are in the active library
+              (when (and map-def pos-def delta)
+                (let* ((pos-fn (if (equal in-elem :int)
+                                   :positions
+                                   (let ((rt (ignore-errors
+                                              (retype-function-definition :positions in-elem
+                                                                          :return-element-type :int
+                                                                          :auto-p t))))
+                                     (and rt (function-definition-name rt)))))
+                       (map-fn (if (and (equal (cdr (first (function-definition-inputs map-def))) '(:seq :int))
+                                        (equal (function-definition-return-type map-def) target))
+                                   (function-definition-name map-def)
+                                   (let ((rt (ignore-errors
+                                              (retype-function-definition :map :int
+                                                                          :return-element-type out-elem
+                                                                          :auto-p t))))
+                                     (and rt (function-definition-name rt))))))
+                  (when (and pos-fn map-fn)
+                    (flet ((tail-n (expr count)
+                             (let ((s expr))
+                               (dotimes (i count s)
+                                 (declare (ignore i))
+                                 (setf s (app (op :tail in-elem) s))))))
+                      (let* ((trimmed (tail-n xs delta))
+                             (core (app (op map-fn)
+                                        (app (op pos-fn) trimmed (lit :int 0))
+                                        child-var))
+                             (decoder
+                               (let ((acc core))
+                                 (loop for d downfrom (1- delta) to 0
+                                       do (setf acc (term `(if (= ,(tail-n xs d) ,(lit in-seq-t nil))
+                                                               ,(lit target nil)
+                                                               ,acc))))
+                                 acc))
+                             (bindings (passthrough-bindings code-t inputs)))
+                        (push (lifted-decomposition
+                               (list :index-map p-id delta) decoder child-id code-t
+                               bindings idx-child-lang c-bound solver
+                               :slack (+ slack 8)
+                               :policy-score (if (zerop delta) 2 -12)
+                               :provenance (when debug-p (list :origin :container-cover :decoder decoder)))
+                              proposals))))))
+              ;; 3. `(filter (positions xs 0) W)` for index-subset selection (e.g. `:solve-at-1`)
+              (when (and flt-def pos-def (equal target '(:seq :int))
+                         pairs
+                         (every (lambda (p)
+                                  (and (listp (car p)) (listp (cdr p))
+                                       (<= (length (cdr p)) (length (car p)))
+                                       (every (lambda (idx)
+                                                (and (integerp idx) (<= 0 idx) (< idx (length (car p)))))
+                                              (cdr p))))
+                                pairs))
+                (let* ((pred-t (code-type '((0 . :int)) :bool))
+                       (pred-var (var child-id pred-t))
+                       (pos-fn (if (equal in-elem :int)
+                                   :positions
+                                   (let ((rt (ignore-errors
+                                              (retype-function-definition :positions in-elem
+                                                                          :return-element-type :int
+                                                                          :auto-p t))))
+                                     (and rt (function-definition-name rt))))))
+                  (when pos-fn
+                    (let ((decoder (app (op :filter) (app (op pos-fn) xs (lit :int 0)) pred-var))
+                          (bindings (passthrough-bindings pred-t inputs)))
+                      (push (lifted-decomposition
+                             (list :index-filter p-id) decoder child-id pred-t
+                             bindings idx-child-lang c-bound solver
+                             :slack (+ slack 8)
+                             :policy-score -13
+                             :provenance (when debug-p (list :origin :container-cover :decoder decoder)))
+                            proposals)))))
+              ;; 4. `(gather xs Z)` index-lens pullback when output elements come from `xs`
+              (when (and has-gather-p (equal in-elem out-elem) pairs
+                         (some (lambda (p) (plusp (length (cdr p)))) pairs)
+                         (every (lambda (p)
+                                  (and (listp (car p)) (listp (cdr p))
+                                       (every (lambda (y) (member y (car p) :test #'equal)) (cdr p))))
+                                pairs))
+                (let* ((idx-seq-t '(:seq :int))
+                       (z-var (var child-id idx-seq-t))
+                       (decoder (app (op :gather out-elem) xs z-var))
+                       (g-ops (let ((ops (copy-list (language-operators base-lang))))
+                                (pushnew (op :tabulate :int) ops :test #'equal)
+                                (pushnew (op :iota :int) ops :test #'equal)
+                                (pushnew (op :length in-elem) ops :test #'equal)
+                                ops))
+                       (g-lang (derive-language base-lang :inputs inputs :operators g-ops)))
+                  (charge ledger :orientation 1)
+                  (push (make-decomposition
+                         :name (list :gather-cover p-id)
+                         :decoder decoder
+                         :child-id child-id
+                         :child-type idx-seq-t
+                         :bindings (identity-bindings inputs)
+                         :language g-lang
+                         :bound (+ c-bound 16)
+                         :solver solver
+                         :policy-score -11
+                         :provenance (when debug-p (list :origin :gather-cover :decoder decoder)))
+                        proposals))))))
+        ;; B. Integer-count `:tabulate` cover `(tabulate n W)` when no sequence input exists
+        (when (and has-tabulate-p (notany #'seq-type-p (mapcar #'cdr inputs)))
+          (dolist (p-spec inputs)
+            (when (eq :int (cdr p-spec))
+              (let* ((p-id (car p-spec))
+                     (n-var (var p-id :int))
+                     (pairs (frame-concrete-pairs frame p-id)))
+                (when (and pairs
+                           (some (lambda (p) (plusp (length (cdr p)))) pairs)
+                           (every (lambda (p)
+                                    (and (integerp (car p)) (listp (cdr p))
+                                         (= (length (cdr p)) (max 0 (car p)))))
+                                  pairs))
+                  (let ((decoder (app (op :tabulate out-elem) n-var child-var))
+                        (bindings (passthrough-bindings code-t inputs)))
+                    (push (lifted-decomposition
+                           (list :tabulate-int p-id) decoder child-id code-t
+                           bindings base-lang c-bound solver
+                           :slack slack
+                           :policy-score -14)
+                          proposals)))))))))
+    (nreverse proposals)))
 
 (defun expansion-bound (node)
   "The description bound NODE was searched under: its own, or else its proposal's."

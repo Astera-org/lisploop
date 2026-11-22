@@ -56,26 +56,41 @@ CONSTANTS supplies additional typed literal ASTs. The default operators stay +/*
                                   (second (operator-type operator)))))
             (language-operators language))))
 
-(defstruct (enumerator (:constructor make-enumerator (language)))
+(defun effective-application-overhead (operator)
+  "Effective horizon step cost `2 + min(8, operator-bit-size)` preventing large `:code` / container
+type headers from starving depth-1 combinator calls while keeping exact `codec.lisp` MDL scoring."
+  (+ 2 (min 8 (operator-bit-size (operator-name operator) (operator-operand-type operator)))))
+
+(defstruct (enumerator (:constructor %make-enumerator))
   language (size 1) (phase :variables) (cursor 0) (literal-pass 0)
   literal-next literal-end (operator-index 0) sizes indices
+  effective-horizon-p prune-behaviors-p
+  behavior-table column-cache
   (buckets (make-hash-table :test #'equal)))
+
+(defun make-enumerator (language &key effective-horizon-p prune-behaviors-p
+                                      behavior-table column-cache)
+  (%make-enumerator :language language
+                    :effective-horizon-p effective-horizon-p
+                    :prune-behaviors-p prune-behaviors-p
+                    :behavior-table (or behavior-table
+                                        (when prune-behaviors-p (make-hash-table :test #'equal)))
+                    :column-cache (or column-cache (make-hash-table :test #'equal))))
 
 (defun syntax-bucket (enumerator type size)
   (gethash (list type size) (enumerator-buckets enumerator)))
 
 (defun index-expression (enumerator expression)
   "File EXPRESSION, which ENUMERATOR has just built, under its type and size, and return
-its type. The enumerator builds an application from buckets of its operator's argument
-types, so the type and size are read off the cached metadata, not checked by another walk;
-a candidate that is evaluated is type-checked then, once."
+its type."
   (let* ((language (enumerator-language enumerator))
          (inputs (language-inputs language))
          (type (ast-type expression))
          (key (list type (enumerator-size enumerator)))
          (buckets (enumerator-buckets enumerator)))
-    (assert (= (enumerator-size enumerator)
-               (scoped-bits expression (reference-width inputs expression))))
+    (unless (enumerator-effective-horizon-p enumerator)
+      (assert (= (enumerator-size enumerator)
+                 (scoped-bits expression (reference-width inputs expression)))))
     (unless (gethash key buckets)
       (setf (gethash key buckets) (make-array 0 :adjustable t :fill-pointer 0)))
     (vector-push-extend expression (gethash key buckets))
@@ -184,15 +199,18 @@ a candidate that is evaluated is type-checked then, once."
          (let ((operator (nth (enumerator-operator-index enumerator) (language-operators language))))
            (if (null operator)
                (setf (enumerator-phase enumerator) :finish)
-               (let ((types (second (operator-type operator))))
+               (let ((types (second (operator-type operator)))
+                     (op-overhead (if (enumerator-effective-horizon-p enumerator)
+                                      (effective-application-overhead operator)
+                                      (application-overhead operator))))
                  (when (null types)
                    (incf (enumerator-operator-index enumerator))
                    (return-from enumeration-step
-                     (if (= size (application-overhead operator)) (values (app operator) :candidate)
+                     (if (= size op-overhead) (values (app operator) :candidate)
                          (values nil :progress))))
                  (unless (enumerator-sizes enumerator)
                    (setf (enumerator-sizes enumerator)
-                         (first-composition (- size (application-overhead operator)) (length types))
+                         (first-composition (- size op-overhead) (length types))
                          (enumerator-indices enumerator) (make-list (length types) :initial-element 0)))
                  (if (null (enumerator-sizes enumerator))
                      (incf (enumerator-operator-index enumerator))
@@ -233,6 +251,7 @@ so that they become visible when the result they describe does.")
 and evaluate each one on the rows of a frame. DEBT is staged host work not yet charged."
   call-id frame language enumerator (mode :enumeration) queue (ledger (make-ledger))
   (phase :enumerate) (debt 0) expression rows evaluation
+  columnar-p staged-column keep-bucket-members-p
   (completed-bound 0) (requested-bound 0) (messages nil))
 
 (defstruct (search-job (:include row-job) (:constructor %make-search-job))
@@ -260,11 +279,109 @@ inputs, in order of description size with ties left as given."
   (pop (row-job-rows job))
   (setf (row-job-phase job) :row))
 
+(defun fast-primitive-column-op-p (op-name)
+  (and (member op-name +operator-names+)
+       (not (defined-function-p op-name))
+       (not (member op-name '(:if :code-eval :tabulate :evolve)))))
+
+(defun evaluate-scalar-cell (expression inputs known row-budget)
+  "Fallback single-row evaluation returning `(list status value error work)`."
+  (let* ((lim (or row-budget 100000))
+         (run (evaluate expression inputs known :budget lim))
+         (st (evaluation-status run)))
+    (if (eq :unknown st)
+        (list :cutoff nil "Row budget exceeded" (max 1 (evaluation-work run)))
+        (list st (evaluation-value run) (evaluation-error run) (max 1 (evaluation-work run))))))
+
+(defun compute-expression-column (expression type frame inputs column-cache row-budget)
+  "Tier 1.5 bottom-up single-op column evaluator over `COLUMN-CACHE` (`expr -> simple-vector`).
+Each cell is `(status value error step-work)`. Evaluates only the root operator over cached child
+columns in $O(|B|)$, preserving strict CBV error/unresolved propagation and lazy `:if` branching."
+  (or (and column-cache (gethash expression column-cache))
+      (let* ((rows (frame-rows frame))
+             (n (length rows))
+             (col (make-array n))
+             (meta (ensure-ast-meta expression)))
+        (ecase (ast-meta-kind meta)
+          (:lit
+           (let* ((val (ast-meta-value meta))
+                  (cost (1+ (value-work val type))))
+             (dotimes (r n)
+               (setf (aref col r) (list :value val nil cost)))))
+          (:var
+           (let ((pos (position (ast-meta-id meta) inputs :key #'car :test #'eql)))
+             (loop for row in rows for r from 0
+                   for val = (and pos (nth pos (row-known row)))
+                   do (setf (aref col r)
+                            (if (or (null pos) (eq val :unresolved))
+                                (list :unresolved nil "Unresolved variable" 1)
+                                (list :value val nil 1))))))
+          (:app
+           (let ((op (first expression))
+                 (op-name (ast-meta-id meta))
+                 (args (rest expression)))
+             (cond
+               ((eq op-name :if)
+                (let ((cond-col (compute-expression-column (first args) :bool frame inputs column-cache row-budget))
+                      (yes-col (and column-cache (gethash (second args) column-cache)))
+                      (no-col (and column-cache (gethash (third args) column-cache))))
+                  (loop for row in rows for r from 0
+                        for ccell = (aref cond-col r)
+                        do (setf (aref col r)
+                                 (if (not (eq :value (first ccell)))
+                                     (list (first ccell) nil (third ccell) (1+ (fourth ccell)))
+                                     (let ((bcell (if (second ccell)
+                                                      (if yes-col (aref yes-col r)
+                                                          (evaluate-scalar-cell (second args) inputs (row-known row) row-budget))
+                                                      (if no-col (aref no-col r)
+                                                          (evaluate-scalar-cell (third args) inputs (row-known row) row-budget)))))
+                                       (list (first bcell) (second bcell) (third bcell)
+                                             (+ 2 (fourth bcell)))))))))
+               ((and (fast-primitive-column-op-p op-name)
+                     column-cache
+                     (every (lambda (a) (gethash a column-cache)) args))
+                (let ((child-cols (mapcar (lambda (a) (gethash a column-cache)) args)))
+                  (dotimes (r n)
+                    (let ((bad nil)
+                          (vals nil))
+                      (dolist (cc child-cols)
+                        (let ((cell (aref cc r)))
+                          (unless (eq :value (first cell))
+                            (setf bad cell)
+                            (return))
+                          (push (second cell) vals)))
+                      (if bad
+                          (setf (aref col r) (list (first bad) nil (third bad) 1))
+                          (let ((ordered (nreverse vals)))
+                            (setf (aref col r)
+                                  (handler-case
+                                      (let ((cost (1+ (primitive-cost op ordered)))
+                                            (res (execute-primitive op ordered)))
+                                        (list :value res nil cost))
+                                    (unresolved-evaluation (c)
+                                      (list :unresolved nil (princ-to-string c) 2))
+                                    (error (c)
+                                      (list :error nil (princ-to-string c) 2))))))))))
+               (t
+                (loop for row in rows for r from 0
+                      do (setf (aref col r)
+                               (evaluate-scalar-cell expression inputs (row-known row) row-budget))))))))
+        (when column-cache
+          (setf (gethash expression column-cache) col))
+        col)))
+
+(defun column-pure-behavior-key (type col)
+  "Return `(cons type pure-signature)` when COL has zero `:cutoff` timeouts; else NIL."
+  (when (loop for cell across col never (eq :cutoff (first cell)))
+    (cons type
+          (loop for cell across col
+                collect (ecase (first cell)
+                          (:value (cons :v (second cell)))
+                          (:error :err)
+                          (:unresolved :unres))))))
+
 (defun row-job-step (job budget admit consume finish)
-  "Advance one of the phases every row job shares, using at most BUDGET tariff units: draw a
-candidate, pay for its construction, then evaluate it on each frame row in turn. ADMIT takes the
-job and the constructed candidate's type and returns the phase to enter. CONSUME takes the job and
-a row evaluation that has just advanced. FINISH takes the job once no rows remain."
+  "Advance one of the phases every row job shares, using at most BUDGET tariff units."
   (let ((ledger (row-job-ledger job))
         (enumerator (row-job-enumerator job))
         (inputs (language-inputs (row-job-language job))))
@@ -285,12 +402,39 @@ a row evaluation that has just advanced. FINISH takes the job once no rows remai
       (:construct
        (pay-debt (row-job-debt job) budget ledger :construction)
        (when (zerop (row-job-debt job))
-         (let ((expression (row-job-expression job)))
-           (setf (row-job-rows job) (frame-rows (row-job-frame job))
-                 (row-job-phase job)
-                 (funcall admit job (if enumerator
-                                        (index-expression enumerator expression)
-                                        (expression-type expression inputs)))))))
+         (let* ((expression (row-job-expression job))
+                (type (if enumerator (ast-type expression) (expression-type expression inputs)))
+                (use-col-p (and enumerator
+                                (or (row-job-columnar-p job)
+                                    (enumerator-prune-behaviors-p enumerator))))
+                (row-limit (cond ((search-job-p job) (search-job-row-budget job))
+                                 ((observation-job-p job) (observation-job-row-budget job))))
+                (col (when use-col-p
+                       (compute-expression-column expression type (row-job-frame job) inputs
+                                                  (enumerator-column-cache enumerator) row-limit)))
+                (btable (and enumerator (enumerator-prune-behaviors-p enumerator)
+                             (enumerator-behavior-table enumerator)))
+                (bkey (and btable col (column-pure-behavior-key type col)))
+                (dup-p (and bkey (nth-value 1 (gethash bkey btable)))))
+           (when (and bkey (not dup-p))
+             (setf (gethash bkey btable) expression))
+           (when (and enumerator (not dup-p))
+             (index-expression enumerator expression))
+           (cond
+             ((and dup-p (not (row-job-keep-bucket-members-p job)))
+              (charge ledger :equality-cache 1)
+              (setf (row-job-staged-column job) nil
+                    (row-job-phase job) :enumerate))
+             (t
+              (setf (row-job-rows job) (frame-rows (row-job-frame job))
+                    (row-job-staged-column job) (and (row-job-columnar-p job) col))
+              (let ((next-phase (funcall admit job type)))
+                (if (and (row-job-columnar-p job) col
+                         (member next-phase '(:row :rewrite-start)))
+                    (setf (row-job-debt job)
+                          (max 1 (loop for cell across col sum (fourth cell)))
+                          (row-job-phase job) :column-settle)
+                    (setf (row-job-phase job) next-phase))))))))
       (:row
        (charge ledger :scheduling)
        (if (row-job-rows job)
@@ -355,6 +499,8 @@ absolute cumulative WORK-LIMIT. Record and return a message whose evidence ends 
 
 (defun start-search (frame language &key (call-id (incf *next-call-id*)) (run-weight 0)
                                          (row-budget nil row-budget-p) laws diagnostics
+                                         effective-horizon-p prune-behaviors-p columnar-p
+                                         behavior-table column-cache
                                          (expressions nil supplied-p))
   "Use the canonical enumerator, or check a declared list of complete proposals.
 Listed proposals use the same construction, VM, checker and objective."
@@ -368,7 +514,13 @@ Listed proposals use the same construction, VM, checker and objective."
          (queue (proposal-queue expressions language))
          (job (%make-search-job :call-id call-id :frame frame :language language
                                 :mode (if supplied-p :replay :enumeration)
-                                :enumerator (unless supplied-p (make-enumerator language))
+                                :enumerator (unless supplied-p
+                                              (make-enumerator language
+                                                               :effective-horizon-p effective-horizon-p
+                                                               :prune-behaviors-p prune-behaviors-p
+                                                               :behavior-table behavior-table
+                                                               :column-cache column-cache))
+                                :columnar-p columnar-p
                                 :queue queue :proposals (copy-list queue)
                                 :run-weight run-weight :row-budget row-budget
                                 :library library :diagnostics diagnostics
@@ -503,6 +655,65 @@ normal form was already refuted by a row."
              (progn (incf (search-job-reused-rejections job)) (reject-candidate job))
              (setf (search-job-phase job) :row)))))))
 
+(defun settle-column-search (job)
+  "Check all rows of JOB against `(row-job-staged-column job)` once its column debt is paid."
+  (let* ((col (shiftf (row-job-staged-column job) nil))
+         (frame (search-job-frame job))
+         (rows (frame-rows frame))
+         (target (row-job-target job))
+         (req-inputs (list (cons 0 target)))
+         (ledger (search-job-ledger job))
+         (row-limit (search-job-row-budget job)))
+    (loop for row in rows for r from 0
+          for cell = (aref col r)
+          for st = (first cell)
+          do (setf (search-job-rows job) (nthcdr r rows))
+             (ecase st
+               ((:error :cutoff)
+                (setf (search-job-predicted job) nil)
+                (reject-candidate job)
+                (return-from settle-column-search))
+               (:unresolved
+                (incf (search-job-run-work job) (fourth cell)))
+               (:value
+                (let ((val (second cell))
+                      (req (row-requirement row)))
+                  (incf (search-job-run-work job) (fourth cell))
+                  (setf (search-job-predicted job) val)
+                  (cond
+                    ((unconstrained-requirement-p req)
+                     (charge ledger :checking 1))
+                    (t
+                     (multiple-value-bind (want sing-p) (row-singleton-value row)
+                       (if sing-p
+                           (progn
+                             (charge ledger :checking 2)
+                             (unless (equal val want)
+                               (reject-candidate job t)
+                               (return-from settle-column-search))
+                             (incf (search-job-resolved-rows job)))
+                           (let ((cstate (evaluate req req-inputs (list val)
+                                                   :budget (or row-limit 100000) :ledger ledger)))
+                             (ecase (evaluation-status cstate)
+                               ((:error :unknown)
+                                (reject-candidate job)
+                                (return-from settle-column-search))
+                               (:unresolved nil)
+                               (:value
+                                (unless (eq t (evaluation-value cstate))
+                                  (reject-candidate job t)
+                                  (return-from settle-column-search))
+                                (when (constrained-row-p row)
+                                  (incf (search-job-resolved-rows job))))))))))
+                  (when (search-job-hard-edges job)
+                    (push (cons (row-key row) val) (search-job-values job))
+                    (when (violated-edge job)
+                      (incf (search-job-rejected job))
+                      (setf (search-job-phase job) :enumerate)
+                      (return-from settle-column-search)))))))
+    (setf (search-job-rows job) nil)
+    (finish-search-candidate job)))
+
 (defun search-step (job &optional (budget 1))
   "Advance one search phase using at most BUDGET tariff units."
   (assert (and (integerp budget) (plusp budget)))
@@ -514,6 +725,10 @@ normal form was already refuted by a row."
        (pay-debt (search-job-debt job) budget ledger :proposal-setup)
        (when (zerop (search-job-debt job)) (enter-rule-setup job)))
       ((:rule-setup :rewrite-start :rewrite :reuse) (rewrite-filter-step job budget))
+      (:column-settle
+       (pay-debt (search-job-debt job) budget ledger :evaluation)
+       (when (zerop (search-job-debt job))
+         (settle-column-search job)))
       (:edges
        (pay-debt (search-job-debt job) budget ledger :checking)
        (when (zerop (search-job-debt job)) (settle-row-edges job)))
@@ -709,6 +924,8 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
   (bucket-index (make-hash-table :test #'equal)))
 
 (defun start-observation-search (scope &key (expressions nil supplied-p) retain-outcomes
+                                            effective-horizon-p prune-behaviors-p columnar-p
+                                            keep-bucket-members-p behavior-table column-cache
                                             (row-budget nil row-budget-p))
   (setf row-budget (if row-budget-p row-budget (unless supplied-p *default-row-budget*)))
   (assert (or (null row-budget) (and (integerp row-budget) (plusp row-budget))))
@@ -720,9 +937,16 @@ Returns (VALUES entries total-bits pair-bits anchor-bits)."
     (%make-observation-job
      :call-id (observation-scope-id scope) :scope scope :frame frame :language language
      :retain-outcomes-p (not (null retain-outcomes))
+     :columnar-p columnar-p
+     :keep-bucket-members-p keep-bucket-members-p
      :row-budget row-budget
      :mode (if supplied-p :replay :enumeration)
-     :enumerator (unless supplied-p (make-enumerator language))
+     :enumerator (unless supplied-p
+                   (make-enumerator language
+                                    :effective-horizon-p effective-horizon-p
+                                    :prune-behaviors-p prune-behaviors-p
+                                    :behavior-table behavior-table
+                                    :column-cache column-cache))
      :queue queue
      :completed-bound (if supplied-p 0 (language-header-size language (schema-target (frame-schema frame))))
      :phase :setup
@@ -867,6 +1091,32 @@ or else collect its value and stop observing the candidate at its first failure.
       (setf (observed-expression-status record) :complete))
     (prepare-observation-index job)))
 
+(defun settle-column-observation (job)
+  "Populate `observation-job-current` directly from `(row-job-staged-column job)`."
+  (let* ((col (shiftf (row-job-staged-column job) nil))
+         (record (observation-job-current job))
+         (rows (frame-rows (observation-job-frame job)))
+         (retain-p (observation-job-retain-outcomes-p job)))
+    (loop for row in rows for r from 0
+          for cell = (aref col r)
+          for st = (first cell)
+          do (incf (observed-expression-run-work record) (fourth cell))
+             (when retain-p
+               (push (make-observation-outcome :status st :value (second cell)
+                                               :error (third cell) :work (fourth cell))
+                     (observation-job-outcomes job)))
+             (cond
+               ((eq st :value)
+                (push (second cell) (observation-job-outputs job)))
+               (t
+                (unless (member (observed-expression-status record) '(:error :unresolved :cutoff))
+                  (setf (observed-expression-status record) st
+                        (observed-expression-error record) (third cell)
+                        (observed-expression-failed-key record) (row-key row)))
+                (unless retain-p
+                  (return)))))
+    (finish-observation-rows job)))
+
 (defun observation-step (job budget)
   (assert (and (integerp budget) (plusp budget)))
   (let ((ledger (observation-job-ledger job))
@@ -875,6 +1125,10 @@ or else collect its value and stop observing the candidate at its first failure.
       (:setup
        (pay-debt (observation-job-debt job) budget ledger :setup)
        (when (zerop (observation-job-debt job)) (setf (observation-job-phase job) :enumerate)))
+      (:column-settle
+       (pay-debt (observation-job-debt job) budget ledger :evaluation)
+       (when (zerop (observation-job-debt job))
+         (settle-column-observation job)))
       (:outcome
        (pay-debt (observation-job-debt job) budget ledger :outcomes)
        (when (zerop (observation-job-debt job))

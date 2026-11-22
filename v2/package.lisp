@@ -13,6 +13,7 @@
    #:var-p #:lit-p #:app-p #:hole-p #:operator-p
    #:operator-name #:operator-type #:operator-operand-type #:at-container-type #:application-overhead
    #:expression-type #:free-vars #:provably-total-p #:provably-total-given-p #:instantiate #:expression-less-p
+   #:*certified-length-preserving-ops* #:*mod-range-certified-p*
    #:function-definition #:function-definition-p #:function-definition-name
    #:function-definition-inputs #:function-definition-return-type #:function-definition-code-type
    #:function-definition-body #:function-definition-oracle-table
@@ -60,6 +61,12 @@
 
    ;; 5. evidence.lisp — Provenance tracking & dependency currency
    #:attest-knowledge-entry #:knowledge-evidence-current-p #:knowledge-evidence-tested-p
+
+   ;; 12b / Stage 1 E2-E3 exports
+   #:effective-application-overhead #:mini-egraph #:make-mini-egraph
+   #:egraph-add-expr #:egraph-merge #:egraph-rebuild #:egraph-equal-p
+   #:ac-canonicalize-expr #:minimize-laws-with-egraph
+   #:certify-law-by-pit #:certify-law-by-induction #:totalize-forward-replay
 
    ;; 6. persistence.lisp — Homoiconic S-expression library serialization & storage accounting
    #:knowledge-entry->sexp #:sexp->knowledge-entry

@@ -61,13 +61,11 @@ makes now. SNAPSHOT is that statement's snapshot, for a caller that has already 
 
 (defun knowledge-evidence-current-p (entry obligation &optional snapshot)
   "A status label alone never authorizes semantic elimination: only checked evidence of
-OBLIGATION, or an explicitly trusted axiom, for ENTRY's present statement does."
-  (knowledge-evidence-p entry obligation '(:exhaustive :derived :trusted-axiom) snapshot))
+OBLIGATION (`:exhaustive`, `:pit`, `:ind1`, `:derived`), or an explicitly trusted axiom,
+for ENTRY's present statement does."
+  (knowledge-evidence-p entry obligation '(:exhaustive :pit :ind1 :derived :trusted-axiom) snapshot))
 
 (defun knowledge-evidence-tested-p (entry obligation &optional snapshot)
   "True when ENTRY carries evidence of OBLIGATION, of any grade, for the statement it makes
-now: checked evidence (`knowledge-evidence-current-p`), or a :sampled certificate, the record
-that the obligation was tested on samples and none refuted it. Sampled evidence licenses a
-conjecture that is replayed or verified where it is used. It never authorises eliminating an
-alternative: for that, ask `knowledge-evidence-current-p`."
-  (knowledge-evidence-p entry obligation '(:exhaustive :derived :trusted-axiom :sampled) snapshot))
+now: checked evidence (`knowledge-evidence-current-p`), or a :sampled certificate."
+  (knowledge-evidence-p entry obligation '(:exhaustive :pit :ind1 :derived :trusted-axiom :sampled) snapshot))

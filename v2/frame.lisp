@@ -123,43 +123,95 @@ return (VALUES tuple-type idx allowed-values)."
         (loop for item in (first lists)
               append (mapcar (lambda (tail) (cons item tail)) rest-prod)))))
 
+(defun extract-seq-slot-constraint (conjunct)
+  "If CONJUNCT is `(= (at x0 'idx) 'v)` or `(member (at x0 'idx) '(v1 ...))` on sequence var 0,
+return `(VALUES seq-type idx allowed-values)`."
+  (flet ((seq-var0-slot (term)
+           (when (app-of-p term :at)
+             (let ((base (second term))
+                   (idx (and (lit-p (third term)) (ast-value (third term)))))
+               (when (and (var-p base) (zerop (ast-id base))
+                          (seq-type-p (ast-type base))
+                          (integerp idx) (<= 0 idx))
+                 (values (ast-type base) idx))))))
+    (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct)
+      (declare (ignore term-type))
+      (if term
+          (multiple-value-bind (stype idx) (seq-var0-slot term)
+            (when stype (values stype idx (list (ast-value lit-node)))))
+          (when (and (app-p conjunct) (eq :member (operator-name (first conjunct)))
+                     (lit-p (third conjunct)))
+            (multiple-value-bind (stype idx) (seq-var0-slot (second conjunct))
+              (when stype (values stype idx (copy-tree (ast-value (third conjunct)))))))))))
+
+(defun extract-seq-length-constraint (conjunct)
+  "If CONJUNCT is `(= (length x0) 'm)` on sequence var 0, return `(VALUES seq-type m)`."
+  (multiple-value-bind (term term-type lit-node) (match-literal-equality conjunct)
+    (declare (ignore term-type))
+    (when (and term (app-of-p term :length)
+               (var-p (second term)) (zerop (ast-id (second term)))
+               (seq-type-p (ast-type (second term)))
+               (integerp (ast-value lit-node)) (<= 0 (ast-value lit-node)))
+      (values (ast-type (second term)) (ast-value lit-node)))))
+
 (defun extract-allowed-values (expression)
   "Extract explicit finite values from `(= x0 'v)`, `(member x0 '(v1 ...))`, `'nil`,
-or a complete conjunction of coordinate constraints on `(at x0 'i)`; otherwise return :UNKNOWN."
+or a complete conjunction of coordinate constraints on `(at x0 'i)` (for either `:tuple`
+or fixed-length `:seq`); otherwise return :UNKNOWN."
   (multiple-value-bind (term term-type lit-node) (match-literal-equality expression)
     (declare (ignore term-type))
-    (cond
-      ((and (lit-p expression) (eq :bool (ast-type expression)) (null (ast-value expression)))
-       nil)
-      ((and term (var-p term) (zerop (ast-id term)))
-       (list (ast-value lit-node)))
-      ((and (app-p expression) (eq :member (operator-name (first expression))))
-       (let ((lhs (second expression))
-             (rhs (third expression)))
-         (if (and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
-             (copy-tree (ast-value rhs))
-             :unknown)))
-      ((and (app-p expression) (eq :if (operator-name (first expression))))
-       (let ((conjuncts (extract-conjuncts expression))
-             (tuple-type nil)
-             (slots nil))
-         (dolist (c conjuncts)
-           (multiple-value-bind (ttype idx vals) (extract-slot-constraint c)
-             (unless ttype
-               (return-from extract-allowed-values :unknown))
-             (unless tuple-type
-               (setf tuple-type ttype
-                     slots (make-array (length (rest ttype)) :initial-element :unbound)))
-             (unless (equal tuple-type ttype)
-               (return-from extract-allowed-values :unknown))
-             (setf (aref slots idx)
-                   (if (eq :unbound (aref slots idx))
-                       vals
-                       (intersection (aref slots idx) vals :test #'equal)))))
-         (if (and slots (loop for s across slots never (eq s :unbound)))
-             (cartesian-product-lists (coerce slots 'list))
-             :unknown)))
-      (t :unknown))))
+    (multiple-value-bind (len-stype zero-len) (extract-seq-length-constraint expression)
+      (cond
+        ((and (lit-p expression) (eq :bool (ast-type expression)) (null (ast-value expression)))
+         nil)
+        ((and len-stype (zerop zero-len))
+         (list nil))
+        ((and term (var-p term) (zerop (ast-id term)))
+         (list (ast-value lit-node)))
+        ((and (app-p expression) (eq :member (operator-name (first expression))))
+         (let ((lhs (second expression))
+               (rhs (third expression)))
+           (if (and (var-p lhs) (zerop (ast-id lhs)) (lit-p rhs))
+               (copy-tree (ast-value rhs))
+               :unknown)))
+        ((and (app-p expression) (eq :if (operator-name (first expression))))
+         (let ((conjuncts (extract-conjuncts expression)))
+           (multiple-value-bind (stype seq-len) (extract-seq-length-constraint (first conjuncts))
+             (if stype
+                 (if (zerop seq-len)
+                     (if (null (rest conjuncts)) (list nil) :unknown)
+                     (let ((slots (make-array seq-len :initial-element :unbound)))
+                       (dolist (c (rest conjuncts))
+                         (multiple-value-bind (cst idx vals) (extract-seq-slot-constraint c)
+                           (unless (and cst (equal stype cst) (< idx seq-len))
+                             (return-from extract-allowed-values :unknown))
+                           (setf (aref slots idx)
+                                 (if (eq :unbound (aref slots idx))
+                                     vals
+                                     (intersection (aref slots idx) vals :test #'equal)))))
+                       (if (and (loop for s across slots never (eq s :unbound))
+                                (<= (reduce #'* slots :key #'length :initial-value 1) 64))
+                           (cartesian-product-lists (coerce slots 'list))
+                           :unknown)))
+                 (let ((tuple-type nil)
+                       (slots nil))
+                   (dolist (c conjuncts)
+                     (multiple-value-bind (ttype idx vals) (extract-slot-constraint c)
+                       (unless ttype
+                         (return-from extract-allowed-values :unknown))
+                       (unless tuple-type
+                         (setf tuple-type ttype
+                               slots (make-array (length (rest ttype)) :initial-element :unbound)))
+                       (unless (equal tuple-type ttype)
+                         (return-from extract-allowed-values :unknown))
+                       (setf (aref slots idx)
+                             (if (eq :unbound (aref slots idx))
+                                 vals
+                                 (intersection (aref slots idx) vals :test #'equal)))))
+                   (if (and slots (loop for s across slots never (eq s :unbound)))
+                       (cartesian-product-lists (coerce slots 'list))
+                       :unknown))))))
+        (t :unknown)))))
 
 (defun singleton-requirement (type value)
   (assert (value-p value type))

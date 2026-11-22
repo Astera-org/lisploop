@@ -72,6 +72,36 @@ application and its source terms; when it returns false one hole stands for the 
                             (assert matched)
                             substitution)) sources))))))
 
+(defun code-anti-unify-values (left right in-code-type out-code-type)
+  "First-class VM execution of `:code-anti-unify`: compute the aligned first-order LGG of
+LEFT and RIGHT (in scope `(code-inputs in-code-type)`), lowering pattern holes `?0, ?1, ...`
+onto the extended scope variables of OUT-CODE-TYPE so `:code-match` and `:code-bind` recover
+both residual substitutions directly."
+  (let* ((in-inputs (code-inputs in-code-type))
+         (out-inputs (code-inputs out-code-type))
+         (base-len (length in-inputs))
+         (extra-specs (subseq out-inputs (min base-len (length out-inputs)))))
+    (assert (and (>= (length out-inputs) base-len)
+                 (equal in-inputs (subseq out-inputs 0 base-len))))
+    (let* ((raw-pattern (anti-unify (list left right) in-inputs nil :operator-holes-p nil))
+           (holes (pattern-holes raw-pattern))
+           (used nil)
+           (hole-map
+             (loop for (hid . hsort) in holes
+                   for spec = (find-if (lambda (s)
+                                         (and (not (member (car s) used))
+                                              (equal (cdr s) hsort)))
+                                       extra-specs)
+                   do (assert spec () "Output code scope ~S lacks variable slot of type ~S for hole ~D"
+                              out-code-type hsort hid)
+                      (push (car spec) used)
+                   collect (cons hid (var (car spec) (cdr spec))))))
+      (let ((result (if hole-map
+                        (instantiate raw-pattern hole-map :hole)
+                        raw-pattern)))
+        (assert (value-p result out-code-type))
+        result))))
+
 (defun au-substitutions-frame (pattern substitutions &key keys known inputs schema-inputs ledger)
   "The hole fillings that anti-unification recovered, as an ordinary frame: row i requires
 the tuple of quoted values `(:tuple (:code inputs hole-sort) ...)` that SUBSTITUTIONS[i]

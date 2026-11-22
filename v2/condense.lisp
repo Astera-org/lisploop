@@ -21,13 +21,20 @@
   "Order models by score, then by program bits."
   (lex< a b #'heuristic-score #'heuristic-program-bits))
 
-(defun condense-heuristic (frame language &key description-limit (work-limit 100000) (run-weight 0) stop-on-exact-p ledger)
+(defun condense-heuristic (frame language &key description-limit (work-limit 100000) (run-weight 0)
+                                               stop-on-exact-p effective-horizon-p prune-behaviors-p
+                                               columnar-p behavior-table column-cache ledger)
   "Budgeted selector approximation on ORIGINAL requirements; residuals are training costs.
 Return the best completed model and an informative completion/cutoff message. What the
 search found and when is noted as a :stage-a event for the staged work it runs within."
   (let* ((job (start-heuristic-search frame language :description-limit description-limit
                                      :run-weight run-weight
-                                     :stop-on-exact-p stop-on-exact-p))
+                                     :stop-on-exact-p stop-on-exact-p
+                                     :effective-horizon-p effective-horizon-p
+                                     :prune-behaviors-p prune-behaviors-p
+                                     :columnar-p columnar-p
+                                     :behavior-table behavior-table
+                                     :column-cache column-cache))
          (limit (remaining-work ledger work-limit))
          (message (resume-heuristic-search job limit))
          (best (heuristic-search-best job)))
@@ -78,12 +85,20 @@ and unverified oracle functions from Stage A unconditional observation."
                        (language-literals language))))
         (derive-language language :operators ops :literals lits))))
 
-(defun start-heuristic-search (frame language &key description-limit (run-weight 0) stop-on-exact-p)
+(defun start-heuristic-search (frame language &key description-limit (run-weight 0) stop-on-exact-p
+                                                   effective-horizon-p prune-behaviors-p columnar-p
+                                                   behavior-table column-cache)
   (assert (and (realp run-weight) (>= run-weight 0)))
   (assert-inputs-available frame)
   (let ((obs-language (stage-a-observation-language frame language)))
     (%make-heuristic-search
-     :observation (start-observation-search (make-observation-scope frame obs-language) :retain-outcomes t)
+     :observation (start-observation-search (make-observation-scope frame obs-language)
+                                            :retain-outcomes t
+                                            :effective-horizon-p effective-horizon-p
+                                            :prune-behaviors-p prune-behaviors-p
+                                            :columnar-p columnar-p
+                                            :behavior-table behavior-table
+                                            :column-cache column-cache)
      :debt (+ 1 (length (frame-pairs frame)) (length (frame-anchors frame))
               (loop for row in (frame-rows frame) sum (syntax-work (row-requirement row))))
      :bound (or description-limit (header-bound (schema-inputs (frame-schema frame))

@@ -142,7 +142,17 @@ A key is a function whose value is minimised, or (:desc function) to maximise it
     (:length ?t ((:seq ?t)) :int)
     (:< :int (:int :int) :bool)
     (:code-eval ?t (?t . _) _)
-    (:mod :int (:int :int) :int))
+    (:mod :int (:int :int) :int)
+    (:iota :int (:int) (:seq :int))
+    (:tabulate ?t (:int _) (:seq ?t))
+    (:where ?t (?t (:seq ?t)) (:seq :int))
+    (:evolve (:tuple ?a ?s) ((:seq ?a) ?s _) (:seq ?s))
+    (:code-arity ?c (?c) :int)
+    (:code-var ?e (:int) ?e)
+    (:code-var-id ?c (?c) :int)
+    (:code-quote ?e (_) ?e)
+    (:code-value ?e (?e) _)
+    (:code-anti-unify ?t (_ _) _))
   "Every primitive operator, in opcode order, as (name parameter argument-types result-type).
 The last three are patterns over type variables, the parameter being the type an operator
 symbol carries. ?n stands for :int or a prime field, ?c for a code type, ?e for the code
@@ -271,10 +281,23 @@ of type RESULT, calling READ-TYPE for the part that was emitted."
   (append +operator-names+ *registered-function-names*))
 
 (defun operator-index (name)
-  (position (canonical-op-name name) (all-operator-names)))
+  (let* ((kname (canonical-op-name name))
+         (prim-pos (position kname +operator-names+))
+         (extra-prims (max 0 (- (length +operator-names+) 27))))
+    (cond ((and prim-pos (< prim-pos 27)) prim-pos)
+          (prim-pos (+ 35 (- prim-pos 27)))
+          (t (let ((fn-pos (position kname *registered-function-names*)))
+               (when fn-pos
+                 (if (< fn-pos 8)
+                     (+ 27 fn-pos)
+                     (+ 35 extra-prims (- fn-pos 8)))))))))
 
 (defun operator-by-index (index)
-  (nth index (all-operator-names)))
+  (let ((extra-prims (max 0 (- (length +operator-names+) 27))))
+    (cond ((< index 27) (nth index +operator-names+))
+          ((< index 35) (nth (- index 27) *registered-function-names*))
+          ((< index (+ 35 extra-prims)) (nth (+ 27 (- index 35)) +operator-names+))
+          (t (nth (+ 8 (- index (+ 35 extra-prims))) *registered-function-names*)))))
 
 (defun homogeneous-tuple-type-p (type)
   "True when TYPE is a non-empty (:tuple tau ... tau) with identical component types."
@@ -514,6 +537,25 @@ constantly and quoted code is sized from cached metadata."
        (assert (expression-code-p type))
        (sig (cons type (mapcar #'cdr (code-inputs type)))
             (code-sort type)))
+      (:tabulate
+       (sig (list :int (code-type '((0 . :int)) type)) (sequence-type type)))
+      (:evolve
+       (assert (and (tuple-type-p type) (= 3 (length type))))
+       (let ((a (second type)) (s (third type)))
+         (sig (list (sequence-type a) s (code-type (list (cons 0 s) (cons 1 a)) s))
+              (sequence-type s))))
+      (:code-quote
+       (assert (expression-code-p type))
+       (sig (list (code-sort type)) type))
+      (:code-value
+       (assert (expression-code-p type))
+       (sig (list type) (code-sort type)))
+      (:code-anti-unify
+       (assert (and (tuple-type-p type) (= 3 (length type))))
+       (let ((a (second type)) (b (third type)))
+         (assert (and (expression-code-p a) (expression-code-p b)
+                      (equal (code-sort a) (code-sort b))))
+         (sig (list a a) b)))
       ((:code-operator :code-apply)
        (assert (and (code-type-p type) (function-sort-p (code-sort type))))
        (let* ((sort (code-sort type)) (scope (code-inputs type))
@@ -715,13 +757,23 @@ constantly and quoted code is sized from cached metadata."
 
 ;;; Totality: what is provably defined and terminates.
 ;;;
-;;; The analysis carries facts about the variables in scope at a point of a body, each
-;;; established by the conditions on the way there:
-;;;   (:length id k)   the sequence X_id has at least k elements
-;;;   (:above id b)    the integer X_id is greater than b
-;;;   (:below id b)    the integer X_id is less than b
-;;;   (:nonzero id)    the number X_id is not zero
-;;; A fact holds of one scope. Quoted code is a scope of its own and is judged without them.
+;;; The analysis carries facts about the variables and symbolic expressions in scope at a
+;;; point of a body, each established by the conditions on the way there:
+;;;   (:length id k)       the sequence X_id has at least k elements
+;;;   (:above id b)        the integer X_id is greater than b
+;;;   (:below id b)        the integer X_id is less than b
+;;;   (:nonzero id)        the number X_id is not zero
+;;;   (:nonzero-expr expr) the compound numeric expression EXPR is not zero
+;;;   (:kind expr k)       `(code-kind EXPR)` equals integer tag k
+;;;   (:diff u v k)        symbolic integer difference bound u - v <= k (:zero = 0)
+;;; A fact holds of one scope. Quoted code is a scope of its own unless called by a bounded
+;;; container combinator (`:tabulate`) that supplies index bounds to its body.
+
+(defvar *certified-length-preserving-ops* (make-hash-table :test #'eq)
+  "Operators certified (via `:ind1` or `:necessary` `:DESC/LEN-EQ`) to preserve primary sequence length.")
+
+(defvar *mod-range-certified-p* nil
+  "Set T only when a certified library law attests `0 < m => 0 <= (mod a m) < m` (Stage 1 E1/E3).")
 
 (defun fact-bound (kind id facts tighter)
   "The tightest value among the facts of KIND about X_ID in FACTS, or nil."
@@ -730,9 +782,28 @@ constantly and quoted code is sized from cached metadata."
       (when (and (eq kind (first fact)) (eql id (second fact)))
         (setf best (if best (funcall tighter best (third fact)) (third fact)))))))
 
-(defun known-length (id facts) (or (fact-bound :length id facts #'max) 0))
-(defun known-above (id facts) (fact-bound :above id facts #'max))
-(defun known-below (id facts) (fact-bound :below id facts #'min))
+(defun known-length (id facts)
+  (let ((explicit (or (fact-bound :length id facts #'max) 0))
+        (len-key (cons :len id)))
+    (dolist (fact facts explicit)
+      (when (and (eq :diff (first fact)) (eq :zero (second fact)) (equal len-key (third fact)))
+        (setf explicit (max explicit (- (fourth fact))))))))
+
+(defun known-above (id facts)
+  (let ((best (fact-bound :above id facts #'max))
+        (var-key (cons :var id)))
+    (dolist (fact facts best)
+      (when (and (eq :diff (first fact)) (eq :zero (second fact)) (equal var-key (third fact)))
+        (let ((bound (- (- (fourth fact)) 1)))
+          (setf best (if best (max best bound) bound)))))))
+
+(defun known-below (id facts)
+  (let ((best (fact-bound :below id facts #'min))
+        (var-key (cons :var id)))
+    (dolist (fact facts best)
+      (when (and (eq :diff (first fact)) (equal var-key (second fact)) (eq :zero (third fact)))
+        (let ((bound (1+ (fourth fact))))
+          (setf best (if best (min best bound) bound)))))))
 
 (defun tail-chain (expr)
   "If EXPR is `(tail^k X)` for a sequence variable X and some k >= 0, the id of X and k."
@@ -761,17 +832,131 @@ constantly and quoted code is sized from cached metadata."
          (or (eq :int (ast-meta-type meta)) (gf-type-p (ast-meta-type meta)))
          (ast-meta-id meta))))
 
+(defun seq-length-key-offset (seq-expr &optional facts)
+  "Decompose the length of SEQ-EXPR as `(VALUES key offset)` representing `key + offset` when exact."
+  (let ((meta (ensure-ast-meta seq-expr)))
+    (case (ast-meta-kind meta)
+      (:lit (when (listp (ast-meta-value meta))
+              (values :zero (length (ast-meta-value meta)))))
+      (:var (when (seq-type-p (ast-meta-type meta))
+              (values (cons :len (ast-meta-id meta)) 0)))
+      (:app (let ((name (ast-meta-id meta))
+                  (args (rest seq-expr)))
+              (cond
+                ((eq name :cons)
+                 (multiple-value-bind (k o) (seq-length-key-offset (second args) facts)
+                   (when k (values k (1+ o)))))
+                ((and (eq name :tail) (plusp (minimum-length (first args) facts)))
+                 (multiple-value-bind (k o) (seq-length-key-offset (first args) facts)
+                   (when k (values k (1- o)))))
+                ((and (member name '(:iota :tabulate))
+                      (diff-expr-le-p (lit :int 0) (first args) 0 facts))
+                 (diff-term-offset (first args) facts))
+                ((eq name :gather)
+                 (seq-length-key-offset (second args) facts))
+                ((eq name :evolve)
+                 (seq-length-key-offset (first args) facts))
+                ((and (gethash name *certified-length-preserving-ops*)
+                      args (seq-type-p (ast-type (first args))))
+                 (seq-length-key-offset (first args) facts))))))))
+
+(defun diff-term-offset (expr &optional facts)
+  "Normalize integer EXPR into `(VALUES canonical-key integer-offset)` meaning `key + offset`."
+  (let ((meta (ensure-ast-meta expr)))
+    (when (eq :int (ast-meta-type meta))
+      (case (ast-meta-kind meta)
+        (:lit (values :zero (ast-meta-value meta)))
+        (:var (values (cons :var (ast-meta-id meta)) 0))
+        (:app (let ((name (ast-meta-id meta))
+                    (args (rest expr)))
+                (cond
+                  ((eq name :+)
+                   (let ((c1 (literal-integer (first args)))
+                         (c2 (literal-integer (second args))))
+                     (cond (c2 (multiple-value-bind (k o) (diff-term-offset (first args) facts)
+                                 (when k (values k (+ o c2)))))
+                           (c1 (multiple-value-bind (k o) (diff-term-offset (second args) facts)
+                                 (when k (values k (+ o c1)))))
+                           (t (values expr 0)))))
+                  ((eq name :-)
+                   (let ((c2 (literal-integer (second args))))
+                     (if c2
+                         (multiple-value-bind (k o) (diff-term-offset (first args) facts)
+                           (when k (values k (- o c2))))
+                         (values expr 0))))
+                  ((eq name :length)
+                   (multiple-value-bind (k o) (seq-length-key-offset (first args) facts)
+                     (if k (values k o) (values expr 0))))
+                  (t (values expr 0)))))))))
+
+(defun diff-key-le-p (u v k facts)
+  "True when `u - v <= k` holds trivially, directly, or by 2-step transitivity in FACTS."
+  (or (and (equal u v) (<= 0 k))
+      ;; All sequence lengths `:len` are >= 0 (`:zero - (:len id) <= 0`).
+      (and (eq u :zero) (consp v) (eq :len (car v)) (<= 0 k))
+      (loop for f in facts
+            thereis (and (eq :diff (first f))
+                         (equal u (second f))
+                         (or (and (equal v (third f)) (<= (fourth f) k))
+                             (let ((w (third f)) (k1 (fourth f)))
+                               (or (and (eq w :zero) (consp v) (eq :len (car v)) (<= k1 k))
+                                   (loop for f2 in facts
+                                         thereis (and (eq :diff (first f2))
+                                                      (equal w (second f2))
+                                                      (equal v (third f2))
+                                                      (<= (+ k1 (fourth f2)) k))))))))
+      ;; Bridge legacy `(:length id m)` -> `0 - (:len id) <= -m` when combined with another edge.
+      (and (consp v) (eq :len (car v))
+           (let ((min-len (fact-bound :length (cdr v) facts #'max)))
+             (and min-len
+                  (or (and (eq u :zero) (<= (- min-len) k))
+                      (diff-key-le-p u :zero (+ k min-len) facts)))))))
+
+(defun diff-expr-le-p (left right k facts)
+  "True when integer inequality `LEFT - RIGHT <= K` is entailed by FACTS (plus certified `:mod` range)."
+  (or (multiple-value-bind (uk uo) (diff-term-offset left facts)
+        (multiple-value-bind (vk vo) (diff-term-offset right facts)
+          (and uk vk (diff-key-le-p uk vk (- k (- uo vo)) facts))))
+      ;; Certified `:mod` output range: when `0 < m`, `0 <= (mod a m) <= m - 1`.
+      (and *mod-range-certified-p*
+           (cond
+             ((and (app-of-p right :mod)
+                   (diff-expr-le-p (lit :int 1) (third right) 0 facts))
+              (diff-expr-le-p left (lit :int 0) k facts))
+             ((and (app-of-p left :mod)
+                   (diff-expr-le-p (lit :int 1) (third left) 0 facts))
+              (diff-expr-le-p (third left) right (1+ k) facts))))))
+
+(defun index-in-sequence-bounds-p (idx container facts)
+  "True when integer expression IDX satisfies `0 <= IDX < length(CONTAINER)` under FACTS,
+including affine subtraction `(- L B)` (`reverse`-style indexing)."
+  (multiple-value-bind (lk lo) (seq-length-key-offset container facts)
+    (let ((low-ok (or (diff-expr-le-p (lit :int 0) idx 0 facts)
+                      (and (app-of-p idx :-)
+                           (diff-expr-le-p (third idx) (second idx) 0 facts))))
+          (high-ok
+            (cond
+              (lk
+               (or (multiple-value-bind (ik io) (diff-term-offset idx facts)
+                     (and ik (diff-key-le-p ik lk (- -1 (- io lo)) facts)))
+                   (and *mod-range-certified-p*
+                        (app-of-p idx :mod)
+                        (diff-expr-le-p (lit :int 1) (third idx) 0 facts)
+                        (multiple-value-bind (mk mo) (diff-term-offset (third idx) facts)
+                          (and mk (diff-key-le-p mk lk (- 0 (- mo lo)) facts))))
+                   ;; `(- A B) <= L - 1` when `A <= L` and `1 <= B`.
+                   (and (app-of-p idx :-)
+                        (multiple-value-bind (ak ao) (diff-term-offset (second idx) facts)
+                          (and ak (diff-key-le-p ak lk (- 0 (- ao lo)) facts)))
+                        (diff-expr-le-p (lit :int 1) (third idx) 0 facts))))
+              (t (let ((min-len (minimum-length container facts)))
+                   (and (plusp min-len)
+                        (diff-expr-le-p idx (lit :int (1- min-len)) 0 facts)))))))
+      (and low-ok high-ok))))
+
 (defun condition-facts (condition facts)
   "What is known once CONDITION has evaluated to true, and once it has evaluated to false,
-as two values, given FACTS before it. A condition that tells nothing leaves FACTS. With S
-for `(tail^k X)`:
-  (= S '())              false: X has at least k+1 elements
-  (= (length S) 'n)      true: at least k+n; false, when n is 0: at least k+1
-  (< 'm (length S))      true: at least k+m+1
-  (< (length S) 'n)      false: at least k+n
-  (< 'b X), (< X 'b)     a bound on the integer X either way
-  (= X '0)               false: X is not zero
-and the :if encodings of not, and, or, read through to their parts."
+as two values, given FACTS before it."
   (let ((meta (ensure-ast-meta condition)))
     (if (not (eq :app (ast-meta-kind meta)))
         (values facts facts)
@@ -780,9 +965,11 @@ and the :if encodings of not, and, or, read through to their parts."
                    (let ((m (ensure-ast-meta expr)))
                      (and (eq :lit (ast-meta-kind m)) (eq :bool (ast-meta-type m))
                           (eq value (ast-meta-value m)))))
-                 (with (fact) (if fact (cons fact facts) facts))
+                 (with-list (new-facts base)
+                   (let ((acc base))
+                     (dolist (f new-facts acc)
+                       (when f (push f acc)))))
                  (sized (expr more)
-                   ;; EXPR being `(length (tail^k X))`: X has MORE elements beyond those k.
                    (multiple-value-bind (id depth) (length-chain expr)
                      (and id more (list :length id (+ depth more))))))
             (case (ast-meta-id meta)
@@ -794,29 +981,52 @@ and the :if encodings of not, and, or, read through to their parts."
                                (multiple-value-bind (id depth) (tail-chain sequence)
                                  (and id (list :length id (1+ depth)))))))
                       (zero (number zero)
-                        (let ((id (numeric-variable-id number)))
-                          (and id (eql 0 (literal-integer zero)) (list :nonzero id))))
+                        (when (eql 0 (literal-integer zero))
+                          (let ((id (numeric-variable-id number)))
+                            (if id
+                                (list :nonzero id)
+                                (when (or (eq :int (ast-type number)) (gf-type-p (ast-type number)))
+                                  (list :nonzero-expr number))))))
+                      (kind-eq (kexpr klit)
+                        (let ((kv (literal-integer klit)))
+                          (when (and kv (app-of-p kexpr :code-kind))
+                            (list :kind (second kexpr) kv))))
                       (counted (length count truth)
-                        ;; A length that is n is at least n; one that is not 0 is at least 1.
                         (let ((n (literal-integer count)))
                           (sized length (and n (if truth
                                                    (and (plusp n) n)
-                                                   (and (zerop n) 1)))))))
-                 (values (with (or (counted left right t) (counted right left t)))
-                         (with (or (emptiness left right) (emptiness right left)
-                                   (zero left right) (zero right left)
-                                   (counted left right nil) (counted right left nil))))))
+                                                   (and (zerop n) 1))))))
+                      (eq-diffs (a b)
+                        (multiple-value-bind (uk uo) (diff-term-offset a facts)
+                          (multiple-value-bind (vk vo) (diff-term-offset b facts)
+                            (when (and uk vk)
+                              (list (list :diff uk vk (- vo uo))
+                                    (list :diff vk uk (- uo vo))))))))
+                 (values (with-list (append (list (or (counted left right t) (counted right left t))
+                                                  (or (kind-eq left right) (kind-eq right left)))
+                                            (eq-diffs left right))
+                                    facts)
+                         (with-list (list (or (emptiness left right) (emptiness right left))
+                                          (or (zero left right) (zero right left))
+                                          (or (counted left right nil) (counted right left nil)))
+                                    facts))))
               (:<
                (let ((low (literal-integer left))
                      (high (literal-integer right))
                      (left-id (numeric-variable-id left))
                      (right-id (numeric-variable-id right)))
-                 (cond ((and low right-id)
-                        (values (with (list :above right-id low)) (with (list :below right-id (1+ low)))))
-                       ((and left-id high)
-                        (values (with (list :below left-id high)) (with (list :above left-id (1- high)))))
-                       (t
-                        (values (with (sized right (and low (1+ low)))) (with (sized left high)))))))
+                 (multiple-value-bind (uk uo) (diff-term-offset left facts)
+                   (multiple-value-bind (vk vo) (diff-term-offset right facts)
+                     (let ((t-diff (when (and uk vk) (list :diff uk vk (- (- vo uo) 1))))
+                           (f-diff (when (and uk vk) (list :diff vk uk (- uo vo))))
+                           (t-legacy (cond ((and low right-id) (list :above right-id low))
+                                           ((and left-id high) (list :below left-id high))
+                                           (t (sized right (and low (1+ low))))))
+                           (f-legacy (cond ((and low right-id) (list :below right-id (1+ low)))
+                                           ((and left-id high) (list :above left-id (1- high)))
+                                           (t (sized left high)))))
+                       (values (with-list (list t-legacy t-diff) facts)
+                               (with-list (list f-legacy f-diff) facts)))))))
               (:if
                (cond ((and (literal-p right nil) (literal-p other t)) ; not left
                       (multiple-value-bind (when-true when-false) (condition-facts left facts)
@@ -835,51 +1045,163 @@ and the :if encodings of not, and, or, read through to their parts."
     (case (ast-meta-kind meta)
       (:lit (let ((value (ast-meta-value meta))) (if (listp value) (length value) 0)))
       (:var (known-length (ast-meta-id meta) facts))
-      (:app (case (ast-meta-id meta)
-              (:cons (1+ (minimum-length (third expr) facts)))
-              (:tail (max 0 (1- (minimum-length (second expr) facts))))
-              (:if (multiple-value-bind (when-true when-false) (condition-facts (second expr) facts)
-                     (min (minimum-length (third expr) when-true)
-                          (minimum-length (fourth expr) when-false))))
-              (otherwise 0)))
+      (:app (let ((name (ast-meta-id meta)))
+              (case name
+                (:cons (1+ (minimum-length (third expr) facts)))
+                (:tail (max 0 (1- (minimum-length (second expr) facts))))
+                ((:iota :tabulate)
+                 (let ((c (literal-integer (second expr))))
+                   (if c
+                       (max 0 c)
+                       (or (loop for m downfrom 8 above 0
+                                 when (diff-expr-le-p (lit :int m) (second expr) 0 facts)
+                                   return m)
+                           0))))
+                (:gather (minimum-length (third expr) facts))
+                (:evolve (minimum-length (second expr) facts))
+                (:if (multiple-value-bind (when-true when-false) (condition-facts (second expr) facts)
+                       (min (minimum-length (third expr) when-true)
+                            (minimum-length (fourth expr) when-false))))
+                (otherwise
+                 (if (and (gethash name *certified-length-preserving-ops*)
+                          (rest expr) (seq-type-p (ast-type (second expr))))
+                     (minimum-length (second expr) facts)
+                     0)))))
       (otherwise 0))))
 
 (defun nonzero-expr-p (expr facts)
-  "True when the number EXPR is sure not to be zero: a nonzero literal, or a variable that
-FACTS say is not zero or bound away from it."
+  "True when the number EXPR is sure not to be zero: a nonzero literal, a variable bound away
+from zero, or an expression explicitly guarded by `(not (= EXPR 0))` or difference bounds."
   (let ((meta (ensure-ast-meta expr)))
-    (case (ast-meta-kind meta)
-      (:lit (and (numberp (ast-meta-value meta)) (not (zerop (ast-meta-value meta)))))
-      (:var (let* ((id (ast-meta-id meta))
-                   (above (known-above id facts))
-                   (below (known-below id facts)))
-              (or (and above (>= above 0))
-                  (and below (<= below 0))
-                  (and (find-if (lambda (fact) (and (eq :nonzero (first fact)) (eql id (second fact))))
-                                facts)
-                       t)))))))
+    (or (case (ast-meta-kind meta)
+          (:lit (and (numberp (ast-meta-value meta)) (not (zerop (ast-meta-value meta)))))
+          (:var (let* ((id (ast-meta-id meta))
+                       (above (known-above id facts))
+                       (below (known-below id facts)))
+                  (or (and above (>= above 0))
+                      (and below (<= below 0))
+                      (and (find-if (lambda (fact) (and (eq :nonzero (first fact)) (eql id (second fact))))
+                                    facts)
+                           t)))))
+        (and (find-if (lambda (fact) (and (eq :nonzero-expr (first fact)) (equal expr (second fact))))
+                      facts)
+             t)
+        (and (eq :int (ast-meta-type meta))
+             (or (diff-expr-le-p (lit :int 1) expr 0 facts)
+                 (diff-expr-le-p expr (lit :int -1) 0 facts))))))
+
+(defun tabulate-code-total-under-p (n-expr code-arg code-total-fn facts)
+  "True when `:tabulate`'s code argument CODE-ARG is total on every index `0 <= j < N-EXPR`."
+  (or (funcall code-total-fn code-arg)
+      (let ((idx-var (var -1 :int)))
+        (multiple-value-bind (body bindings)
+            (cond
+              ((lit-p code-arg)
+               (values (ast-value code-arg) (list (cons 0 idx-var))))
+              ((and (app-of-p code-arg :code-subst)
+                    (lit-p (second code-arg))
+                    (app-of-p (third code-arg) :tuple))
+               (let* ((a-inputs (code-inputs (ast-type (second code-arg))))
+                      (c-type (ast-type code-arg))
+                      (parts (rest (third code-arg))))
+                 (when (and parts
+                            (lit-p (first parts))
+                            (var-p (ast-value (first parts)))
+                            (zerop (ast-id (ast-value (first parts))))
+                            (loop for b in (rest parts)
+                                  for (nil . in-type) in (rest a-inputs)
+                                  never (code-subst-code-binding-p (ast-type b) c-type in-type)))
+                   (values (ast-value (second code-arg))
+                           (cons (cons (caar a-inputs) idx-var)
+                                 (loop for (aid . nil) in (rest a-inputs)
+                                       for b in (rest parts)
+                                       collect (cons aid b))))))))
+          (when body
+            (let* ((inst (instantiate body bindings :var))
+                   (idx-key (cons :var -1))
+                   (base-facts (cons (list :diff :zero idx-key 0) facts))
+                   (ext-facts (multiple-value-bind (nk no) (diff-term-offset n-expr facts)
+                                (if nk
+                                    (cons (list :diff idx-key nk (- no 1)) base-facts)
+                                    base-facts))))
+              (expr-total-under-p inst ext-facts)))))))
+
+(defun gather-indices-in-bounds-p (container indices facts)
+  "True when every element of INDICES (`(:seq :int)`) lies in `[0, length(CONTAINER))`."
+  (cond
+    ((lit-p indices)
+     (let ((vals (ast-value indices)))
+       (every (lambda (v) (index-in-sequence-bounds-p (lit :int v) container facts)) vals)))
+    ((app-of-p indices :iota)
+     (multiple-value-bind (lk lo) (seq-length-key-offset container facts)
+       (multiple-value-bind (nk no) (diff-term-offset (second indices) facts)
+         (and lk nk (diff-key-le-p nk lk (- lo no) facts)))))
+    ((app-of-p indices :where)
+     (equal container (third indices)))
+    ((app-of-p indices :tabulate)
+     (let ((n-expr (second indices))
+           (code-arg (third indices))
+           (idx-var (var -2 :int)))
+       (multiple-value-bind (body bindings)
+           (cond
+             ((lit-p code-arg) (values (ast-value code-arg) (list (cons 0 idx-var))))
+             ((and (app-of-p code-arg :code-subst)
+                   (lit-p (second code-arg))
+                   (app-of-p (third code-arg) :tuple))
+              (let ((a-inputs (code-inputs (ast-type (second code-arg))))
+                    (parts (rest (third code-arg))))
+                (when (and parts (lit-p (first parts)) (var-p (ast-value (first parts)))
+                           (zerop (ast-id (ast-value (first parts)))))
+                  (values (ast-value (second code-arg))
+                          (cons (cons (caar a-inputs) idx-var)
+                                (loop for (aid . nil) in (rest a-inputs)
+                                      for b in (rest parts)
+                                      collect (cons aid b))))))))
+         (when body
+           (let* ((elem-expr (instantiate body bindings :var))
+                  (idx-key (cons :var -2))
+                  (base-facts (cons (list :diff :zero idx-key 0) facts))
+                  (ext-facts (multiple-value-bind (nk no) (diff-term-offset n-expr facts)
+                               (if nk (cons (list :diff idx-key nk (- no 1)) base-facts) base-facts))))
+             (and (expr-total-under-p elem-expr ext-facts)
+                  (index-in-sequence-bounds-p elem-expr container ext-facts)))))))))
 
 (defun operator-step-total-p (op-name arguments code-total-fn &optional facts expected-type)
   "Single-step totality rule for OP-NAME applied to ARGUMENTS assuming children are total,
-given FACTS about the variables in scope: division and modulus need a divisor that is not
-zero, `tail`
-a sequence that is not empty, and `at` a literal index within the length that is sure, or
-into a tuple slot of EXPECTED-TYPE when that is given."
+given FACTS about the variables in scope."
   (case op-name
     ((:/ :mod) (nonzero-expr-p (second arguments) facts))
-    (:at (and (lit-p (second arguments))
-              (let ((idx (ast-value (second arguments)))
-                    (container (first arguments))
-                    (container-type (ast-type (first arguments))))
-                (and (integerp idx) (<= 0 idx)
-                     (if (tuple-type-p container-type)
-                         (and (< idx (length (rest container-type)))
-                              (or (null expected-type)
-                                  (equal (nth idx (rest container-type)) expected-type)))
-                         (< idx (minimum-length container facts)))))))
+    (:at (let ((container (first arguments))
+               (idx-expr (second arguments))
+               (container-type (ast-type (first arguments))))
+           (if (tuple-type-p container-type)
+               (and (lit-p idx-expr)
+                    (let ((idx (ast-value idx-expr)))
+                      (and (integerp idx) (<= 0 idx)
+                           (< idx (length (rest container-type)))
+                           (or (null expected-type)
+                               (equal (nth idx (rest container-type)) expected-type)))))
+               (index-in-sequence-bounds-p idx-expr container facts))))
+    (:gather (gather-indices-in-bounds-p (first arguments) (second arguments) facts))
     (:tail (plusp (minimum-length (first arguments) facts)))
     (:code-eval (funcall code-total-fn (first arguments)))
-    ((:lookup :gather :code-child :code-operator :code-bind) nil)
+    (:tabulate (tabulate-code-total-under-p (first arguments) (second arguments) code-total-fn facts))
+    (:evolve (funcall code-total-fn (third arguments)))
+    ((:iota :where :code-arity :code-quote) t)
+    (:code-var
+     (let ((scope (and expected-type (code-type-p expected-type) (code-inputs expected-type)))
+           (sort (and expected-type (code-type-p expected-type) (code-sort expected-type)))
+           (idx (literal-integer (first arguments))))
+       (and idx scope (equal sort (cdr (assoc idx scope))))))
+    (:code-var-id
+     (and (find-if (lambda (f) (and (eq :kind (first f)) (equal (first arguments) (second f)) (= 0 (third f))))
+                   facts)
+          t))
+    (:code-value
+     (and (find-if (lambda (f) (and (eq :kind (first f)) (equal (first arguments) (second f)) (= 1 (third f))))
+                   facts)
+          t))
+    ((:lookup :code-child :code-operator :code-bind :code-anti-unify) nil)
     (otherwise
      (let ((def (find-function-definition op-name)))
        (if def
@@ -889,8 +1211,6 @@ into a tuple slot of EXPECTED-TYPE when that is given."
                              (and (< param-idx (length arguments))
                                   (funcall code-total-fn (nth param-idx arguments))))
                            (function-definition-conditional-code-params def))))
-           ;; Without a definition: a primitive not ruled on above is total. A name that is
-           ;; registered and nothing more has no body to judge, so a call of it is not.
            (not (null (primitive-pattern op-name))))))))
 
 (defun empty-sequence-guard-var-id (condition &optional seq-param-ids)
@@ -1379,6 +1699,15 @@ known (nil marks an argument that is not), or else off the EXPECTED result type.
       (:code-child (tuple-of (first types) expected))
       ((:code-bind :code-subst) (tuple-of (first types) (second types) expected))
       (:code-operator expected)
+      (:tabulate (or (and (code-type-p (second types)) (code-sort (second types)))
+                     (and (seq-type-p expected) (second expected))))
+      (:evolve (tuple-of (and (seq-type-p (first types)) (second (first types)))
+                         (or (second types)
+                             (and (code-type-p (third types)) (code-sort (third types)))
+                             (and (seq-type-p expected) (second expected)))))
+      (:code-quote expected)
+      (:code-value (first types))
+      (:code-anti-unify (tuple-of (or (first types) (second types)) expected))
       (otherwise (operator-parameter-from-pattern name types expected)))))
 
 (defun term (form &optional expected)
@@ -1415,6 +1744,10 @@ requires at that position, or EXPECTED at the top."
                                collect (cond (declared (term raw (nth index declared)))
                                              ((and (eq name :if) (zerop index)) (term raw :bool))
                                              ((and (eq name :at) (= index 1)) (term raw :int))
+                                             ((and (member name '(:iota :tabulate :code-var)) (zerop index))
+                                              (term raw :int))
+                                             ((and (eq name :code-child) (= index 1)) (term raw :int))
+                                             ((and (eq name :code-bind) (= index 2)) (term raw :int))
                                              (t (ignore-errors (term raw))))))
                   (inferred-expected
                     (or expected

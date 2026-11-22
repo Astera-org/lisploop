@@ -512,6 +512,65 @@ the lockstep recursive step `(<eff-self> (tail X_s1) (tail X_s2) ...)`."
                                          :lifted-sequence-ids (mapcar #'car seq-specs)
                                          :lifted-bindings lifted-bindings))))))))))))))
 
+(defun definedness-guard-for-expr (expr &optional facts)
+  "Derive in $O(|expr|)$ a provably total Boolean precondition guard making partial primitives
+inside EXPR (`:at` on sequences, `:/`, `:mod`, `:tail`) provably total, or NIL when none needed/possible."
+  (let ((guards nil)
+        (cur-facts facts))
+    (labels ((emit (g)
+               (unless (member g guards :test #'equal)
+                 (push g guards)
+                 (setf cur-facts (condition-facts g cur-facts))))
+             (walk (node)
+               (when (app-p node)
+                 (let ((name (ast-id node))
+                       (args (rest node)))
+                   (if (eq :if name)
+                       (progn (walk (first args))
+                              (walk (second args))
+                              (walk (third args)))
+                       (progn
+                         (mapc #'walk args)
+                         (case name
+                           ((:/ :mod)
+                            (let ((div (second args)))
+                              (unless (nonzero-expr-p div cur-facts)
+                                (emit (bool-not (term `(= ,div ,(lit (ast-type div) 0))))))))
+                           (:tail
+                            (let ((seq (first args)))
+                              (unless (plusp (minimum-length seq cur-facts))
+                                (emit (bool-not (term `(= ,seq ,(lit (ast-type seq) nil))))))))
+                           (:at
+                            (let ((container (first args))
+                                  (idx (second args)))
+                              (when (and (seq-type-p (ast-type container))
+                                         (not (index-in-sequence-bounds-p idx container cur-facts)))
+                                (unless (diff-expr-le-p (lit :int 0) idx 0 cur-facts)
+                                  (emit (term `(< -1 ,idx))))
+                                (emit (term `(< ,idx (length ,container))))))))))))))
+      (walk expr)
+      (when guards
+        (let ((conj (reduce #'bool-and (nreverse guards) :from-end t)))
+          (and (provably-total-p conj)
+               (provably-total-given-p expr conj)
+               conj))))))
+
+(defun definedness-guard-matches-frame-p (guard cand-program frame hit-mask active-mask ledger)
+  "True when totalized guard GUARD evaluates to T on every in-bounds hit row where CAND-PROGRAM
+succeeded and NIL on every active row where CAND-PROGRAM errored or missed."
+  (let ((inputs (schema-inputs (frame-schema frame))))
+    (loop for row in (frame-rows frame)
+          for hit-p in hit-mask
+          for active-p in active-mask
+          always (or (not active-p)
+                     (let ((run (evaluate guard inputs (row-known row) :budget 500 :ledger ledger)))
+                       (and (eq :value (evaluation-status run))
+                            (eq (not (null (evaluation-value run))) (not (null hit-p)))
+                            (or (not hit-p)
+                                (let ((crun (evaluate cand-program inputs (row-known row)
+                                                      :budget 1000 :ledger ledger)))
+                                  (eq :value (evaluation-status crun))))))))))
+
 (defun heuristic-decompositions (frame language &key heuristic-model child-language guard-language
                                                      description-limit child-bound guard-bound
                                                      (work-limit 50000) (run-weight 0)
@@ -633,11 +692,18 @@ Returns (VALUES proposals heuristic-model)."
                                                 collect (row-active-for-guard-p row cand-model)))
                         (g-lang (or guard-language (default-guard-language frame language))))
                     (multiple-value-bind (guard invert-p)
-                        (find-sound-exception-guard frame cand-hit-mask g-lang g-bound
-                                                    (max 1 (- work-limit condense-budget)) ledger
-                                                    :active-mask cand-active-mask
-                                                    :buckets (or (heuristic-buckets cand-model)
-                                                                 (heuristic-buckets h-model)))
+                        (let ((auto-def (and (not (heuristic-total-p cand-model))
+                                             (null eff-self)
+                                             (definedness-guard-for-expr cand-program))))
+                          (if (and auto-def
+                                   (definedness-guard-matches-frame-p
+                                    auto-def cand-program frame cand-hit-mask cand-active-mask ledger))
+                              (values auto-def nil)
+                              (find-sound-exception-guard frame cand-hit-mask g-lang g-bound
+                                                          (max 1 (- work-limit condense-budget)) ledger
+                                                          :active-mask cand-active-mask
+                                                          :buckets (or (heuristic-buckets cand-model)
+                                                                       (heuristic-buckets h-model)))))
                       (when guard
                         (multiple-value-bind (eff-bindings eff-lang seq-id)
                             (lift-inductive-sequence-context guard invert-p inputs language c-lang child-id eff-self)
