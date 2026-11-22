@@ -1,6 +1,7 @@
 \documentclass[12pt]{article}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
+\usepackage{lmodern}
 \usepackage{amsmath, amsfonts, amssymb}
 \usepackage{mathtools, amsthm}
 \usepackage{booktabs, array, tabularx}
@@ -25,8 +26,9 @@
 
 % Keep marginpar text ragged-right and gently spaced so 47mm sidenotes never produce
 % overfull \hbox warnings or collide vertically, without altering \sidenote's macro above.
-\setlength{\marginparpush}{7pt}
-\setlength{\emergencystretch}{2.2em}
+\setlength{\marginparpush}{8pt}
+\setlength{\emergencystretch}{2.4em}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \makeatletter
 \RenewDocumentCommand \@sidenotes@placemarginal { +m +m }
 {
@@ -42,6 +44,7 @@
 \definecolor{rulegray}{HTML}{D0D7DE}
 
 \hypersetup{
+  unicode=true,
   colorlinks=true,
   linkcolor=linkblue,
   citecolor=citegreen,
@@ -50,7 +53,7 @@
   pdfauthor={Antigravity Synthesis Audit and Architecture Specification}
 }
 
-\newcommand{\codeblocksize}{\fontsize{8.5}{10.2}\selectfont}
+\newcommand{\codeblocksize}{\fontsize{8.8}{10.6}\selectfont}
 \DefineVerbatimEnvironment{CodeBlock}{Verbatim}{fontsize=\codeblocksize,breaklines=true,frame=single,rulecolor=\color{rulegray}}
 
 % Bidirectional link badges for Questions <-> Answers and Main Text <-> Literature Appendices
@@ -61,10 +64,11 @@
 
 \newcommand{\litentry}[4]{%
   \par\medskip\noindent\hypertarget{lit:#1}{}%
-  \textbf{#2}\ \textit{(#3)}\hfill{\footnotesize\textbf{Informs:} #4}\par\smallskip\noindent\ignorespaces
+  \textbf{#2}\par\nopagebreak\noindent
+  {\footnotesize\textit{#3}\quad$\cdot$\quad\textbf{Informs:} #4}\par\nopagebreak\smallskip\noindent\ignorespaces
 }
 
-\title{\vspace{-1.2em}\textbf{\texttt{lisploop} Plan v2.1: Rectified Topology--Geometry Kernel}\\[0.35em]
+\title{\vspace{-1.2em}\textbf{\texttt{lisploop} Plan v2.1: Rectified\\[0.12em] Topology--Geometry Synthesis Kernel}\\[0.4em]
 \large Source Audit, Comparative Critique of \texttt{plan\_v2b}, Literature Verification,\\
 and Unified Columnar-Hypergraph / Pseudometric-Sheaf Specification}
 \author{Audited Baseline: Branch \texttt{reflective} at Commit \texttt{df33ed1}}
@@ -74,15 +78,16 @@ and Unified Columnar-Hypergraph / Pseudometric-Sheaf Specification}
 \maketitle
 
 \begin{abstract}
-\noindent This document synthesizes, rectifies, and extends the architectural audit of \texttt{lisploop} (\texttt{plan\_v2.md}) in light of an independent conservative counter-proposal (\texttt{plan\_v2b.md}), marginalia recorded in \texttt{plan\_v2b\_annotated.pdf}, and primary-source verification of forty-five papers across categorical databases, equality saturation, array/loop synthesis, pseudometric sheaf theory, algorithmic information geometry, computational neuroscience, and reflective programming languages. Where \texttt{plan\_v2.0} over-reached---notably in asking a flat $D=256$ Vector Symbolic Architecture (VSA) to carry deep compositional structure and in framing local geometry as learned vector-space cellular sheaves---we rectify the design using \emph{scaffolded memory theory} (Vector-HaSH / CSCG), \emph{Robinson's sheaves of pseudometric spaces}, and \emph{exact discrete MDL transport with Bits-Back symmetry refunds}. Conversely, where \texttt{plan\_v2b} is overly conservative, incomplete, or subtly flawed---including its broken oracle-placeholder lift on branching combinators, unary totality intervals that cannot relate two variables, sequence-plate bias over general fiber covers, cold-only non-compositional geometry, and host-only ablation---we supply exact mathematical and algorithmic remedies while preserving \texttt{lisploop}'s homoiconic S-expression primacy and scheduled three-tier lowering to native machine code.
+\noindent This document synthesizes, rectifies, and extends the architectural audit of \texttt{lisploop} (\texttt{plan\_v2.md}) in light of an independent conservative counter-proposal (\texttt{plan\_v2b.md}), marginalia recorded in \texttt{plan\_v2b\_annotated.pdf}, and primary-source verification of forty-eight works across categorical databases, equality saturation, array/loop synthesis, pseudometric sheaf theory, algorithmic information geometry, computational neuroscience, and reflective programming languages. Where \texttt{plan\_v2.0} over-reached---notably in asking a flat $D=256$ Vector Symbolic Architecture (VSA) to carry deep compositional structure and in framing local geometry as learned vector-space cellular sheaves---we rectify the design using \emph{scaffolded memory theory} (Vector-HaSH / CSCG), \emph{Robinson's sheaves of pseudometric spaces}, and \emph{exact discrete MDL transport with Bits-Back symmetry refunds}. Conversely, where \texttt{plan\_v2b} is overly conservative, incomplete, or subtly flawed---including its broken oracle-placeholder lift on branching combinators, unary totality intervals that cannot relate two variables, sequence-plate bias over general fiber covers, cold-only non-compositional geometry, and host-only ablation---we supply exact mathematical and algorithmic remedies while preserving \texttt{lisploop}'s homoiconic S-expression primacy and scheduled three-tier lowering to native machine code.
 \end{abstract}
 
 \tableofcontents
 \bigskip\hrule\bigskip
 
 % =============================================================================
+\phantomsection
 \section*{Executive Thesis and Rectification Ledger (\texttt{v2.0} $\to$ \texttt{v2.1})}
-\addcontentsline{toc}{section}{Executive Thesis and Rectification Ledger (\texttt{v2.0} \texorpdfstring{$\to$}{->} \texttt{v2.1})}
+\addcontentsline{toc}{section}{Executive Thesis and Rectification Ledger (v2.0 \texorpdfstring{$\to$}{->} v2.1)}
 \label{sec:thesis}
 % =============================================================================
 
@@ -203,7 +208,7 @@ Inspecting the eighteen Okular highlights and margin annotations in \texttt{plan
 \subsection{Reconciled Baseline, Terminology Map, and \texttt{cccc} Complexity}
 \label{sec:audit-complexity}
 
-At commit \texttt{df33ed1}, \texttt{lisploop} passes $222$ kernel tests ($938,737$ checks, $5.2\,\mathrm{s}$) and $40$ milestone tests ($186,771$ checks, $12.1\,\mathrm{s}$), with Plan~8 probes at $71,782$ / $212,096$ / $34,067$ work units.\sidenote{Line-count reconciliation: the $25$ pure-kernel modules in \texttt{load.lisp} total $17,656$ LOC ($17,818$ including \texttt{benchmark.lisp}'s $162$ LOC); milestones add $1,585$ LOC and \texttt{bootstrap/} adds $1,304$ LOC.} Both audits confirm that what is mathematically a single concept---\emph{a guarded relation over typed ports equipped with directional witnesses and epistemic grades}---has splintered into \textbf{$14$ \texttt{define-knowledge-kind} silos}: \texttt{:function}, \texttt{:law} (passive guarded equality, oriented into \texttt{rewrite-library} by \texttt{code-less}), \texttt{:solver} (directional FlashMeta-style witness unpacked into \texttt{arithmetic-propagator} in \texttt{laws.lisp:1184}), \texttt{:transformer} (code-to-code meta-programs in \texttt{functors.sexp}, \emph{not} value propagators!), \texttt{:functor}, \texttt{:motif}, \texttt{:relation}, \texttt{:descriptor}, \texttt{:decoder-template}, \texttt{:locality-key}, \texttt{:nogood-schema}, \texttt{:dip-feature}, \texttt{:heuristic}, and \texttt{:spec}.
+At commit \texttt{df33ed1}, \texttt{lisploop} passes $222$ kernel tests ($938,737$ checks, $5.2\,\mathrm{s}$) and $40$ milestone tests ($186,771$ checks, $12.1\,\mathrm{s}$), with Plan~8 probes at $71,782$ / $212,096$ / $34,067$ work units.\sidenote{Line-count reconciliation: the $25$ pure-kernel modules in \texttt{load.lisp} total $17,656$ LOC ($17,818$ including \texttt{benchmark.lisp}'s $162$ LOC); milestones add $1,585$ LOC and \texttt{bootstrap/} adds $1,304$ LOC.} Both audits confirm that what is mathematically a single concept---\emph{a guarded relation over typed ports equipped with directional witnesses and epistemic grades}---has splintered into \textbf{$14$ \texttt{define-knowledge\allowbreak-kind} silos}: \texttt{:function}, \texttt{:law} (passive guarded equality, oriented into \texttt{rewrite-library} by \texttt{code-less}), \texttt{:solver} (directional FlashMeta-style witness unpacked into \texttt{arithmetic\allowbreak-propagator} in \texttt{laws.lisp:1184}), \texttt{:transformer} (code-to-code meta-programs in \texttt{functors.sexp}, \emph{not} value propagators!), \texttt{:functor}, \texttt{:motif}, \texttt{:relation}, \texttt{:descriptor}, \texttt{:decoder\allowbreak-template}, \texttt{:locality\allowbreak-key}, \texttt{:nogood\allowbreak-schema}, \texttt{:dip\allowbreak-feature}, \texttt{:heuristic}, and \texttt{:spec}.
 
 Per marginalia \hyperlink{q:m6}{\textbf{M6}}, line counts alone are easily gamed by dense macros; Table~\ref{tab:cccc} reports measured \texttt{cccc} cognitive and cyclomatic complexity across the $35$ Lisp files ($1,638$ functions).
 
@@ -211,7 +216,7 @@ Per marginalia \hyperlink{q:m6}{\textbf{M6}}, line counts alone are easily gamed
 \centering
 \footnotesize
 \setlength{\tabcolsep}{5pt}
-\begin{tabular}{@{}rlrrrp{6.8cm}@{}}
+\begin{tabular}{@{}rlrrrL{6.8cm}@{}}
 \toprule
 \textbf{\#} & \textbf{Module (\texttt{LOC})} & \textbf{Fns} & \textbf{Cog.} & \textbf{Cyc.} & \textbf{Most Complex Function (\texttt{line}, Cog.\ / Cyc.)} \\
 \midrule
@@ -247,14 +252,14 @@ Reconciling both audits' entry-by-entry trace of \texttt{build-batteries.lisp} (
 Furthermore, ten concrete defects sit live in \texttt{df33ed1}:
 \begin{enumerate}[label=(\arabic*), leftmargin=2.1em, itemsep=0.12em]
   \item \texttt{consolidate.lisp:1022} calls \texttt{retype-knowledge-laws} without \texttt{:samples}, causing \texttt{validate-law} (\texttt{laws.lisp:100}) to discard $100\%$ of laws retyped to \texttt{:int} as \texttt{:vacuous}.
-  \item \texttt{row-satisfaction} (\texttt{synthesize.lisp:1106}) tests \texttt{unresolved-evaluation} via \texttt{typep} on a formatted \emph{string} (\texttt{vm.lisp:385}) and omits \texttt{:unresolved}.
+  \item \texttt{row-satisfaction} (\texttt{synthesize.lisp:1106}) tests \texttt{unresolved\allowbreak-evaluation} via \texttt{typep} on a formatted \emph{string} (\texttt{vm.lisp:385}) and omits \texttt{:unresolved}.
   \item \texttt{open-prepared-node} (\texttt{synthesize.lisp:876}) omits \texttt{:laws} in \texttt{start-search}, so discovered laws rewrite \emph{zero} candidates during synthesis.
   \item \texttt{arithmetic.sexp} and \texttt{constructors.sexp} solvers lack \texttt{:witness} or \texttt{:certificate}, blocking symbolic \texttt{:cons} unwinding and omitting integer divisibility on \texttt{:*}.
   \item \texttt{flatten-lifted-conjuncts} (\texttt{frame.lisp:1033}) unconditionally asserts the \texttt{YES} branch when unfolding \texttt{:filter}.
   \item \texttt{coupled-fallback-rows} (\texttt{frame.lisp:1185}) collides distinct occurrence keys on the keyword \texttt{:coupled} in \texttt{nogoods.lisp:143}.
   \item Four VM sandboxing holes (\texttt{start-search}, \texttt{observation-job}, \texttt{laws.lisp:435} \texttt{assert}, and \texttt{frame.lisp:427}) let diverging or partial calls starve budgets or crash SBCL.
   \item Stage~A runs twice on Node~$0$ (\texttt{yield-gate.lisp:216}) and $13$ call sites re-enumerate private behavior tables ($38{:}1$ candidate-to-behavior ratio at $30$ body bits).
-  \item \texttt{orient-conserved-quantity}, \texttt{induce-row-order}, \texttt{probe-frame-coordinates}, and \texttt{frame-addressed-entries} have zero kernel callers.
+  \item \texttt{orient-conserved\allowbreak-quantity}, \texttt{induce\allowbreak-row-order}, \texttt{probe-frame\allowbreak-coordinates}, and \texttt{frame-addressed\allowbreak-entries} have zero kernel callers.
   \item \texttt{messages.lisp} projects only scalar \texttt{:int}/\texttt{:bool} columns and has zero kernel readers.
 \end{enumerate}
 
@@ -288,7 +293,7 @@ Only one recognizer exists (entry \texttt{:solve-shift-seq-by-correlation} in \t
 
 \paragraph{B. Five Technical Bugs and Architectural Holes in \texttt{plan\_v2b}.}
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.25em]
-  \item \textbf{Bug 1 --- ``Lift by recorded execution'' (\texttt{plan\_v2b} \S7.3, line~508) breaks on data-dependent control flow:} \texttt{plan\_v2b} claims symbolic folding in \texttt{requirements.lisp} can be replaced by running the decoder with a logging oracle that returns an opaque placeholder token. \emph{Test this on \texttt{:filter}:} \texttt{(:if (:code-eval Z elem) (:cons elem rec) rec)}. In Common Lisp / \texttt{vm.lisp}, any non-\texttt{nil} placeholder evaluates \texttt{:if} as \textbf{truthy}, silently taking the \texttt{YES} branch on every element and reproducing the exact \texttt{flatten-lifted-conjuncts} hallucination bug (\texttt{frame.lisp:1033})! And if \texttt{Z} controls recursion termination (\texttt{:fix-seq} or guarded search), dummy execution diverges. Recorded execution works \emph{only} for parametric/applicative combinators (\texttt{:map}, \texttt{:foldr} with unbranched cons); selective/branching combinators require \textbf{multi-path symbolic/angelic execution} (\litref{miltner2022}{Burst}) or \texttt{Colored E-Graph} branch contexts!
+  \item \textbf{Bug 1 --- ``Lift by recorded execution'' (\texttt{plan\_v2b} \S7.3, line~508) breaks on data-dependent control flow:} \texttt{plan\_v2b} claims symbolic folding in \texttt{requirements.lisp} can be replaced by running the decoder with a logging oracle that returns an opaque placeholder token.\sidenote{Category-theoretically, single-run placeholder tracing is exact iff the combinator is \emph{parametric / applicative} (where Wadler's free theorems forbid inspecting polymorphic outputs). Selective or monadic combinators (\texttt{filter}, \texttt{take-while}, \texttt{find}) inspect outputs at branches and therefore require multi-path Colored/angelic tracing.} \emph{Test this on \texttt{:filter}:} \texttt{(:if (:code-eval Z elem) (:cons elem rec) rec)}. In Common Lisp / \texttt{vm.lisp}, any non-\texttt{nil} placeholder evaluates \texttt{:if} as \textbf{truthy}, silently taking the \texttt{YES} branch on every element and reproducing the exact \texttt{flatten-lifted\allowbreak-conjuncts} hallucination bug (\texttt{frame.lisp:1033})! And if \texttt{Z} controls recursion termination (\texttt{:fix-seq} or guarded search), dummy execution diverges. Recorded execution works \emph{only} for parametric/applicative combinators (\texttt{:map}, \texttt{:foldr} with unbranched cons); selective/branching combinators require \textbf{multi-path symbolic/angelic execution} (\litref{miltner2022}{Burst}) or \texttt{Colored E-Graph} branch contexts!
   \item \textbf{Bug 2 --- Per-e-class unary facts (\texttt{plan\_v2b} \S7.6, line~573) cannot express $0 \le i < \mathrm{length}(xs)$:} Attaching unary intervals $[l, u]$ to single e-classes only bounds variables against \emph{constants}. Relating variable $i$ to $\mathrm{length}(xs)$ requires a \textbf{binary relational domain} (Difference-Bound Matrix $x - y \le c$, \S\ref{ans:10}).
   \item \textbf{Bug 3 --- 1D sequence-plate myopia (\texttt{plan\_v2b} \S7.4) vs.\ general covers and multi-stage residuals:} \texttt{plan\_v2b} reduces lifting to ``plates'' over sequence positions with \texttt{next}/\texttt{prev}, neglecting overlapping chart covers, quotient spaces, bipartite unordered correspondences, and multi-term residual decomposition where approximate models leave structured non-zero error columns (\S\ref{ans:9}, \S\ref{ans:9a}).
   \item \textbf{Bug 4 --- Unbridged ACSet $\leftrightarrow$ E-Graph chasm (\texttt{plan\_v2b} \S6.1--\S6.2, \S7.2):} Plain \texttt{ACSets} have NP-complete general homomorphism matching (\litref{brown2022}{Brown et al.\ 2022}) and \emph{zero} native union-find congruence or binder $\alpha$-equivalence, while \texttt{Colored E-Graphs} have no base-reindexing maps $\Delta/\Sigma/\Pi$. Saying ``the hypergraph is the semantics; columnar tables are the implementation'' (\S7.2) waves past how congruence, slot/thinning maps, and reindexing actually interact (\S\ref{ans:4}, \S\ref{ans:12}).
@@ -312,29 +317,29 @@ Table~\ref{tab:substrates} evaluates seven candidate architectures against all t
 \begin{table*}[htbp]
 \centering
 \footnotesize
-\setlength{\tabcolsep}{4.2pt}
-\begin{tabular}{@{}p{2.9cm}p{1.9cm}p{1.9cm}p{1.9cm}p{1.9cm}p{1.9cm}p{1.9cm}p{2.2cm}@{}}
+\setlength{\tabcolsep}{3.1pt}
+\begin{tabular}{@{}L{2.50cm}L{1.82cm}L{1.80cm}L{1.88cm}L{1.78cm}L{1.86cm}L{1.88cm}L{2.10cm}@{}}
 \toprule
-\textbf{Requirement} & \textbf{\texttt{v1} Frame-Guards} & \textbf{Plain \texttt{ACSets}} & \textbf{Vanilla \texttt{egglog}/\texttt{babble}} & \textbf{Pure VSA (\texttt{v2.0})} & \textbf{Flat Neural (\texttt{CompressARC})} & \textbf{\texttt{plan\_v2b} Store} & \textbf{Rectified \texttt{v2.1} Hybrid} \\
+\textbf{Requirement} & \textbf{\texttt{v1} Frame-Guards} & \textbf{Plain \texttt{ACSets}} & \textbf{Vanilla \texttt{egglog} / \texttt{babble}} & \textbf{Pure VSA (\texttt{v2.0})} & \textbf{Flat Neural (\texttt{Compress\allowbreak ARC})} & \textbf{\texttt{plan\_v2b} Store} & \textbf{Rectified \texttt{v2.1} Hybrid} \\
 \midrule
-\textbf{Exact truth \& certificates} & Yes (\texttt{vm}, \texttt{evidence}) & Exact tables; no proofs & Equational only; no grades & No (noisy $\sqrt{D/K}$ SNR) & Approximate / per-task KL & Yes (graded edges) & \textbf{Yes} ($+$ induction \& PIT) \\
+\textbf{Exact truth \& certificates} & Yes (\texttt{vm}, \texttt{evidence}) & Exact tables; no proofs & Equational; no grades & No (noisy $\sqrt{D/K}$ SNR) & Approx.\ per-task KL & Yes (graded edges) & \textbf{Yes} ($+$ induction \& PIT) \\
 \addlinespace[2pt]
-\textbf{Index frames \& containers} & Blocked (6 host vetoes) & Native ($\Delta$ pullback) & Awkward (no array columns) & Poor (positional noise) & 2D grid equivariant only & Yes (positions base, 1D bias) & \textbf{Yes} (general container covers) \\
+\textbf{Index frames \& containers} & Blocked (6 host vetoes) & Native ($\Delta$ pullback) & Awkward (no arrays) & Poor (pos.\ noise) & 2D grid equivariant & Yes (1D plate bias) & \textbf{Yes} (general covers) \\
 \addlinespace[2pt]
-\textbf{Congruence \& binder sharing} & None ($N\times$ AST copies) & None (NP-hard DPO match) & \texttt{egglog} $+$ \texttt{Slotted} & Role-binding approx.\ only & None (weights only) & Hash-cons $+$ unary colors & \textbf{Columnar $+$ Thinning $+$ AC} \\
+\textbf{Congruence \& binders} & None ($N\times$ AST copies) & None (NP DPO match) & \texttt{egglog} $+$ \texttt{Slotted} & Role-bind approx. & None (weights only) & Hash-cons $+$ unary colors & \textbf{Columnar $+$ Thinning $+$ AC} \\
 \addlinespace[2pt]
-\textbf{Guards \& partiality} & 5 disjoint encodings & Sub-object classifiers & Unconditional (needs \texttt{Chompy}) & Soft masks only & Continuous relaxation & Contexts $+$ unary bounds & \textbf{Contexts $+$ DBM Zones $+$ PIE} \\
+\textbf{Guards \& partiality} & 5 disjoint encodings & Sub-object classifiers & Needs \texttt{Chompy} & Soft masks only & Continuous relaxation & Contexts $+$ unary bounds & \textbf{Contexts $+$ DBM $+$ PIE} \\
 \addlinespace[2pt]
-\textbf{Multi-stage MDL residuals} & Split-brain; wiped on lift & Attribute cols only & Cost-based tree extract & L2/cosine proxy only & Variational Bits-Back KL & 3 discrete rules (thin covers) & \textbf{Robinson sheaf $+$ Bits-Back} \\
+\textbf{Multi-stage residuals} & Split-brain; wiped on lift & Attribute cols only & Cost tree extract & L2/cosine proxy only & Variational Bits-Back & 3 discrete rules & \textbf{Robinson $+$ Bits-Back} \\
 \addlinespace[2pt]
-\textbf{Cold-start ($N<50$) guidance} & Degenerate predictor & None built-in & None built-in & Random projections & 20 min SGD per task & \textbf{Strong} (NB log-odds, $k$-NN) & \textbf{Strong} (probes $+$ NB log-odds) \\
+\textbf{Cold-start ($N<50$)} & Degenerate predictor & None built-in & None built-in & Random projections & 20 min SGD / task & \textbf{Strong} (NB, $k$-NN) & \textbf{Strong} (probes $+$ NB) \\
 \addlinespace[2pt]
-\textbf{Warm compositional language} & Frozen 5-slot keyword & Schema arrows only & Library fns (\texttt{babble}) & $\oplus, \circledast$ (no cleanup) & Zero cross-task library & Deferred (\S7.8) & \textbf{Scaffold $+$ Bilinear Router} \\
+\textbf{Warm language} & Frozen 5-slot keyword & Schema arrows only & Library fns (\texttt{babble}) & $\oplus, \circledast$ (no cleanup) & Zero cross-task library & Deferred (\S7.8) & \textbf{Scaffold $+$ Router} \\
 \addlinespace[2pt]
-\textbf{Homoiconic $+$ fast lowering} & Tier 0 VM $+$ Tier 1 closure & Host Julia structs & Rust/Datalog (opaque) & SIMD vectors only & GPU tensor ops only & VM $+$ columnar arrays & \textbf{3-Tier} (VM $\to$ Closure $\to$ SBCL/CRAM) \\
+\textbf{Homoiconic $+$ lowering} & Tier 0 VM $+$ Tier 1 closure & Host Julia structs & Opaque Rust/Datalog & SIMD vectors only & GPU tensor ops only & VM $+$ columnar arrays & \textbf{3-Tier} (VM $\to$ SBCL/CRAM) \\
 \bottomrule
 \end{tabular}
-\caption{Comparison of seven architectural candidates across the ten core constraints of \texttt{lisploop}. No single off-the-shelf formalism satisfies every row; \textbf{Kernel \texttt{v2.1}} marries \texttt{ACSet} columnar arrays, thinning/colored e-graph congruence, Robinson pseudometric sheaves with Bits-Back MDL transport, dual-regime scaffolded geometry, DBM relational zones, and 3-tier scheduled lowering.}
+\caption{Comparison of seven architectural candidates across the core constraints of \texttt{lisploop}. No single off-the-shelf formalism satisfies every row; \textbf{Kernel \texttt{v2.1}} marries \texttt{ACSet} columnar arrays, thinning/colored e-graph congruence, Robinson pseudometric sheaves with Bits-Back MDL transport, dual-regime scaffolded geometry, DBM relational zones, and 3-tier scheduled lowering.}
 \label{tab:substrates}
 \end{table*}
 
@@ -364,14 +369,14 @@ In Kernel \texttt{v2.1}, \textbf{every program, rule, guard, and recognizer rema
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.2em]
   \item \textbf{Tier~0 --- Homoiconic Step Interpreter (Cold / Symbolic / One-Off):} Evaluates one AST or open e-node step at a time with exact unit-resumable fuel. Used for cold candidates evaluated on $1$--$2$ discriminating probe sites and for symbolic/angelic execution. Zero compilation overhead.
   \item \textbf{Tier~1 --- Threaded Metered Closure Tree (Warm, $>4$ site evaluations):} \texttt{expression-closure} (\texttt{vm.lisp:439}), extended to inline fuel checks (\texttt{decf *fuel*}) inside recursive and defined-function calls so closures never run unboundedly before \texttt{:settle} (\texttt{vm.lisp:530}). Compilation takes $<5\,\mu\mathrm{s}$.
-  \item \textbf{Tier~2 --- Scheduled Native SBCL Lowering (\texttt{cl:compile}) \& Columnar/CRAM Kernels (Hot, $>10^3$ evaluations):} Triggered \emph{only} when an entry's call counter crosses a threshold (accepted library functions, active inner-loop metric decoders, Stage~A batch kernels, or pairwise soft-constraint energies over finite candidate cells). Emits type-declared SBCL lambdas \texttt{(declare (optimize (speed 3) (safety 0)) (type (simple-array fixnum (*)) col-in col-out))} that fuse the entire AST, unbox integers, vectorize across all $M$ base sites in one loop, and support fast CRAM-style discrete/relaxed energy sweeps over coupled fiber cells before exact root verification!
+  \item \textbf{Tier~2 --- Scheduled Native SBCL Lowering (\texttt{cl:compile}) \& Columnar/CRAM Kernels (Hot, $>10^3$ evaluations):} Triggered \emph{only} when an entry's call counter crosses a threshold (accepted library functions, active inner-loop metric decoders, Stage~A batch kernels, or pairwise soft-constraint energies over finite candidate cells). Emits type-declared SBCL lambdas (\texttt{speed 3}, \texttt{(simple-array fixnum (*))}) that fuse the entire AST, unbox integers, vectorize across all $M$ base sites in one loop, and support fast CRAM-style discrete/relaxed energy sweeps over coupled fiber cells before exact root verification!\footnote{Crucially, lowering changes \emph{wall-clock latency}, never logical work accounting: every compiled basic block deducts its exact static VM instruction weight (\texttt{decf fuel block-cost}) on entry, keeping synthetic work budgets $100\%$ deterministic and hardware-independent while accelerating throughput $10\times$--$50\times$.}
 \end{enumerate}
 
 \subsubsection{Q1b: ``Reuse Lost to Matching Cost'' --- Scale vs.\ Implementation}
 \label{ans:1b}
 
 \ansback{q:1b}{Prompt Q1b} \ansback{q:m2}{Margin M2}
-\textbf{It is $85\%$ an implementation artifact and $15\%$ a scale-threshold effect.} Tracing both figures cited in \texttt{plan\_v2b} \S3.5 back to \texttt{deprecated/results.md} proves this decisively:
+\textbf{It is $85\%$ an implementation artifact and $15\%$ a scale-threshold effect.} Tracing both figures cited in \texttt{plan\_v2b} \S3.5 back to \texttt{deprecated/results.md} proves this decisively:\sidenote{Crossover arithmetic: replacing $O(|R|\cdot|T|^2)$ \texttt{:code-less} bitstream serialization ($\sim 840$ work units/attempt) with an $O(1)$ hash-consed operator-table probe ($1$--$2$ units) lowers the net-saving crossover from $\sim 10^5$ work down to $\sim 5\times 10^2$ work.}
 
 \begin{itemize}[leftmargin=1.6em, itemsep=0.25em]
   \item \textbf{Case~1 (\texttt{results.md:1048--1058}, M3 rewrite rule $a+0=a$):} Plain search cost $182,181$ work; checked-rule search initially cost $2,126,539$ work, and after one-time preparation still cost $740,452$ work (saving $7,732$ evaluation units while paying \textbf{$545,921$ matching/rewriting units}!). \emph{Why?} Because \texttt{simplify-symbolic-expr} scanned an unindexed list of rules at every subterm of all $649$ enumerated trees, and \texttt{:code-less} (\texttt{vm.lisp:186}) serialized both ASTs to prefix bitstreams to compare size---charging a \emph{quadratic} VM tariff per match attempt while still keeping the rewritten duplicates inside the enumeration buckets!
@@ -384,16 +389,16 @@ In Kernel \texttt{v2.1}, \textbf{every program, rule, guard, and recognizer rema
 \label{ans:1c}
 
 \ansback{q:1c}{Prompt Q1c}
-\textbf{Yes---your instinct not to bake \texttt{let} into the core AST during \texttt{plan-exec.md} was spot-on!} In categorical string diagrams and open hypergraphs (\litref{bonchi2022}{Bonchi et al.\ 2022}; \litref{tiurin2025}{Tiurin et al.\ 2025}), a \texttt{let}-binding \texttt{(let ((x e\_1)) e\_2(x, x))} is \textbf{not an operator box at all}: it is simply \textbf{wire fan-out} (the comonoid copy morphism $\Delta_A : A \to A \otimes A$ of a Cartesian/Frobenius hypergraph), where the single output port of hyperedge $e_1$ connects to multiple downstream input ports!
+\textbf{Yes---your instinct not to bake \texttt{let} into the core AST during \texttt{plan-exec.md} was spot-on!} In categorical string diagrams and open hypergraphs (\litref{bonchi2022}{Bonchi et al.\ 2022}; \litref{tiurin2025}{Tiurin et al.\ 2025}), a \texttt{let}-binding \texttt{(let ((x e\_1)) e\_2(x, x))} is \textbf{not an operator box at all}: it is simply \textbf{wire fan-out} (the comonoid copy morphism $\Delta_A : A \to A \otimes A$ of a Cartesian/Frobenius hypergraph), where the single output port of hyperedge $e_1$ connects to multiple downstream input ports!\sidenote{Paired with Zucker's thinning bitvectors (\S\ref{ans:5a}), Cartesian structural rules become pure bitmask algebra: wire fan-out (contraction) is two child port masks sharing a $1$-bit, while unused-variable dropping (weakening) is a $0$-bit.}
 
 Inside the hypergraph store, common subexpressions are shared \emph{automatically by hash-consing} ($0$ extra nodes, $0$ variable names, $0$ \texttt{share-repeated-subterms} tree searches). Only two subtleties arise, and both are clean:
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.2em]
   \item \textbf{Codec Pricing \& Serialization (\texttt{codec.lisp}):} Tree-unfolding a shared DAG duplicates bits, whereas serializing a topological sort with explicit wire back-references (or emitting \texttt{(:code-eval 'body shared)} at boundary extraction) charges each shared node \emph{once} plus $\lceil \log_2 k \rceil$ wire-index bits---which is why DAG extraction is NP-hard in general (\litref{goharshady2024}{Goharshady et al.\ 2024}) and must run anytime.
-  \item \textbf{Call-by-Value Strictness Under Partiality (\texttt{requirements.lisp:110}):} In a language with \texttt{:if} and partial primitives (\texttt{:/}, \texttt{:at}), evaluating $e_1$ eagerly before \texttt{(:if G a(e\_1) b)} changes crash semantics if $e_1$ errors when $G$ is false! In the hypergraph, wire fan-out across \texttt{:if} branches is valid unconditionally iff $e_1$ is total in the enclosing context, or if $e_1$ lies in $\mathrm{demanded\text{-}vars}(\text{YES}) \cap \mathrm{demanded\text{-}vars}(\text{NO})$; otherwise $e_1$ stays scoped inside the guarded sub-context.
+  \item \textbf{Call-by-Value Strictness Under Partiality (\texttt{requirements.lisp:110}):} In a language with \texttt{:if} and partial primitives (\texttt{:/}, \texttt{:at}), evaluating $e_1$ eagerly before \texttt{(:if G a b)} (where $a$ or $b$ uses $e_1$) changes crash semantics if $e_1$ errors when $G$ is false! In the hypergraph, wire fan-out across \texttt{:if} branches is valid unconditionally iff $e_1$ is total in the enclosing context, or if $e_1$ lies in the intersection $\mathrm{demanded}(\text{YES}) \cap \mathrm{demanded}(\text{NO})$ (\texttt{demanded\allowbreak-vars}); otherwise $e_1$ stays scoped inside the guarded sub-context.
 \end{enumerate}
 
 % -----------------------------------------------------------------------------
-\subsection{Q2: VSA vs.\ Local-Context BERT/Transformer vs.\ Brain Scaffolds (\texttt{plan\_v2b} \S6.6)}
+\subsection{Q2: VSA vs.\ Local-Context Transformers vs.\ Brain Scaffolds (\texttt{v2b} \S6.6)}
 \label{ans:2}
 % -----------------------------------------------------------------------------
 
@@ -407,7 +412,7 @@ First, here is the exact theorem and proof behind \texttt{plan\_v2b}'s claim (Ma
   \item \textbf{Storage / Representation ($O(\log m')$):} By the Johnson--Lindenstrauss lemma, $m'$ $k$-sparse features embed nearly orthogonally into $n = O(k^2 \log m' / \varepsilon^2)$ dimensions.
   \item \textbf{Computation ($\Omega(\sqrt{m' \log m'})$ width, $\Omega(m' \log m')$ parameters):} Using a Kolmogorov-complexity counting argument over families of permutations and pairwise Boolean operations ($f_j(x) = x_{\pi_1(j)} \wedge x_{\pi_2(j)}$), Adler \& Shavit prove that \emph{any} circuit/layer computing $m'$ pairwise features from superposed inputs requires width $n = \Omega(\sqrt{m' \log m'})$ and $\Omega(m' \log m')$ parameters---so $n$ neurons compute at most $O(n^2/\log n)$ features, \textbf{quadratic rather than exponential}!
 \end{itemize}
-Three additional results seal the case against standalone VSA:
+Three additional results seal the case against standalone VSA:\sidenote{Where VSA \emph{does} earn its keep in \texttt{v2.1}: zero-training $O(d)$ locality-sensitive hashing of shallow $1$-hop port neighborhoods to pre-filter candidates before exact e-matching, where neither multi-step unbinding nor disjunction is required.}
 (i)~recursive HRR/VSA role-filler binding ($R_1 \circledast (R_2 \circledast x)$) degrades SNR as $\sqrt{D/K}$ with bundle size $K$ and requires discrete resonator/cleanup lookups after every unbinding (\litref{frady2020}{Frady et al.\ 2020});
 (ii)~box/cone/vector embeddings cannot represent logical \emph{disjunctions} in low dimension---embedding arbitrary unions over $N$ entities requires dimension $\Theta(N)$ (\litref{ren2020}{Query2box, ICLR 2020}); and
 (iii)~even for a single Transformer layer, communication complexity proves $1$-layer attention cannot compose two functions $g \circ f$ over domain size $N$ when $H \cdot d < \Omega(N \log N)$ (\litref{peng2024}{Peng, Narayanan \& Papadimitriou 2024}).
@@ -458,8 +463,10 @@ Now compare the two flavors of sheaves cited in \texttt{plan\_v2.0} vs.\ \texttt
   \item \textbf{Why \texttt{plan\_v2.0}'s Vector Cellular Sheaves (\litref{hansen2019}{Hansen \& Ghrist 2019}; \litref{bodnar2022}{Neural Sheaf Diffusion}) Needed Rectification:} Vector sheaves require every stalk to be $\mathbb{R}^d$ and every restriction map to be a linear matrix $F_{v\trianglelefteq e} \in \mathbb{R}^{d\times d}$. Worse, as \texttt{plan\_v2b} \S6.8 noted and \litref{caralt2026}{Caralt et al.\ (\texttt{arXiv:2603.05395}, 2026)} proved empirically, GNN-learned restriction matrices rarely beat fixing $F_{v\trianglelefteq e} = I$ (the ``Identity Sheaf baseline'')!
   \item \textbf{Why Robinson's Sheaves of Pseudometric Spaces (\litref{robinson2020}{Robinson, \emph{Compositionality} 2020, \texttt{arXiv:1805.08927}}) + CSP Presheaves (\litref{abramsky2011}{Abramsky \& Brandenburger 2011}; \litref{oconghaile2022}{\'O~Conghaile 2022}) Fit \texttt{lisploop} Hand-in-Glove:} Robinson drops linearity completely! Stalks $\mathcal{F}(U)$ are \emph{arbitrary sets}---discrete integers, sequences, or typed program classes---each equipped with a \textbf{pseudometric} $d_U : \mathcal{F}(U) \times \mathcal{F}(U) \to \mathbb{R}_{\ge 0}$ (here: \textbf{MDL correction bits}!), and restriction maps $\rho_{U\to V}$ are actual \emph{verified programs/decoders}! Given an assignment $a = (a_U)_{U \in \mathcal{U}}$ of local candidates (e.g., Stage~A local fits or fiber witnesses), Robinson defines the \textbf{consistency radius}:
   \begin{equation}\label{eq:consistency-radius}
-    \varepsilon(a) \;=\; \sup_{U \subseteq V} d_V\!\big(\rho_{U \to V}(a_U),\; a_V\big)
-    \quad \text{(or MDL sum }\sum_{e=(U\to V)} d_V(\rho_e(a_U), a_V)\text{)}.
+    \begin{aligned}
+      \varepsilon_{\infty}(a) &\;=\; \sup_{U \subseteq V} d_V\!\big(\rho_{U \to V}(a_U),\; a_V\big), \\
+      \varepsilon_{\mathrm{MDL}}(a) &\;=\; \sum_{e=(U\to V)} d_V\!\big(\rho_e(a_U),\; a_V\big).
+    \end{aligned}
   \end{equation}
   Look at what Eq.~\eqref{eq:consistency-radius} unifies at one stroke:
   \begin{enumerate}[label=(\roman*), leftmargin=1.8em, itemsep=0.15em]
@@ -470,7 +477,7 @@ Now compare the two flavors of sheaves cited in \texttt{plan\_v2.0} vs.\ \texttt
 \end{itemize}
 
 % -----------------------------------------------------------------------------
-\subsection{Q4, Q12, \& Margin M1: Attributed $\mathsf{C}$-Sets vs.\ Port Hypergraphs}
+\subsection{Q4, Q12, \& Margin M1: Attributed \texorpdfstring{$\mathsf{C}$}{C}-Sets vs.\ Port Hypergraphs}
 \label{ans:4}
 \label{ans:12}
 % -----------------------------------------------------------------------------
@@ -478,7 +485,7 @@ Now compare the two flavors of sheaves cited in \texttt{plan\_v2.0} vs.\ \texttt
 \ansback{q:4}{Prompt Q4} \ansback{q:12}{Prompt Q12} \ansback{q:m1}{Margin M1}
 
 \paragraph{1. What is an Attributed $\mathsf{C}$-Set, and what did \texttt{plan\_v2b} mean by ``The hypergraph is the semantics'' (\textbf{Q12})?}
-An \textbf{Attributed $\mathsf{C}$-Set} (\litref{patterson2022}{Patterson, Lynch \& Fairbanks, \emph{Compositionality} 2022, \texttt{arXiv:2106.04703}}) is a functor $X : \mathsf{C} \to \mathsf{Set}$ from a small schema category $\mathsf{C}$ into finite sets, augmented with typed data-attribute maps $a : X(c) \to K_\tau$ into fixed host types (\texttt{fixnum}, \texttt{symbol}, etc.). Crucially:
+An \textbf{Attributed $\mathsf{C}$-Set} (\litref{patterson2022}{Patterson, Lynch \& Fairbanks, \emph{Compositionality} 2022, \texttt{arXiv:2106.04703}}) is a functor $X : \mathsf{C} \to \mathsf{Set}$ from a small schema category $\mathsf{C}$ into finite sets, augmented with typed data-attribute maps $a : X(c) \to K_\tau$ into fixed host types (\texttt{fixnum}, \texttt{symbol}, etc.).\sidenote{Concrete memory footprint: lifting $8$ sequence examples of length $16$ ($128$ fiber sites) allocates $128$ boxed \texttt{frame-row} $+$ AST \texttt{cons} trees in \texttt{v1}, vs.\ a single $1\,\mathrm{KB}$ unboxed \texttt{(simple-array fixnum (128))} in \texttt{cbase}.} Crucially:
 \begin{itemize}[leftmargin=1.6em, itemsep=0.2em]
   \item Every object $c \in \mathrm{Ob}(\mathsf{C})$ is implemented in memory as a dense integer range $\{0, \dots, |X(c)|-1\}$.
   \item Every arrow $f : c \to d$ in $\mathsf{C}$ is implemented as a \textbf{contiguous integer array} (\texttt{(simple-array fixnum (*))}) of foreign keys, and every attribute is a contiguous value array!
@@ -518,11 +525,11 @@ Reading the primary papers (\hyperref[sec:app-a]{Appendix~A}) reveals both why t
 \label{ans:5b}
 
 \ansback{q:5b}{Prompt Q5b}
-The array and loop-lifting papers (\hyperref[sec:app-b]{Appendix~B}) directly answer how to eliminate \texttt{bootstrap/recursion-schemas.lisp}:
+The array and loop-lifting papers (\hyperref[sec:app-b]{Appendix~B}) directly answer how to eliminate \texttt{bootstrap/recursion-schemas.lisp}:\sidenote{Direct tie to your opening prompt: on non-commutative $2a - b$, scalar \texttt{foldl} fails Gibbons's right-decomposability, whereas lifting state $s$ to the affine endomorphism pair $(2^k, \mathrm{acc})$ restores associativity---which Farzan \& Nicolet discover mechanically.}
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.25em]
   \item \textbf{Gibbons's Third Homomorphism Theorem (\litref{gibbons1996}{Gibbons, JFP 1996}) \& Parsynt (\litref{farzan2017}{Farzan \& Nicolet, PLDI 2017}):} Gibbons proved that a list function is a parallelizable monoid homomorphism (splits across arbitrary index partitions) iff it is computable as both a \texttt{foldr} and a \texttt{foldl}. Crucially, many sequential loops are \emph{not} homomorphic on their scalar output alone (e.g., \texttt{max-prefix-sum}, \texttt{best-shift}, or \texttt{scan-proj0} where state slot~$1$ is projected away!). \textbf{Farzan \& Nicolet (2017)} automate the remedy: when synthesizing an associative join $\odot$ for output $y$ fails on a counterexample split $xs = L \mathbin{+\!\!+} R$, their solver inspects the symbolic expression $f(L \mathbin{+\!\!+} R)$ as a function of $R$, collects the minimal non-constant subterms over $L$ needed to evaluate it (e.g., $\mathrm{sum}(L)$ alongside $\mathrm{mps}(L)$), and \textbf{tuples those auxiliary accumulators into the loop state} until closure succeeds! That directly replaces \texttt{:state-fold-inductive} and \texttt{:counter-inductive} in \texttt{recursion-schemas.lisp}!
   \item \textbf{Szalinski (\litref{nandi2020}{Nandi et al., PLDI 2020, \texttt{arXiv:1909.12252}}):} Inside an e-graph, Szalinski's \emph{Structure Finder} anti-unifies flat sequences of expressions $[f(0), f(2), f(4), \dots]$ into skeletons with constant-list holes, and an external \emph{Arithmetic Solver} fits degree-$1$/$2$ affine/periodic index formulas $g(i) = a i + b$ (plus speculative \emph{inverse transformations} to expose hidden common structure, e.g.\ rewriting $c$ as $1\cdot c + 0$ at $i=0$!) to emit \texttt{(Tabulate n (lambda i ...))}.
-  \item \textbf{Burst (\litref{miltner2022}{Miltner et al., POPL 2022, \texttt{arXiv:2107.06253}}):} Explains why \texttt{lisploop}'s \texttt{oracle-table} (\texttt{vm.lisp:345}) requires trace-complete examples! When \texttt{f '(4 1 3)} recursively calls \texttt{f '(1 3)}, if \texttt{'(1 3)} is missing from the spec, \texttt{lisploop} throws \texttt{:unresolved}. \textbf{Burst} instead evaluates \texttt{f '(1 3)} \emph{angelically} (allowing it to return \emph{any} type-consistent value that makes the outer row succeed), finds a candidate body $B$, executes $B$ concretely from scratch, and if $B$ fails, extracts a concrete \emph{anti-specification} constraint excluding that spurious angelic assumption!
+  \item \textbf{Burst (\litref{miltner2022}{Miltner et al., POPL 2022, \texttt{arXiv:2107.06253}}) \& ECTA (\litref{koppel2022}{Koppel et al., ICFP 2022}):} Burst explains why \texttt{lisploop}'s \texttt{oracle-table} (\texttt{vm.lisp:345}) requires trace-complete examples: when \texttt{f '(4 1 3)} recursively calls \texttt{f '(1 3)} and \texttt{'(1 3)} is missing from the spec, \texttt{lisploop} throws \texttt{:unresolved}. Burst instead evaluates \texttt{f '(1 3)} \emph{angelically} (allowing any type-consistent value satisfying local constraints, entangled across shared choices as in \litref{koppel2022}{ECTA}), finds a candidate body $B$, replays $B$ concretely from scratch, and on failure extracts a concrete \emph{anti-specification} excluding that spurious angelic assumption!
   \item \textbf{MDL Induction of General Index Functions:} \texttt{plan\_v2b} \S6.4 notes that existing graph-grammar learners stop at ``repeat $n$ times'' while Szalinski only fits fixed affine polynomials. In \texttt{lisploop}, combining container \texttt{:gather} preimage fibers $I_{\omega,j} = \{k \mid X_\omega[k] = Y_\omega[j]\}$ (\S\ref{sec:audit-index}) with \textbf{ordinary MDL expression synthesis over $(X_\omega, |X_\omega|, j) \mapsto I_{\omega,j}$} induces \emph{arbitrary} arithmetic/modular/conditional index generators under description length!
 \end{enumerate}
 
@@ -535,9 +542,9 @@ The array and loop-lifting papers (\hyperref[sec:app-b]{Appendix~B}) directly an
 \textbf{Both halves of your intuition are right: \texttt{plan\_v2b} \S6.5 is a genuine theoretical gem for pricing residuals and intermediate spaces, \emph{and} it has a sharp horizon of bounded utility when used for search guidance.}
 
 \paragraph{Where \S6.5 is foundational (and strictly fixes \texttt{v1} and \texttt{v2.0} residual pricing):}
-Under \litref{bennett1998}{Bennett, G\'acs, Li, Vit\'anyi \& Zurek (1998)}, universal information distance $E(x,y) = \max\{K(x\mid y), K(y\mid x)\}$ is approached from above in \texttt{lisploop} by the bit-length of the shortest \emph{verified} program mapping $x \mapsto y$ plus residual correction bits. More importantly, for intermediate space induction $Y = d(X, Z)$, coding theory gives three \textbf{exact, parameter-free accounting identities} (\hyperref[sec:app-c]{Appendix~C.3}):
+Under \litref{bennett1998}{Bennett, G\'acs, Li, Vit\'anyi \& Zurek (1998)}, universal information distance $E(x,y) = \max\{K(x\mid y), K(y\mid x)\}$ is approached from above in \texttt{lisploop} by the bit-length of the shortest \emph{verified} program mapping $x \mapsto y$ plus residual correction bits. More importantly, for intermediate space induction $Y = d(X, Z)$, coding theory gives three \textbf{exact, parameter-free accounting identities} (\hyperref[sec:app-c]{Appendix~C.3}):\sidenote{Numerical check on Eq.~\eqref{eq:bits-back}: a $3$-class latent partition over $8$ rows has $3! = 6$ equivalent labelings; without Bits-Back, MDL overcharges it by $\log_2 6 \approx 2.58$ spurious gauge bits.}
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.2em]
-  \item \textbf{Bijective Chart ($d(x, \cdot)$ injective on data, e.g., $Z = Y - \hat{Y}$ or reversible index permutation):} By \textbf{Integer Discrete Flows} (\litref{hoogeboom2019}{Hoogeboom et al., NeurIPS 2019, \texttt{arXiv:1905.07376}}), discrete bijections have \emph{exact unit Jacobian} ($|\det J| = 1$ does not apply; probability masses map $1$-to-$1$), so $\mathrm{DL}(Y\mid X) = \mathrm{bits}(d) + \mathrm{DL}(Z\mid X)$ with \textbf{zero scale distortion}!
+  \item \textbf{Bijective Chart ($d(x, \cdot)$ injective on data, e.g., $Z = Y - \hat{Y}$ or reversible index permutation):} By \textbf{Integer Discrete Flows} (\litref{hoogeboom2019}{Hoogeboom et al., NeurIPS 2019, \texttt{arXiv:1905.07376}}), whereas continuous change-of-variables adds $+\log|\det J_f|$, discrete bijections map probability mass $1$-to-$1$ ($P_Y(y) = P_Z(f(y))$) with \textbf{zero Jacobian volume penalty} ($\Delta\mathrm{bits}_{\mathrm{Jac}} = 0$), so $\mathrm{DL}(Y\mid X) = \mathrm{bits}(d) + \mathrm{DL}(Z\mid X)$---eliminating \texttt{v2.0}'s heuristic scaling factor $J_{\mathrm{scale}}$!
   \item \textbf{Surjective / Many-to-One Projection ($Y = \pi(Z)$ or quotient class $c = q(X)$):} By Shannon--Kolmogorov chain decomposition ($K(Z) \approx K(\pi(Z)) + K(Z \mid \pi(Z))$), the residual \emph{is} the conditional index within the fiber $\pi^{-1}(y)$, costing $\log_2 |\pi^{-1}(y)|$ bits under a uniform fiber prior (matching \texttt{plan2.md}'s fiber-entropy formula!).
   \item \textbf{Under-Determined / Gauge-Symmetric Latent ($Z$ defined only up to permutation or multi-witness fiber $S_\omega$):} If $k!$ label permutations of a synthesized partition/quotient yield identical $Y$, or any $z \in S_\omega$ satisfies $d(x_\omega, z) = y_\omega$, naive MDL overcharges the latent model by $\log_2 |\mathrm{Sym}|$ or $\sum_\omega \log_2 |S_\omega|$ bits! By \textbf{Bits-Back Coding} (\litref{townsend2019}{Townsend, Bird \& Barber, ICLR 2019, \texttt{arXiv:1901.04866}}), that exact symmetry entropy must be \textbf{refunded}:
   \begin{equation}\label{eq:bits-back}
@@ -567,7 +574,7 @@ Section~6.8 of \texttt{plan\_v2b} is arguably the most valuable sanity check in 
   \emph{Our response:} Strict separation of \textbf{exact verified truth} (\texttt{evidence.lisp}) from heuristic priority, \textbf{hash-consed congruence + thinning bitvectors} instead of arbitrary subgraph isomorphism, and \textbf{Levin/MDL utility archiving} (\texttt{amortize-library-entries}) that ruthlessly prunes non-paying rules.
 
   \item \textbf{Monotone Engines vs.\ Non-Monotone Control (answering Margin \hyperlink{q:m4}{\textbf{M4}} --- ``what does this mean? Which successful engines?''):}
-  In order/lattice theory, an operator $T : \mathcal{S} \to \mathcal{S}$ on store states is \textbf{monotone} if adding facts only ever derives \emph{more} facts ($S_1 \sqsubseteq S_2 \implies T(S_1) \sqsubseteq T(S_2)$) and is inflationary ($S \sqsubseteq T(S)$). Every high-performance deductive/constraint engine in computer science---\textbf{Datalog}, \textbf{\texttt{egg}/\texttt{egglog}} (equality merges + join-semilattice analyses), \textbf{CDCL SAT / \texttt{DPLL(T)} SMT} (unit propagation + learned conflict clauses), and \textbf{Radul--Sussman propagator networks}---owes its confluence, order-independence, and incremental speed to computing the unique \textbf{Knaster--Tarski least fixpoint} of monotone rules!
+  In order/lattice theory, an operator $T : \mathcal{S} \to \mathcal{S}$ on store states is \textbf{monotone} if adding facts only ever derives \emph{more} facts ($S_1 \sqsubseteq S_2 \implies T(S_1) \sqsubseteq T(S_2)$) and is inflationary ($S \sqsubseteq T(S)$).\sidenote{ATMS assumption bits bridge tentative guesses and monotonicity: inside the store, $\alpha \implies (c_1 = c_2)$ is a permanent monotone Horn fact; ``backtracking'' outside the store simply clears bit $\alpha$ in the controller's active view mask.} Every high-performance deductive/constraint engine in computer science---\textbf{Datalog}, \textbf{\texttt{egg}/\texttt{egglog}} (equality merges + join-semilattice analyses), \textbf{CDCL SAT / \texttt{DPLL(T)} SMT} (unit propagation + learned conflict clauses), and \textbf{Radul--Sussman propagator networks}---owes its confluence, order-independence, and incremental speed to computing the unique \textbf{Knaster--Tarski least fixpoint} of monotone rules!
   By contrast, \emph{spending finite budget}, \emph{committing to a single non-unique witness}, \emph{cutting off Stage~A}, and \emph{deleting/archiving library entries} are \textbf{non-monotone} (execution order changes what is found). Trying to encode budgets or destructive updates \emph{as rewrite rules inside the e-graph} destroys confluence. Keeping the store strictly monotone (assumption-indexed via Colored/ATMS contexts!) while placing the $3{:}1$ scheduler, fuel allocator, and ablator in a tiny external controller (\texttt{synthesize.lisp}) gives us confluence inside the store \emph{and} anytime control outside!
 
   \item \textbf{Cost of Generality (\litref{bowers2023}{Stitch} vs.\ \litref{cao2023}{babble}):}
@@ -593,7 +600,8 @@ In categorical logic (indexed categories / Lawvere hyperdoctrines + Spivak's fun
 \begin{table*}[htbp]
 \centering
 \small
-\begin{tabular}{@{}p{3.2cm}p{3.9cm}p{4.8cm}p{4.8cm}@{}}
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{@{}L{2.9cm}L{3.5cm}L{5.0cm}L{5.2cm}@{}}
 \toprule
 \textbf{Your Grouping} & \textbf{\texttt{plan\_v2b} \S7.3 Moves} & \textbf{Shared Categorical Essence} & \textbf{Critical Distinctions You Must NOT Erase} \\
 \midrule
@@ -601,14 +609,14 @@ In categorical logic (indexed categories / Lawvere hyperdoctrines + Spivak's fun
 \addlinespace[3pt]
 \textbf{II. Contravariant Restriction \& Pulling Back} & \textbf{3.~Reindex (Lift)}, \textbf{5b.~Split} (plus \textbf{Merge} as dual quotient) & Contravariant pullback $\Delta_u$ along a map $u : P \to R$: \texttt{Lift} pulls back along a projection $P \twoheadrightarrow R$ (duplicating context across fibers); \texttt{Split} pulls back along a subtype inclusion $U^+ \hookrightarrow R$ ($G=\mathrm{true}$)! & \textbf{(a)~Cartesian Fiber vs.\ Disjoint Cover:} \texttt{Lift} ($P \to R$) requires \emph{one unified program} across all fiber sites $p \in P$, whereas \texttt{Split} ($R = U^+ \sqcup U^-$) allows \emph{independent programs} $W^+, W^-$ on each branch (costing guard bits $\mathrm{bits}(G)$)! \textbf{(b)~\texttt{Merge} is NOT like \texttt{Split}:} \texttt{Merge} is a \emph{coequalizer} (quotienting e-classes $c_1 \equiv_G c_2$), which is \textbf{monotone} inside the store, whereas \texttt{Split} introduces case-branching! \\
 \addlinespace[3pt]
-\textbf{III. Information Measure} & \textbf{6.~Price} & Enrichment in the Lawvere metricsemiring $([0,\infty], \ge, +, 0)$: assigns MDL bit-cost to edges and residual discrepancies. & Must distinguish the \textbf{three discrete transport regimes} (bijective $0$-overhead, surjective conditional fiber bits, and Bits-Back $-\log_2|\mathrm{Sym}|$ symmetry refund, Eq.~\ref{eq:bits-back}) plus \textbf{per-root-site normalization} on lifted bases! \\
+\textbf{III. Information Measure} & \textbf{6.~Price} & Enrichment in the Lawvere metric semiring $([0,\infty], \ge, +, 0)$: assigns MDL bit-cost to edges and residual discrepancies. & Must distinguish the \textbf{three discrete transport regimes} (bijective $0$-overhead, surjective conditional fiber bits, and Bits-Back $-\log_2|\mathrm{Sym}|$ symmetry refund, Eq.~\ref{eq:bits-back}) plus \textbf{per-root-site normalization} on lifted bases! \\
 \bottomrule
 \end{tabular}
 \caption{Unifying \texttt{plan\_v2b}'s six moves into three categorical families while preserving the exact adjoint ($\Sigma_u \dashv \Delta_u \dashv \Pi_u$), branching (\texttt{Lift} vs.\ \texttt{Split}), and monotonicity (\texttt{Merge} vs.\ \texttt{Split}) distinctions.}
 \label{tab:six-moves}
 \end{table*}
 
-\noindent Notice also how \textbf{Match} relates to \textbf{Substitute}: \texttt{Substitute} is forward map application $\sigma(P) = T$, whereas \texttt{Match} is its \emph{relational preimage} $\sigma \in \mathrm{Sub}(P, T)$ (just as \texttt{:solver} propagation is the relational preimage of \texttt{Apply}!). In the hypergraph formulation, both are simply directional port queries on the same application/substitution hyperedge.
+\noindent Notice also how \textbf{Match} relates to \textbf{Substitute}:\sidenote{Why \texttt{Price} never needed revision: enriching hom-objects in the Lawvere metric semiring $([0,\infty], \ge, +, 0)$ replaces Boolean truth with shortest-path MDL bit-cost while leaving every structural adjoint ($\Sigma_u \dashv \Delta_u \dashv \Pi_u$) unchanged.} \texttt{Substitute} is forward map application $\sigma(P) = T$, whereas \texttt{Match} is its \emph{relational preimage} $\sigma \in \mathrm{Sub}(P, T)$ (just as \texttt{:solver} propagation is the relational preimage of \texttt{Apply}!). In the hypergraph formulation, both are simply directional port queries on the same application/substitution hyperedge.
 
 % -----------------------------------------------------------------------------
 \subsection{Q9 \& Q9a: Beyond 1D Sequence Indexing to General Covers, Charts, \& Residuals}
@@ -629,7 +637,7 @@ In truth, \textbf{1D sequence indexing is merely one baby case of changing base 
 \end{enumerate}
 
 \paragraph{Q9a: A Complete Multi-Stage Residual Calculus (Fixing Residual Neglect in Both Plans).}
-In \texttt{plan\_v2b}, residuals are mentioned abstractly in \S6.5 and then vanish from \S7.4 (where every recognizer assumes an \emph{exact} conservation hit!). In real synthesis---e.g., $y_t = 2 x_{t-2} + (-1)^t + 3$, or polynomial + periodic + boundary exception---\textbf{no single recognizer or 1-step decoder hits zero residual}. Kernel \texttt{v2.1} treats residuals as \textbf{first-class iterative stalks} governed by four rules (\S\ref{sec:arch-covers}):
+In \texttt{plan\_v2b}, residuals are mentioned abstractly in \S6.5 and then vanish from \S7.4 (where every recognizer assumes an \emph{exact} conservation hit!).\sidenote{Iterative residual peeling mirrors functional gradient boosting / Mallat's matching pursuit, with one critical safeguard: enforcing $\Delta\mathrm{MDL} < 0$ in self-delimiting prefix bits halts over-fitting automatically without a held-out validation split.} In real synthesis---e.g., $y_t = 2 x_{t-2} + (-1)^t + 3$, or polynomial + periodic + boundary exception---\textbf{no single recognizer or 1-step decoder hits zero residual}. Kernel \texttt{v2.1} treats residuals as \textbf{first-class iterative stalks} governed by four rules (\S\ref{sec:arch-covers}):
 \begin{enumerate}[label=(\alph*), leftmargin=1.8em, itemsep=0.18em]
   \item \textbf{Typed Residual Extraction via Chart Witness:} Every metric-chart edge $(d, w_\delta)$ defines both a reconstruction $y = d(x, \hat{y}, \delta)$ and an explicit \textbf{residual column} $\delta_\omega = w_\delta(x_\omega, \hat{y}_\omega, y_\omega)$ (e.g., signed error $y - \hat{y}$, quotient/remainder $(y / \hat{y}, y \bmod \hat{y})$, edit/shift residual, or Boolean exception mask $y \ne \hat{y}$).
   \item \textbf{Strict MDL Monotonicity (Kolmogorov Structure Step):} Introducing a coarse approximation $\hat{Y} = f_1(X)$ and passing residual column $\Delta_1 = w_\delta(X, \hat{Y}, Y)$ to recursive synthesis is accepted iff total code length strictly drops:
@@ -647,7 +655,7 @@ In \texttt{plan\_v2b}, residuals are mentioned abstractly in \S6.5 and then vani
 % -----------------------------------------------------------------------------
 
 \ansback{q:10}{Prompt Q10}
-\textbf{We agree with moving totality facts from ad-hoc AST lists into a context lattice, \emph{but we disagree with \texttt{plan\_v2b} \S7.6's specific claim} that unary facts attached to individual equivalence classes can express $0 \le i < \mathrm{length}(xs)$!}
+\textbf{We agree with moving totality facts from ad-hoc AST lists into a context lattice, \emph{but we disagree with} \texttt{plan\_v2b} \emph{\S7.6's specific claim} that unary facts attached to individual equivalence classes can express $0 \le i < \mathrm{length}(xs)$!}
 
 Check \texttt{ast.lisp:718--880} against \texttt{plan\_v2b} \S7.6 (line~573):
 \begin{quote}\small
@@ -656,7 +664,7 @@ Check \texttt{ast.lisp:718--880} against \texttt{plan\_v2b} \S7.6 (line~573):
 \textbf{Spot the mathematical error:} In \texttt{(if (< i (length xs)) (at xs i) 0)} (or \texttt{(if (< (+ j k) (length xs)) (at xs (+ j k)) 0)} in Trace~1 of \texttt{shift-seq}!), the index expression $e_{\mathrm{idx}} = i$ (or $j+k$) sits in \textbf{equivalence class $c_1$}, and the sequence length $\mathrm{length}(xs)$ sits in \textbf{a completely different equivalence class $c_2$}! Neither $c_1$ nor $c_2$ has a finite upper/lower constant bound: $c_1$'s unary interval is $[0, +\infty)$ and $c_2$'s unary interval is $[1, +\infty)$. From $[0, +\infty)$ on $c_1$ and $[1, +\infty)$ on $c_2$, \textbf{it is impossible to deduce $c_1 < c_2$}! Even \texttt{plan\_v2b}'s trick in \S7.4 (attaching ``generated from $xs$'' provenance to a bare position column $j$) breaks the moment an offset $j+k$, reflection $n - 1 - j$, or stride $2j$ is computed!
 
 \paragraph{The Exact Fix: A Relational Difference-Bound Matrix (Zone) Lattice per Context.}
-In abstract interpretation (\litref{mine2001}{Min\'e 2001, Zone/Octagon domains}), tracking two-variable difference constraints of the form:
+In abstract interpretation (\litref{mine2001}{Min\'e 2001, Zone/Octagon domains}), tracking two-variable difference constraints of the form:\sidenote{Zones ($c_u - c_v \le k$) sit at the exact decidability/cost sweet spot: unary intervals ($c_u \in [l,h]$) cannot relate $i$ to $|xs|$, while general polyhedra require exponential Chernikova/simplex pivoting; Zone closure needs only integer addition and $\min$.}
 \begin{equation}\label{eq:dbm}
   c_u - c_v \;\le\; k \qquad (k \in \mathbb{Z} \cup \{+\infty\},\text{ including special zero class } c_{\mathbf{0}} = 0)
 \end{equation}
@@ -693,22 +701,23 @@ In 3-Lisp, a ``reflective lambda'' \texttt{(lambda reflect (args env cont) ...)}
 \end{itemize}
 
 % -----------------------------------------------------------------------------
-\subsection{Q13: Syntactic Mutation Density $\simeq$ Information Geometry of the Library}
+\subsection{Q13: Syntactic Mutation Density \texorpdfstring{$\simeq$}{\~{}=} Information Geometry of the Library}
 \label{ans:13}
 % -----------------------------------------------------------------------------
 
 \ansback{q:13}{Prompt Q13}
 \textbf{Yes! You nailed the exact point where \texttt{plan\_v2b} (\S9 Risk~1) stopped one step short of the central insight of the entire project.}
 
-\texttt{plan\_v2b} warns: \emph{``Each level needs a schema designed so that small changes are likely to be meaningful, and that design is not done here.''} That treats representation density as a \emph{fixed, hand-crafted property of the initial DSL}. What \textbf{Information Geometry} (\litref{balasubramanian1997}{Balasubramanian, \emph{Neural Comp.} 1997, \texttt{cond-mat/9601030}}; \litref{myung2000}{Myung, Balasubramanian \& Pitt, \emph{PNAS} 2000}; \hyperref[sec:app-c]{Appendix~C.4}) shows is that \textbf{a growing compositional library + MDL objective \emph{is itself a coordinate transformation that reshapes syntactic mutation density}}!
+\texttt{plan\_v2b} warns: \emph{``Each level needs a schema designed so that small changes are likely to be meaningful, and that design is not done here.''} That treats representation density as a \emph{fixed, hand-crafted property of the initial DSL}. What \textbf{Information Geometry} (\litref{balasubramanian1997}{Balasubramanian, \emph{Neural Comp.} 1997, \texttt{cond-mat/9601030}}; \litref{myung2000}{Myung, Balasubramanian \& Pitt, \emph{PNAS} 2000}; \hyperref[sec:app-c]{Appendix~C.4}) shows is that \textbf{a growing compositional library + MDL objective \emph{is itself a coordinate transformation that reshapes syntactic mutation density}}!\sidenote{By Kraft's inequality ($\sum_p 2^{-\ell(p)} \le 1$), prefix-code prior mass is conserved: quotienting duplicates and promoting library macros literally reallocates bit-volume away from syntactic synonyms toward semantically distinct behaviors.}
 
 Here is the exact mathematical correspondence:
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.22em]
   \item In continuous statistical inference over parameter chart $\theta \in \Theta$, the Riemannian \textbf{Fisher Information Metric} $g_{ij}(\theta) = \mathbb{E}[\partial_i \ln p(y\mid\theta)\,\partial_j \ln p(y\mid\theta)]$ measures semantic distinguishability per unit coordinate step, and Razor complexity is the Riemannian volume $\ln \int_\Theta \sqrt{\det g(\theta)}\,d\theta$ of distinguishable distributions (\litref{balasubramanian1997}{Balasubramanian 1997}). A ``bad parameterization'' is one where $g(\theta)$ is wildly ill-conditioned: tiny $\Delta\theta$ in one direction causes catastrophic semantic jumps (crashes/noise), while huge $\Delta\theta$ in another changes nothing ($38$ redundant ASTs per behavior class!).
-  \item In discrete program synthesis under library $\mathcal{L}$, the ``coordinate chart'' is the prefix code $\mathcal{C}_{\mathcal{L}} : \{0,1\}^* \to \mathrm{Prog}$ (\texttt{codec.lisp}), where a ``small syntactic change'' is a $1$-op edit ($\Delta\mathrm{bits} \approx 4$--$8$ bits), and semantic movement on base $B$ is behavioral MDL distance $d_B(f(X), f'(X))$. Define the \textbf{local algorithmic Fisher sensitivity} at program $p$:
+  \item In discrete program synthesis under library $\mathcal{L}$, the ``coordinate chart'' is the prefix code $\mathcal{C}_{\mathcal{L}} : \{0,1\}^* \to \mathrm{Prog}$ (\texttt{codec.lisp}), where a ``small syntactic change'' is a $1$-op edit ($\Delta\mathrm{bits} \approx 4$--$8$ bits), and semantic movement on base $B$ is behavioral MDL distance $d_B(f(X), f'(X))$. Define the \textbf{local algorithmic Fisher sensitivity} at program $p$ over $1$-edit neighbors $\mathcal{N}_1^{\mathcal{L}}(p) = \{p' \mid d_{\mathrm{edit}}^{\mathcal{L}}(p,p') = 1\}$:
   \[
-    \mathcal{I}_{\mathcal{L}}(p) \;=\; \operatorname*{\mathbb{E}}_{p' :\, d_{\text{edit}}^{\mathcal{L}}(p, p') = 1} \Big[\text{meaningful, non-degenerate, non-redundant } \Delta_{\text{behav}}(p, p')\Big].
+    \mathcal{I}_{\mathcal{L}}(p) \;=\; \operatorname*{\mathbb{E}}_{p' \in \mathcal{N}_1^{\mathcal{L}}(p)} \Big[\mathbf{1}_{\{\text{total, novel}(p')\}} \cdot \Delta_{\mathrm{behav}}(p, p')\Big],
   \]
+  measuring expected non-crashing, non-duplicate behavioral movement per single-token edit.
   \item \textbf{How Library Learning Reshapes the Metric:}
   \begin{itemize}[leftmargin=1.4em, itemsep=0.12em]
     \item \emph{Quotienting / Law Canonicalization} collapses zero-eigenvalue directions of $\mathcal{I}_{\mathcal{L}}$ (eliminating the $38{:}1$ syntactic duplicates where syntax moves but semantics stays fixed!).
@@ -726,16 +735,16 @@ Here is the exact mathematical correspondence:
 \ansback{q:14}{Prompt Q14}
 \textbf{``Obviously we do have algebra!''---yes, \emph{once} the base ring/container axioms over infinite \texttt{:int} and \texttt{(:seq ?a)} are certified rather than mere \texttt{:sampled} conjectures!} Today, because \texttt{laws.lisp:100} only certifies laws by exhausting finite domains ($\mathrm{GF}(p)$, \texttt{:bool}), \emph{zero} discovered laws over \texttt{:int} or \texttt{:seq} ever reach \texttt{:certified}---even $x + 0 = x$ or $\mathrm{length}(\mathrm{cons}(a, xs)) = 1 + \mathrm{length}(xs)$!
 
-Adding \textbf{two small, self-contained deductive proof rules} to \texttt{evidence.lisp} / \texttt{laws.lisp} ($<250$ LOC total, zero external SMT binary!) unlocks genuine \texttt{:certified} infinite-domain algebra (\S\ref{sec:arch-proofs}):
+Adding \textbf{two small, self-contained deductive proof rules} to \texttt{evidence.lisp} / \texttt{laws.lisp} ($<250$ LOC total, zero external SMT binary!) unlocks genuine \texttt{:certified} infinite-domain algebra (\S\ref{sec:arch-proofs}):\sidenote{For guarded rational or modular laws involving \texttt{:/} or \texttt{:mod}, DBM preconditions $d \ne 0$ allow cross-multiplying denominators into $\mathbb{Z}[\vec{x}]$ before PIT, while constant moduli $m$ split into $m$ finite residue classes.}
 
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.3em]
   \item \textbf{Proof Rule 2 --- Well-Founded Structural \& Peano Induction (\litref{singher2021}{TheSy, CAV 2021, \texttt{arXiv:2009.04826}}):}
   \begin{itemize}[leftmargin=1.4em, itemsep=0.15em]
     \item \emph{Sequence Structural Induction:} To certify $\forall xs : (\texttt{:seq }\tau),\,\vec{u}.\; L(xs,\vec{u}) = R(xs,\vec{u})$ (for provably total $L, R$):
     (i)~\textbf{Base case:} simplify $L(\texttt{'()},\vec{u})$ and $R(\texttt{'()},\vec{u})$ via certified rewrites + VM evaluation and check e-class equality;
-    (ii)~\textbf{Inductive step:} introduce fresh symbolic constants $\hat{a} : \tau$, $\hat{xs} : (\texttt{:seq }\tau)$, seed the inductive hypothesis $L(\hat{xs},\vec{u}) \equiv R(\hat{xs},\vec{u})$ into a temporary Colored E-Graph context (universally quantified over $\vec{u}$ so accumulator variables in \texttt{foldl} generalize!), unfold one step of $L(\texttt{(cons }\hat{a}\texttt{ }\hat{xs}\texttt{)},\vec{u})$ and $R(\texttt{(cons }\hat{a}\texttt{ }\hat{xs}\texttt{)},\vec{u})$, and check e-class merger!
-    This immediately certifies $\mathrm{map}(xs, \mathrm{id}) = xs$, $\mathrm{map}(\mathrm{map}(xs, f), g) = \mathrm{map}(xs, g\circ f)$, $\mathrm{length}(\mathrm{tabulate}(n, f)) = \max(0,n)$, and Gibbons's $\mathrm{foldr}=\mathrm{foldl}$ monoid transfer!
-    \item \emph{Symmetric $\mathbb{Z}$ Induction (for \texttt{:int} primitives defined or stepped recursively, or over bounded $\mathbb{N}$ indices $0 \le j < n$):} Certifies properties over non-negative index bases $j = 0$ and $j \mapsto j + 1$.
+    (ii)~\textbf{Inductive step:} introduce fresh symbolic constants $\hat{a} : \tau$, $\hat{xs} : (\texttt{:seq }\tau)$, seed the inductive hypothesis $L(\hat{xs},\vec{u}) \equiv R(\hat{xs},\vec{u})$ into a temporary Colored E-Graph context (universally quantified over $\vec{u}$ so accumulator variables in \texttt{foldl} generalize!), unfold one step of $L(\mathrm{cons}(\hat{a}, \hat{xs}), \vec{u})$ and $R(\mathrm{cons}(\hat{a}, \hat{xs}), \vec{u})$, and check e-class merger!
+    This immediately certifies $\mathrm{map}(xs, \mathrm{id}) = xs$, $\mathrm{map}(\mathrm{map}(xs, f), g) =$ $\mathrm{map}(xs, g\circ f)$, $\mathrm{length}(\mathrm{tabulate}(n, f)) =$ $\max(0,n)$, and Gibbons's $\mathrm{foldr}=\mathrm{foldl}$ monoid transfer!
+    \item \emph{Symmetric $\mathbb{Z}$ Induction:} Over non-negative index bases $j \ge 0$, proves $P(0)$ and $P(j) \implies P(j+1)$; over all of $\mathbb{Z}$, adds the symmetric downward step $P(j) \implies P(j-1)$.
   \end{itemize}
 
   \item \textbf{Proof Rule 3 --- Polynomial / Ring Identity Certification (Finite-Degree Completeness over $\mathbb{Z}$):}
@@ -743,7 +752,7 @@ Adding \textbf{two small, self-contained deductive proof rules} to \texttt{evide
   \textbf{Fundamental Algebraic Fact (Combinatorial Nullstellensatz / Vandermonde Uniqueness):} Two polynomials $L, R \in \mathbb{Z}[x_1,\dots,x_k]$ of per-variable degree $\le d_r$ are \textbf{identically equal on all of $\mathbb{Z}^k$ if and only if they agree on the finite grid $\prod_{r=1}^k \{0, 1, \dots, d_r\}$}!
   Think about what that buys \texttt{lisploop}:
   \begin{itemize}[leftmargin=1.4em, itemsep=0.12em]
-    \item Commutativity $x+y=y+x$ ($d_x=d_y=1 \implies 2\times 2 = 4$ integer evaluations!), associativity ($2^3 = 8$ evaluations), distributivity $x(y+z) = xy+xz$ ($2^3 = 8$ evaluations), difference of squares $(x-y)(x+y) = x^2 - y^2$ ($3\times 3 = 9$ evaluations), and cancellation $(x+y)-y = x$ ($4$ evaluations) become \textbf{$100\%$ mathematically \texttt{:certified} universal theorems over infinite $\mathbb{Z}$ by finite VM execution alone}---deleting all $4$ hand-written \texttt{:trusted-axiom} cheats in \texttt{algebra.sexp}!
+    \item Commutativity $x+y=y+x$ ($d_x=d_y=1 \implies 2\times 2 = 4$ integer evaluations!), associativity ($2^3 = 8$ evaluations), distributivity $x(y+z) = xy+xz$ ($2^3 = 8$ evaluations), difference of squares $(x-y)(x+y) = x^2 - y^2$ ($3\times 3 = 9$ evaluations), and cancellation $(x+y)-y = x$ ($4$ evaluations) become \textbf{$100\%$ mathematically \texttt{:certified} universal theorems over infinite $\mathbb{Z}$ by finite VM execution alone}---eliminating all $4$ hand-written \texttt{:trusted-axiom} overrides in \texttt{library/algebra.sexp}!
   \end{itemize}
 \end{enumerate}
 
@@ -780,7 +789,7 @@ To make \textbf{experimentation a native, homoiconic part of the kernel} (and av
 \label{sec:arch}
 % =============================================================================
 
-Integrating the six rectifications of \S\ref{sec:thesis} yields a unified, self-bootstrapping kernel built around \textbf{one monotone Columnar Equivalence-Hypergraph Store} driven by \textbf{one small external Anytime Controller}.
+Integrating the six rectifications of \hyperref[sec:thesis]{the Executive Thesis} yields a unified, self-bootstrapping kernel built around \textbf{one monotone Columnar Equivalence-Hypergraph Store} driven by \textbf{one small external Anytime Controller}.
 
 \subsection{Pillar I: Columnar Thinning/Colored Equivalence Store over Base Schemas}
 \label{sec:arch-store}
@@ -792,7 +801,7 @@ Instead of splitting state across ephemeral \texttt{frame} structs, $14$ \texttt
   \item \textbf{Bases and Partial Structure Maps (Physical \texttt{ACSet} Layout):}
   A \texttt{base} $B$ is a dense site range $\{0, \dots, |B|-1\}$ equipped with named \texttt{fixnum}-array structure maps $u : B \to B'$ (allowing sentinel $-1$ for partial boundary maps such as $\texttt{prev}(0) = -1$ or $\texttt{next}(n-1) = -1$; domain $\{s \in B \mid u[s] \ge 0\}$ is automatically a sub-context!). Examples: task root rows $R$; container positions $P \xrightarrow{\texttt{row}} R$; call-site traces; library rules $L$; and reified search derivations $\texttt{SearchTrace}$.
   \item \textbf{Thinning-Canonical E-Classes (\litref{zucker2026}{Lifting E-Graphs}) \& AC Multisets (\litref{rosin2026}{Rosin et al.\ 2026}):}
-  Every expression or column belongs to an e-class referenced by a \textbf{fattened handle} \texttt{(class-id, thin-mask)} where \texttt{thin-mask} is a $64$-bit Co-de~Bruijn bitvector indicating which ambient scope/base variables the class actually depends on.\sidenote{In SBCL on 64-bit Linux, a $28$-bit \texttt{class-id} packed with a $32$-bit \texttt{thin-mask} fits inside a \textbf{single unboxed 61-bit Common Lisp \texttt{fixnum}}---zero heap consing per handle!} Weakening/lifting an expression into a finer base ($\Delta_u$) or binder scope only updates \texttt{thin-mask} in $O(1)$ without touching child nodes! Associative-commutative operators (\texttt{:+}, \texttt{:*}) normalize flat sorted argument multisets at hash-cons insertion, collapsing all $12$ arrangements of $x_0 + x_1 + x_2$ to \textbf{one normal form} (fixing \texttt{plan\_v2b} \S3.5 item~5!).
+  Every expression or column belongs to an e-class referenced by a \textbf{fattened handle} \texttt{(class-id, thin-mask)} where \texttt{thin-mask} is a $64$-bit Co-de~Bruijn bitvector indicating which ambient scope/base variables the class actually depends on.\sidenote{In SBCL on 64-bit Linux, a $28$-bit \texttt{class-id} packed with a $32$-bit \texttt{thin-mask} fits inside a \textbf{single unboxed 61-bit Common Lisp \texttt{fixnum}}---zero heap consing per handle!} Weakening/lifting an expression into a finer base ($\Delta_u$) or binder scope only updates \texttt{thin-mask} in $O(1)$ without touching child nodes! Associative-commutative operators (\texttt{:+}, \texttt{:*}) normalize flat sorted argument multisets at hash-cons insertion, collapsing all $12$ arrangements of $x_0 + x_1 + x_2$ to \textbf{one normal form} (fixing \texttt{plan\_v2b} \S3.5 item~5!), while non-AC multi-argument abstractions canonicalize slot order by first left-to-right variable occurrence so order-preserving thinnings cover $99\%$ of variable sharing without full permutation-group stabilization.
   \item \textbf{Persistent Behavior Fingerprints (Closing the $38{:}1$ Enumeration Gap):}
   Each e-class evaluated over base $B$ caches a packed outcome vector (including 4-valued status \texttt{\{:val, :err, :cut, :unres\}}) hashed into a persistent \texttt{behavior-table}. Bottom-up enumeration composes \emph{only canonical class representatives} while sharing the table across Stage~A and Stage~B (\texttt{E2}).
   \item \textbf{Colored / ATMS Contexts \& Universal Guarded Rules:}
@@ -898,7 +907,7 @@ As established in \S\ref{ans:1a} and \S\ref{ans:15}, all expressions remain cano
 
 \paragraph{Four End-to-End Verification Traces Under \texttt{v2.1}:}
 \begin{enumerate}[leftmargin=1.6em, itemsep=0.2em]
-  \item \textbf{\texttt{shift-seq(xs, k)} \& \texttt{map-adjacent} (Zero \texttt{recursion-schemas.lisp}):} Frame-once normalized cross-correlation peaks at $+k$ in $O(N)$ on columnar arrays; \texttt{(tabulate (length xs) (lambda j ...))} pulls back to scalar fiber \texttt{(xs, k, j) -> Y[j]}; \texttt{(at xs (+ j k))} hits \texttt{:error} on \texttt{j + k >= |xs|}, bi-abducing \texttt{(< (+ j k) (length xs))}, which \texttt{dbm-matrix} certifies as $c_{j+k} - c_{\mathrm{len}(xs)} \le -1$ on the spot!
+  \item \textbf{\texttt{shift-seq(xs, k)} \& \texttt{map-adjacent} (Zero \texttt{recursion\allowbreak-schemas.lisp}):} Frame-once normalized cross-correlation peaks at $+k$ in $O(N)$ on columnar arrays; \texttt{(tabulate\allowbreak\ (length xs)\allowbreak\ (lambda j ...))} pulls back to scalar fiber $(xs, k, j) \mapsto Y[j]$; indexing \texttt{(at xs (+ j k))} hits \texttt{:err} when $j + k \ge |xs|$, bi-abducing guard $j + k < \mathrm{length}(xs)$, which \texttt{dbm-matrix} certifies as $c_{j+k} - c_{\mathrm{len}(xs)} \le -1$ on the spot!
   \item \textbf{Multi-Stage Residual Decomposition $y_t = 2 x_{t-2} + (-1)^t + 3$:} Cross-correlation probe on $Y$ vs.\ $X$ peaks strongly at lag $\tau=2$ ($\rho \approx 0.96 < 1$); affine lag fit $\hat{Y}_t = 2 X_{t-2} + 3$ cuts MDL from $94$ bits to $28$ bits, emitting typed residual column $\Delta_1 = Y - \hat{Y} = (+1, -1, +1, -1, \dots)$; lag-$2$ autocorrelation on $\Delta_1$ triggers \texttt{(mod t 2)} quotient lookup, driving residual to $0$ bits!
   \item \textbf{Hidden-State \texttt{foldl} \& \texttt{scan-proj0} (Non-Trace-Complete Specs):} Given $3$ non-suffix examples of non-associative \texttt{foldl} ($2a - b$), Burst angelic recursion + active disambiguating query refutes the wrong tail-first fold ($79 \ne 85$), while Farzan--Nicolet prefix-split inspection lifts hidden accumulators automatically without \texttt{:state-fold-inductive}!
   \item \textbf{Certifying $\mathbb{Z}$ Ring Algebra \& Functorial Lifters (\texttt{:work > 0}):} Controlled $1\mathrm{D}$/$2\mathrm{D}$ slice \texttt{(:probe ...)} experiments discover commutativity, associativity, cancellation, and distributivity; \textbf{Polynomial Identity Testing} certifies all of them over infinite $\mathbb{Z}$ in $\le 9$ VM evaluations each; Ruler/Chompy minimizes the basis from $1,753$ to $9$ laws; and relational \texttt{babble} anti-unification over two solved \texttt{map} equations induces the functorial \texttt{map} solver lifter without hand-coding \texttt{functors.sexp}!
@@ -960,7 +969,7 @@ Unifies Datalog relational stores with equality saturation: operators are tables
 \litentry{wang2023}{Wang, Willsey \& Suciu --- Free Join: Unifying Worst-Case Optimal and Traditional Joins}{SIGMOD 2023; \texttt{arXiv:2301.10841}}{\secback{ans:1b}{Q1b}}
 Unifies binary hash joins with Worst-Case Optimal Joins (Generic Join trie intersections) in one compiled execution plan for relational e-matching, eliminating the $O(|R|\cdot|T|^2)$ scan overhead that caused reuse to lose to matching in \texttt{lisploop}'s M3/M4 experiments.
 
-\litentry{singher2023}{Singher \& Itzhaky --- Colored E-Graphs \& Easter Egg}{\texttt{arXiv:2305.19203} (2023); FMCAD 2024 DOI \texttt{10.34727/2024/isbn.978-3-85448-065-5\_13}}{\secback{sec:thesis}{R1}, \secback{ans:5a}{Q5a}, \secback{sec:arch-store}{\S5.1}}
+\litentry{singher2023}{Singher \& Itzhaky --- Colored E-Graphs \& Easter Egg}{\texttt{arXiv:2305.19203} (2023); FMCAD 2024 DOI \nolinkurl{10.34727/2024/isbn.978-3-85448-065-5_13}}{\secback{sec:thesis}{R1}, \secback{ans:5a}{Q5a}, \secback{sec:arch-store}{\S5.1}}
 Replaces full e-graph/frame cloning under case splits with a single base congruence plus sparse ``color'' congruence layers indexed by an assumption lattice. Directly replaces \texttt{lisploop}'s expensive fallback-frame cloning and supports $O(1)$ ATMS assumption toggling.
 
 \litentry{schneider2025}{Schneider, Rossel, Shaikhha, Goens, K\oe hler \& Steuwer --- Slotted E-Graphs}{PLDI 2025, \emph{PACMPL} 9(PLDI), DOI \texttt{10.1145/3729326}}{\secback{ans:5a}{Q5a}}
@@ -996,7 +1005,7 @@ Performs coinductive anti-unification over e-classes (\texttt{dags} modulo equat
 \litentry{bowers2023}{Bowers, Olausson, Wong, Grand, Tenenbaum, Ellis \& Solar-Lezama --- \texttt{Stitch}}{POPL 2023; \texttt{arXiv:2211.16605}}{\secback{ans:7}{Q7}}
 Top-down corpus-guided $\lambda$-abstraction learner with admissible MDL upper bounds, running $3$--$4$ orders of magnitude faster than e-graph saturation when equational rewrites are unnecessary.
 
-\litentry{koppel2022}{Koppel, Guo, de~ries, Solar-Lezama \& Polikarpova --- ECTA}{ICFP 2022}{\secback{sec:app-a}{App.~A}}
+\litentry{koppel2022}{Koppel, Guo, de~Vries, Solar-Lezama \& Polikarpova --- ECTA}{ICFP 2022}{\secback{ans:5b}{Q5b}}
 Entangled Compact Tree Automata add path-equality constraints across branches so shared latent holes must pick identical terms across coupled positions.
 
 \litentry{smallbone2017}{Smallbone, Johansson, Claessen \& Algehed --- QuickSpec 2}{\emph{JFP} 27, 2017}{\secback{ans:15}{Q15}}
