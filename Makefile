@@ -5,7 +5,7 @@
 # pdflatex lacks, wrapped code blocks) and lets long inline code wrap inside
 # tables and paragraphs.
 PANDOC_SUPPORT = pandoc/pdf.lua pandoc/header.tex
-PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.7in -V fontsize=12pt --lua-filter=pandoc/pdf.lua
+PANDOC_FLAGS = --pdf-engine=pdflatex -V geometry:margin=0.45in -V fontsize=12pt --lua-filter=pandoc/pdf.lua
 
 DOCS = plan_v2.pdf plan_v2b.pdf plan8.pdf plan9.pdf architecture2.pdf batteries-and-reflection.pdf tests/README.pdf plan7/plan7-recursion.pdf plan7/plan7-higher-order.pdf plan7/plan7-library.pdf plan7/plan7-m9-policy.pdf
 SBCL ?= sbcl
