@@ -162,7 +162,7 @@ In the categorical formulation of §1.3, a flat signature is a family of small f
 
 By abstract interpretation (Cousot & Cousot 1979), a Galois connection $\alpha_j : \mathcal{P}(V) \rightleftarrows \mathcal{A}_j : \gamma_j$ induces the best abstract transformer $f^{\sharp_j}(\vec{a}) = \alpha_j\bigl(f(\gamma_j(\vec{a}))\bigr)$. On `plan_v2c`'s store, **$f^{\sharp_j}$ is never hand-written**: `§7.5` already evaluates each operator $f$ on a standard probe space $S_{\mathrm{probe}}$ (for laws, inverses, and definedness). One `group-by` mapping $(\alpha_j(x_1), \dots, \alpha_j(x_k)) \mapsto \alpha_j(f(\vec{x}))$ produces an ordinary small table in the store carrying two coupled views:
 
-1. **Over-approximate support relation** $f^{\sharp_j} : \mathcal{A}_j^k \to \mathcal{P}(\mathcal{A}_j)$: an AFTA transition table. Any reachable abstract input not observed during probing defaults soundly to $\top$ (all abstract outputs of the result type), never $\emptyset$, preserving `§5.5`'s tested-vs-certified discipline and tentative-then-fallback safety.
+1. **Empirical support relation** $f^{\sharp_j} : \mathcal{A}_j^k \to \mathcal{P}(\mathcal{A}_j)$: an AFTA transition table. Any reachable abstract input not observed during probing defaults to $\top$ (all abstract outputs of the result type), never $\emptyset$. *Soundness caveat (confirmed by `plan_v2c.md §8.8`):* defaulting unseen inputs to $\top$ does **not** cover a *seen* input bucket whose rare output label was absent from the probe sample (e.g., `take3` on a non-increasing list whose first 3 elements happen to be equal). Sampled verb tables are therefore strictly **tested knowledge** (`§5.5`): safe for operator ordering or for filtering a tentative first pass backed by fallback, never for certified elimination.
 2. **Fiber-surprise / MDL weight**, extending `§6.2` rule 2 ($H(X) = H(f(X)) + \mathbb{E}\log_2|\text{fiber}|$) directly to the quotient algebra:
    $$w_j(f; \vec{a} \to a_{\mathrm{out}}) \;=\; L(f) - \log_2 P_j(a_{\mathrm{out}} \mid f, \vec{a}).$$
    Exact algebraic congruences ($P_j = 1$) incur **0 surprise bits**; loose or non-informative transitions pay real conditional entropy bits.
@@ -194,15 +194,17 @@ One-time `group-by` learning of 6 quotients $\times$ 61 typed sequence/scalar op
 | Task (61-op library) | Plain OE (RAM) | Flat NB | AbsDFTA + SoftMDL (RAM) | Merged-MS RAM | Best Gain |
 | :--- | --: | --: | --: | --: | --: |
 | `T1 [COLD]: sum(map_adj_sub(sort(xs)))` | 83,926 (1,561) | 7,864 | **8,963** (1,383) | — | **9.4$\times$** |
-| `T3: sum(zip_mul(xs, shift1(xs)))` | 2,253 (1,401) | 618 | **85** (812) | — | **26.5$\times$** |
+| `T3: sum(zip_mul(xs, shift1(xs)))` | 2,253 (1,401) | 618 | **85** (**51**) | — | **26.5$\times$** |
 | `T4: sum(filter_pos(zip_sub(xs, ys)))` | 285,098 (4,057) | 51,097 | **22,270** (3,659) | — | **12.8$\times$** |
-| `T5: len(filter_even(map_adj_add(xs)))` | 2,579 (1,546) | 381 | **164** (1,383) | — | **15.7$\times$** |
-| `T6: running_sum(reverse(inc_all(xs)))` | 37,233 (1,561) | 33,371 | 16,755 (601) | **174** (5,653 cands) | **6.6$\times$** (9.0$\times$ RAM) |
+| `T5: len(filter_even(map_adj_add(xs)))` | 2,579 (1,546) | 381 | **164** (**51**) | — | **15.7$\times$** |
+| `T6: running_sum(reverse(inc_all(xs)))` | 37,233 (1,561) | 33,371 | 23,482 (601)* | **174** (5,653 cands) | **6.6$\times$** (9.0$\times$ RAM) |
 | `T8 [COLD]: dbl_all(sort(abs_all(xs)))` | 4,167 (1,561) | **27,067 (6.5$\times$ worse)** | **2,303** (601) | **253** (2,479 cands) | **1.8$\times$** (**11.8$\times$ vs NB**) |
-| `T9 [4-op]: sort(dbl(filter_pos(adj_add)))` | 12,440 (8,563) | 3,248 | **3,524** (6,048) | **3,367** | **3.5$\times$** (2.5$\times$ RAM) |
-| `T10 [4-op]: dbl(sort(abs(adj_sub)))` | 145,929 (48,489) | — | 112,656 (26,903) | **11,480** | **1.5$\times$** (**4.2$\times$ RAM**) |
+| `T9 [4-op]: sort(dbl(filter_pos(adj_add)))` | 12,440 (8,563) | 3,248 | **3,524** (**2,269**) | **3,367** | **3.5$\times$** (3.8$\times$ RAM) |
+| `T10 [4-op]: dbl(sort(abs(adj_sub)))` | 145,929 (48,489) | — | 112,656 (26,903)* | **11,480** | **1.5$\times$** (**4.2$\times$ RAM**) |
 
-- **Zero misses** across all tasks (unseen abstract inputs default to $\top$).
+*(Erratum vs. earlier draft, caught by `plan_v2c.md §8.8`: the previous table mistakenly paired `+SoftMDL` candidate counts on `T3`/`T5`/`T9` with the unordered `AbsDFTA` RAM counts `812`/`1,383`/`6,048`; corrected above to exact matched `m_st` values. Starred `T6` unordered `AbsDFTA` was `16,755 (601)` and `T10` is unordered `AbsDFTA`.)*
+
+- **Tested, not sound:** Zero misses occurred on these 8 tasks, but `plan_v2c.md §8.8`'s 300-task reproduction showed **11% lost answers** at 100 random probes, **0.3%** at 1,000–3,000 random probes (0 at 10,000 random or 1,000 edge-stratified probes), and **8% lost** for the merged 3-quotient product at 3,000 probes — almost entirely from *seen* input buckets producing an unsampled rare output bucket. Verb tables therefore belong strictly in tentative-first + fallback or pure ordering.
 - **Cold-start contrast:** On `T8`, Flat NB degraded search **6.5$\times$ worse** than plain OE because `dbl_all` had zero training counts; `AbsDFTA+SoftMDL` beat Flat NB by **11.8$\times$** with zero solved traces.
 - **Honest limitation (why Merge-and-Shrink & CEGAR are needed):** Independent 1-domain-at-a-time bounds miss *additive subgoal interactions* ($\max(1,1,1)=1 < 1+1+1=3$). Merging `(nonneg` $\times$ `parity` $\times$ `order)` cut peak RAM **4.2$\times$–9.0$\times$**. Even then, `filter_pos` survived pruning on `T8` because `len_sign` alone sees `len=4` without knowing the input contains negatives (on all-positive inputs `filter_pos` preserves length). Eliminating that slack requires either a coupled product state `(len, sign)` or **Blaze-style CEGAR refinement** on demand rather than a fixed static menu of quotients.
 
@@ -243,7 +245,86 @@ Stages A and B do **not** require building a full language subsystem upfront. Ke
 
 1. **Unify §6.3 (Signatures) and §6.6 (Language) via Quotient Algebras:** Define a *word* as a small unary quotient `Term` $\alpha_j : V \to \mathcal{A}_j$ (or column projection $V^k \to \mathcal{A}_j$) selected by partition-canonical MDL + lumpability (plus fault guards and CEGAR splits), and a *verb* as its pushed-forward `group-by` table $f^{\sharp_j}$ (support + empirical counts) on $f$'s existing `§7.5` probe space.
 2. **Upgrade Gate X4 (`plan_v2c.md:944`):** On the 30+ distractor library benchmark (explicitly including held-out cold-start library functions), compare (i) types only, (ii) flat signatures + Naive Bayes, and (iii) pushed-forward quotient tables (`h_bwd` + soft MDL). This directly tests whether compositional abstract semantics clears the cold-start utility wall where flat counts fail.
-3. **Add one column to the Derivation Space (`§7.4`):** Record each problem's **universal abstract invariant signature** alongside its concrete `(space, requirement, context)` key, enabling cheap cross-job replay ($\le 5$ candidates) and verb-synonym warm-starting across disjoint concrete spaces without altering the exact concrete memo contract.
+3. **Add one column to the Derivation Space (`§7.4`):** Record each problem's **universal abstract invariant signature** alongside its concrete `(space, requirement, context)` key, enabling cheap cross-job replay ($\le 5$ candidates) and verb-synonym warm-starting across disjoint concrete spaces without altering the exact concrete memo contract. *(Note: `plan_v2c.md §7.4` / `§8.8` currently adopts plain replay first while libraries are small and defers indexing until replay cost grows.)*
+
+---
+
+### 2.5 Reconciling Quotient Heuristics, Computed Residuals, and Ambient Pricing {#sec-2-5}
+
+`plan_v2c.md §6.1–6.3` defines **ambient residual pricing** (exact MDL) and **computed behavior distance**, whereas §2.2 introduces **quotient-based (bucket + verb-table) heuristics**. They address the same search problem, unify under one coding-theory chain rule, yet exploit **strictly orthogonal geometries** so both remain necessary.
+
+#### 1. Coding-theory unification (`§6.2`): metric balls vs. algebraic fibers
+Both mechanisms factor a target column $Y$ under `§6.2`'s counting identity $H(X) = H(f(X)) + \mathbb{E}\log_2|\text{fiber}|$, differing in the subset of ambient space $V^S$ they restrict $Y$ to:
+
+- **Computed residual / metric decoder (`decode(U, R) = Y`):** Factors $Y$ into a **local ambient metric ball** around a concrete prediction $U = [\![t]\!]_S$: $L(Y) \le L(t) + L_{\mathrm{ambient}}(Y \mid U)$.
+- **Quotient / bucket abstraction ($\alpha(Y) = a$):** Factors $Y$ into a **non-local algebraic fiber** $\alpha^{-1}(a) \subset V^S$: $L(Y) \le L_{\mathrm{abstract}}(a) + L(Y \mid \alpha(Y) = a)$.
+
+**Ambient-space pricing (`§6.1–6.2`) remains the single exact referee** for final acceptance (with 1 exactness bit per column so Kraft's inequality holds, §1.3.3). Quotient buckets do not replace ambient residual pricing; they intersect it at **residual regularity** (`plan_v2c.md:606`): evaluating quotient labels on a residual column $R = \mathrm{inv\_decode}(U, Y)$ cheaply tests whether $R$ has structure (constant, all-even, sparse zeros) before spending budget to synthesize $R$, and can supply a Kraft-valid conditional/adaptive code inside $R$'s fiber (`§6.2` Rules 2–3).
+
+#### 2. Why both are needed (strict complementarity)
+- **Where quotient heuristics win and computed residuals are blind (multi-step ruggedness):** On `xs = [3, -1, 4, 2]` with target `y = dbl_all(sort(abs_all(xs))) = [2, 4, 6, 8]`, true step 1 `abs_all(xs) = [3, 1, 4, 2]` has ambient error $|y - U| = [1, 3, 2, 6]$ ($L_1 = 12$) — identical to wrong step `inc_all(xs)` ($L_1 = 12$) and *worse* than `running_max(xs) = [3, 3, 4, 4]` ($L_1 = 8$), even though `running_max` irreversibly destroys `-1` and `2`. Ambient distance only sees 1-step edit proximity and cannot prune a 60-op library before concrete evaluation; verb tables filter and order across multi-step compositions *before* evaluating concrete columns.
+- **Where computed residuals win and quotient buckets are blind (within-fiber locality & splits):** On `y = 2*x*x + 1` or `y = (if (< x 0) 0 (* x x))`, coarse parity/sign buckets place `2*x*x` and `2*y*y` in the **same bucket** (`all-even, all-nonneg`) and cannot see which rows of `(* x x)` already match `y`. Computed ambient distance immediately surfaces the constant residual `y - 2*x*x = 1` (`decode`) and the exact disagreement bitmask `(* x x) != y` (`if`-split), and continues working on non-homomorphic grammars (`div`, `mod`, real-valued geometry `§6.5`).
+
+| Role | Quotient / Bucket Heuristics (§2.2, `§6.6`) | Computed / Residual Heuristics (`§6.1–6.3`) |
+| :--- | :--- | :--- |
+| **Geometry in $V^S$** | Non-local algebraic fibers ($\alpha^{-1}(a)$) | Local ambient quasi-metric balls ($d_{\mathrm{DL}}(U \to Y)$) |
+| **Scope** | Pre-evaluation grammar filtering & multi-step lookahead | 1-step proximity on already-evaluated concrete classes |
+| **Safe tentative RAM filter?** | **Yes** (tentative + fallback; exact on `G1` ring primes) | **No** (ranks only; near-miss can be a dead end) |
+| **Proposes `if` / `decode`?** | **No** (blind to per-row match masks & small deltas) | **Yes** (disagreement bitmasks & small/regular residuals) |
+
+#### 3. Four-stage handoff inside `plan_v2c`'s single synthesizer (`§7.2`)
+1. **Before enumeration (Quotient tables — global):** Replay stored solutions (`§7.4`), then use verb tables to order operators and install tentative label filters before concrete evaluation.
+2. **During enumeration (Quotient tables — candidate/RAM gate):** Skip concrete evaluation when input labels cannot yield target labels (plus exact column-prime filtering on pure-ring `G1` subproblems), backed by the 3:1 tentative/fallback reserve.
+3. **At the bank / refinement horizon (Computed residuals — local):** Among surviving concrete classes $U$, use $L_{\mathrm{ambient}}(Y \mid U)$ plus residual bucket regularity $\alpha(R)$ to break within-bucket ties, spawn `(decode U ?R)`, and propose `(if ?g U ?else)` from exact disagreement masks `U != Y`.
+4. **Acceptance (Exact ambient MDL — `§6.1–6.2`):** Verify concretely at the root and compare all candidates by one exact Kraft-valid two-part code $L(t) + L_{\mathrm{ambient}}(R)$.
+
+---
+
+### 2.6 Bootstrapping, Approximate Conservation, Fourier/Guard Structure, and Kernel-Experiment Sufficiency {#sec-2-6}
+
+#### 1. Bootstrapping buckets from AST primitives to library functions
+Yes — and `plan_v2c.md:688` directly confirms *why* bootstrapping is required. At cold start (Stage A), the word-candidate grammar contains only AST primitives (`mod 2`, `mod 3`, `sgn`, `x = 0`, `len`, `is_empty`), so whole-list properties like `all_nonneg`, `all_even`, and `is_sorted` are too deep to enumerate. Once Stages B–C add base reductions and lifts (`min-el`, `max-el`, `sum`, `map-adjacent`, `all`/`fold`) to the library, feeding the growing library back into the unary word enumerator makes those properties 3–5 node terms (`(<= 0 (min-el xs))`, `(mod (sum xs) 2)`). Likewise, cross-type pairings (`plan_v2c.md:689`, e.g., `Seq -> Int`) need no hand pairing: scoring every pair $(\alpha^{\tau_{\mathrm{in}}}_i, \alpha^{\tau_{\mathrm{out}}}_j)$ directly against `f : Seq -> Int` automatically surfaces `(all_nonneg, sign)` and `(sum_mod2, parity)`.
+
+#### 2. Soft/approximate conservation & "with inputs held constant" (two distinct experiment modes)
+Standard library laws seek exact expression equality or strict value conservation ($\alpha(f(x)) = \alpha(x)$, i.e. $f^\sharp = \mathrm{id}$). Verb tables generalize this to **soft conservation of information** ($H(\alpha_{\mathrm{out}}(f(\vec{x})) \mid \alpha_{\mathrm{in}}(\vec{x})) \ll H(\alpha_{\mathrm{out}}(f(\vec{x})))$), containing strict conservation ($f^\sharp = \mathrm{id}$, $H_{\mathrm{cond}} = 0$) and exact equivariance/congruence ($H_{\mathrm{cond}} = 0$, e.g. `inc_all` flipping `EV <-> OD`) as exact endpoints.
+
+"Holding inputs constant" enters in **two distinct senses** that must not be conflated:
+
+- **Shared fixed probe space $S_{\mathrm{probe}}$ (`plan2.md §4.4`):** Hold the same concrete row set fixed across all candidate features $\alpha$ and library operators $f$, aligning every column on one row index so `group-by` and MI run in $O(|S_{\mathrm{probe}}|)$.
+- **Isolation / curried slices $f(\cdot, b_0)$ (`plan_v2c.md §7.5` Rule 3):** Hold one argument concretely constant ($b = b_0$) and vary $a$. Measured on `mod 2` over $[-12, 12]^2$:
+
+  | Operator (`mod 2`) | Joint Lumpability $f(a,b)$ | Curried Slices $f(a, b_0)$ at $b_0 = 1, 2, 3, 4$ |
+  | :--- | :---: | :--- |
+  | `+` | **1.00** | `b=1: 1.00, b=2: 1.00, b=3: 1.00, b=4: 1.00` |
+  | `*` | **1.00** | `b=1: 1.00, b=2: 0.00` *(const 0)*, `b=3: 1.00, b=4: 0.00` |
+  | `div` | **0.04** *(non-homomorphic)* | `b=1: 1.00, b=2: 0.00, b=3: 0.10, b=4: 0.00` |
+  | `mod` | **0.53** | `b=1: 0.00, b=2: 1.00, b=3: 0.00, b=4: 1.00` |
+
+  *Consequence:* Joint probing discovers **unconditional binary verb tables**; isolation slices (`b = b_0`) discover **curried / parameter-conditioned conservation** (e.g., `(mod a 2k)` preserves parity) and must never be promoted unconditionally to `div(a, b)` or `mod(a, b)`.
+
+#### 3. Is this a projective-space Boolean Fourier basis?
+**Not literally in general — it is a strict algebraic generalization (finite-alphabet universal-algebraic / lumpable-automaton quotients, the discrete analog of Koopman observables) that recovers both Fourier characters and projective quotients as special cases:**
+
+- **Fourier special case:** On abelian groups/rings (`{+, -, *, neg}`), exact lumpability rediscovers the kernels of discrete Fourier / modular characters (`x mod p`, and column-level $\mathbb{Z}^N \to \mathbb{F}_p^k$).
+- **Projective special case:** On multiplicative/order ops (`*`, `max`, `min`, `div`), `sign(x)` $\in \{-, 0, +\}$ is literally the oriented projective/radial quotient $\mathbb{Z} / \mathbb{R}_{>0}$; and canonical 2-partition deduplication (`p` $\sim$ `not p`, collapsing `1 - (x mod 2) -> x mod 2`) quotients $\{0, 1\}^N \setminus \{0, \mathbf{1}\}$ by $\mathbb{Z}_2$-complementation.
+- **Where it strictly departs:** Container operators (`sort`, `filter`, `reverse`, `max`, `len`) do not act on $\mathbb{Z}_2^n$ or a linear space. `is_sorted`, `all_nonneg`, and `len_cap5` are monoid/order homomorphisms forming **non-orthogonal overlapping partitions** in the equivalence lattice $\mathrm{Eq}(V)$, not an orthonormal Walsh–Hadamard basis in $L^2(\mathbb{F}_2^n)$ — which is why conditional entropy and partition refinement (not inner products) are the governing algebra.
+
+#### 4. Framing word discovery as maximally-informative Guard Synthesis (MI + Entropy)
+Sensible and unifying for all **binary (2-label)** words, which share the exact same Boolean-term enumerator and bitmask representation as `if`-guards, fault guards, and conditional-law guards (`§5.5`) — shifting only from supervised agreement with a fixed target mask $T$ to self-supervised **marginal conditional MI weighted by lumpability** across operator tables:
+$$\mathrm{Score}(g \mid W) \;=\; \Bigl(\frac{1}{|F|}\sum_{f \in F} I\bigl(g(f(\vec{x}));\, g(\vec{x}) \mid W(\vec{x})\bigr)\Bigr) \times \overline{\mathrm{Lump}}(g).$$
+Two exact mathematical provisos (verified empirically in Python):
+
+1. **Redundancy and vacuity vanish automatically:** On `{+, -, *, max}`, greedy conditional-MI selection picked `x mod 3` $\to$ `x mod 2` $\to$ `x > 0` and drove redundant guards (`x < 1`, `x < 0` once covered) to **`cMI = 0.00`** while constant/vacuous masks score `0` automatically — directly resolving the hand-supplied redundancy and vacuity rules noted in `plan_v2c.md:687, 690`.
+2. **Do not restrict codomain cardinality to 2 (`Bool` only):** Multi-way congruences break when collapsed to a single Boolean guard. On `+` and `-`: `x mod 3` (3-valued) has lumpability **`1.00`** (`Hc = 0.00`), whereas Boolean `(x mod 3 == 0)` collapses to **`0.55`** (`Hc = 0.41`) because merging `{1, 2}` destroys additive closure; `x mod 5` (`1.00`) collapses to **`0.28`** as Boolean `(x mod 5 == 0)`; and `sign` (`1.00` on `*`) drops to **`0.80`** as `x < 0`. Keeping small finite-codomain terms (`Card <= 6–8`) captures Boolean guards *and* multi-way congruences in one enumerator.
+
+#### 5. Consistency & sufficiency audit of `plan_v2c.md`'s kernel-experiment pipeline (`§§6.6, 7.5, 8.8, 11.2–11.3`)
+The revised `plan_v2c.md` already moved `Words` into `§7.5`, scheduled verb-table collection from Stage A (`§6.6` Staging), and rewrote `X4` to test store-chosen quotients (`§11.2`). However, **five concrete consistency/sufficiency gaps** remain in the kernel's own experiment pipeline before it can reliably discover approximate conservation end-to-end:
+
+1. **Missing stratified probe-design rule in `§7.5` ("Choosing experiments"):** `§8.8` proved verb tables lose 11% of answers at 100 random probes and reach 0 losses at 1,000 probes *only when edge cases are stratified*, yet `§7.5`'s three rules (*Refute*, *Split ambiguities*, *Isolate*) do not construct bucket-stratified probes. *Fix:* Add a 4th rule — **Stratify by current words** (sample evenly across occupied quotient buckets plus boundary/constant/equal-prefix cases).
+2. **Stage C chicken-and-egg between `X4` and `X5` (`plan_v2c.md:688, 1278`):** `X4` demands store-chosen quotients with none hand-listed, yet `§6.6` proved whole-list quotients (`all_nonneg`, `all_even`, `is_sorted`) cannot be written from raw primitives before base reductions (`min-el`, `max-el`, `sum`, `map-adjacent`) enter the library in `X5`. *Fix:* Feed accepted library entries back into `§7.5`'s word-candidate grammar (re-running word discovery as the library grows), and gate `X4` either with base reductions in scope or with 1-level `fold`/`all` element predicates enabled.
+3. **Hand-supplied word-selection pieces (`plan_v2c.md:686-690`) not yet specified in `§7.5`:** Redundancy filtering, vacuous-constant rejection, and cross-type (`Seq -> Int`) pairing are flagged as hand-supplied in `§6.6`; replacing them with greedy conditional-MI $\times$ lumpability (item 4 above) and per-operator cross-type scoring $(\alpha^{\tau_{\mathrm{in}}}, \alpha^{\tau_{\mathrm{out}}})$ closes all three in `§7.5`.
+4. **Separating joint probing from Rule 3 (*Isolate*):** `§7.5` Rule 3 holds inputs constant to find dependencies/laws. As shown in item 2 above, kernel experiments must run **joint stratified probes** for unconditional binary verb tables and reserve **Rule 3 slices** strictly for curried/guarded conservation (`(mod a 2k)`).
+5. **Missing online counterexample feedback from fallback wins into `§7.5`:** `§8.8` found that 113 of 115 missed tentative answers were single missing output labels on seen input buckets. Whenever a tentative verb-table filter misses and the fallback finds program $p$ on task space $S$, feeding $p$'s concrete intermediate rows directly back into $f^\sharp$ and $S_{\mathrm{probe}}$ closes a cheap, self-correcting experiment loop inside `§7.5`.
 
 ---
 
@@ -287,7 +368,7 @@ Suppose the task gives input `xs = [3, -1, 4, 2]` and target `y = [2, 4, 6, 8]`,
 
 2. **Learning verb cheat sheets for free (*Galois Connection*, *Support*, and *Fiber-Surprise MDL*, [§2.2](#sec-2-2)):**  
    Nobody hand-writes abstract rules. Because `plan_v2c §7.5` already evaluates every library function $f$ on probe inputs, the kernel labels every input and output row with its bucket and runs a single `group-by`. Each entry in the resulting table carries two numbers:
-   - **What is possible (*support relation* $f^{\sharp_j}$):** the set of output buckets ever seen for that input bucket. *Safety rule:* if an input bucket combination was never encountered during probing, default to **$\top$ ("top / anything is possible")**, never $\emptyset$ ("impossible"). That guarantees missing probe cases only make pruning slightly looser and never discard a real solution.
+   - **What is possible (*support relation* $f^{\sharp_j}$):** the set of output buckets ever seen for that input bucket. *Safety rule (and honest limit):* if an input bucket combination was never encountered during probing, default to **$\top$ ("top / anything is possible")**, never $\emptyset$ ("impossible"). However, a *seen* input bucket can still miss a rare output bucket on finite probes (`plan_v2c.md §8.8` measured 0.3% lost answers at 1,000–3,000 random probes), so sampled verb tables are **tested knowledge** (`§5.5`) — safe for ordering or tentative-first filtering with a fallback, never hard elimination.
    - **How sharp the transition is (*fiber-surprise MDL weight* $w_j$):** $-\log_2 P_j(a_{\mathrm{out}} \mid f, \vec{a})$. Because `dbl_all(M)` outputs `EV` 100% of the time, it pays $-\log_2(1) = 0$ surprise bits. Because `filter_pos(M)` lands in `EV` only by luck (say 15% of the time), it pays $-\log_2(0.15) \approx 2.7$ surprise bits. Deterministic, law-like verbs automatically rank ahead of noisy "could happen by accident" verbs — extending `plan_v2c §6.2` rule 2 (fiber entropy) directly to abstract transitions.
 
 3. **Cheap mental simulation before real search (*Knuth Shortest Hyperpath* `g_fwd` and `h_bwd`, [§2.2](#sec-2-2)):**  
@@ -312,7 +393,7 @@ Suppose the task gives input `xs = [3, -1, 4, 2]` and target `y = [2, 4, 6, 8]`,
 | **Quotient map** $\alpha_j : V \to \mathcal{A}_j$ | A tiny **bucket sorter** (e.g., `x mod 2`, `sign`, `is_sorted`). | Collapses infinitely many concrete values into a few coarse "words." |
 | **Galois connection** $\alpha_j : \mathcal{P}(V) \rightleftarrows \mathcal{A}_j : \gamma_j$ | Moving safely between **sets of concrete values** ($\mathcal{P}(V)$) and **bucket labels** ($\mathcal{A}_j$): $\alpha_j$ summarizes a set by its bucket(s); $\gamma_j$ expands a bucket back to all concrete values inside it. | Guarantees that reasoning on buckets never falsely eliminates a valid concrete program (soundness). |
 | **Best abstract transformer** $f^{\sharp_j}$ | Function $f$'s **bucket-in $\to$ bucket(s)-out cheat sheet**, learned by `group-by` on $f$'s probe table. | Gives every library entry an immediate compositional "verb meaning" with zero training traces. |
-| **Top** ($\top$) vs. **Empty** ($\emptyset$) | **"Anything could happen"** vs. **"strictly impossible."** | Unprobed bucket inputs default to $\top$, keeping sampling-based pruning safe against misses. |
+| **Top** ($\top$) vs. **Empty** ($\emptyset$) | **"Anything could happen"** vs. **"strictly impossible."** | Unprobed bucket inputs default to $\top$; paired with tentative-first + fallback, this keeps sampled tables safe against rare unsampled outputs. |
 | **Algebraic lumpability** $\mathrm{Lump}(\alpha; f)$ | **"Do input buckets predict output buckets?"** ($1 =$ exact prediction, $0 =$ useless). | Automatically discovers good words (`mod_p`, `sign`, `len`, `all_even`) and rejects noisy predicates. |
 | **Algebraic congruence** | A bucket system where $f$'s cheat sheet is **100% deterministic** ($\mathrm{Lump} = 1$, zero branching). | Free exact laws (0 surprise bits); e.g., `mod p` on `{+, -, *, neg}`. |
 | **Canonical partition** | Grouping values by **which ones land in the same bucket**, ignoring arbitrary bucket names. | Collapses disguised duplicates like `(3x+1) mod 4` onto the shortest term `x mod 4`. |
