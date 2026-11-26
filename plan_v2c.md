@@ -278,6 +278,7 @@ Both plans share four gaps against your current prompt, and this plan treats the
 4. as you noted in your own follow-up, too much indexing and too little general treatment of fibers and residuals.
 
 Your margin note on `plan_v2b.md`, beside "keep the topology nested and exact, keep the geometry flat and local to each space, and compare across spaces only through verified maps", was "how, though?" Neither plan answers it. Section 6 does.
+
 ## 3. Diagnosis: three graphs computed, none stored
 
 The findings above have one cause, stated two ways.
@@ -370,6 +371,7 @@ The paper you cited in the margin, arXiv 2611.17309, bears on this differently t
 | Mature at the scale needed | — | no | store yes, saturation no | **yes** | needs training data | hand-written inverses only |
 
 No single view covers every row. The relational view covers the most with the least risk, the e-graph view supplies the classes, the propagator view supplies the direction-free reading, and the flat view supplies ranking. The proposal in §5 is those four, on one store.
+
 ## 5. The proposal: one store
 
 Sections 5 to 7 are proposal. A statement backed by a measurement cites §2 or §8. Everything else is untested, whether or not it carries a **[P]**.
@@ -720,6 +722,7 @@ Two further sources are proposal **[P]**. The rows where the VM faults give two-
 - Whether any vocabulary changes the exponent of search, and not only its constant. In candidates, six separate quotients did not over sizes 3 to 6; a merged quotient showed a rising gain and lost answers (§6.6).
 - Whether counts over tens of solved problems carry signal at all. The existing six-number predictor learned a constant (§2.6).
 - Whether any use of geometry beats the plain store with no guidance. §11 puts that ablation ahead of building anything in this section beyond the per-column codes.
+
 ## 7. The VM and the synthesizer
 
 ### 7.1 The VM: what stays and what changes
@@ -873,6 +876,7 @@ So an hour should not be one deep search. It should be:
 A problem's bank of classes is scratch memory, bounded by its account. The persistent store holds the library, the banks of a few standard probe spaces, the derivation rows, and the counts.
 
 Hours then compound in the way the audit measured they can: three of eight held-out tasks became solvable, in under 50,000 work, once the library was used for lifting, though three or four others became dearer (§2.5).
+
 ## 8. A prototype of the store, measured
 
 To test §5 by measurement rather than by argument, one auditor built a standalone prototype: `tg-probe.lisp`, 874 lines of Common Lisp, using no kernel code. Its core store is 206 lines and its change-of-space routines are 22. It is a measuring instrument, not a design. Source, driver, and logs are in `plan_v2c_audit/proto/`; every number below is copied from a log there **[M]**.
@@ -980,6 +984,7 @@ The kernel's measured candidate rate is 118–248 thousand per second (empirical
 4. **Laws are kept by use, not by completeness.** Classes do the pruning. A law earns a place in the library only when something reads it: to normalize before anti-unification, to carry a class to a new space, or to certify. The small-size basis, about 59 laws here, is kept; anything larger is derived on demand.
 5. **Hours go to breadth.** By extrapolation, the memory wall is reached in minutes on any one deep search. §7.6 already says this; the prototype's runs are consistent with it.
 6. **Dependency experiments need designed rows.** The boundary artifact is a concrete instance of why experiment choice has to be a mechanism.
+
 ### 8.6 The outside review's re-runs, reproduced
 
 The outside review (`plan_v2c_audit.md`) ran a modified prototype on the kernel's actual `:spec` rows, which §8.1 had not done. Its own summary of §8 is fair and belongs here first: the prototype validates the store, not the general synthesizer. The prototype's control is a fixed, one-level procedure. Requirements with holes, refinement in more than one step, the instance space, and the derivation space are not built. Its modified code is not in the repository. One auditor therefore rebuilt the modifications, 23 lines in six marked places, and re-ran every claim. The held-out references are transliterations of the library's own definitions, confirmed against the kernel's VM on every held-out input **[M]**.
@@ -1112,7 +1117,8 @@ Four findings qualify the headline.
 | | 30,000 | 4 |
 | | 300,000 | 0 |
 
-  Of 115 losses across all 25 configurations tried, 113 coincide with one defect on the reference program's path: an input-label combination that the probes did see, with an output label they did not. `take3` of a non-increasing list whose first three elements are equal is constant, hence sorted both ways; that never occurred in 3,000 probes. The review's default, that an input never seen may give anything, covers only unseen inputs. With probes chosen to include edge cases, no answer was lost from 1,000 probes up.
+Of 115 losses across all 25 configurations tried, 113 coincide with one defect on the reference program's path: an input-label combination that the probes did see, with an output label they did not. `take3` of a non-increasing list whose first three elements are equal is constant, hence sorted both ways; that never occurred in 3,000 probes. The review's default, that an input never seen may give anything, covers only unseen inputs. With probes chosen to include edge cases, no answer was lost from 1,000 probes up.
+
 - *The gain does not grow with the size of the program.* On single-input chains found at sizes 3, 4, 5, and 6 it was 14.4×, 11.1×, 11.6×, and 15.6×.
 - *Time gains are smaller.* Summed over the 20 tasks, the baseline made 2.60 million evaluations; the filtered search made 0.17 million evaluations and 1.25 million table look-ups. Wall time improved by 1.3×, 2.0×, and 4.2× at sizes 4, 5, and 6.
 - *Ranking by surprise adds 3–5%.* The review counts it as a second mechanism. Within the last level it moved the answer forward on some tasks and far back on others.
