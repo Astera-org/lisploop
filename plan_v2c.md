@@ -1,8 +1,8 @@
 # `lisploop` — Plan v2c: one topology–geometry kernel
 
-*Audit of the kernel, its documents, and the literature, and a proposal for a single store. Written 24 November 2026 against commit `15e64c6` (root kernel unchanged since `df33ed1`; `v2/` at `a4e19fa`).*
+*Audit of the kernel, its documents, and the literature, and a proposal for a single store. Written 24 November 2026 against commit `15e64c6` (root kernel unchanged since `df33ed1`; `v2/` at `a4e19fa`). Revised 25 November after your annotations and an outside review; Appendix G lists the changes of substance.*
 
-**How this was made.** Fourteen AI auditors, working in parallel and independently, each took one slice: five read and ran the code, six read the planning trail, three reviewed the literature. A fifteenth built and ran a small prototype of the proposed store. A sixteenth then checked a draft of this document against the reports, the logs, and the code; its 77 findings were applied. Three of the code auditors (data structures, search, laws) were told not to read the earlier v2 plans, so that their view came from the code. Their reports, with file-and-line citations, are in `plan_v2c_audit/` (Appendix F).
+**How this was made.** Fourteen AI auditors, working in parallel and independently, each took one slice: five read and ran the code, six read the planning trail, three reviewed the literature. A fifteenth built and ran a small prototype of the proposed store. A sixteenth then checked a draft of this document against the reports, the logs, and the code; its 77 findings were applied. Three of the code auditors (data structures, search, laws) were told not to read the earlier v2 plans, so that their view came from the code. For the revision, the outside review's empirical claims were reproduced before they were used, and further measurements were made of search across spaces (§8.6–8.8). Their reports, with file-and-line citations, are in `plan_v2c_audit/` (Appendix F).
 
 **Evidence tags.** Claims of fact are tagged with where they come from. Sections 5–7 are the proposal: read every statement there as **[P]** unless it cites a measurement in §2 or §8.
 
@@ -48,7 +48,9 @@ Evaluating one expression over N rows produces N copies of one small graph. So t
 
 On that store your operations share one description: build a space, give it a map to a space you have, and move columns along the map. Lift builds a space of positions. A guard builds a sub-space. Anti-unification builds a space of instances. Recursion is a map from a space of calls to itself. A law is two terms in one class; a guarded law is a class on a sub-space; an inverse is an operator's own table read in another direction; a residual is a column (§5).
 
-Geometry is description length. The distance from one column to another is the bits needed to write the second given the first, which the codec already defines per value type. The graph is the factorization of the description; the geometry is the code on each factor. For guiding search, four derived geometries are available in order of evidence: behaviour distance, property signatures, usage counts, and graph proximity. None is trained by gradient descent. Nesting stays in the exact store; one flat signature space indexes it (§6).
+The store draws one line that the rest of the design follows. Within a space everything is computed, in time linear in the cells touched; the one search there is for the term itself. Across spaces nearly everything has to be found: relating two spaces means finding a map between them, which is cheap to check and can be hard to find. Compression lives on that second side, so the search has to be allowed, budgeted, and prioritized (§5.9).
+
+Two different things do the work that "geometry" names. The *pricing metric* is description length: the distance from one column to another is the bits needed to write the second given the first, which the codec already defines per value type. The graph is the factorization of the description; the metric is the code on each factor. The *retrieval index* is separate: behaviour distance, property signatures, usage counts, and graph proximity, none trained by gradient descent, used only to rank and to choose what to try. Its main job is to prioritize the search across spaces. Nesting stays in the exact store; one flat signature space indexes it. The index's vocabulary is also where language starts: small quotients of values, and for each operator a table of what it does to them (§6).
 
 The synthesizer has one move: refine a hole with a program construct, and split the requirement the way that construct splits it. Each construct the VM can run is paired with the law that splits a requirement on it. The search's own record is a space like any other (§7).
 
@@ -61,13 +63,16 @@ A standalone prototype of the store, 874 lines of Lisp with no kernel code, was 
 - **Lift.** Fifteen sequence tasks were solved from input/output rows by one fixed procedure with one 12-operator grammar and no skeleton written per function, each scoring 200/200 on held-out examples; 134 of 135 runs over nine example sets. The procedure grants the container forms (`tabulate`, selection, `where`, one guard, `fold`); what is found is the term inside. The tasks include the prototype's versions of three of the four functions the existing kernel does not find at a thousand times its budget (`map-adjacent`, `scan`, `shift-seq`; `best-shift` was not attempted), on the prototype's own example rows. The first-order ones took between 3 and 703,183 candidate columns and under half a second; `map-adjacent` with a function argument took five seconds. None needed recursion.
 - **Inverses.** The inverses of `+`, `−`, and `neg` were found from the operators' own tables within 25 candidates; `*` with its guard `b ≠ 0` in about a quarter of a second. Feeding those inverses back made three later searches 60–150× cheaper.
 - **Laws.** Commutativity, associativity, the identities, and distributivity were derivable by size 7 in 0.01 s, with no false law once the probe space had 8 rows.
-- **Limits.** Measured: nested guard splits overfit; folds to a scalar need a `fold` form, since lifting alone cannot express them; the set of kept laws does not converge. Extrapolated from 90-second runs: a single deep search would exhaust 24 GB in one to eight minutes, and ten hours would reach one or two nodes further than one hour.
+- **On the kernel's own spec rows** (added in revision; §8.6). The outside review ran the prototype on the kernel's `:spec` rows, and the runs were reproduced. Thirteen of the sixteen specs reach 200/200 on held-out inputs from their own 4 to 13 rows, in some configuration of the prototype; no one configuration was run on all sixteen. Three need a change: `map-adjacent` only when a guard split is never accepted ahead of a smaller unsplit term, `seq-corr` only once collect can take an aggregate, and `filter` only with a Boolean call added to the grammar. Two more, `sum-all` and `prd-all`, are right only through the `fold` route; the unlifted route returns impostors for them. `foldl` is underdetermined by its rows and returns an impostor; `best-shift` and `argmax-corr` are not solved.
+- **Across spaces** (added in revision; §8.7). Signatures generated by the store find problems of the same form at three times chance and do not find the operators a problem needs, so they saved no more work than a control that ignores the task. An analogy between two operators' tables that is carried by a small term is nearly free to find: 350 tested in 1.3 ms, 29 hold. Matching rows with no key needed no backtracking on irregular or symmetric data, only choices that were never undone. It needed backtracking on regular structures without symmetry, and a great deal of it to reject look-alikes that are not isomorphic.
+- **A vocabulary** (added in revision; §8.8). The outside review proposed giving each operator a small table of what it does to coarse labels of its inputs. Rebuilt in Python on a hand-written library of 61 operators, that cut candidates about 15 times and time 1.3 to 4 times, more at larger sizes, and it worked for the two operators held out of every solved task. It lost 0.3% of answers at a thousand random probes per operator. Over the sizes tried it behaved as a constant factor in candidates.
+- **Limits.** Measured: nested guard splits overfit; folds with sequential state need a `fold` form, though plain reductions do not once collect can take an aggregate (§8.6); the set of kept laws does not converge. Extrapolated from 90-second runs: a single deep search would exhaust 24 GB in one to eight minutes, and ten hours would reach one or two nodes further than one hour.
 
 ### 1.5 Where this plan qualifies your prompt
 
 - **Budget.** Hours are right, but not as one deep search. An hour should be thousands of small bounded problems, re-validation on fresh rows, and ablation (§7.6). By one auditor's model of the published results, cutting a grammar from a hundred primitives to ten is worth more nodes than the step from one second of search to one hour (§4.1).
-- **Anti-unification.** Your reading of it as quotienting plus lifting holds as intuition. On the store it comes apart into a shared pattern (the constant columns of an instance space) and a quotient (the class). Taking instances modulo classes is meant to make it robust to equivalent syntax; that is untested (§5.4).
-- **Graph isomorphism and e-graphs.** Neither is needed. Shared, ordered terms compare by hash. An e-graph's store is worth having; its saturation is not (§4.3).
+- **Anti-unification.** Your reading of it as quotienting plus lifting holds as intuition. On the store it comes apart into a shared pattern (the constant columns of an instance space) and a quotient (the class). Taking instances modulo classes, to make it robust to equivalent syntax, is cheap only as normalize-then-generalize, which can miss a pattern; the full version is a search across spaces (§5.4, §5.9).
+- **Graph isomorphism and e-graphs.** Within a space neither is needed: shared, ordered terms compare by hash. Across spaces a matching engine is needed, as you say. It is colour refinement with backtracking, built from group-by and re-index, and run only on what the cheap index proposes (§5.9). An e-graph's store is worth having; its saturation is not (§4.3).
 - **Flat versus nested.** Not a question of what can be represented. A flat space buys storage economy that a library of a few hundred entries does not need. Keep nesting exact and use one flat space as an index (§6.4).
 - **Lifting forms as primitives.** A primitive may encode the shape of a container, never the content of a domain. `tabulate`, `fold`, and `where` are granted on that rule; what goes inside them is found (§7.1).
 
@@ -76,11 +81,12 @@ A standalone prototype of the store, 874 lines of Lisp with no kernel code, was 
 - A closed loop in which laws, inverses, and abstractions found on the store become the next round's primitives on the same store. Abstraction alone has precedent, and there it roughly doubles solve rates and then plateaus; the full loop has none (§10).
 - Learned inverses beyond one operator; guarded laws with guards larger than about four nodes; general recursion with hidden state.
 - Algebra from depth-two experiments, over spaces whose rows range over functions (§5.4).
-- Learned coordinate spaces, and language. The plan builds a name slot and a count table for language and nothing more (§6.6).
+- A vocabulary the kernel chooses for itself and that goes on improving its own search. Its parts are now in Stage C and have a first measurement (§6.6, §8.8); the compounding has no precedent.
+- Learned coordinate spaces, and language with people.
 
 ### 1.7 Recommendation
 
-Rewrite, in four stages. About 3,500 lines of the present kernel and its milestone code are worth carrying over: roughly 2,200 as code or as a design, and roughly 1,300 that work through a frame today and need that interface moved. About 750 more are ideas to re-implement (§9). Stage A is the store core plus two experiments: law discovery by class, which is shipped technique, and inverses from tables, which is this plan's own and so far shown only on the prototype. If either fails, the plan is wrong at the root and that is known first (§11). The standing metric is the kernel-found fraction of the library, which is 2.5% today.
+Rewrite, in four stages. About 3,500 lines of the present kernel and its milestone code are worth carrying over: roughly 2,200 as code or as a design, and roughly 1,300 that work through a frame today and need that interface moved. About 750 more are ideas to re-implement (§9). Stage A is the store core plus two experiments: law discovery by class, which is shipped technique, and inverses from tables, which is this plan's own and so far shown only on the prototype. If either fails, the plan is wrong at the root and that is known first (§11). The revision moves two things forward into Stage C: search across spaces (§5.9) and the vocabulary (§6.6). The standing metric is the kernel-found fraction of the library, which is 2.5% today.
 
 ---
 
@@ -143,7 +149,7 @@ The same concept is also implemented several times. "Pull a requirement to a chi
 
 The failures are structural first, exponential second, and memory-bound third.
 
-- **Structure.** The search tree has two or three nodes at every budget. A node expands once, through a fixed list of host-coded proposal generators. The kernel's main recursion skeleton recurses on `(tail Xi)` with every other argument unchanged, and removes `at`, `tail`, `if` and `=` from the child's grammar (`decompose.lisp:341-382`); a second, lockstep form walks two sequences in step. More work buys more leaves under the same two nodes. It cannot buy more structure.
+- **Structure.** The search tree has two or three nodes at every budget. A node expands once, through a fixed list of host-coded proposal generators. The kernel's main recursion skeleton recurses on `(tail Xi)` with every other argument unchanged, and removes `at`, `tail`, `if` and `=` from the child's grammar (`decompose.lisp:341-382`); a second, lockstep form walks two sequences in step. The tree cannot grow deeper: a child is expanded only when some generator proposes a decomposition for it, none does, and on the four stuck specs raising `:max-depth` to 3 or 4 changed nothing. More work buys longer expressions at the same two or three nodes. It cannot buy more structure.
 - **Exponent.** Work grows ×1.38–1.50 per body bit in every lane. **Each tenfold increase in work buys about one more AST node** (6–7 bits). The 1,000× budget advanced each lane by 18–23 bits. By extrapolation, an hour reaches 53–63 body bits; the known solutions for the four stuck functions are 132–259 bits.
 - **Memory.** The enumerator keeps every tree, about 430 bytes each. An 11 GB heap died before 7 × 10⁸ work, about 100 s of search. By extrapolation, an hour would need roughly 180–240 GB.
 
@@ -260,7 +266,7 @@ What to keep from those plans (all cheap, all grounded in something measured her
 - enumeration modulo behaviour;
 - index lift as preimage of `gather`, which works in the v2 code: `(= (gather C Z) Y)` splits into a length condition and, per position, a set of admissible indices;
 - the distinction between lift (one program over all fiber rows) and split (a guard and a program per region);
-- totality facts for variable indices, and guards derived from an operator's own preconditions;
+- totality facts for variable indices, guards derived from an operator's own preconditions, and the replay guard for inverses (§7.2);
 - the pricing discipline: no symmetry refund, each root row priced once;
 - the list of mechanisms those audits rejected, in Appendix D, which this plan does not re-import.
 
@@ -336,9 +342,9 @@ What the relational view lacks, on its own, is the other two graphs: it has no n
 
 *Claim.* You raised this yourself: neurons cannot be created per concept, so perhaps vectors should stay flat and high-dimensional, with context doing the composing.
 
-*Evidence.* Nesting is not a representability problem. Trees embed exactly in squared-Euclidean space (a textbook result, not re-checked); language models encode hierarchy as orthogonal subspaces; shown a graph in context, a transformer reorganizes its representation toward that graph's spectral embedding **[L]**. The economics are the issue. A shared flat space saves *storage*: m features can be represented in O(log m) neurons. It does not save *computation*: computing m features in superposition needs Ω(√(m log m)) neurons and Ω(m log m) parameters, for a broad class of problems (Adler and Shavit, verified against the paper; these are theorems about neural networks). A library of 10²–10³ entries has no storage pressure. Meanwhile every method that *learns* coordinates needs gradient descent and on the order of 10⁵ examples.
+*Evidence.* Nesting is not a representability problem. A tree embeds exactly in squared-Euclidean space, at one dimension per edge: give each edge its own axis, and the squared distance between two nodes is the length of the path between them; language models encode hierarchy as orthogonal subspaces; shown a graph in context, a transformer reorganizes its representation toward that graph's spectral embedding **[L]**. The economics are the issue. A shared flat space saves *storage*: m features can be represented in O(log m) neurons. It does not save *computation*: computing m features in superposition needs Ω(√(m log m)) neurons and Ω(m log m) parameters, for a broad class of problems (Adler and Shavit, verified against the paper; these are theorems about neural networks). So storage in superposition is exponentially efficient, and computation only quadratically: n neurons compute at most about n² features. A library of 10²–10³ entries has no storage pressure. Meanwhile every method that *learns* coordinates needs gradient descent and on the order of 10⁵ examples.
 
-The paper you cited in the margin, arXiv 2611.17309, was fetched and read by two auditors independently. It is a learned pairwise energy trained by pseudolikelihood, with inference by local energy descent, and it supports the first half of your note more than the second: it works because the hypothesis space is tiny (one hand-set value already solves every Sudoku puzzle, and three every maze), not because evaluation is fast. Its authors' own message is that the benchmarks are too easy and that learning latent quantities "remains open".
+The paper you cited in the margin, arXiv 2611.17309, bears on this differently than the first draft said. Its model is a small pairwise energy that can represent the puzzle's rules exactly, so fitting it takes milliseconds; one hand-set value already solves every Sudoku puzzle, and three every maze. Its *solving* is search by a very large number of very cheap moves: single-cell updates in Triton kernels that touch only the cells coupled to the one that moved, at a mean of 2.0 × 10⁹ FLOPs per Sudoku. So both halves of your note hold, and the second is the one that matters here: the bits of the answer come from fast evaluation, not from the model. That argues for an exact store with cheap evaluation and scheduled lowering. It does not argue for a learned embedding. The authors add that these benchmarks are too easy, and that learning latent quantities "remains an important open research direction".
 
 *Take.* A flat space is the right shape for *retrieval and ranking*, and the wrong place for truth. Use flat, explicit, recomputable feature vectors as an index over the exact store (§6.3). Defer learned coordinates until there is data to learn them from.
 
@@ -348,7 +354,7 @@ The paper you cited in the margin, arXiv 2611.17309, was fetched and read by two
 
 *Evidence.* Inverse semantics is shipped technology: the witness functions of FlashMeta are per-operator partial inverses, load-bearing in commercial products. They are also written by hand; learning them is open **[L]**. Running a general interpreter backwards does not scale; its authors say interpretive overhead "makes the relational interpreter approach impractical for most applications", and each extra interpretive level costs 6–178× until staged away **[L]**. In this kernel, pullback is 37 sound lines (§2.1).
 
-*Take.* Keep pullback. Treat an inverse as another orientation of an operator's own table, found by a dependency test and a small search (§5.4, measured in §8). Never run an interpreter backwards, and do not build reentrancy out of nested interpreters.
+*Take.* Keep pullback. Treat an inverse as another orientation of an operator's own table, found by a dependency test and a small search (§5.4, measured in §8). Never run an interpreter backwards. Reentrancy can be given its meaning by nested interpreters, but it should not be executed as a tower of them: collapse the tower first, by staging or lowering, or use one evaluator whose terms can mention terms, spaces, and requirements (§7.1).
 
 ### 4.7 What the perspectives agree on
 
@@ -443,7 +449,7 @@ No recursion was searched. The comparison with the kernel needs care. The kernel
 | Fiber | the rows on which a column takes a given value; all fibers at once is a group-by | n | `where` |
 | Lift over a container | unnest a sequence-valued column into a space of positions, with a map back; re-index the other columns | number of elements | `tabulate`, `select`, `scan`, `fold` |
 | Lift as the reverse of projection | choose, per row, one member of the fiber. The choice is a new column, and costs log₂|fiber| bits per row unless a term predicts it | n | an index argument |
-| Anti-unification | stack k terms as k rows of an *instance space*, one column per position. Constant columns are the shared pattern. Varying columns are the parameters | total term size | a definition and k calls |
+| Anti-unification | stack k terms as k rows of an *instance space*, one column per position. Constant columns are the shared pattern. Varying columns are the parameters, and varying columns that are equal are one parameter | total term size | a definition and k calls |
 | Quotient | merge rows (projection), or merge terms (a class) | n | — |
 | Partition, guard, conditional | a Boolean column; the sub-space of its true rows | n | `if` |
 | Conservation, law | two terms in one class; or a term whose column is unchanged when re-indexed along an endomap | n | a rewrite, an invariant |
@@ -456,7 +462,13 @@ Three remarks.
 
 **There is one underlying description.** Lift, split, projection, anti-unification, and recursion all do the same thing: build a space, give it a map to a space you already have, and move columns along the map (re-index one way, collect the other). You said of the earlier six-move list that several were "flavors of the same". On this store they share one description, with different maps **[P]**. The prototype implements it as three short routines, 22 lines, and uses them only for lifts over output and input positions. Its split used a separate index, and the instance, call, and derivation spaces are not built.
 
-**Anti-unification separates into a pattern and a quotient.** You wrote of anti-unification that "really it's a form of quotienting and trivial lifting under substitution". As intuition that holds. On the store the two halves separate: the generalization is the *shared pattern*, the constant columns of the instance space, and the quotient is the merging of terms that denote one column. (One categorical treatment, a single paper the auditor could read only in summary, likewise makes the generalization a product and reserves the quotient for merging.) If cells of the instance space hold classes rather than raw syntax, anti-unification is taken modulo the equivalences the store has observed **[P]**. The trail measured why that could matter: normalizing by laws first took one pattern from five holes to two. Two cautions. In the one published system that anti-unifies over classes, the cost is quadratic in the size of the corpus. And the trail once kept alternative spellings on purpose, because "different spellings give AU different alignments".
+**Anti-unification separates into a pattern and a quotient.** You wrote of anti-unification that "really it's a form of quotienting and trivial lifting under substitution". As intuition that holds. On the store the two halves separate: the generalization is the *shared pattern*, the constant columns of the instance space, and the quotient is the merging of terms that denote one column. (One categorical treatment, a single paper the auditor could read only in summary, likewise makes the generalization a product and reserves the quotient for merging.) Three refinements follow, from the outside review and from your "???" on the first draft's last sentence here.
+
+- *Shared holes are equal columns.* `(+ x x)` and `(+ y y)` generalize to `(+ ?0 ?0)`, not `(+ ?0 ?1)`, because the two varying columns are the same column. The kernel's `anti-unify` already does this (§8.6). On the store it is the class test, applied to the instance space.
+- *The table is only as wide as the shared spine.* Positions line up into columns only along the constructors the instances share. Where operators diverge, the sub-terms below them have no common positions, and the whole sub-term is the cell. The exception is an operator that can itself be made a hole, which the kernel's `anti-unify` does when the two operators have the same signature.
+- *One class has many spellings, and the spelling decides the pattern.* The October results kept every expression's tree partly for this reason: expressions that agree on the rows may "expose different alignments for the anti-unification mechanism". If a cell holds one representative per class, anti-unification is normalize-then-generalize, which the kernel already does, and it can miss a pattern that another spelling would have shown. Taking every spelling into account means generalizing two classes rather than two terms. That is a product of two automata, quadratic in the corpus in the one published system that does it **[L]**.
+
+The first draft said that classes in the cells would give anti-unification modulo the store's equivalences, and noted only the cost. It missed that a class has many spellings. So the cheap version is a heuristic. The full version is a search across spaces in the sense of §5.9, and is deferred to Stage D. The trail measured why the cheap version is still worth having: normalizing by laws first took one pattern from five holes to two.
 
 **Depth-two experiments are spaces whose cells hold terms.** A space whose rows range over `(f, g, xs)`, with `f` and `g` drawn from the classes of some smaller space, lets `(map f (map g xs))` and `(map (compose f g) xs)` fall into one class. A cell that holds a function is a reference to a class elsewhere, so two such cells are equal when the functions behave alike. This is the "folded and recursively nested" structure you describe: nesting is a cell that points into another space. It is untested, and it is one of the places where the literature offers no precedent (§10) **[P]**.
 
@@ -467,7 +479,7 @@ Plan 8 recorded that sampled evidence "can propose and never eliminates", and th
 A class is always a class *on a space*. Three grades:
 
 - **Observed**: the same column on this space. This is exact, not sampled, for any question about this space. Two terms in one class are interchangeable as sub-terms of any program that is judged on these rows, so enumeration can keep one and build only from it. No law, proof, or certificate is involved. The one condition is that the sub-term is evaluated on that space: a term under a `tabulate`, or inside a recursive body, is evaluated on the position space or the call space, and its class is taken there.
-- **Tested**: also the same column on several fresh spaces with boundary values. Good for anything where a mistake costs time or a missed answer, never truth: ordering enumeration, normalizing before anti-unification, proposing a decomposition.
+- **Tested**: also the same column on several fresh spaces with boundary values. Good for anything where a mistake costs time or a missed answer, never truth: ordering enumeration, normalizing before anti-unification, proposing a decomposition. The verb tables of §6.6 are of this grade.
 - **Certified**: exhaustive on a finite domain, derived from certified laws, or a declared axiom. Needed only to eliminate an alternative for all inputs: to commit to a solver's answer without a fallback, or to drop a guard.
 
 The kernel's evidence record (73 lines), its tentative-then-fallback discipline, and root verification of every finished program all carry over (§9). What changes is that the first grade, which is where almost all pruning comes from, stops waiting on the third.
@@ -494,9 +506,11 @@ Because a requirement is a term, it is a value of the object language, so liftin
 
 ### 5.8 What is and is not new here
 
-Each piece has shipped precedent: hash-consed terms; value vectors with observational-equivalence classes, the backbone of every bottom-up enumerative synthesizer; relational tables with unnest and group-by; law discovery by collision, as in QuickSpec. The search-literature review's own recommended recipe, assembled only from shipped or independently replicated parts, overlaps this list (lit-search report, section B).
+Each piece has shipped precedent: hash-consed terms; value vectors with observational-equivalence classes, the backbone of every bottom-up enumerative synthesizer; relational tables with unnest and group-by; law discovery by collision, as in QuickSpec. In standard terms, as the outside review puts it, the classes on a space form a deterministic bottom-up tree automaton, equivalently a ground e-graph, indexed by the space; and spaces with their maps and columns are what the database literature calls an attributed C-set, which is also the core of `plan_v2b.md`. The search-literature review's own recommended recipe, assembled only from shipped or independently replicated parts, overlaps this list (lit-search report, section B).
 
-It differs in one respect that matters. The published recipe's decisive step is pruning the term space with laws already found; dedupe by behaviour comes second. This plan leans on classes for pruning and keeps laws by use (§8.5). The reason is the kernel's own measurement that rewriting during search cost more than it saved (§2.4), and X1 should measure what the choice costs.
+The same review names what separates this plan from the earlier v2 plans. They tried to put *intensional* equality, true for all inputs, with binders and conditions, inside the store's merge relation. This plan merges only on *extensional* equality, on a concrete space. That is what makes the store cheap, and it is exactly what moves the hard part to §5.9.
+
+It differs from the published recipe in one respect that matters. The published recipe's decisive step is pruning the term space with laws already found; dedupe by behaviour comes second. This plan leans on classes for pruning and keeps laws by use (§8.5). The reason is the kernel's own measurement that rewriting during search cost more than it saved (§2.4), and X1 should measure what the choice costs.
 
 Three things are this plan's own and are marked as such throughout:
 
@@ -505,9 +519,58 @@ Three things are this plan's own and are marked as such throughout:
 3. keeping all three graphs in one structure so the search can read its own record.
 
 §8 measures the first two on a prototype.
+
+### 5.9 Within a space, and across spaces
+
+The outside review named the trade this store makes, and your note on it was that it "is a fundamental limit for compression and needs to be allowed". This section takes that as a requirement. An earlier draft of this document said that no operation on the store needs subgraph matching. That is true of the store's primitives and false of the system, and the difference is the subject here.
+
+**Within a space, everything is computed.** Given a space and the maps it already has, the operations are evaluate, hash, group, re-index, and collect. Each is linear in the cells it touches. A class is found by hashing a column. Nothing is searched for except the term itself.
+
+**Across spaces, nearly everything has to be found.** Whenever two things are not already joined by a map, relating them means finding a witness. Checking the witness is cheap. Finding it is a search, and in the worst case a hard one.
+
+| Question across spaces | The witness | Checking it | Finding it |
+|:--|:--|:--|:--|
+| Does this equality, seen on one space, hold on another? | none | evaluate both sides there | no search; this is the "probe evaluation" the review mentions |
+| Is this term an instance of that pattern? | a substitution | substitute and compare | linear for a tree pattern; NP-complete modulo associativity and commutativity, or when the pattern shares structure |
+| Which rows of S go with which rows of T? | a map | re-index and compare columns | a hash join when some term computes a key; graph matching when none does |
+| What do these k terms, or these k derivations, have in common? | a pattern and its substitutions | substitute | linear on trees; quadratic over classes; choosing which subsets to generalize, for the best total compression, contains the smallest-grammar problem, which is NP-hard **[L, from memory]** |
+| Is this problem like that one? | a map between their spaces that carries one problem's columns to the other's | re-index and compare | homomorphism search, NP-complete in general |
+| Does this operator act on a coarse description of its inputs? Is this operator like that one? | a quotient and its small table; or a map between two operators' tables | the dependency test, one group-by | enumerate small terms |
+| Which library entries belong in this problem's grammar? | a subset | try it | exponential in the library |
+
+So the split you describe is exact. Computation within a space is deterministic and polynomial. Search across spaces is NP in the textbook sense: the answer is easy to check and may be hard to find. And compression lives on the second side, because shared structure between two contexts *is* a witness of one of these kinds. A store that only ever worked within spaces could compress each space separately and nothing more.
+
+Three consequences shape the design.
+
+**1. A witness is a store object, so finding one is an ordinary problem.** A row correspondence is a map, which is a column. A substitution is the varying columns of an instance space. A pattern is a term. Finding any of them is therefore a requirement with a hole (§5.6) whose hole has the type of a map or of code, and the synthesizer's one move applies to it. Once found, the witness is stored, and from then on moving along it is computation. The search is paid once. The witness's own description length is what the compression has to repay.
+
+**2. There are three ways to find a map, and they should be tried in order of cost.**
+
+- *By a term.* Some term computes, for each row of S, a key that identifies a row of T. Candidates are ordinary terms, enumerated by class; checking one is a hash join. When a key term exists, crossing spaces costs no more than working inside one. Position i of an output going with position i + 1 of an input is this case. So is an analogy between two operators carried by a function: `max` goes to `min` under negation (§8.7).
+- *By refinement.* No key exists, so rows must be told apart by how they are connected. Give every row a colour; repeatedly recolour each row by the group-by key of its own cells and the colours of the rows it reaches through maps, until nothing changes; rows with a colour of their own are matched. This is polynomial, and it uses only group-by and re-index. It is the "graph walker": a signature that flows along verified links.
+- *By backtracking.* Rows that refinement cannot separate look alike to it: either they are truly interchangeable, or the structure is too regular for colours to tell them apart. Pick one, try each pairing, refine again, and back up on contradiction. This is the "graph isomorphism engine". In the version measured it is 65 lines on top of 36 for refinement, and it is exponential in the worst case. In §8.7 it was needed for regular structures that have no symmetry, and to reject look-alikes that are not isomorphic. Symmetric structures matched against their own copy needed choices, and none had to be undone.
+
+For matching a pattern into a larger structure, rather than pairing two whole spaces, the known line holds: tree-shaped patterns are polynomial, as a sequence of joins; patterns with cycles are the hard case. Plan 2 recorded this in October.
+
+One piece of the prototype was already a cross-space search and should be read as one. To lift a selective function, the output's positions have to be mapped to the input's (§7.2). The candidates for that map are the index sets that the `gather` rule yields; the choice among them is made by a term when one fits (a shift), by a constraint when one applies (the indices increase), and otherwise it is paid for at log₂|fiber| bits per row. The subsequence aligner in the prototype is the second of those cases, written by hand.
+
+**3. The expensive choice is which pairs to try, and that is the job of the cheap geometry.** With n problems there are n² pairs to relate and 2ⁿ subsets to generalize over. Your October outline, which still stands in `prompt4.md` (L170–175), says this in advance. The matching problem is "structure & type-aware & locality-seeded". "This is NP-hard, think, and yet some of the search can be amortized", "Hypothetically through the development of a vocabulary / short descriptive language". Plan 7 proposed the same seeding for anti-unification, by graph distance between library entries, and never built it.
+
+On the store the seeding signals are the ones of §6.3, pointed across spaces: overlap between two problems' signatures; distance between two columns' behaviour; the colour histograms of two spaces; and counts of which pairings paid off before. They differ in one useful way. An invariant that differs between two spaces *refutes* a correspondence outright, in polynomial time. Agreement only *suggests* one. So the cheap layer prunes with certainty and proposes without it, and the exact search runs only on what survives.
+
+Two measurements say which signals work. Overlap of store-generated signatures finds problems of the same *form* at three times chance, and does not find the *operators* a problem needs; it saved no more work than a control that ignores the task (§8.7). What did save work avoids choosing a subset at all: each operator carries a small table of what it does to coarse descriptions, and each candidate is tested against the target's description before it is evaluated (§8.8). That table is found once per operator and used in every later search. It is the amortization your outline describes, and §6.6 builds on it.
+
+**The compromise.** Work within a space has a cost known before it runs. A search across spaces does not: §8.7 has a pair of 30-row structures that took 257,214 backtracks to tell apart. So the two are budgeted differently. Work within a space is simply done. Every search across spaces runs as a tentative attempt on its own account, with a cap, under the reserve rule the kernel already has (three parts tentative to one part fallback, §9). Its cost and its yield are rows of the derivation space, so the share of an hour that goes across spaces is itself something the kernel can measure and adjust (X9). The order of attack is fixed by cost: refute with invariants; propose with the index; try a key term; refine; and only then backtrack.
+
+**What allowing this costs.** Refinement and backtracking: 36 and 65 lines in the version measured. Tree-pattern matching, which is joins. Anti-unification over classes rather than over single representatives, which is a product of two automata and quadratic in the corpus; this is deferred to Stage D. Choosing what to abstract, for which the kernel's description-length-gated abstraction imports (§9).
+
+**Where it enters the stages.** Stage A is entirely within spaces. Stage B crosses spaces only along maps it builds itself, except for the selection case above. Stage C is the first place where the choice of what to mix decides the outcome, as context selection; the quotients and tables of §6.6 are first used there, and analogies between operator tables are found as terms (X9). Stage D is cross-space throughout: abstraction over solutions, and depth-two laws.
+
 ## 6. Geometry
 
 You consider the geometry question open, and it is. This section says what the evidence supports now, what it does not, and how the store leaves room for more. It has three jobs to cover: pricing residuals, guiding search, and language.
+
+The outside review asked that two layers be named apart, and they are. The exact *pricing metric* is §6.1–6.2. The heuristic *retrieval index* is §6.3–6.4. Language (§6.6) grows out of the second.
 
 ### 6.1 One definition: distance is description length
 
@@ -517,16 +580,20 @@ The kernel already has this. Its codec assigns every value a prefix code, and it
 
 So the tariff and the metric are one object. Plan 7 said the same of decoders: "A metric and a decoder shell are two views of one correction code."
 
+Measured on the kernel's own functions (§8.6), the present codes behave as follows. Integer distance is symmetric and logarithmic: 0, 4, 5, 5, 8 bits at differences 0 to 4, and 17 bits at 1000. Being concave, it has no averages and no angles, and it favours a few exact hits over many small errors. Sequence and code distances are strongly asymmetric: building costs far more than erasing, as the counting identity of §6.2 says it should. And on sequences and code, once element values are large, the present prices break the triangle inequality on some triples, where going through a third value is cheaper than going directly. That marks where the present correction code is looser than it could be.
+
 ### 6.2 Pricing residuals
 
 Start from the counting identity in plan 2: H(X) = H(f(X)) + E log|fiber|. Running `f` forward destroys the bits that say which member of the fiber you started from. Running it backward means supplying them.
 
-Four rules follow. They are standard coding theory, confirmed by the literature review; the previous plans stated the first three but gave no procedure for using them.
+Five rules follow. The first four are standard coding theory, confirmed by the literature review; the previous plans stated the first three but gave no procedure for using them.
 
 1. **A verified bijection transfers code lengths for free.** If two spaces or two value types are related by a map with a checked inverse, a residual costs the same on either side.
 2. **A many-to-one map owes the fiber.** Pricing on the coarse side costs an extra log₂|fiber| bits per row to name the member, or the bits of a term that predicts it.
 3. **A new latent column is paid for adaptively.** Cluster labels, chosen indices, and the like are coded cell by cell, each using the counts of the cells before it. This is a valid code because a decoder can rebuild the same counts. It is also what makes count-based or nearest-neighbour predictors safe to use for pricing.
 4. **The graph gives the coding order.** Code the columns in dependency order. A column that a term derives from earlier columns costs only the term. A column no term derives is *free* and costs its code. The total is the description length.
+
+5. **An exact cell is not free.** If a cell that matches its prediction costs zero bits while every other cell pays a full prefix code, the lengths sum to more than a prefix code allows. In a column priced row by row, every cell's code must include the zero, so an exact cell costs at least one bit; one more bit per column can then say that the whole column is exact. The kernel avoids the per-cell violation in its main pricing path only because it lists exception rows with their indices, and what it leaves unpaid there is one bit per model. A store that prices a residual column row by row would not avoid it (§8.6).
 
 Rule 4 is the precise sense in which topology and geometry interlock: **the graph is the factorization of the description, and the geometry is the code on each factor.** A move is good when it turns an expensive free column into a term plus a cheaper free column.
 
@@ -540,13 +607,13 @@ One caution from the trail belongs here: small residual magnitude is not structu
 
 ### 6.3 Guiding search
 
-The control problem with the most leverage is choosing a small grammar for each problem (§4.1). Published results agree: five extra helper functions took one recursion synthesizer from 0.07 s to 128 s **[L]**; in this kernel, offering library functions as plain operators never helped and once cost 6.6× (§2.5).
+The control problem with the most leverage is choosing what to mix into each problem: which library entries, which other problems' solutions, which pairs of spaces to try to relate (§5.9). Choosing a small grammar is its commonest form (§4.1). Published results agree: five extra helper functions took one recursion synthesizer from 0.07 s to 128 s **[L]**; in this kernel, offering library functions as plain operators never helped and once cost 6.6× (§2.5).
 
-Four geometries can do that job. All are computed from the store, none is trained by gradient descent, and all only rank or propose. They are listed in order of evidence.
+Four signals can do that job. None is a description length between columns; together they are an index over the exact store. All are computed from the store, none is trained by gradient descent, and all only rank or propose. They are listed in order of evidence.
 
 1. **Behaviour.** A column is already a vector, one coordinate per row. The distance from a candidate's column to the target says how nearly it fits. A near miss proposes a split (find a guard for the rows that disagree) or a residual. A library function whose column on these inputs is near the target proposes itself. Reported gains for distance-on-behaviour synthesis are 56–664× in search-space size in one study, whose metric was supplied by an expert and whose figures come from a 2018 draft, and more than 10× over the prior state of the art in another **[L]**. The known weakness is that program spaces are rugged, so this ranks; it never prunes.
-2. **Signatures.** A signature is a fixed-length vector of cheap yes/no properties of a problem: output the same length as an input; output elements a subset of an input's; output sorted; target constant along some map. In one published comparison, 45 hand-written properties of this kind beat learned embeddings as the input to a small trained network **[L]**. That is evidence for the features, not for using them without training. Here the properties would be small Boolean terms over the problem's own columns, generated by the store's enumerator rather than listed by hand **[P]**; today's descriptors are a fixed menu of ten, written in kernel source. **The signature space is the flat space.** Every problem from every space maps into it, and nearest neighbours among past problems are found there.
-3. **Counts.** How often each operator, each move, and each library entry appeared in an accepted solution, given the parent operator and given the signature. Counts become code lengths. They order enumeration, they select the ten or so primitives in scope, and they set the price of an operator's name, which today is an accident of list order (§2.7). The published precedent reweights a grammar during search with no training data, within a single task; its gain is large against a weak baseline and modest against a strong one **[L]**. Counts across tasks, as proposed here, go beyond it. Naive Bayes over signature bits, with backoff to coarser signatures, is the simplest form that has shipped elsewhere. An earlier audit of this project classed it as unproven at a library of under a hundred entries, and X4 is the test.
+2. **Signatures.** A signature is a fixed-length vector of cheap yes/no properties of a problem: output the same length as an input; output elements a subset of an input's; output sorted; target constant along some map. In one published comparison, 45 hand-written properties of this kind beat learned embeddings as the input to a small trained network **[L]**. That is evidence for the features, not for using them without training. Here the properties would be small Boolean terms over the problem's own columns, generated by the store's enumerator rather than listed by hand **[P]**; today's descriptors are a fixed menu of ten, written in kernel source. **The signature space is the flat space.** Every problem from every space maps into it, and nearest neighbours among past problems are found there. Measured for this revision: such properties recognise a problem's *form* at three times chance, and do not pick its operators (§8.7). §6.6 gives the form that composes: a property becomes one label of a quotient, and each operator gets a table of what it does to labels.
+3. **Counts.** How often each operator, each move, and each library entry appeared in an accepted solution, given the parent operator and given the signature. Counts become code lengths. They order enumeration, they select the ten or so primitives in scope, and they set the price of an operator's name, which today is an accident of list order (§2.7). The published precedent reweights a grammar during search with no training data, within a single task; its gain is large against a weak baseline and modest against a strong one **[L]**. Counts across tasks, as proposed here, go beyond it. Naive Bayes over signature bits, with backoff to coarser signatures, is the simplest form that has shipped elsewhere. An earlier audit of this project classed it as unproven at a library of under a hundred entries, and X4 is the test. A first measurement, on a hand-written library of 61 operators, is in §8.8: as an ordering it gave 2.6×, and it ranked operators it had never seen in a solution 51st to 58th of 61, which as prices sent most tasks that need one past the search cap. So counts cannot be the only source of a name's price (§6.6).
 4. **Graph proximity.** A random-walk score over the store's own links, seeded at the current problem: "proximity flows along verified topological links". The algorithm is mature and updates locally when the graph changes. It has the least evidence for this use, and comes last. It is in the same family as the spectral embedding that an earlier audit pass rejected as too heavy for a library of a few hundred (Appendix D), and it is open to the same objection.
 
 ### 6.4 Making, collapsing and moving spaces
@@ -574,24 +641,83 @@ Lengths, areas, orientations, and real-valued measurements enter as value types.
 
 One of your margin notes reads "new (local) metrics may be admissible, even if they are not desireable". Its placement, beside the bullet on ledger parity, leaves open whether it is about metrics of work or of distance. If the second, this design admits a local metric in that sense: it is a code attached to one column, and it must still pay its way in total description length.
 
-### 6.6 Language
+### 6.6 Language: the amortization of search across spaces
 
-This is the least supported part of the ambition, and the plan builds almost nothing for it.
+The first version of this section built almost nothing and said language could wait. Your note on it asked whether nothing could be adopted from the other plans, and you wrote that the representation which yields language probably unlocks other expensive parts of the research. Both points hold. The reason is already in your October outline (`prompt4.md` L174–203):
 
-The one approach with evidence on small data treats words as labels for program fragments, aligned by co-occurrence counts. In its published form it raised solve rates in one domain from 42.6% to 82.0%, with gains persisting when no language was given at test time **[L, one research lineage]**. That system sits on a neural search component, and with human rather than synthetic descriptions its best result in that domain fell from 98.2% to 58.6%. Words as vector offsets are documented as unreliable; words as tensors have been shown only at toy scale.
+- the matching problem across frames "is NP-hard, think, and yet some of the search can be amortized", "Hypothetically through the development of a vocabulary / short descriptive language";
+- amortization forms "a type of semantic 'addressing space' over the learned rules, algebras, solvers", compositional like docstrings and function names, "a graph over the graph of heterogenous experience data";
+- "True compositional addressing requires variable compute when decoding the address";
+- "A language enables compositional description of the labeled computation", "In a form that is shorter and cheaper than executing the function / rule / algorithm itself. Thus it is a form of heuristic."
 
-Read against your three word types:
+Read against §5.9, that is a design: **language is the amortization of search across spaces.** The outside review's second section supplies the mechanism this section lacked. Two measurements made for this revision say how far it goes: one of a vocabulary without that mechanism (§8.7), one of the mechanism itself (§8.8). The section also keeps the like and analogy rows of the mapping in `plan_v2b.md` §7.8, the `like`/`analogy`/`act` query forms named in `plan_v2.tex` without the vectors `plan_v2.md` gave those words, and plan 7's coupling of names to tariffs.
 
-- a **'like'** word is a nearest-neighbour query in behaviour or signature distance;
-- an **'analogy'** word is a verified map between two spaces, applied. It is not a vector offset;
-- an **'action'** word names a move: make a space, lift, split.
+**What a flat description cannot do [M].** The obvious design makes a word a property of a problem, and a description the set of properties that hold. §8.7 measured it. Properties were generated by the store's own enumerator, kept when true on every example of a task, and used to find each task's nearest neighbours among solved tasks. The neighbours share the task's *form* three times as often as chance. But a grammar built from the neighbours' operators solves the task no more often than one built from the commonest operators without looking at the task (67% against 69%), and summed over tasks no search work is saved. A set of tags on a problem has no account of what each operator does to the tags. Your outline says so in advance: the description has to be compositional, and decoding it has to take compute.
 
-All three already exist as store objects, which is the argument for the store, not for a language component. The only affordance to build now is a name slot and a co-occurrence table on every library entry, move, and signature property. Anything further should wait until the kernel has a library it found itself.
+**Words, and what operators do to them.** The first two rows are the review's proposal, restated in the store's nouns; the third comes from §8.7.
+
+| Your word type | The store object | Its meaning | Cost |
+|:--|:--|:--|:--|
+| 'like' | a *quotient*: a small term that takes a value to one of a few labels, such as `(sgn x)`, `(mod x 2)`, or `(min (len xs) 5)`. A Boolean property is the two-label case | the labels are the words; two values with the same label are alike in that respect | one small term per value |
+| 'action' | a *verb table*: for one operator and one quotient, the table from the labels of the inputs to the labels the output was seen to take, with counts | what the operator does to descriptions | one group-by over the operator's probe table (§7.5), once, when the operator enters the library |
+| 'analogy' | a *map that carries one operator's table onto another's*: negation carries `max` to `min`, because `neg(max(a, b)) = min(neg(a), neg(b))` | "as A is to B" is the map; "so C is to ?" is the map applied to C | one equality, checked over the rows |
+
+The three rows are one object seen three ways. A quotient that an operator respects is an analogy: it carries the operator's large table onto a small one. The test has one form in every row: are the labels of the output determined by the labels of the inputs? When the small table is not known in advance, that is the store's dependency test (§7.6), and the table is what the test returns. When both tables are known, as between two existing operators, it is an equality checked row by row; §8.7 tested 350 candidate maps between operator tables that way in 1.3 ms, and 29 held, 12 of them between two different operators. The review uses a fractional form of the test, the share of the output label's uncertainty that the input labels remove, and calls it lumpability.
+
+**A description is a run on labels.** The description of a value is its labels. The description of a program is what comes out when it is run on labels through the verb tables: a few look-ups, and no data touched. That makes your sentence literal. The description is shorter, since a label is a few bits, and cheaper than executing, since it is a look-up. The description of a problem is the labels of its inputs and of its required output on each row, which is the signature of §6.3. So signatures and language are one mechanism. This is the first change the review proposes, and it is adopted. What the flat design lacked is the middle term: the verb tables, which let a description pass through a program.
+
+**What it buys in search [M].** The review reported experiments whose code is not in the repository, so one auditor rebuilt them (§8.8). The setting is a hand-written library of 61 operators in Python, most of them on whole sequences, six quotients, and tables learned from 2,000 probe values per operator in 180 ms. It is not the kernel's library and not the prototype.
+
+- The search evaluates 14 to 18 times fewer candidates (geometric means over 20 tasks, in two task sets, with the operators in listing order and averaged over random orders; between 3 and 60 times on all but one task in listing order).
+- It works for the two operators held out of every solved task. With the baseline averaged over operator orders the gain is 21 and 14 times on tasks that need one (the two task sets), against 15 and 26 on the others; in listing order it is 11 and 12 against 16 and 26. A table needs the operator's own probe rows, and no solved tasks.
+- As prices, counts fail there, as the review says. Naive Bayes over signature bits, which §6.3 proposed, ranked the never-used operators 51st to 58th of 61, and used as prices it sent 5 of 8 such tasks past a cap of three million candidates (6 of 11 in the second task set). Used only as an order it still gave 1.7 and 3.1 times on those tasks.
+- Used only to order the operators, with nothing pruned and so no answer lost, the tables give 6 times, against 2.6 for Naive Bayes.
+- Quotients chosen automatically keep about two thirds of the gain of the six listed by hand (10.7 against 15.8).
+
+**What it does not buy [M].** The same reproduction found five limits. The first corrects the review.
+
+- *It is not sound.* The review reports zero misses. On 300 random tasks the rebuilt version lost 11% of answers with 100 probes per operator, 0.3% with 1,000 to 3,000, and none only from 10,000 random probes, or from 1,000 when the probes are chosen to include edge cases. The cause is specific: a combination of input labels never seen is treated as "anything", but a combination seen with an output label not yet seen is treated as impossible. Merging three quotients into one product, a plain version of what the review does, lost 8% at 3,000 probes. So a verb table is *tested* knowledge in the sense of §5.5. It may order. It may filter a tentative first attempt that has a fallback. It may not eliminate.
+- *In candidates it behaved as a constant factor over the sizes tried.* The gain was 11 to 16 times for programs of 3 to 6 nodes, on 38 single-input chains with the six quotients; the data cannot exclude a drift of 15% per node either way. So the filter removes about one level of branching. The factor depends on the vocabulary: one quotient gave 3 to 6 times, three gave 6 to 13, six gave 16, and merging three into one product gave 24, with answers lost. Only the six-quotient setting was run against program size. A later split of the 60-task comparison by size shows the merged product's gain rising, 12, 23, and 30 times at sizes 3, 4, and 5, on the tasks it did not lose. That is the one hint that a finer vocabulary might change the growth rate and not only the constant, and it comes with lost answers.
+- *It does less for memory than for candidates.* Stored classes fell 2.3 to 2.8 times, or 7 to 9 with a one-step look-ahead the auditor added. §8.4 found memory to be the wall.
+- *The saving in time is smaller than in candidates.* Each candidate that survives costs about seven look-ups. Wall time improved 1.3 times at size 4, 2 times at size 5, and 4 times at size 6.
+- *Nearly all of it is one test,* made before a candidate is evaluated: could this operator, on arguments with these labels, give the labels the target has? Discarding a candidate only after evaluating it gives 1.5 times. Planning further ahead over the tables added almost nothing: the bound on how many steps remain rarely exceeds one or two, because a two-argument operator with a free second argument connects nearly any label to any other. Ranking by how surprising a candidate's labels are, which the review folds into its headline method without a separate figure, added 3–5%.
+
+**Where words come from.** Choosing quotients is the slow part: 19 s in the reproduction, against 0.18 s to learn the tables. Candidates are small terms into few labels, generated by the store's enumerator and deduplicated by the partition they induce, so that `(mod (+ (* 3 x) 1) 4)` and `(mod x 4)` are one candidate. Each is scored by the dependency test against every operator in the library. On the integers this reproduced the review to within 0.002: over `+ − * neg` every `(mod x k)` scores exactly 1; `(sgn x)` ranks first of 1,109 once `div`, `mod`, `max`, and `min` are counted, on this grid and with floor division; the arbitrary predicates the review used as distractors rank 330th or lower. On sequences the capped length ranks first of 5,475 **[M]**. Four things had to be supplied by hand, and each is a design item:
+
+- a rule against redundancy: ranked by score alone, the top fifteen sequence quotients are all the length;
+- the grammar of candidates: the sign, parity, and order patterns of a whole list, which did most of the work in the search experiment, could not be written in the pool that was enumerated;
+- the pairing of a quotient on lists with one on integers, which is what makes `sum`, `head`, and `len` informative;
+- a convention: a quotient whose output label is constant must score 0, or vacuous predicates rank first.
+
+Two further sources are proposal **[P]**. The rows where the VM faults give two-label quotients directly (`x = 0`, `len = 0`): a guard learned from a crash (§7.5) is a word. And once the kernel has solved problems of its own, a word can also be kept for shortening the derivation space of §7.4, that is, for predicting which refinement succeeds. That criterion needs history. The dependency score does not, which is why it comes first.
+
+**The code for names.** Plan 7 asked for names "whose usage probabilities and context affinities are coupled to the search policy and language tariffs". The measured form of that coupling is the ordering above: an operator's place in the enumeration, and so its price, is read from how well its verb tables fit the labels of the problem at hand. Prices from counts of past use are the form that failed on new operators. So the rule is that a name's price comes first from its tables, and from counts only as a correction that cannot price a name out **[P]**.
+
+**What the vocabulary unlocks.** You suspected that the representation behind language would pay for itself elsewhere. Here is the list, with evidence where there is some.
+
+1. *Signatures* (§6.3). The same mechanism.
+2. *Choosing what to mix* (§5.9). "Which library entries belong in this problem's grammar" asks for a subset, and is exponential in the library. The tables replace it with a few look-ups per candidate **[M]**.
+3. *A library whose new entries are not starved.* A new entry gets its tables at once **[M]**. In this kernel, offering library functions as plain operators once cost 6.6× (§2.5). No run varied the size of the library, so whether the filter keeps search from slowing as a library grows is not measured.
+4. *Guards* (§5.5). A guard is a two-label quotient, and a Boolean column is a bit mask over rows, so "this guard is valid for this law" and "this guard implies that one" are each one mask operation. For four laws, the weakest of 47 to 151 valid guards was found that way, 0.5 ms for all six laws tried: `(<= b a)` for `max(a, b) = a`, `(!= b 0)` for `div(a*b, b) = a` **[M]**. It is unique only when some guard in the pool agrees with the law on exactly the right rows; a divisibility law had seven weakest guards.
+5. *The memory wall on arithmetic* (§8.4). On `+ − * neg`, reduction modulo a small prime is an exact analogy, and it can be applied to a whole column at once. Stored classes fell 8.5 to 26 times on six targets, and none of 200 random targets was lost **[M]**. With `div` and `mod` in the grammar it is not an analogy, and lost 117 of 120 targets that need them. So it serves pure ring sub-problems, or a tentative first pass.
+6. *Reflection* (§7.4), in part. The tables are themselves reflective knowledge of the cheapest kind: what the kernel knows about its own operators, got by running them. Operators with similar tables are near-synonyms: of the 32 operators placed in a hand-listed family, 22 have a family member as their nearest table among operators of their type, where chance gives 9 **[M]**. But an index of past problems did not pay in the one small test. In five streams of 20 tasks, replaying every stored solution found all 25 repeated tasks at no more than 57 candidates per task; an index keyed on 23 hand-written properties that hold on every row found 19, and keyed on the labels of the six quotients, 9 to 14. That test was an outline, and replay costs three candidates per stored solution, with at most 19 stored here. The third change the review proposes is not adopted for now (Appendix G).
+7. *Descriptors of functions.* The kernel's fixed menu of ten becomes learned quotients **[P]**.
+
+**The three query forms** named in `plan_v2.tex` get exact meanings, with no vectors and no interpreter of their own, which was an earlier audit pass's objection to them (Appendix D): `like x` returns what shares x's labels, or for an operator, what has a near table; `analogy a b c` finds a stored map, or a small term, that carries a to b, and applies it to c; `act` applies a move.
+
+**Language with people** comes last and attaches to the same tables: a human label is aligned to words by co-occurrence counts. That is the one approach with evidence on small data. In its published form it raised solve rates in one domain from 42.6% to 82.0%, with gains persisting when no language was given at test time **[L, one research lineage]**. That system sits on a neural search component, and with human rather than synthetic descriptions its best result in that domain fell from 98.2% to 58.6%.
+
+**Precedent, and what has none.** Guiding synthesis by running candidates on abstract values is established, and the review's citations for it were checked against the papers **[L]**. One system, Simba, solved 519 of 544 bit-vector problems against 456 and 409 for two leading enumerative solvers, though on the conditional problems of the same suite one of those two wins. Another, Blaze, reports a 90-fold speed-up over a deployed synthesizer in one domain. In all of them the abstract meaning of each operator is written by hand, with one exception, and the review overstates how much is automatic. The exception, Atlas, learns its predicates from four training problems per domain, fits each operator's abstract behaviour from random samples, and then checks the fit against operator axioms supplied by hand. It reports 8.3× and 9.2× over hand-written abstractions on its own benchmarks, and 2.1× and 3.1× on its predecessor's. A 2024 paper still describes this kind of pruning as one that "requires manually designed, domain-specific abstract domains and semantics". No published synthesizer was found that reads an operator's table off its own samples by grouping, with no solved tasks and no hand-written semantics; and no use of the dependency score to choose abstractions for synthesis. Both were measured here, once, in Python. What has no precedent at all is the compounding: a vocabulary that a system chooses for itself and that goes on improving its own search as its library grows.
+
+**Staging.** The vocabulary is not a late stage. Stage A already builds probe tables, for laws and inverses; a verb table is one more group-by on such a table, so X2 can report them. The tables must be larger for this: a thousand or more probes per operator, chosen to include edge cases, against the 8 to 32 rows that laws need. Stage C is where they are used, and X4 is rewritten as the test. Labels from people remain last.
 
 ### 6.7 What remains open
 
 - Whether behaviour distance ranks well enough in practice to pay for computing it. The existing metric decoder taxed every search of its type (§2.7).
-- Whether store-generated signatures separate problems as well as hand-written ones.
+- Whether store-generated signatures separate problems as well as hand-written ones. For a problem's form they do better than chance by three times; for its operators they do not (§8.7). No hand-written set was run beside them.
+- Whether verb tables pay on the kernel's own library, and inside lifted forms, where the terms are element-level arithmetic and a single row carries little (§8.8). X4 is the test.
+- Whether quotients the store chooses for itself reach the gain of a list made by hand. In the one measurement they kept two thirds.
+- Whether any vocabulary changes the exponent of search, and not only its constant. In candidates, six separate quotients did not over sizes 3 to 6; a merged quotient showed a rising gain and lost answers (§6.6).
 - Whether counts over tens of solved problems carry signal at all. The existing six-number predictor learned a constant (§2.6).
 - Whether any use of geometry beats the plain store with no guidance. §11 puts that ablation ahead of building anything in this section beyond the per-column codes.
 ## 7. The VM and the synthesizer
@@ -611,6 +737,8 @@ Pending cells also close a soundness gap the audit flagged in v2's dormant prune
 **3. Give sequences their introduction and elimination forms.** Six primitives: `length`, `at`, `tabulate` (build a sequence from a length and a function of position), `fold`, `scan`, and `where` (the positions satisfying a predicate). Sequences become arrays, so `at` is one unit instead of linear in the index.
 
 An earlier audit pass removed `:tabulate` and `:loop` because they "Smuggled `map-indexed`/`foldl` into host Lisp via higher-order opcodes", and the next pass put them back. The line this plan draws is: **a primitive may encode the shape of a container, never the content of a domain.** `tabulate` is to a sequence what `tuple` is to a tuple, and `fold` is to a sequence what `at` is to a tuple. They say how a sequence is built and consumed. They say nothing about arithmetic, correlation, or any particular function. What goes inside those forms is then a term to be found. §8 finds the terms for `reverse`, `shift`, `zip`, and first-order instances of `map`, `scan`, and `filter`. It did not attempt the higher-order `map` and `filter` themselves.
+
+The same rule says what a *learned* container would be. On the store a container is a recipe for a space: which rows a value unfolds into, the map back, and how to rebuild or reduce. A library entry of that shape, a pair of terms that unfold and build and are inverse on the examples, would describe a data structure in the store's own nouns: a matrix as two nested position spaces, a tree as a position space with a parent endomap **[P]**. Nothing before Stage D depends on it.
 
 The evidence for granting this much: with such combinators and deduction through them, one published synthesizer has a median of 0.43 s on its benchmark suite; without them, rediscovering `fold` from a fixed-point combinator took about 7,700 CPU-hours **[L]**. Demanding that the kernel find lifting from raw recursion, in hours, on one thread, is not a realistic test of anything.
 
@@ -636,13 +764,16 @@ The one move is: **refine a hole with a construct.** Choose a hole. Choose a pro
 | `(gather xs ?idx)` | per position, `?idx` lies in the set of indices where `xs` has the wanted value | positions of the output |
 | `(where n (λ j. ?keep))`, and selection of elements | `?keep` is whether position j survives | positions of the input |
 | `(scan ?init (λ acc x. ?step) xs)` | `?step` on the position space, with the previous output as a column | positions, with a "previous" endomap |
+| an aggregate of `?e` over `?n` positions (a sum, product, maximum, minimum, or count) | `?n` is the number of positions; `?e` is not observed, so each candidate element term is collected under each aggregate in scope and compared (§8.6) | positions |
 | `(fold ?init (λ acc x. ?step) xs)` | does not split unless intermediate values are observed (§7.3); otherwise `?step` is enumerated by class | — |
 | a self-call `(self ?s)` inside a recursive body | `?s` is any term whose value is a row of the call space | the call space, with an endomap |
 | `(decode ?m ?r)` | `?m` need only be near; `?r` is solved from `?m` and the target | — |
 
 Each row pairs a construct the VM can run with the law that splits a requirement on it. This is what the previous plan was reaching for with a "symmetric instruction set", stated as one table.
 
-The selection row needs one more granted piece than the others. To recover which input positions survive, the output has to be aligned to the input as a subsequence. That alignment is the preimage of selection, in the way the index sets are the preimage of `gather`. An earlier audit pass rejected a subsequence propagator as specific to `filter` (Appendix D), and the prototype uses one (§8.1). The case for it is the rule of §7.1: it concerns the container, not any domain. It should be judged on that.
+The selection row needs one more granted piece than the others. To recover which input positions survive, the output has to be aligned to the input as a subsequence. That alignment is the preimage of selection, in the way the index sets are the preimage of `gather`. An earlier audit pass rejected a subsequence propagator as specific to `filter` (Appendix D), and the prototype uses one (§8.1). The case for it is the rule of §7.1: it concerns the container, not any domain. §5.9 gives the better reading: it is a search for a map between two position spaces under an order constraint, and it should be built as that.
+
+Two further rules for this table come from the outside review and were reproduced (§8.6). An inverse's guard has two parts with different sources. *Uniqueness* is read from the operator's table by the dependency test. *Existence* needs no search at all: a candidate answer is replayed forward and compared. And a split competes in the same size order as everything else: it is never accepted ahead of a smaller unsplit term.
 
 Those splitting laws are Boolean equivalences. For example, `(= (tuple ?a ?b) y)` holds exactly when `(= ?a (at y 0))` and `(= ?b (at y 1))` both do. So they are laws in the store's own sense: two Boolean terms in one class. The handful for the structural constructs are seeded by hand, as the ten constructor rules are today. They can be checked by the collision engine, and in principle found by it **[P]**. Library functions get theirs by reorientation (§5.3), not by hand.
 
@@ -661,12 +792,12 @@ The audit found that the kernel's recursion is one main template, with a lockste
 1. **Position-wise functions** (`map`, `zip`, `reverse`, `shift`, `map-adjacent`, `gather`, and the library's `positions`, which is the index list k, k+1, …): a `tabulate`. No recursion.
 2. **Selective functions** (`filter`, positions of a value): a `where` over input positions, with the keep-column recovered by aligning output to input.
 3. **Recurrences on the observed output** (`scan`, running totals): the previous output is a column on the position space, re-indexed along the "previous" endomap. An ordinary scalar problem.
-4. **Folds to a scalar** (`sum`, `foldl`): the intermediate accumulator is not observed, so the requirement on the step function does not split. Two routes:
+4. **Reductions to a scalar.** There are two kinds. A reduction of an element-wise term under an associative aggregate (a sum, a product, a count, a dot product) is a change of space after all: enumerate the element term on the position space and collect it under each aggregate in scope (§8.6). A fold with sequential state (`foldl` with an arbitrary step, a Horner evaluation) is not. Its intermediate accumulator is not observed, so the requirement on the step function does not split. For those, two routes:
    - enumerate step functions by class over the leaves `acc` and `x`, each candidate costing one fold per row (§8 measures this);
    - notice when the rows themselves contain the intermediates. If one row's input is a prefix or a tail of another's, that relation is an endomap on the space of examples, and the accumulator column is observed after all. The bootstrap's "trace-complete rows" are this, supplied by hand as a convention. On the store it is a property the data either has or lacks, and a group-by detects it.
 5. **General recursion**: the calls a function makes are rows of a call space, and the recursive call is an endomap on it. The argument of the self-call is one more hole. Candidates are ranked by how many rows land on a known row and by whether some measure decreases; the kernel's termination check (about 50 portable lines) imports for the second.
 
-Case 5 is research with replicated precedent, not engineering: published recursion synthesizers need examples closed under the recursive call, or angelic execution to relax that **[L]**. By inspection, cases 1–4 are the shapes of the functions in the current library **[P]**. The prototype tested first-order instances and two function-argument forms (§8.1). It did not test `foldl` with a function argument, `seq-corr`, `best-shift`, `argmax-corr`, `last-or`, or the higher-order `map`, `foldr`, and `filter`. `best-shift` plausibly needs two lifts, which were not tested either.
+Case 5 is research with replicated precedent, not engineering: published recursion synthesizers need examples closed under the recursive call, or angelic execution to relax that **[L]**. By inspection, cases 1–4 are the shapes of the functions in the current library **[P]**. The prototype tested first-order instances and two function-argument forms (§8.1). It did not test `foldl` with a function argument, `seq-corr`, `best-shift`, `argmax-corr`, `last-or`, or the higher-order `map`, `foldr`, and `filter`; §8.6 has since run the first five on the kernel's spec rows. `best-shift` plausibly needs two lifts, which were not tested either.
 
 ### 7.4 Reflection: the search as a space
 
@@ -674,10 +805,12 @@ Each problem posed is a row of the **derivation space**. Columns: parent problem
 
 Its readers, in order of evidence:
 
-1. **Memo.** Two problems with the same space, the same requirement class, and the same context are one problem. This replaces the present reuse key, a sorted printed string, and it holds across branches and across jobs. Your margin note on "Nothing persists across branches or jobs" was "yeah that's a big problem"; this is the fix.
+1. **Memo.** Two problems with the same space, the same requirement class, and the same context are one problem. This replaces the present reuse key, a sorted printed string, and it holds across branches and across jobs. Your margin note on "Nothing persists across branches or jobs" was "yeah that's a big problem"; this is the fix. The memo is exact, so it misses the same problem posed on fresh rows. For that there is *replay*: before any search, run every stored solution of the right type on the new rows. On 25 repeated tasks with fresh inputs and at most 19 stored solutions, replay found all 25 at no more than 57 candidates per task; an index of past problems found 19 at best (§8.8). Replay's cost grows with the store, so an index may still be needed later; the one tried did not earn its place.
 2. **Counts** (§6.3).
 3. **Attribution by ablation.** Re-run a held-out set with one learned thing removed, and keep only what pays. The literature's warning is specific: one planner kept 4–6% of its learned rules and ran 65% slower without that validation; one lemma library showed a single reuse among 20,000 entries **[L]**. Stage 0's ablation harness imports for this.
 4. **Explanation-based generalization.** On a shared term graph, "what did the winning derivation actually read" is a walk over edges. Whatever it did not read can be made a variable. Plans 1–3 specified this and never built it.
+
+**Messages, nogoods, and the pruner are one table.** You asked whether behaviour pruning is a case of the message idea in the old code, and whether UIP and DIP are too. They are. The pruner's fact is "this column equals one already kept": a claim with its evidence, which is what plan 4 called a message. A nogood is the same kind of fact about a requirement, a dependency test that failed: this projection gives equal inputs to rows that need different outputs. The UIP step generalizes such a fact by anti-unifying clauses. The DIP step searches for a column that separates the conflicting rows. Today these live in three structures (observation buckets, clause lists tied to node ids, `:dip-feature` entries), and only two narrow forms are persisted: nogood schemas for one map-shaped decoder, and the separating features. On the store they are all facts about classes on a space, kept in one table and shared across nodes and jobs. The pruner is also the cheapest reflection there is: the search reading its own record so as not to repeat itself. What a learned policy could add is prediction, skipping an evaluation that a law or a count says will collide.
 
 Because the derivation space is a space, the synthesizer can be pointed at it: find a term that predicts `outcome` from the signature columns. The existing `yield-gate` experiment proves that plumbing. It is not on the critical path, and the one learned predictor that exists today learned a constant (§2.6).
 
@@ -690,6 +823,7 @@ The audit found that nothing in the kernel initiates discovery (§2.4). On the s
 - **Laws.** Classes on a standard probe space over `f` and the operators in scope, to a size bound.
 - **Inverses.** Per argument: the dependency test; a guard for the rows where it fails; a small search for the term.
 - **Definedness.** A guard for the rows where `f` returns an error. The kernel's milestone code already does this for arithmetic (§2.4).
+- **Words.** For each quotient in the vocabulary, `f`'s verb table: one group-by over a probe table of the same kind, with a thousand or more rows. And `f` becomes one more operator against which candidate quotients are scored (§6.6).
 - **Lifted forms.** `f` under `tabulate`, `fold`, and `scan`.
 - **Abstraction.** Anti-unify the terms of accepted solutions, over the instance space.
 
@@ -707,7 +841,7 @@ Each is a small bounded problem; §8 gives their measured cost. An entry is acce
 
 ### 7.6 What an hour buys
 
-No operation on the store needs subgraph isomorphism, and none saturates.
+Within a space no operation needs graph matching, and none saturates. Across spaces nearly every operation is a search for a witness (§5.9).
 
 | Operation | Cost |
 |:--|:--|
@@ -715,13 +849,20 @@ No operation on the store needs subgraph isomorphism, and none saturates.
 | Evaluate one operator over a space of n rows | n |
 | Find a column's class | n, by hash |
 | Dependency test (is this column a function of those?) | n, by hash |
+| Learn one operator's verb table for one quotient | one group-by over its probe rows |
+| Test a candidate against the target's labels before evaluating it | about 7 look-ups per candidate that survives, in the reproduction (§8.8) |
 | Unnest, re-index, collect | number of cells touched |
 | Anti-unify k plain terms | their total size. Over classes, quadratic in the corpus in the one published system |
 | Conditional laws under g candidate guards over c classes | g × c × n, with guards limited to about four nodes in published systems |
 | Enumerate by class to size s | exponential in s: ×3–7 per unit of size after dedupe, against ×9–14 for raw syntax (§8.4) |
 | Compare laws up to renaming of variables | brute force over at most 5 variables |
+| Across spaces: find a row correspondence by a key term | one hash join per candidate term |
+| Across spaces: find one by colour refinement | polynomial; a group-by per round |
+| Across spaces: find one by backtracking | exponential in the worst case; needed for regular structures without symmetry, and to reject look-alikes (§8.7) |
+| Across spaces: match a tree-shaped pattern | a sequence of joins |
+| Across spaces: match a pattern with cycles, or modulo associativity and commutativity | NP-complete |
 
-The only exponential is leaf enumeration, and its exponent is the reason for everything else in this section. With behaviour dedupe each tenfold of work buys one to two nodes (§2.3, §8.4). Deep single searches also meet memory before time: extrapolating from 90-second runs, the prototype would exhaust 24 GB within one to eight minutes of one deep search, and ten hours would reach one or two nodes further than one hour (§8.4).
+Within a space the only exponential is leaf enumeration, and its exponent is the reason for everything else in this section. Across spaces the exponential is the search for witnesses, and it is controlled by choosing what to try (§5.9). With behaviour dedupe each tenfold of work buys one to two nodes (§2.3, §8.4). Deep single searches also meet memory before time: extrapolating from 90-second runs, the prototype would exhaust 24 GB within one to eight minutes of one deep search, and ten hours would reach one or two nodes further than one hour (§8.4).
 
 So an hour should not be one deep search. It should be:
 
@@ -766,9 +907,9 @@ These include the prototype's versions of three of the four functions the existi
 
 **What did not work, or needed more than the hypothesis.**
 
-- **Nested guard splits overfit.** Allowed at every size, they return case analyses whose guards fit the training rows by accident: rotate-left on 3 of 9 example sets, map-adjacent with `f` on 6 of 9. The prototype therefore accepts a single guard at first fit and tries nested splits only when the budget is spent. Requiring a split to be size-minimal changed no outcome and cost 35–1,100× more candidates. A split needs an acceptance test stronger than "fits the rows"; §8.5 says what the design takes from this.
+- **Nested guard splits overfit.** Allowed at every size, they return case analyses whose guards fit the training rows by accident: rotate-left on 3 of 9 example sets, map-adjacent with `f` on 6 of 9. The prototype therefore accepts a single guard at first fit and tries nested splits only when the budget is spent. On these example sets, requiring a split to be size-minimal changed no outcome and cost 35–1,100× more candidates. On the kernel's own, much shorter spec rows it does change the outcome (§8.6). A split needs an acceptance test stronger than "fits the rows"; §8.5 says what the design takes from this.
 - **A function argument is only as determined as its examples.** The one miss in 135 is an example set in which the only non-commutative operator appears on one-element sequences, so nothing fixes the argument order. This is the kernel's `foldl` impostor again, and the store's check for it is the one in §5.5.
-- **Folds to a scalar are outside change of space**, as §7.3 expected: `sum`, alternating sum, and a Horner evaluation all fail under lifting alone. With a `fold` form whose step is enumerated by class, they are found after 21, 51, and 157 fold programs. Alternating sum needs a right fold.
+- **Folds to a scalar fail under lifting as the prototype built it**: `sum`, alternating sum, and a Horner evaluation. With a `fold` form whose step is enumerated by class, they are found after 21, 51, and 157 fold programs; alternating sum needs a right fold. §8.6 shows that `sum` fails here only because the prototype's collect could build lists and nothing else.
 - **A larger grammar can exhaust the budget.** With three more operators and a 12-million-candidate cap, map-adjacent with `f` returned an impostor from the last-resort nested split. The other fourteen tasks solved in at most 1.8 million.
 
 The prototype's author lists every mechanism added beyond the stated hypothesis (proto report, §7). The ones that matter for the design: iterative deepening by size with a split attempt at each level; routing to the input-position lift when no shape term exists; the subsequence alignment behind selection; a lazy `if`; a cell type for function-valued inputs; and the `fold` form.
@@ -825,7 +966,7 @@ Only the first three rows are measured, in runs of about 90 seconds per grammar;
 
 Three things follow.
 
-- **Memory is the wall, not time.** By that extrapolation, the sizes an hour could reach by time alone would need about 0.2 TB, and ten hours 1.2–2.4 TB. Two of the prototype's own runs did die at a 10 GB heap.
+- **Memory is the wall, not time.** By that extrapolation, the sizes an hour could reach by time alone would need about 0.2 TB, and ten hours 1.2–2.4 TB. Two of the prototype's own runs did die at a 10 GB heap. On that operator set with two variables, at sizes 7 to 13 and in Python, storing classes by their residues modulo small primes cut stored classes 8.5 to 26 times in a separate experiment (§8.8).
 - **Dedupe is worth less on rich arithmetic than on polynomials or on the kernel's list grammars.** Once `div`, `mod`, `max`, and `min` are in, 30–40% of candidates are genuinely new behaviours on 32 random rows. The 99% duplicate rate of §2.3 was on few rows and list-heavy grammars. Both are real; the gain depends on the grammar and the rows.
 - **Ten hours buys one or two more nodes than one hour.** This is the same logarithm as §2.3, on a different engine.
 
@@ -833,12 +974,196 @@ The kernel's measured candidate rate is 118–248 thousand per second (empirical
 
 ### 8.5 What the prototype changes in the plan
 
-1. **The lift claim stands, for position-wise, selective, and observed-recurrence functions.** It has not been tested on the kernel's own short spec rows, on fewer than 12 examples, or on tasks that need two lifts. X3 does that.
-2. **Split needs a stricter acceptance rule than fit.** The store offers three, in increasing cost: the guard must pay for itself in description length; the two branches must not fall into one class on a wider probe space; and a nested split must survive rows held back from the search. This is added to X3's gate.
-3. **`fold` belongs in the refinement table** (§7.2), with its step enumerated by class. That was expected and is now measured.
+1. **The lift claim stands, for position-wise, selective, and observed-recurrence functions.** §8.6 now covers the kernel's own short spec rows. Tasks that need two lifts remain untested.
+2. **A split is accepted in size order, never ahead of a smaller unsplit term** (§8.6). Beyond that the store offers three further tests, in increasing cost: the guard must pay for itself in description length; the two branches must not fall into one class on a wider probe space; and a nested split must survive rows held back from the search. This is added to X3's gate.
+3. **Collect takes an aggregate, and `fold` belongs in the refinement table as well** (§7.2, §8.6). The first covers reductions of an element-wise term. The second, with its step enumerated by class, covers sequential state.
 4. **Laws are kept by use, not by completeness.** Classes do the pruning. A law earns a place in the library only when something reads it: to normalize before anti-unification, to carry a class to a new space, or to certify. The small-size basis, about 59 laws here, is kept; anything larger is derived on demand.
 5. **Hours go to breadth.** By extrapolation, the memory wall is reached in minutes on any one deep search. §7.6 already says this; the prototype's runs are consistent with it.
 6. **Dependency experiments need designed rows.** The boundary artifact is a concrete instance of why experiment choice has to be a mechanism.
+### 8.6 The outside review's re-runs, reproduced
+
+The outside review (`plan_v2c_audit.md`) ran a modified prototype on the kernel's actual `:spec` rows, which §8.1 had not done. Its own summary of §8 is fair and belongs here first: the prototype validates the store, not the general synthesizer. The prototype's control is a fixed, one-level procedure. Requirements with holes, refinement in more than one step, the instance space, and the derivation space are not built. Its modified code is not in the repository. One auditor therefore rebuilt the modifications, 23 lines in six marked places, and re-ran every claim. The held-out references are transliterations of the library's own definitions, confirmed against the kernel's VM on every held-out input **[M]**.
+
+| Kernel spec | The review's claim | Reproduced | Note |
+|:--|:--|:--|:--|
+| `copy`, `inc-all`, `dbl-all`, `positions` | exact `tabulate`, 200/200 | yes | 151, 408, 8,607, and 3 candidates |
+| `scan` with a function argument; `shift-seq` | exact with one guard, 200/200 | yes, one count differs | 11,604 candidates for `scan` (the review says 11,298) and 8,781 for `shift-seq`. `shift-seq` falls to 174/200 if held-out shifts may be negative; the spec's rows never are |
+| `filter` | needs a one-argument Boolean call added; then 200/200 at 1,383 candidates | yes | without the addition, no answer after 1.58 million candidates |
+| `sum-all`, `len-all`, `prd-all`, `last-or` | 200/200 through `fold`; the unlifted path overfits | partly | all four are 200/200 through `fold`. The unlifted path overfits two of them (23/200 and 20/200), not four |
+| `map-adjacent`, on its 8 examples and 6 lifted rows | default policy returns a guard-split impostor, 29/200; with size-minimal split acceptance, the exact answer, 200/200, in 616,232 candidates and 64 ms | yes, with the impostor's size corrected | the impostor has 27 nodes, not 19 |
+| `foldl` | returns `(fold a (- acc x) xs)`, 81/200 | yes | the spec supplies only `f = −`. With the function argument offered as a leaf, `(- acc x)` still wins on size and the right program is the next fit |
+| `seq-corr` | unsolved; solved once collect can take an aggregate | yes | the sum, over positions below the shorter length, of `(* (at xs i) (at ys i))`; 200/200; 20,713 candidates and 8 ms with the shape given, 3.05 million and 0.7 s with it searched |
+| `best-shift`, `argmax-corr` | unsolved | yes | the prototype returns impostors scoring at most 43/200, rather than no answer |
+
+Three results change the plan.
+
+**Split acceptance has to respect size order.** §8.1 reported that requiring a split to be size-minimal "changed no outcome" and cost far more. That was true on the prototype's own example sets of 31–51 lifted rows. On the kernel's own six lifted rows for `map-adjacent`, first-fit acceptance returns an impostor and size-minimal acceptance returns the right program. With size-minimal acceptance all eight sequence specs score 200/200, at 625× and 824× the candidates on the two that need a guard. The review's rule is the right one: a guard split must never be accepted ahead of a smaller unsplit term. The cost is real and is the price of few rows.
+
+**Collect can take an aggregate.** The prototype's collect gathered child cells only into a list. Letting it sum them, or take their product, maximum, minimum, or count, is nine lines for the operator and 44–71 with the search around it. It solves `seq-corr`, `sum-all`, `len-all`, and `prd-all`. It does not replace `fold`. It returned nothing on `last-or`, an alternating sum, and a Horner evaluation, for three different reasons. `last-or` is an associative aggregate whose identity is an input, which none of the five fixed aggregates has. The alternating sum is a sum of an element term of about 17 nodes, beyond the size-9 search: a limit of budget, not of the mechanism. Horner needs a weight that no element term in the grammar computes; that one is sequential state. So the line §7.3 drew moves. Reductions of an element-wise term are a change of space. What stays outside is sequential state with a step that is not associative, when the intermediate values are not observed. With the shape searched rather than given, the aggregate path also returns impostors on `foldl` and `argmax-corr`.
+
+**The `foldl` spec is underdetermined, and the prototype cannot tell.** This is the check of §5.5, still unbuilt.
+
+The review also made claims about the kernel's prices, which bear on §6.
+
+| The review's claim | Reproduced | What was found |
+|:--|:--|:--|
+| Integer distance is symmetric and logarithmic: 0, 4, 5, 5, 8, …, 17 bits at differences 0, 1, 2, 3, 4, …, 1000 | yes | exact, and symmetric for every difference to 10⁶ |
+| Sequences and code are asymmetric: 13 bits from `()` to `(1 2)` and 1 bit back; 15 bits from `x0` to `x0 + 1` and 3 back | yes | the second pair needs a two-input scope |
+| No violations of the triangle inequality | partly | none on integers, fields, or tuples, nor on sequence and code grids with small values. With large values they appear: 0, 2, and 3 in three random sequence grids of 3.4 million triples each, and 49 of 300,763 in a grid built to show them. From `(−100 −100)` to `(−100 0 0)` costs 21 bits directly and 6 + 9 through `(−100)`. On code, 10 in 11.7 million |
+| Kraft sums above 1, because an exact cell costs 0 bits: 1.5 for Booleans, 1.1875 for GF(5), 1.4059 for integers | yes | the sums are exact as stated |
+| That violation is "live" | partly | Stage A does not price cell by cell: it charges exception rows with their indices and a count. What goes unpaid there is one bit per model. The dense, row-by-row sum occurs in `induce-row-order` (`proposals.lisp:728-739`), which only tests call. A second, independent defect is at `frame.lisp:1572`: the minimum of two codes is taken without paying to say which |
+| The guard for inverting `c = a·b`, built from the table's uniqueness test and a forward replay of the witness, is exact on all 1,681 pairs in [−20, 20]² | yes | for floor and for truncating division |
+| For `a div b = c` solved for `b`, the guard `|a| < c(c+1)` gives uniqueness | partly | it is sound, but rejects 48 to 78 pairs that have exactly one answer |
+| `anti-unify` gives `(+ x x)` and `(+ y y)` one shared hole | yes | `(+ ?0 ?0)`; and two holes for `(+ x y)`, `(+ y x)` |
+
+### 8.7 Search across spaces, measured
+
+Three measurements were made for this revision, on the unmodified prototype, to put numbers under §5.9 and §6.6 **[M]**. Source and logs are in `plan_v2c_audit/cross-space/`.
+
+**Do store-generated signatures prioritize mixing between tasks?** Thirty sequence tasks, each program form represented at least three times. For each task the prototype's own enumerator generated every Boolean term up to a small size over generic leaves (lengths, sums, minima and maxima of inputs and output, the output's first and last elements, integer inputs, 0 and 1). A task's signature is the set of those properties that are never false on its examples and true on at least half. The leaves were chosen once, by hand; nothing was written per task. Four further tasks were tried and dropped because the full grammar returned impostors on them. Then, leaving each task out in turn, the other tasks were ranked by overlap of signatures. Figures are means over five independent example sets.
+
+| Signature | Nearest neighbour has the same program form | A grammar restricted to the 3 nearest neighbours' operators solves the task |
+|:--|--:|--:|
+| 446 properties (comparisons only) | 0.48 | 0.67 |
+| 7,465 properties (with `+` and `−`) | 0.54 | 0.66 |
+| types only | 0.32 | 0.49 |
+| chance, or 3 random tasks | 0.15 | 0.58 |
+| control: the 4 commonest operators in the rest of the pool, ignoring the task | — | 0.69 |
+
+Computing every signature cost 648 candidates for the smaller pool, against 10.1 million to solve the thirty tasks with the full grammar. So the signal is nearly free, and for *form* it is real: three times chance and half again above types.
+
+For *operators* it is not. The restricted grammar is right two times in three, which is no better than a control that never looks at the task. And the search cost is in the operators:
+
+| Restriction | Fair cost, as a fraction of the full grammar (geometric mean per task) | Same, with the restricted attempt cut off at 100,000 candidates |
+|:--|--:|--:|
+| 3 nearest by signature | 0.77–0.83 | 0.68–0.72 |
+| control (commonest operators) | 0.73 | 0.60 |
+| 3 random tasks | 1.86 | 1.35 |
+| oracle: the task's own operators | 0.085 | 0.085 |
+
+"Fair cost" is the restricted attempt, plus the full grammar whenever the attempt fails. Without a cut-off, summed over tasks, the signature restriction saves nothing (0.95–1.09 of the full cost): a miss costs a whole failed enumeration and then the full run. The oracle shows what a correct choice would be worth: a factor of 12 per task.
+
+Three further findings:
+
+- *Restricted grammars return wrong programs.* 2.7% of signature-restricted attempts, and 6% of the control's, return a program that fits the twelve examples and fails held-out.
+- *Form is not what needed predicting.* The prototype's second route (selection, `where`, `fold`) fails at once when it does not apply, so trying it first costs nothing and matches an oracle.
+- *The properties cannot see between positions.* The generic leaves reach a sequence only through its length and three aggregates, and the output also through its ends. Two of the five recurrences show only the single property "output as long as input", which five tasks that are not recurrences show as well. Parity is not expressible, so `mod` is among the operators most often missing. A function-valued input is not a leaf at all.
+
+So the first measurement of risk 11 and risk 12 (§10) is in, and it is mostly negative: a flat signature computed at the boundary of a task tells the kind of program and not its content. §6.6 says what this changes.
+
+**Is an analogy between two operators cheap to verify?** For unary maps f drawn from a small bank of terms, and pairs of binary operators p and q, the test is whether `f(p(a, b)) = q(f(a), f(b))` on every row of a grid. All 350 combinations were tested in 1.3 ms. Twenty-nine non-trivial ones hold, and none is false on 1,000 fresh rows. Seventeen carry an operator to itself, and the twelve that relate two different operators are all between `max` and `min`: negation carries `max` to `min` and back; doubling and negation carry `+` to `+`; shifts by a constant carry `max` to `max`. Against `append` on sequences, `len` and `sum` go to `+`, and `max` and `min` go to themselves. 96% of the combinations that fail are rejected by the first row read. A pre-filter that compares the operators' algebraic flags skipped a third of the failures, was unsound with a richer bank of maps, and what it saves is the reading of about one row. This is §5.9's first case: when the map is a small term, crossing between two tables costs almost nothing, and checking is the cheap part.
+
+**How far does colour refinement go when no key identifies rows?** A directed graph was stored as a node space and an edge space with two maps, its rows were shuffled, and the node correspondence was recovered with group-by and re-index only.
+
+| Structure | Rows | Matched by refinement alone | Choices | Backtracks | Time |
+|:--|--:|--:|--:|--:|--:|
+| sparse random graph, 3 out-edges | 10,000 | 9,977 | 22 | 0 | 0.16 s |
+| random tree | 10,000 | 6,547 | 1,586 | 0 | 5.4 s |
+| 30 × 30 grid | 900 | 0 | 2 | 0 | 57 ms |
+| one cycle | 200 | 0 | 1 | 0 | 4.6 ms |
+| two cycles against one cycle (must be rejected) | 200 | 0 | 200 | 200 | 0.35 s |
+| random 3-regular graph | 3,000 | 0 | 1,836 | 1,835 | 4.6 s |
+| 5 hexagons against 4 hexagons and 2 triangles (must be rejected) | 30 | 0 | 257,214 | 257,214 | 3.6 s |
+
+Irregular structure is matched by refinement, plus choices that never have to be undone; so is a symmetric structure matched against its own copy. A regular structure with no symmetry needs backtracking in proportion to its size. And a pair that is *not* isomorphic but has interchangeable parts costs a factorial to reject, at thirty rows. This simple engine has none of the symmetry pruning that mature graph-matching tools add. So it is adequate where data is irregular, which is the usual case for tables of values; and every attempt needs a budget, because the bad cases are bad immediately.
+
+### 8.8 Words and verb tables: the outside review's second section, reproduced
+
+The second section of the outside review proposes the mechanism that §6.6 now adopts, and supports it with five experiments in Python. Their code is not in the repository. One auditor rebuilt four of them from the review's prose and the fifth, on reuse, only in outline, in standard-library Python with fixed seeds **[M]**. Source and logs are in `plan_v2c_audit/verify-quotients/`. None of this runs on the store prototype or on the kernel's library: the operators are a library written by hand for the experiment.
+
+**Verb tables on a library of 61 operators.** The library has 31 list-to-list operators (`sort`, `reverse`, `filter_pos`, `running_sum`, `map_adj_sub`, and the like), 6 that combine two lists, 9 reductions, 11 on integers, and 4 that take an integer and a list. A task is 8 rows of a hidden composition of a few of them. The baseline is bottom-up search by size with behaviour dedupe. Six quotients were listed by hand: the signs present in a list, the parities present, whether it is sorted in either direction, its length capped at 5, its length modulo 2, and whether it is empty; with the matching quotients on integers. Each operator was run on 2,000 probe values and grouped, once, into a table from input labels to the output labels seen. A candidate is skipped, before it is evaluated, when its tables say it cannot give the target's labels within the size that remains. The target's size is not known, so the bound is deepened step by step and every pass is counted.
+
+| Method | Candidates evaluated: gain over the baseline (geometric mean; two task sets of 20) |
+|:--|--:|
+| verb tables, six quotients | 17.5×, 18.5× |
+| the same, on tasks that need an operator held out of all training | 21.4×, 14.2× |
+| the same, on the other tasks | 15.3×, 25.5× |
+| verb tables used only to order the operators; nothing skipped | 6.1×, 5.7× |
+| Naive Bayes over 23 hand-written properties, trained on 80 solved tasks, used to order | 2.6×, 2.5× |
+| verb tables, discarding only after evaluation | 1.5×, 1.5× |
+
+The baseline is averaged over random orders of the operator list. In the first three rows the method is too; rows four and five are themselves orders; the last row uses the listing order on both sides. Rows two and three are means over the 8 and 11, and the 12 and 9, tasks of each kind. The order matters: with the library in its listing order the first row is 13.9× and 16.7×, and the tasks with a held-out operator fall to 11.2× and 11.7×.
+
+On 60 tasks, varying one thing at a time:
+
+| Variation | Gain in candidates | Answers lost, of 60 |
+|:--|--:|--:|
+| types only | 1.7× | 0 |
+| one quotient | 2.8× to 6.4× | 0 |
+| three quotients | 6.1× to 12.6× | 0 |
+| all six | 15.7× | 0 |
+| all six, labels read on 1 row of the 8 | 5.9× | 0 |
+| all six, 200 probes per operator | 15.9× | 2 |
+| sign, parity, and order merged into one quotient of 38 labels | 23.9× | 8 |
+| six quotients chosen automatically by dependency score, with a rule against redundancy | 10.7×, where the hand list scored 15.8× in the same run | 0 |
+
+Four findings qualify the headline.
+
+- *Answers are lost.* The review reports none. On 300 random tasks:
+
+| Tables | Probes per operator | Answers lost, of 300 |
+|:--|--:|--:|
+| six separate quotients | 100 | 34 |
+| | 300 | 4 |
+| | 1,000 | 1 |
+| | 3,000 | 1 |
+| | 10,000 | 0 |
+| sign, parity, and order merged | 3,000 | 24 |
+| | 30,000 | 4 |
+| | 300,000 | 0 |
+
+  Of 115 losses across all 25 configurations tried, 113 coincide with one defect on the reference program's path: an input-label combination that the probes did see, with an output label they did not. `take3` of a non-increasing list whose first three elements are equal is constant, hence sorted both ways; that never occurred in 3,000 probes. The review's default, that an input never seen may give anything, covers only unseen inputs. With probes chosen to include edge cases, no answer was lost from 1,000 probes up.
+- *The gain does not grow with the size of the program.* On single-input chains found at sizes 3, 4, 5, and 6 it was 14.4×, 11.1×, 11.6×, and 15.6×.
+- *Time gains are smaller.* Summed over the 20 tasks, the baseline made 2.60 million evaluations; the filtered search made 0.17 million evaluations and 1.25 million table look-ups. Wall time improved by 1.3×, 2.0×, and 4.2× at sizes 4, 5, and 6.
+- *Ranking by surprise adds 3–5%.* The review counts it as a second mechanism. Within the last level it moved the answer forward on some tasks and far back on others.
+- *Planning further ahead adds little.* By the auditor's observation, which no log tabulates, the bound on the steps that remain rarely exceeds one or two: a two-argument operator with a free second argument connects nearly any label to any other. Discarding a class only after evaluating it gives 1.5×.
+- *Memory gains are smaller than candidate gains.* Stored classes fell 2.3× to 2.8×, or 7× to 9× with a one-step look-ahead the auditor added.
+
+Learning the tables took 180 ms (the review: 161 ms). Used as prices in the manner of the published grammar-reweighting method, rather than as an order, Naive Bayes was far worse than the review says: 5 of the 8 tasks with a held-out operator passed a cap of three million candidates. The review's own figure for it, 6.5× worse than plain on one task, reproduced as 7.6× worse with one task set and slightly better than plain with the other; in the rebuild, the baseline's listing order happens to put the needed operator second, and the review's own order is not known.
+
+**Choosing quotients by the dependency score.** Every small term into 2–6 labels was enumerated and deduplicated by the partition it induces. Each was scored, per operator, by the share of the output label's uncertainty that the input labels remove.
+
+| Quotient | Score over `+ − * neg` | over those and `max min` | over those and `div mod` | The review |
+|:--|--:|--:|--:|:--|
+| `(mod x 5)` | 1.000 | 0.888 | 0.714 | 0.888 |
+| `(mod x 4)` | 1.000 | 0.876 | 0.717 | 0.876 |
+| `(mod x 3)` | 1.000 | 0.861 | 0.696 | 0.860 |
+| `(mod x 2)` | 1.000 | 0.833 | 0.699 | 0.833 |
+| `(sgn x)` | 0.747 | 0.832 | 0.772, rank 1 of 1,109 | 0.830; 0.772 |
+| `(= x 1)` | 0.117 | 0.302 | 0.243, rank 702 | 0.30–0.48 |
+
+The review's figures reproduce to within 0.002 once its "ring" score is read as the mean over six operators. On sequences, over 15 operators and 5,475 candidates, the capped length `(min (len xs) 5)` ranks first at 0.877 (the review: 0.857). Its other named sequence quotients differ from the review's values by about 0.1 and rank 48th to 311th. Ranked by score alone, all of the top fifteen are variants of the length; a distractor the auditor added, "the maximum is below 3", outranks "all even". And if a quotient whose output label is constant is scored as perfectly predictable rather than as worthless, vacuous predicates take all of the top fifteen places.
+
+**The weakest guard for a conditional law.** With 32 rows, every Boolean term is a 32-bit mask. A guard is valid for a law when it is true only on rows where the law holds, and one guard implies another when its mask is contained in the other's. Among 1,936 guard terms with 302 distinct masks:
+
+| Law | Rows where it holds | Valid guards | Weakest |
+|:--|--:|--:|:--|
+| `max(a, b) = a` | 20 of 32 | 49 | `(<= b a)` |
+| `div(a*b, b) = a` | 31 | 151 | `(!= b 0)` |
+| `abs(a + b) = abs(a) + abs(b)` | 16 | 47 | `(<= 0 (* a b))` |
+| `max(a, 0) = a` | 23 | 60 | `(<= 0 a)` |
+| `div(a, b) * b = a` | 17 | 22 | seven incomparable guards |
+| `mod(a, b) = a` | 11 | 10 | three incomparable guards |
+
+All six took 0.48 ms. The first three are the review's, and match it term for term. The other three were added, and the last two show the limit: one weakest guard exists exactly when some guard in the pool is true on precisely the rows where the law holds.
+
+**Arithmetic modulo small primes, by column.** On the grammar `+ − * neg`, reduction modulo a prime commutes with every operator, so a class's column of residues can be computed from its children's. Classes are stored by their residues on a few rows (modulo 2 on 12 rows, modulo 3 on 4, modulo 5 on 3), and a pair is evaluated in full only if its residues can still reach the target's.
+
+| Target | Size | Stored classes, plain | Stored, with residues | Wall time, excluding a one-off 65–143 ms to build the tables |
+|:--|--:|--:|--:|:--|
+| `(x+x)*(y+1)` | 7 | 127 | 8 | slower |
+| `(x+y)*(x−y) + 1` | 9 | 595 | 62 | slower |
+| `(x+y)^2 − x*y + 1` | 11 | 3,147 | 119 | 1.1× faster |
+| `2*(x^2 + y^2) − x*y` | 13 | 17,609 | 1,229 | 1.4× faster |
+
+Stored classes fell 8.5× to 26× across six targets (the review: 8× to 23×), and 200 of 200 random polynomial targets were found at the size plain search finds them. With `div` and `mod` added the residues no longer commute, and 117 of 120 random targets that need `div` or `mod` were lost, as the review itself warns. Applied to single rows the same primes give 1.2× to 1.7×.
+
+**Reuse across tasks.** In streams of 20 tasks, each with 5 repeats of earlier tasks on fresh inputs and 6 near relatives, the review reports 11 reuse hits and 2.2× fewer candidates from indexing past problems by labels that hold on every row, and trying one-operator variants within a family of similar operators. This experiment was rebuilt in outline only. With an index and such variants, hits were 4 to 6 per stream. Counts of 7 to 11 were reached only with no index, by replaying every earlier solution and then its variants. The saving is 1.2× to 1.3×; the review's 2.2× is what 11 free tasks of 20 would give if all tasks cost the same. Replaying every earlier solution on the new rows, with no index, found all 25 repeats in five streams, at no more than 57 candidates per task: three per stored solution, with at most 19 stored. The rebuilt index was keyed on 23 hand-written properties that hold on every row, and found 19, because a property that holds on every row of one input set need not hold on the next. A check with the key changed to the labels of the six quotients found 9 with input and output labels and 14 with output labels alone. The operator families themselves do come out of the tables: of the 32 operators placed by hand in seven families, 22 have a family member as their nearest table among operators of their type, where chance gives 9.
+
+**How far the review's numbers can be trusted.** Its figures for the dependency scores and for the residue experiment match the rebuilt ones closely enough that those experiments were clearly run. Its table for the 61-operator library is not consistent with itself: one row lists 85 candidates evaluated and 812 classes stored, and storing a class takes at least one evaluation. Its direction, range, and ordering of tasks reproduce (rank correlation 0.69 over its eight tasks). Its zero misses holds on its own eight tasks and fails as a property of the method. It gives no separate figure for ranking, which added 3–5% here. Its 2.2× for reuse does not reproduce.
+
+**What this changes.** §6.6 is rewritten around quotients and verb tables. X4 becomes the test of them on the kernel's own library (§11.2). Verb tables are graded as tested knowledge, never certified (§5.5). The reader added to the derivation space is replay, and not yet an index (§7.4).
+
 ## 9. What to import, and what to leave
 
 You lean toward a rewrite that imports the working components. The audit supports that, with one qualification about how much imports unchanged.
@@ -894,7 +1219,7 @@ Each risk is paired with the cheapest test that would expose it. §11 orders tho
 
 | # | Risk | What would show it |
 |:--|:--|:--|
-| 1 | Lifting by a change of space works on the prototype's rows (§8.1) and not on the kernel's own short spec rows, or on tasks needing two lifts | the 16-spec ladder without whitelist, schema, or trace-shaped rows (§11, X3) |
+| 1 | Lifting by a change of space works in the prototype, on its own rows (§8.1) and on 13 of 16 of the kernel's spec rows (§8.6), and not inside the kernel, or on tasks needing two lifts | the 16-spec ladder without whitelist, schema, or trace-shaped rows (§11, X3) |
 | 2 | Inverses from tables stop at one-operator inverses. The audit's own run found the solver search "has a one-operator answer" in every case | compose known inverses through a term; test on `a*x + b = c` and on `x + x = c`, which the present kernel cannot solve |
 | 3 | Classes on a small probe space merge terms that are not equal, and false laws accumulate | count laws that fail on fresh rows. On the prototype: none at 8 or more probe rows, 199 at 3 rows (§8.3) |
 | 4 | Counts over tens of solved problems carry no signal. The one existing learned predictor learned a constant | the guidance ablation (X4), before building any of §6.3 beyond types |
@@ -904,8 +1229,11 @@ Each risk is paired with the cheapest test that would expose it. §11 orders tho
 | 8 | "The store's operations are programs" turns out elegant and unprofitable. The review found reflection paid off only in cheap, measured forms: memoization, dependency graphs, partial evaluation, bandit allocation | keep it off the critical path; X8 is last |
 | 9 | Geometry costs more than it saves, as the metric decoder did | X4 again; the per-column codes are needed regardless, the rest is optional |
 | 10 | Anti-unification over few instances over-generalizes | the existing description-length gate; negative controls already in `tests/theories.lisp` |
+| 11 | Search across spaces is spent on the wrong pairs, and costs more than it finds | the retrieval measurement of §8.7, repeated on the kernel's tasks (X4); a budget account for every attempt (X9) |
+| 12 | A vocabulary the kernel generates for itself carries no signal beyond a control that ignores the task. Flat signatures did not, for operators (§8.7); verb tables did, on a hand-written library in Python (§8.8) | X4, on the kernel's own library |
+| 13 | Verb tables lose answers. They are tested knowledge, and lost from none to 11% of tasks, depending on the number and choice of probes | use them to order, or to filter a tentative attempt that has a fallback; count answers lost in X4 |
 
-**No convincing precedent anywhere**, per the three literature reviews. The plan depends on the first three. The last is the plan itself. The others are deferred or avoided by design.
+**No convincing precedent anywhere**, per the three literature reviews. The plan depends on the first three and on the vocabulary item below. The last is the plan itself. The others are deferred or avoided by design.
 
 - A synthesizer learning the inverse rules it then uses. Hand-written in every synthesizer checked. *Depended on, in Stage A; shown for single operators on the prototype (§8.2).*
 - A closed loop in which discovered laws, inverses, and abstractions become the next round's primitives on the same store. Abstraction alone has precedent, and plateaus. *Depended on; X5 is the test.*
@@ -915,10 +1243,11 @@ Each risk is paired with the cheapest test that would expose it. §11 orders tho
 - Higher-order functions from first-order primitives in hours. The one precedent used about 7,700 CPU-hours. *Avoided: the lifting forms are granted (§7.1), and `:map`/`:foldr` already emerge by anti-unification.*
 - Recognizers of the autocorrelation kind invented from data. *Not depended on.*
 - Termination guards learned from timeouts. *Deferred (§7.5).*
+- A vocabulary that a system chooses for itself and that goes on improving its own search. *Depended on, in Stage C. Guiding search by abstract values is established where the abstractions are written by hand. Tables read off an operator's own probe rows, and quotients chosen by the store, were measured once here (§8.8). The compounding has no precedent.*
 - Coordinate spaces created from few samples without gradient descent; words as geometric modifiers. *Not depended on (§6.4, §6.6).*
 - A unified topology–geometry kernel. Nothing attempts it, and this plan is such an attempt. The working pieces elsewhere are value vectors and hash tables, which §5 uses, and rewrite systems, e-graphs, and decision trees, which it does not.
 
-One cautionary sentence from the authors of the best-known library learner is worth keeping in view: "We do not advocate such blank-slate learning as a route to AI."
+One cautionary sentence is worth keeping in view. It is from the authors of DreamCoder, about their own run that rediscovered `fold` from first principles in about a year of CPU time: "We do not advocate such blank-slate learning as a route to AI."
 
 ## 11. Experiments, and a staged path
 
@@ -933,6 +1262,11 @@ One cautionary sentence from the authors of the best-known library learner is wo
 | Does anything trace-derived transfer? | No; only abstracted functions do | §2.6 |
 | Can the existing engine find distributivity? | Yes, in under a second, when asked directly | §2.4 |
 | Does a factored store make lifts, inverses, guards, and laws cheap? | Yes on the prototype: 15 of 15 sequence tasks, the arithmetic inverses with guards, and the ring laws; with four measured limits | §8 |
+| Does the prototype hold up on the kernel's own spec rows? | Mostly: 13 of 16 specs reach 200/200 in some configuration, three of them only after a change (splits accepted in size order; collect under an aggregate; a Boolean call in the grammar), and two more only through the `fold` route. `foldl` is underdetermined; `best-shift` and `argmax-corr` are not solved | §8.6 |
+| Do store-generated signatures say which problems to mix? | For a program's form, yes, at three times chance. For its operators, no: no more work saved than by a control that ignores the task | §8.7 |
+| Is an analogy between two operators' tables cheap to find? | Yes when a small term carries it: 350 tested in 1.3 ms, 29 hold, none false on fresh rows | §8.7 |
+| Does matching rows without a key need backtracking? | Not on irregular or symmetric data, where choices are never undone. Yes on regular structures without symmetry, and heavily to reject look-alikes | §8.7 |
+| Do tables of what operators do to coarse labels cut search, including for never-used operators? | Yes, on a hand-written library in Python: about 15× in candidates and 1.3× to 4× in time, more at larger sizes, with 0.3% of answers lost at 1,000–3,000 random probes | §8.8 |
 
 ### 11.2 Next, in order
 
@@ -941,11 +1275,12 @@ Each experiment has a gate fixed in advance. The standing metric for all of them
 - **X1. Classes.** Build the store core (spaces, columns, hash-consed terms, classes, columnar evaluation) and run law discovery on it. *Gate:* the same 187 equations on GF(3) as the present bucket engine, plus distributivity; at least 10× less work than v1's enumerator at the same bound; retained memory proportional to classes, not trees. Also measure what pruning by already-found laws would add on top of classes (§5.8).
 - **X2. Reorientation.** Find the eight arithmetic solvers and their guards from operator tables alone: no spec rows, no witness language beyond the operators in scope. *Gate:* the same witnesses and guards the milestone code finds, including the unknown-divisor solver and the integer divisibility guard, neither of which the prototype produced. The two composite cases in risk 2 are reported, not gated.
 - **X3. Lift.** Run the 16-spec ladder with the full grammar, no schemas, and ordinary input/output rows. *Gate:* at least 14 of 16 held-out-sound (today 8–10); nothing returned that fits the rows and fails held-out; `foldl` either solved or reported as underdetermined; no guard split accepted that fails the rule of §8.5.
-- **X4. Does guidance pay?** On X3's tasks with 30 or more distractor primitives in scope, compare no guidance, types only, and signatures with counts. *Gate:* at least 3× lower median work on held-out tasks, or §6.3 is not built further.
+- **X4. Does a vocabulary pay?** On X3's tasks with 30 or more distractor library entries in scope, some of them never used in any solved task, compare five arms: no guidance; types only; flat signatures with counts (§6.3); verb tables used only to order; verb tables used to filter a tentative first attempt, with a fallback (§6.6). The quotients are chosen by the store, with none listed by hand. Count the fair cost: every pass of the search, the fallback whenever a filtered attempt misses, the look-ups, and the time to choose the quotients. Report wall time beside candidates, the baseline averaged over operator orders, and every answer lost. *Gate:* at least 3× lower median wall time on held-out tasks, including those that need a never-used entry, with no answer lost after the fallback; or §6.3 and §6.6 are not built further. This is the outside review's second proposed change, with the accounting that its reproduction showed to be necessary (§8.8).
 - **X5. Compounding over hours.** Run the agenda of §7.5 for one hour and for ten, from the primitives and the task data only. Report entries found per hour by kind, held-out tasks solved before and after, and an ablation of every entry. *Gate:* the function set of today's library recovered with zero hand-written entries, and later tasks measurably cheaper than earlier ones.
 - **X6. Depth two.** Laws over spaces whose rows range over functions (map fusion; fold over map); anti-unification over accepted solutions on the instance space. *Gate:* `:map` re-emerges with a positive gain, as it does now; at least one two-function law is found and survives fresh rows.
 - **X7. Reflection.** Counts and the problem memo from the derivation space, each under ablation. *Gate:* a measured reduction in work on problems not used to collect the counts.
 - **X8. Self-description.** Write the store's own operations as VM programs and pose one of them as a synthesis task. *Gate:* none; this is exploratory.
+- **X9. Search across spaces** (runs alongside X4). Build colour refinement with backtracking on the store's group-by and re-index, and the map-hole form of §5.9, each attempt on its own budget account. Re-express the prototype's subsequence aligner as a map search under an order constraint. *Gate:* the selective specs still solve with the hand-written aligner removed, and analogies between operator tables are found as terms, as in §8.7.
 
 ### 11.3 Stages
 
@@ -953,10 +1288,10 @@ Each experiment has a gate fixed in advance. The standing metric for all of them
 |:--|:--|:--|
 | A | Store core; imported VM, codec, evidence, enumerator, certification; ported test contracts | X1 and X2 pass |
 | B | Requirements with holes; the refinement table of §7.2; spaces with maps | X3 passes |
-| C | The agenda; utility accounting; types-only guidance, then X4 decides the rest | X5 passes |
-| D | Depth-two spaces; the derivation space and its readers | X6 and X7 reported |
+| C | The agenda; utility accounting; the vocabulary of §6.6 (quotients, verb tables, name prices); search across spaces by term, by refinement, and by capped backtracking | X4, X5, and X9 pass |
+| D | Depth-two spaces; abstraction over classes; the derivation space and its readers | X6 and X7 reported |
 
-Stage A is the smallest piece that tests the central claim. X1 is shipped technique throughout. X2 is this plan's own mechanism, shown so far only on the prototype and only for single operators. If X1 or X2 fails, the plan is wrong at the root and that is known within the first stage. Stage B rests on the plan's own lifting mechanism, shown so far on the prototype's rows. The larger research risk sits in X5 and X6.
+Stage A is the smallest piece that tests the central claim. X1 is shipped technique throughout. X2 is this plan's own mechanism, shown so far only on the prototype and only for single operators. If X1 or X2 fails, the plan is wrong at the root and that is known within the first stage. Stage B rests on the plan's own lifting mechanism, shown so far only in the prototype, though now on the kernel's own spec rows as well (§8.6). The larger research risk sits in X5 and X6.
 
 Three working rules, drawn from what went wrong before (§2.9; plan 9 audit):
 
@@ -988,7 +1323,7 @@ Three working rules, drawn from what went wrong before (§2.9; plan 9 audit):
 | Totality: "support learning them by tolerating crashing or non-terminating behavior" | The VM already returns a crash and a cutoff as data, and totality gates only rewrites, never execution. Three gaps: the fault is an unstructured string; search discards it; no opcode observes it. Timeouts have no precedent. | §7.1, §7.5 |
 | "it's been the AI agents that are doing the majority of search" | Confirmed. Nothing in the kernel initiates discovery, and an answer key preceded the bootstrap. | §2.4, §2.5 |
 | The search budget "was very limited" | True by four to five orders of magnitude, and not the binding constraint. | §2.3 |
-| "we'd need an efficient graph isomorphism test (not for AU of course), or e-graphs" | Neither. Rooted, ordered, shared terms are compared by hash. Laws are compared up to renaming by brute force over at most five variables. The e-graph's store is useful; its saturation is not. | §4.3, §7.6 |
+| "we'd need an efficient graph isomorphism test (not for AU of course), or e-graphs" | Within a space, neither: rooted, ordered, shared terms are compared by hash, and laws up to renaming by brute force over at most five variables. Across spaces a matching engine is needed, as you say: colour refinement with backtracking, run on what the index proposes. The e-graph's store is useful; its saturation is not. | §4.3, §5.9, §7.6 |
 | "nothing 'very interesting' was findable in the small budgets" | The largest expression found by enumeration has 8 atoms. But distributivity was findable in under a second: no job asked for it, the shape filter had no case for it, and the budget was 85 times too small. Some of "not findable" was "not asked". | §2.4, §2.5 |
 | "some of the fundamental datastructure choices are OK" | Agreed. Columns, a behaviour table, and a shared term graph are common to both earlier plans and survive here. | §2.9 |
 | The geometry dialog is "not ... a closed case" | Agreed. | §6.7 |
@@ -1089,14 +1424,17 @@ What survived every pass unchanged is short: columnar tables, a behaviour table,
 | Uniform hypergraph stores as learners (OpenCog, Hyperon) | no quantitative result in ~17 years | — | avoided |
 | Learned coordinate embeddings (hyperbolic, knowledge-graph, sheaf) | need gradient descent and ~10⁵ examples | Euclidean matches hyperbolic from 50 dimensions; a rule miner matches graph embeddings | not used |
 | Computation in superposition (Adler and Shavit) | theorem | n neurons compute at most O(n²/log n) features; representing needs O(log m) | the flat-versus-nested answer |
-| Words as program fragments with count alignment (LAPS) | one lineage, on a neural search component | 42.6% → 82.0% in one domain; weaker with human descriptions | the only language affordance |
+| Words as program fragments with count alignment (LAPS) | one lineage, on a neural search component | 42.6% → 82.0% in one domain; weaker with human descriptions | labels from people, last (§6.6) |
+| Synthesis guided by abstract values, with abstract semantics written by hand (Blaze, Simba, Absynthe) | replicated | 519 of 544 bit-vector problems against 456 and 409 for two enumerative solvers; one of those two wins on the suite's conditional problems | the filter of §6.6, where the tables are instead read off probe rows |
+| Abstractions learned for such a synthesizer (Atlas) | one system | 8.3× and 9.2× over hand-written abstractions on its own benchmarks, 2.1× and 3.1× on its predecessor's; needs training problems and hand-supplied operator axioms | nearest precedent for choosing quotients (§6.6) |
+| Abstractions merged and shrunk automatically, for planning heuristics (Merge-and-Shrink) | replicated, in planning | perfect heuristics in polynomial time in three of six benchmark domains; lower total coverage than most competitors in the paper's own comparison | not adopted: merged quotients lost answers (§8.8) |
 | Reflection that compounds (EURISKO) | unreproduced | its author credited the representation | not depended on |
 
-Verification gaps the auditors declared: three of four sub-searches on 2025–26 work ran out of quota, so "none found" for learned inverses and learned termination guards is a weak negative; some figures exist only in plots; all line-count estimates for minimal implementations are the auditors' own.
+Verification gaps the auditors declared: three of four sub-searches on 2025–26 work ran out of quota, so "none found" for learned inverses and learned termination guards is a weak negative; some figures exist only in plots; all line-count estimates for minimal implementations are the auditors' own. The three rows on abstract values were added in the revision and checked against the papers' text (`lit-abstraction.md`); a 1977 paper by Knuth that the outside review also cites could not be fetched.
 
 ## Appendix F. Audit reports, and housekeeping
 
-**Reports.** Fifteen reports stand behind this document, about 174,000 words, each with file-and-line citations and its own list of what it could not determine. A sixteenth, `factcheck.md`, is an independent check of a draft of this document against the others, the logs, and the code. It found 10 factual errors, 19 over-statements, and 48 smaller points; all were applied. It also tabulates where the reports disagree with one another (throughput, candidate rate, a few line counts) and which figure this document uses. They are copied to `plan_v2c_audit/` beside this file, because the session's scratch directory is not durable.
+**Reports.** Fifteen reports stand behind this document, about 174,000 words, each with file-and-line citations and its own list of what it could not determine. A sixteenth, `factcheck.md`, is an independent check of a draft of this document against the others, the logs, and the code. It found 10 factual errors, 19 over-statements, and 48 smaller points; all were applied. It also tabulates where the reports disagree with one another (throughput, candidate rate, a few line counts) and which figure this document uses. They are copied to `plan_v2c_audit/` beside this file, because the session's scratch directory is not durable. The revision of 25 November added six more, listed last in the table, with their scripts and logs in `plan_v2c_audit/verify-review/`, `cross-space/`, and `verify-quotients/`.
 
 | Report | Scope |
 |:--|:--|
@@ -1115,7 +1453,12 @@ Verification gaps the auditors declared: three of four sub-searches on 2025–26
 | `lit-search.md` | law discovery, enumeration at scale, library learning, guards |
 | `lit-geometry.md` | embeddings, spectral methods, pricing, language |
 | `proto.md` | the prototype of §8 |
-| `factcheck.md` | independent check of a draft of this document |
+| `factcheck.md` | independent check of the first draft of this document |
+| `verify-review.md` | reproduction of the outside review's first section (§8.6) |
+| `cross-space.md` | the measurements of §8.7 |
+| `verify-quotients.md` | reproduction of the outside review's second section (§8.8) |
+| `lit-abstraction.md` | check of the citations in the review's second section |
+| `factcheck2-A.md`, `factcheck2-B.md` | two independent checks of the revision against the logs and sources. They made 41 findings, 14 of them factual errors; all were applied |
 
 **Things found along the way that are not about the design.**
 
@@ -1127,3 +1470,86 @@ Verification gaps the auditors declared: three of four sub-searches on 2025–26
 - One defect in the Stage 0 harness, seen twice: a failed synthesis leaves its oracle stub defined, so later specs lose a prerequisite, and the `argmax-corr` "FAIL" is the resulting commit error after a correct search. With that repaired, and a clean library for each spec, one auditor's recount of the four regimes is 16, 10, 11, and 9 of 16, not 16, 9, 9, and 8. This document keeps the harness's own figure of 8 as the baseline in §2.3 and X3, because the budget ladder was run against it.
 - Evidence soft spots: one milestone path attests sampled integer uniqueness as `:derived`; arithmetic solvers for `*` and `/` carry no certificate, only a hand-set flag.
 - `body-size` is documented as constant-time and is linear.
+- Two pricing defects. The outside review reported the first, and the second was found while checking it. An exact cell costs zero bits in `correction` (`frame.lisp:1581`), which breaks the prefix-code bound wherever cells are priced one by one; and `frame.lisp:1572` takes the cheaper of two codes without paying to say which. The first is not reached in Stage A's main pricing path, which under-pays one bit per model instead; it is live in `induce-row-order`, which only tests call. The second sits in the sequence branch of `correction`. By a reading of the code that was not run, Stage A reaches it for every exception row with a sequence target; how often it changes a price was not measured.
+
+The outside review itself is `plan_v2c_audit.md` at the repository root; Appendix G records what was taken from it.
+
+## Appendix G. Your annotations, and the outside review
+
+This appendix records the revision of 25 November. It answers the two questions in your request, then each note on `plan_v2c_annotated.pdf` and `plan_v2c_audit_annotated.pdf`, and says what was taken from the outside review, `plan_v2c_audit.md`, and what was not. The review was read as it stood at 17:20 on 25 November (323 lines). It grew twice while this revision was in progress, after your annotated copy: first by its second section, then by an appendix that restates that section in plain words and makes no new claim.
+
+### G.0 The two questions in your request
+
+**Computation within frames against search across them.** Accepted as you put it, and made a section (§5.9). Within a space everything is computed, in time linear in the cells touched; the one search there is for the term itself. Across spaces nearly everything is a search for a witness: a map, a substitution, a pattern, or a quotient. The witness is cheap to check and can be hard to find. Compression lives on that side, so the search is allowed, and it is budgeted differently: every attempt is tentative, capped, and recorded. A matching engine is included, as colour refinement with backtracking. Measured for this revision: refinement matches irregular data of 10,000 rows with no backtracking; regular structures without symmetry, and look-alikes that must be rejected, need it at once; and a crossing whose map is a small term costs almost nothing (§8.7). You asked that the hybrid kernel cheaply prioritize mixing between frames. The obvious way, overlap of signatures between problems, was measured and does not do it: it finds the form of a program and not its operators. What did work is in the next paragraph.
+
+**Language.** Your sense that the representation behind it would unlock other expensive parts is supported, within limits that are now measured. The representation is the outside review's: a word is a label of a small quotient of values, and each operator carries a table of what it does to labels. A description is then a run of the program on labels, which is your October sentence made literal. On a hand-written library of 61 operators this cut candidates about 15 times and time 1.3 to 4 times, more at larger sizes, and worked for operators never used before, where prices from counts of past use failed (§8.8). The same object serves signatures, the choice of what to mix, guards, and part of the memory wall on arithmetic. In the one small test it did not serve reflection as an index, where plain replay did better. Over the sizes tried it behaved as a constant factor in candidates, and it loses a small share of answers, so it may order and filter tentatively but not eliminate. The vocabulary moves into Stage C, and X4 is rewritten to test it on the kernel's own library (§6.6).
+
+### G.1 Notes on this document
+
+Highlights without a note are listed only where they changed something.
+
+| Where | Your note | Answer | Changed |
+|:--|:--|:--|:--|
+| §1.5, "A primitive may encode the shape of a container" | "does this mean a learned library primitive describes a datastructure .. ?" | Yes, in this sense. A container, on the store, is a recipe for a space: which rows a value unfolds into, the map back, and how to rebuild or reduce. The granted forms are that recipe for the one container the VM is born with. A learned container would be a library entry of the same shape: a pair of terms, unfold and build, that are inverse on the examples. A matrix is two nested position spaces; a tree is a position space with a parent endomap. So a data structure is a learnable entry, written in the store's own nouns. It is proposal, and not before Stage D. | §7.1 |
+| §2.3, "It cannot buy more structure" | "so - it cannot go any deeper -- ??" | Correct. The job's tree is a root with one or two children, and it stops there. A child is expanded only when some generator proposes a decomposition for it, and none does. On the four stuck specs, raising `:max-depth` to 3 or 4 changed nothing. More budget lengthens the expressions enumerated at those nodes; it does not add nodes. | §2.3 |
+| §2.3, the behaviour pruner | "is this a subset of the message idea / prototypes in the old code? What about UIP / DIP, which might be a special case of messages? Can part of the action of a behavior pruner be done by reflection?" | Yes to all three. The pruner's fact is "this column equals one already kept", which is a message in plan 4's sense: a claim with its evidence. A nogood is the same kind of fact about a requirement: a dependency test that failed. The UIP step generalizes such a fact; the DIP step looks for a column that separates the conflicting rows. On the store all three are facts about classes on one space, kept in one table. The pruner is also the cheapest reflection there is. What reflection could add is prediction: skipping the evaluation when a law or a count says the candidate will collide. | §7.4 |
+| §2.8, "Quotient by laws before anti-unifying" | "duh" | Agreed. It is kept only as the measured form of the claim. | — |
+| §4.5, "Trees embed exactly in squared-Euclidean space" | "is this true? The other doc mentions that superposition can only store quadratic items, not exponential.." | It is true, at one dimension per edge, which the draft did not say. Give each edge its own axis; a node's vector has the square root of an edge's weight on the axis of every edge between it and the root; the squared distance between two nodes is then exactly the length of the path between them. So it shows that nesting can be represented, and nothing about economy. On economy the other document and this one agree, and the draft was too terse: *storing* features in superposition is exponentially efficient, *computing* with them only quadratically. | §4.5 |
+| §4.5, on arXiv 2611.17309 | "it took several years for it to become 'too easy'. also note that their move application is very clever, costing 700-900 flops per move, written in Triton + leveraging TB/sec cache. So a B200 can dispatch millions of moves in ms. I don't think my assertion that much strength comes from fast evaluation is wrong. The information / bits certainly is not coming from anywhere else." | You are right and the draft was wrong to set the two against each other. On "too easy": agreed that it took years; the authors' remark is about what the benchmarks can show today. The paper's own text: search moves "run in Triton kernels with one GPU warp per chain", a move updates only the fields of the cells coupled to the one that changed, and a Sudoku costs a mean of 2.0 × 10⁹ FLOPs. A small, exactly representable energy makes the *learning* trivial; the *solving* is done by a very large number of very cheap moves. The figure of 700–900 FLOPs per move and the B200 are not in the paper's text, which reports an H200; they do not conflict with its per-puzzle total. | §4.5 |
+| §4.6, "do not build reentrancy out of nested interpreters" | "No, def never run an iterpreter backwards; but why not build reentrancy out of nested interpreters?" | You can, provided the tower is collapsed before it runs. The warning was about paying for each level at run time: 6–178× per level until staged away, in the published measurements, and 4× from removing one level in this kernel's own closure compiler. Nested interpreters as the meaning of reentrancy are fine. As the way it executes, they need the scheduled lowering you already want. For most of what reentrancy is wanted for, the store needs no second interpreter: one evaluator whose terms can mention terms, spaces, and requirements. | §4.6 |
+| §5.2, "a reference to a row of another space" | "yes finally" | — | — |
+| §5.4, "different spellings give AU different alignments" | "???" | The sentence was unclear, and the quotation was an auditor's paraphrase. The source says that expressions which agree on the rows may "expose different alignments for the anti-unification mechanism", and that the enumerator "therefore retains their trees". The point: one class has many spellings, and which spelling is handed to anti-unification decides what pattern comes out. Keeping one representative per class can therefore hide a pattern that another spelling would have shown. | §5.4 |
+| §6.3, "store's enumerator rather than listed by hand" | (highlight) | Measured in §8.7. Properties generated that way recognise a problem's form at three times chance, and do not pick its operators. | §6.3, §8.7 |
+| §6.6 Language | "can nothing be adopted from the other plans and versions of this plan?" | Yes, and the section is rewritten around your October outline. It keeps the like and analogy rows of the mapping in `plan_v2b.md` §7.8, the `like`/`analogy`/`act` query forms named in `plan_v2.tex` without the vectors `plan_v2.md` gave those words, and plan 7's coupling of names to tariffs. The mechanism is the outside review's, after reproduction. | §6.6, §8.8 |
+| §10, "We do not advocate such blank-slate learning as a route to AI." | "who is this from?" | The authors of DreamCoder (Ellis and colleagues), about their own run that rediscovered `fold` from first principles in about a year of CPU time. | §10 |
+
+### G.2 Notes on the outside review
+
+| Where | Your note | Answer | Changed |
+|:--|:--|:--|:--|
+| Its §1.3.1: classes merge "only after evaluating them on S", so transfer "across spaces still requires an explicit normalizer or probe evaluation" | "this is a fundamental limit for compression and needs to be allowed." | Taken as a requirement. §5.9 is new: computation within a space, search across spaces, the three ways to find a map, and what prioritizes the search. The draft's statement that nothing on the store needs graph matching is withdrawn. | §5.9, §7.6, §1.5 |
+| Its §1.3.2: "Adding an 8-line monoidal pushforward" | (highlight) | Reproduced. The operator itself is nine lines; with the search around it, 44 to 71. It solves `seq-corr` from the kernel's seven spec rows, 200/200. It does not replace `fold`. | §7.2, §7.3, §8.5, §8.6 |
+
+### G.3 What was taken from the outside review
+
+Its empirical claims were reproduced before use, since none of its code is in the repository (§8.6, §8.8).
+
+*From its first section.*
+
+| The review's point | What was done | Where |
+|:--|:--|:--|
+| In standard terms the store is a tree automaton, or ground e-graph, indexed by spaces; `plan_v2b.md`'s attributed C-set is its core | adopted, as one sentence | §5.8 |
+| What separates this plan from its siblings is extensional against intensional equality | adopted | §5.8, §5.9 |
+| Rewriting across spaces is traded away | adopted, and after your note made a requirement | §5.9 |
+| Collect under an aggregate unifies `tabulate` with reductions | adopted after reproduction. It does not replace `fold` | §7.2, §7.3, §8.6 |
+| Shared holes are equal columns; the instance table is ragged; classes in cells need a product of automata | adopted on the review's argument and the literature; the last point was not run. The draft's sentence on classes in cells is corrected | §5.4 |
+| An inverse's guard is the table's uniqueness test and a forward replay | adopted after reproduction | §7.2, §8.6 |
+| Its guard for `a div b = c` solved for `b` | not adopted. It is sound but rejects 48 to 78 pairs that have exactly one answer | §8.6 |
+| The prices are an oriented metric: symmetric and logarithmic on integers, asymmetric on sequences and code | adopted for the symmetry and the asymmetry. They are a metric in the strict sense only on integers, fields, and tuples | §6.1 |
+| No violations of the triangle inequality | not adopted as stated: it holds on small values, and fails on sequences and code once values are large | §6.1, §8.6 |
+| A live violation of the prefix-code bound, and one bit per column as the fix | adopted in corrected form. The sums are right; the violation is not live in the main pricing path | §6.2, §8.6, Appendix F |
+| Name the pricing metric and the retrieval index apart | adopted | §6 |
+| The prototype on the kernel's own spec rows | adopted after reproduction, with four corrections | §8.6 |
+| A split must not be accepted ahead of a smaller unsplit term | adopted. It reverses the conclusion the draft drew from its own data | §7.2, §8.5, §8.6 |
+| The prototype validates the store, not the general synthesizer | adopted and stated | §8.6 |
+| The categorical vocabulary: a fibration over finite sets, an adjoint triple, an enriched metric | not adopted as this document's language. §5.8 records only the automaton and table identifications. An earlier audit said of `plan_v2.tex` that its vocabulary was heavier than its content, and your prompt objected to academic imports; the same caution applies | §5.8 |
+| Description length as a shortest path through the store | not adopted. It was not checked, and with shared sub-terms choosing the cheapest derivation is itself NP-hard | — |
+
+*From its second section.*
+
+| The review's point | What was done | Where |
+|:--|:--|:--|
+| A word is a quotient of values; a verb is the operator's table over its labels, read off probe rows by one group-by; signatures and language are one mechanism (its first proposed change) | adopted after reproduction | §6.3, §6.6, §8.8 |
+| The gain: 1.5× to 26.5× in candidates, with zero misses | adopted in corrected form: about 15× in candidates and 1.3× to 4× in time; 0.3% of answers lost at 1,000–3,000 random probes per operator, 11% at 100 | §6.6, §8.8 |
+| The tables default "soundly" | not adopted. They are tested knowledge: they may order and filter tentatively, not eliminate | §5.5, §6.6 |
+| Tables need no solved tasks, so new library entries are not starved; Naive Bayes over signatures is | adopted. The review's 6.5× for Naive Bayes depends on the order of the operator list, which is not known for its run; used as prices it is far worse than the review says | §6.3, §6.6, §8.8 |
+| Ranking by surprise, as part of its headline method | not adopted: it added 3–5% | §8.8 |
+| A merged product of quotients, to save memory | not adopted: 8 of 60 tasks lost at 2,000 probes per operator | §8.8 |
+| Planning over the tables by shortest paths | not adopted: the bound on remaining steps rarely exceeds one or two, and one test before evaluation gives nearly all the gain | §6.6, §8.8 |
+| Choosing quotients by lumpability | adopted as the first selection rule, with the four parts that had to be supplied by hand named | §6.6, §8.8 |
+| The weakest guard by comparing bit masks | adopted. It is unique only when some guard in the pool has exactly the law's rows | §6.6, §8.8 |
+| Residues modulo small primes, by column, against the memory wall | adopted for pure ring grammars, which is the limit the review itself states | §6.6, §8.4, §8.8 |
+| Upgrade X4 to compare types, flat signatures with counts, and tables, including never-used entries (its second proposed change) | adopted, with the reproduction's accounting added: order-averaged baseline, every pass counted, wall time, and answers lost | §11.2 |
+| A column of labels that hold on every row, to index the derivation space (its third) | not adopted for now. In an outline of its experiment, replay with no index found all 25 repeats and an index found 9 to 19, depending on its key. Replay's cost grows with the store, so the question stays open | §7.4, §8.8 |
+| The literature on synthesis guided by abstract values | checked against the papers and added. The citations exist, and the figures quoted from them are exact. Two corrections: in the synthesizers cited the abstract meaning of each operator is written by hand, except in one that learns it from training problems and hand-supplied operator axioms; and Ruby is one system's implementation language, not a benchmark. One paper, from 1977, could not be fetched | §6.6, Appendix E |
+| Its Appendix A, a walk through the second section in plain words | nothing further to adopt: it makes no new claim. Its "safety rule", that a case the probes missed can only loosen the pruning and never discard a real answer, is the claim that did not reproduce | §8.8 |
