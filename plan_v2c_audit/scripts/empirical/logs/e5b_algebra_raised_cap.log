@@ -1,0 +1,56 @@
+E5b kernel=/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/v2/ +completion-work+=100000000 raised-work-limit=20000000000
+(GF 7)   -/1 body-bound=16 work=      2262422 x=  0.00 records=     333 behaviours=     49 rows=98 cpu_s=    0.13 work/s=17999300. witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=20 work=      2262642 x=  1.00 records=     333 behaviours=     49 rows=98 cpu_s=    0.13 work/s=17772557. witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=22 work=      4104441 x=  1.81 records=     589 behaviours=     86 rows=98 cpu_s=    0.19 work/s=21834804. witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=24 work=     25322450 x=  6.17 records=    3277 behaviours=    237 rows=98 cpu_s=    0.94 work/s=26864100. witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=26 work=    106122552 x=  4.19 records=   12685 behaviours=    261 rows=98 cpu_s=    3.60 work/s=29462847. witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=28 work=    208002969 x=  1.96 records=   23661 behaviours=    261 rows=98 cpu_s=    7.41 work/s=28087565. witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=30 work=    252324120 x=  1.21 records=   28781 behaviours=    430 rows=98 cpu_s=    9.11 work/s=27685290. witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=32 work=    922544511 x=  3.66 records=  100461 behaviours=   1197 rows=98 cpu_s=   33.66 work/s=27405768. witness=(:- :X0 :X1)
+Heap exhausted during garbage collection: 32 bytes available, 48 requested.
+     | Immobile Objects |
+ Gen layout symbol   code  Boxed   Cons    Raw   Code  SmMix  Mixed  LgRaw LgCode  LgMix Waste%       Alloc        Trig   Dirty GCs Mem-age
+  2      0      0      0  29920  18912   3004      0      1     10     87      0    239    0.1  1707578848   973948368   52173   1  1.3192
+  3     58    929   2315  32916  37711   2575      1     14     22    869      0   1330    0.1  2468718960     2000000   26902   0  0.8383
+  4      0      0      0      0      0      0      0      0      0      0      0      0    0.0           0     2000000       0   0  0.0000
+  5      0      0      0      0      0      0      0      0      0      0      0      0    0.0           0     2000000       0   0  0.0000
+  6    775  23418  19726    232    114      8      3     11     12      0      0      9    3.7    12280624     2000000       8   0  0.0000
+Tot    833  24347  22041  63068  56737   5587      4     26     44    956      0   1578    0.1  4188578048 [99.9% of 4194304000 max]
+GC control variables:
+   *GC-INHIBIT* = true
+   *GC-PENDING* = true
+   *STOP-FOR-GC-PENDING* = false
+Collection trigger variables:
+   dynamic_space_size = 4194304000
+   bytes_allocated = 4188578048
+   auto_gc_trigger = 3596227040
+   bytes_consed_between_gcs = 209715200
+fatal error encountered in SBCL pid 129137 tid 129137:
+Heap exhausted, game over.
+
+   0: fp=0x7f8f1109e998 pc=0xb800b5fc9e LISPLOOP::%MAKE-EVALUATION
+   1: fp=0x7f8f1109ea80 pc=0xb800b6b33c LISPLOOP::SETTLED-EVALUATION
+   2: fp=0x7f8f1109eac8 pc=0xb800b60e12 LISPLOOP::START-EVALUATION
+   3: fp=0x7f8f1109eb50 pc=0xb800baac58 LISPLOOP::ROW-JOB-STEP
+   4: fp=0x7f8f1109ebc0 pc=0xb800babb64 LISPLOOP::RESUME-ROW-JOB
+   5: fp=0x7f8f1109ebf8 pc=0xb800cb0edb LISPLOOP::FINISH-OBSERVATIONS
+   6: fp=0x7f8f1109ed60 pc=0xb800cb390e LISPLOOP::DISCOVER-ARITHMETIC-SOLVER
+   7: fp=0x7f8f1109eea0 pc=0xb800cb7350 (LAMBDA () :IN "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/scripts/e5b_algebra_raised_cap.lisp")
+   8: fp=0x7f8f1109ef68 pc=0xb8006d9860 SB-INT::SIMPLE-EVAL-IN-LEXENV
+   9: fp=0x7f8f1109ef90 pc=0xb8006da78d SB-EXT::EVAL-TLF
+  10: fp=0x7f8f1109f1e8 pc=0xb8007b796e (LABELS SB-FASL::EVAL-FORM :IN SB-INT::LOAD-AS-SOURCE)
+  11: fp=0x7f8f1109f300 pc=0xb8007b7332 (LAMBDA (SB-KERNEL::FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT::LOAD-AS-SOURCE)
+  12: fp=0x7f8f1109f3c0 pc=0xb80030dcf7 SB-C::%DO-FORMS-FROM-INFO
+  13: fp=0x7f8f1109f5d0 pc=0xb8007b6bb1 SB-INT::LOAD-AS-SOURCE
+  14: fp=0x7f8f1109f6e8 pc=0xb8007b92e4 (LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD)
+  15: fp=0x7f8f1109f780 pc=0xb8007b7ee6 SB-FASL::CALL-WITH-LOAD-BINDINGS
+  16: fp=0x7f8f1109f8b0 pc=0xb8007b8fdb LOAD
+  17: fp=0x7f8f1109f990 pc=0xb8006ddaec (FLET SB-IMPL::LOAD-SCRIPT :IN SB-IMPL::PROCESS-SCRIPT)
+  18: fp=0x7f8f1109fa30 pc=0xb8006dd48d (FLET SB-UNIX::BODY :IN SB-IMPL::PROCESS-SCRIPT)
+  19: fp=0x7f8f1109faf0 pc=0xb8006dd21a (FLET "WITHOUT-INTERRUPTS-BODY-" :IN SB-IMPL::PROCESS-SCRIPT)
+  20: fp=0x7f8f1109fb90 pc=0xb8006dd062 SB-IMPL::PROCESS-SCRIPT
+  21: fp=0x7f8f1109fdd8 pc=0xb8006de70f SB-IMPL::TOPLEVEL-INIT
+  22: fp=0x7f8f1109fe70 pc=0xb800b297e9 (FLET SB-UNIX::BODY :IN SB-IMPL::START-LISP)
+  23: fp=0x7f8f1109ff30 pc=0xb800b295fa (FLET "WITHOUT-INTERRUPTS-BODY-3" :IN SB-IMPL::START-LISP)
+  24: fp=0x7f8f1109ffc8 pc=0xb800b29442 SB-IMPL::%START-LISP
+PROCESS rc=1

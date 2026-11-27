@@ -1,0 +1,8 @@
+D-c   evaluations: all passes 5436366, last pass 4795787 (restart costs 1.13x); entry gain gmean 2.32x [1.00..7.88]; python byte gain gmean 1.47x [0.77..4.35]; on sums 2.39x entries, 1.54x bytes
+F-c   evaluations: all passes 581770, last pass 544349 (restart costs 1.07x); entry gain gmean 2.32x [1.00..7.89]; python byte gain gmean 1.47x [0.77..4.36]; on sums 2.39x entries, 1.54x bytes
+FL-c  evaluations: all passes 581770, last pass 544349 (restart costs 1.07x); entry gain gmean 8.37x [1.00..22.60]; python byte gain gmean 5.22x [0.86..15.21]; on sums 7.10x entries, 4.34x bytes
+D-b   on sums: dedupe-table entries 1.00x fewer than plain, bank 2.39x, python bytes 0.87x
+F-b   on sums: dedupe-table entries 2.02x fewer than plain, bank 2.39x, python bytes 1.38x
+FL-b  on sums: dedupe-table entries 2.02x fewer than plain, bank 7.10x, python bytes 1.60x
+against the earlier sweep (q2_sweep.json, "6: all"), per task: plain stored equal on 60 of 60; F-c dedupe table == earlier `store` on 60; FL-c dedupe table == earlier `store_j1` on 60
+plain: classes held at the hit if every size is stored as enumerated / classes below the hit size: 9.0x on sums

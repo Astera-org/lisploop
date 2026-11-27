@@ -1,0 +1,15 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+loaded
+
+[noop finished in 0.0 s]

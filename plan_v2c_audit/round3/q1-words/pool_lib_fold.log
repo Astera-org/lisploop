@@ -1,0 +1,12 @@
+# config lib_fold: probe seed 0, 800 probes per operator, value table 15819 lists; grammar uses 61 library operators + fold forms
+    size 2:       9 int terms generated,      0 new word partitions,      1 distinct list terms of size 1; 0.1 s
+    size 3:     345 int terms generated,     66 new word partitions,     31 distinct list terms of size 2; 1.3 s
+    size 4:    9078 int terms generated,   1488 new word partitions,    722 distinct list terms of size 3; 6.2 s
+    size 5:  194390 int terms generated,  26911 new word partitions,  14992 distinct list terms of size 4; 124.7 s
+single terms <= 5 nodes: 203822 generated, 28465 word partitions (2..8 labels on the pool); 124.9 s
+singles scored: 17304 kept, 11161 dropped (more than 8 labels on the full table); 206.5 s wall on 6 processes
+pairs: 664 components (<= 3 nodes, fold forms <= 5), 220116 pairs tried, 218247 new partitions with <= 8 labels; 13.3 s
+pairs scored: 214199 kept (<= 8 labels on the full table); 602.3 s wall on 6 processes
+int words: 284 single (<= 5 nodes) + 1783 pairs; 8.3 s
+total 955.3 s wall; times: {'enumerate_s': 124.9, 'score_singles_s': 206.5, 'pair_enum_s': 13.3, 'score_pairs_s': 602.3, 'int_side_s': 8.3, 'total_wall_s': 955.3}
+wrote pool_lib_fold.pkl: 231503 list candidates, 2067 int candidates

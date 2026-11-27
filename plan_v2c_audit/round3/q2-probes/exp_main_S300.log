@@ -1,0 +1,934 @@
+# S300: 300 tasks (found sizes {2: 7, 3: 30, 4: 112, 5: 151, 6: 0}); 132 configurations; plain 31 s, tables 30 s
+# search 2988 s
+
+Per seed.  lost = answers lost / 300; AUD = tasks whose reference path has a defect; ndef = distinct defect transitions; gain = candidates, order-averaged, vs plain; entries = input keys in all tables; pairs = (key, output label) pairs
+
+rule                M seed | lost lost%  AUD ndef |    gain  store storeJ1 | entries  pairs  cnt=1
+old-iid           100    0 |   34 11.3%  134   92 |  17.57x  2.63x   9.95x |    1596   2131    248
+old-iid           100    1 |   17  5.7%  108   82 |  17.58x  2.66x   8.91x |    1634   2186    276
+old-iid           100    2 |   33 11.0%  144   77 |  17.75x  2.67x   8.94x |    1594   2134    252
+old-iid           300    0 |    4  1.3%   48   34 |  16.95x  2.50x   8.89x |    1692   2355    139
+old-iid           300    1 |    3  1.0%   48   40 |  17.02x  2.49x   8.91x |    1706   2367    116
+old-iid           300    2 |    4  1.3%   32   29 |  17.43x  2.60x   8.81x |    1713   2360    120
+old-iid          1000    0 |    1  0.3%   13   12 |  17.03x  2.51x   8.81x |    1728   2468     63
+old-iid          1000    1 |    2  0.7%   18   15 |  16.97x  2.50x   8.82x |    1728   2475     60
+old-iid          1000    2 |    1  0.3%   16   12 |  17.01x  2.51x   8.81x |    1729   2483     71
+old-iid          3000    0 |    1  0.3%   10    8 |  17.02x  2.51x   8.81x |    1734   2533     37
+old-iid          3000    1 |    1  0.3%    5    3 |  17.02x  2.51x   8.80x |    1736   2548     34
+old-iid          3000    2 |    0  0.0%    6    4 |  17.06x  2.52x   8.82x |    1736   2548     46
+iid               100    0 |   36 12.0%  150   95 |  18.33x  2.76x   9.69x |    1576   2087    235
+iid               100    1 |   16  5.3%  117   78 |  17.08x  2.54x   8.91x |    1624   2184    294
+iid               100    2 |   25  8.3%  131   81 |  18.12x  2.73x   8.93x |    1627   2175    258
+iid               300    0 |    6  2.0%   29   23 |  17.36x  2.59x   8.81x |    1722   2390    178
+iid               300    1 |    3  1.0%   31   27 |  16.91x  2.49x   8.83x |    1704   2406    188
+iid               300    2 |    8  2.7%   42   27 |  17.19x  2.57x   8.73x |    1706   2374    110
+iid              1000    0 |    2  0.7%   14   12 |  16.98x  2.50x   8.81x |    1722   2482     63
+iid              1000    1 |    1  0.3%   11   10 |  17.04x  2.51x   8.82x |    1726   2474     56
+iid              1000    2 |    2  0.7%   19   15 |  16.98x  2.50x   8.81x |    1736   2490     70
+iid              3000    0 |    0  0.0%    6    5 |  17.06x  2.52x   8.82x |    1736   2543     36
+iid              3000    1 |    1  0.3%    9    7 |  17.02x  2.51x   8.82x |    1736   2524     36
+iid              3000    2 |    0  0.0%    7    5 |  17.06x  2.52x   8.80x |    1736   2531     50
+strat1            100    0 |    8  2.7%   70   53 |  16.96x  2.50x   8.92x |    1736   2366    360
+strat1            100    1 |    6  2.0%   45   51 |  16.96x  2.49x   8.87x |    1736   2378    374
+strat1            100    2 |    8  2.7%   62   59 |  16.88x  2.48x   8.93x |    1736   2358    342
+strat1            300    0 |    1  0.3%   19   17 |  17.05x  2.51x   8.84x |    1736   2488    215
+strat1            300    1 |    2  0.7%   16   17 |  17.03x  2.51x   8.80x |    1736   2472    201
+strat1            300    2 |    4  1.3%   17   17 |  16.92x  2.50x   8.75x |    1736   2470    213
+strat1           1000    0 |    0  0.0%    7    7 |  17.08x  2.52x   8.83x |    1736   2540    169
+strat1           1000    1 |    1  0.3%    9    8 |  17.02x  2.51x   8.81x |    1736   2540    171
+strat1           1000    2 |    2  0.7%    8    6 |  16.99x  2.51x   8.80x |    1736   2553    172
+strat1           3000    0 |    1  0.3%    5    4 |  16.98x  2.51x   8.79x |    1736   2571    151
+strat1           3000    1 |    0  0.0%    3    2 |  17.04x  2.52x   8.80x |    1736   2578    160
+strat1           3000    2 |    0  0.0%    1    1 |  17.04x  2.52x   8.80x |    1736   2579    156
+strat2            100    0 |    6  2.0%   44   51 |  17.38x  2.58x   8.85x |    1682   2329    284
+strat2            100    1 |    9  3.0%   68   54 |  16.79x  2.46x   8.76x |    1682   2319    328
+strat2            100    2 |    4  1.3%   44   50 |  16.92x  2.49x   8.81x |    1700   2344    339
+strat2            300    0 |    2  0.7%   13   13 |  16.99x  2.50x   8.81x |    1736   2494    232
+strat2            300    1 |    3  1.0%   17   17 |  16.91x  2.50x   8.78x |    1736   2485    216
+strat2            300    2 |    2  0.7%   16   15 |  17.02x  2.51x   8.81x |    1736   2486    202
+strat2           1000    0 |    0  0.0%    4    4 |  17.06x  2.52x   8.82x |    1736   2554    169
+strat2           1000    1 |    0  0.0%    4    3 |  17.07x  2.52x   8.82x |    1736   2557    165
+strat2           1000    2 |    1  0.3%    5    3 |  17.03x  2.51x   8.80x |    1736   2551    162
+strat2           3000    0 |    0  0.0%    1    1 |  17.04x  2.52x   8.80x |    1736   2575    149
+strat2           3000    1 |    0  0.0%    1    1 |  17.05x  2.52x   8.80x |    1736   2578    151
+strat2           3000    2 |    0  0.0%    1    1 |  17.04x  2.52x   8.80x |    1736   2583    143
+push1             100    0 |   18  6.0%  101   72 |  17.55x  2.63x   8.76x |    1660   2221    213
+push1             100    1 |   21  7.0%  124   79 |  17.06x  2.54x   8.68x |    1672   2255    213
+push1             100    2 |   15  5.0%   89   73 |  17.20x  2.61x   8.72x |    1680   2286    249
+push1             300    0 |    5  1.7%   36   26 |  17.28x  2.59x   8.77x |    1726   2404     91
+push1             300    1 |    5  1.7%   47   29 |  16.74x  2.48x   8.76x |    1736   2409    105
+push1             300    2 |    6  2.0%   32   22 |  17.19x  2.58x   8.73x |    1710   2403    152
+push1            1000    0 |    3  1.0%    6    6 |  16.85x  2.50x   8.74x |    1736   2521     69
+push1            1000    1 |    0  0.0%    2    2 |  17.01x  2.52x   8.78x |    1726   2486     54
+push1            1000    2 |    2  0.7%    9    7 |  16.90x  2.50x   8.76x |    1736   2512     62
+push1            3000    0 |    0  0.0%    1    1 |  16.98x  2.52x   8.77x |    1736   2576     30
+push1            3000    1 |    0  0.0%    0    0 |  16.97x  2.52x   8.77x |    1736   2572     27
+push1            3000    2 |    0  0.0%    0    0 |  16.97x  2.52x   8.77x |    1736   2563     28
+push2             100    0 |   10  3.3%   83   55 |  17.15x  2.55x   8.98x |    1688   2289    249
+push2             100    1 |   13  4.3%   99   73 |  16.72x  2.46x   8.98x |    1698   2265    221
+push2             100    2 |   19  6.3%  102   73 |  17.88x  2.65x   8.97x |    1638   2212    218
+push2             300    0 |    2  0.7%   23   19 |  16.95x  2.51x   8.79x |    1726   2435    109
+push2             300    1 |    2  0.7%   29   21 |  16.96x  2.50x   8.82x |    1736   2429    105
+push2             300    2 |    3  1.0%   19   15 |  16.84x  2.50x   8.76x |    1724   2437    104
+push2            1000    0 |    2  0.7%    3    3 |  16.90x  2.51x   8.76x |    1736   2545     56
+push2            1000    1 |    0  0.0%    5    3 |  16.99x  2.52x   8.77x |    1736   2531     63
+push2            1000    2 |    0  0.0%    4    4 |  16.99x  2.52x   8.77x |    1736   2526     52
+push2            3000    0 |    0  0.0%    0    0 |  16.98x  2.52x   8.78x |    1736   2580     29
+push2            3000    1 |    0  0.0%    0    0 |  16.98x  2.52x   8.77x |    1736   2579     22
+push2            3000    2 |    0  0.0%    1    1 |  16.97x  2.52x   8.77x |    1736   2571     25
+push3             100    0 |   17  5.7%   98   75 |  17.41x  2.56x   9.07x |    1690   2251    193
+push3             100    1 |   18  6.0%  117   83 |  17.40x  2.55x   9.13x |    1684   2237    240
+push3             100    2 |   32 10.7%  134   69 |  17.19x  2.67x   8.48x |    1646   2236    219
+push3             300    0 |    4  1.3%   43   35 |  16.91x  2.50x   8.78x |    1736   2419     86
+push3             300    1 |    6  2.0%   47   31 |  17.65x  2.59x   8.95x |    1730   2416     97
+push3             300    2 |    3  1.0%   21   18 |  16.88x  2.50x   8.77x |    1720   2412     78
+push3            1000    0 |    0  0.0%    5    5 |  17.00x  2.52x   8.78x |    1736   2532     77
+push3            1000    1 |    0  0.0%    5    4 |  17.00x  2.52x   8.77x |    1736   2525     56
+push3            1000    2 |    1  0.3%    3    2 |  16.97x  2.51x   8.76x |    1736   2546     49
+push3            3000    0 |    0  0.0%    0    0 |  16.99x  2.52x   8.78x |    1736   2577     18
+push3            3000    1 |    0  0.0%    0    0 |  16.97x  2.52x   8.77x |    1736   2580     19
+push3            3000    2 |    0  0.0%    1    1 |  16.98x  2.52x   8.78x |    1736   2582     21
+push2+strat1      100    0 |    5  1.7%   45   45 |  17.31x  2.56x   8.76x |    1736   2391    376
+push2+strat1      100    1 |   13  4.3%   69   65 |  17.68x  2.69x   8.77x |    1736   2341    345
+push2+strat1      100    2 |   17  5.7%   69   63 |  17.14x  2.59x   8.78x |    1736   2372    350
+push2+strat1      300    0 |    1  0.3%   15   22 |  16.99x  2.51x   8.77x |    1736   2481    210
+push2+strat1      300    1 |    4  1.3%   13   22 |  16.87x  2.50x   8.76x |    1736   2481    214
+push2+strat1      300    2 |    2  0.7%   10   24 |  16.99x  2.51x   8.76x |    1736   2466    208
+push2+strat1     1000    0 |    2  0.7%    3    8 |  16.95x  2.51x   8.74x |    1736   2535    188
+push2+strat1     1000    1 |    2  0.7%    5   11 |  16.96x  2.51x   8.74x |    1736   2525    172
+push2+strat1     1000    2 |    1  0.3%    5   11 |  17.00x  2.51x   8.77x |    1736   2536    182
+push2+strat1     3000    0 |    0  0.0%    1    4 |  16.99x  2.52x   8.77x |    1736   2566    164
+push2+strat1     3000    1 |    0  0.0%    2    2 |  17.00x  2.52x   8.77x |    1736   2567    172
+push2+strat1     3000    2 |    0  0.0%    1    4 |  17.00x  2.52x   8.78x |    1736   2560    167
+push2+strat2      100    0 |    9  3.0%   73   69 |  16.86x  2.48x   8.91x |    1706   2331    344
+push2+strat2      100    1 |   10  3.3%   60   68 |  16.69x  2.46x   8.72x |    1724   2364    368
+push2+strat2      100    2 |    8  2.7%   61   53 |  16.77x  2.47x   8.79x |    1688   2336    315
+push2+strat2      300    0 |    0  0.0%    8   19 |  17.06x  2.52x   8.80x |    1712   2458    225
+push2+strat2      300    1 |    1  0.3%   11   21 |  17.00x  2.51x   8.77x |    1736   2493    225
+push2+strat2      300    2 |    5  1.7%   15   25 |  16.78x  2.49x   8.69x |    1736   2476    216
+push2+strat2     1000    0 |    1  0.3%    5   17 |  16.99x  2.51x   8.77x |    1736   2514    164
+push2+strat2     1000    1 |    0  0.0%    1    8 |  17.01x  2.52x   8.77x |    1736   2537    172
+push2+strat2     1000    2 |    2  0.7%    6   11 |  16.97x  2.51x   8.75x |    1736   2526    169
+push2+strat2     3000    0 |    0  0.0%    1    4 |  17.00x  2.52x   8.77x |    1736   2565    162
+push2+strat2     3000    1 |    2  0.7%    3    8 |  16.95x  2.51x   8.74x |    1736   2559    163
+push2+strat2     3000    2 |    0  0.0%    1    4 |  17.00x  2.52x   8.77x |    1736   2570    166
+hand              100    0 |   14  4.7%   79   53 |  16.91x  2.48x   8.84x |    1572   2201    253
+hand              100    1 |   19  6.3%  111   75 |  17.53x  2.57x   9.34x |    1624   2206    213
+hand              100    2 |   14  4.7%  120   77 |  16.79x  2.47x   8.95x |    1618   2237    283
+hand              300    0 |    3  1.0%   31   25 |  16.94x  2.50x   8.82x |    1716   2430    101
+hand              300    1 |    3  1.0%   29   20 |  17.02x  2.50x   8.88x |    1730   2444    131
+hand              300    2 |    1  0.3%   25   19 |  17.03x  2.51x   8.84x |    1698   2425    112
+hand             1000    0 |    0  0.0%    6    4 |  17.06x  2.52x   8.83x |    1732   2537     49
+hand             1000    1 |    1  0.3%    6    3 |  17.02x  2.51x   8.82x |    1736   2535     54
+hand             1000    2 |    1  0.3%   10    7 |  17.03x  2.51x   8.82x |    1736   2532     86
+hand             3000    0 |    0  0.0%    0    0 |  17.05x  2.52x   8.80x |    1736   2575     23
+hand             3000    1 |    0  0.0%    4    2 |  17.06x  2.52x   8.81x |    1726   2565     21
+hand             3000    2 |    0  0.0%    4    2 |  17.05x  2.52x   8.80x |    1736   2571     29
+scalemix          100    0 |   13  4.3%   70   51 |  17.24x  2.55x   8.78x |    1568   2167    284
+scalemix          100    1 |   24  8.0%  127   65 |  16.63x  2.44x   8.75x |    1632   2224    251
+scalemix          100    2 |   17  5.7%   78   53 |  17.51x  2.63x   8.68x |    1614   2204    238
+scalemix          300    0 |    3  1.0%   22   19 |  16.88x  2.49x   8.81x |    1730   2433    128
+scalemix          300    1 |    3  1.0%   23   22 |  16.96x  2.50x   8.77x |    1736   2465    138
+scalemix          300    2 |    8  2.7%   42   26 |  17.13x  2.56x   8.73x |    1730   2424     99
+scalemix         1000    0 |    1  0.3%    7    6 |  16.99x  2.51x   8.79x |    1736   2549     48
+scalemix         1000    1 |    0  0.0%    4    4 |  17.05x  2.52x   8.80x |    1736   2551     61
+scalemix         1000    2 |    0  0.0%    4    5 |  17.05x  2.52x   8.82x |    1736   2537     63
+scalemix         3000    0 |    0  0.0%    0    0 |  17.03x  2.52x   8.80x |    1736   2588     10
+scalemix         3000    1 |    0  0.0%    1    1 |  17.04x  2.52x   8.80x |    1736   2586     17
+scalemix         3000    2 |    0  0.0%    1    1 |  17.04x  2.52x   8.80x |    1736   2578     16
+
+Summed over seeds [0, 1, 2] (lost and AUD are totals over 900 task-searches)
+
+rule                M |  lost  lost%   AUD |    gain |  entries   pairs
+old-iid           100 |    84  9.33%   386 |  17.63x |     1608    2150
+old-iid           300 |    11  1.22%   128 |  17.14x |     1704    2361
+old-iid          1000 |     4  0.44%    47 |  17.01x |     1728    2475
+old-iid          3000 |     2  0.22%    21 |  17.03x |     1735    2543
+
+iid               100 |    77  8.56%   398 |  17.84x |     1609    2149
+iid               300 |    17  1.89%   102 |  17.15x |     1711    2390
+iid              1000 |     5  0.56%    44 |  17.00x |     1728    2482
+iid              3000 |     1  0.11%    22 |  17.05x |     1736    2533
+
+strat1            100 |    22  2.44%   177 |  16.93x |     1736    2367
+strat1            300 |     7  0.78%    52 |  17.00x |     1736    2477
+strat1           1000 |     3  0.33%    24 |  17.03x |     1736    2544
+strat1           3000 |     1  0.11%     9 |  17.02x |     1736    2576
+
+strat2            100 |    19  2.11%   156 |  17.03x |     1688    2331
+strat2            300 |     7  0.78%    46 |  16.97x |     1736    2488
+strat2           1000 |     1  0.11%    13 |  17.05x |     1736    2554
+strat2           3000 |     0  0.00%     3 |  17.04x |     1736    2579
+
+push1             100 |    54  6.00%   314 |  17.27x |     1671    2254
+push1             300 |    16  1.78%   115 |  17.07x |     1724    2405
+push1            1000 |     5  0.56%    17 |  16.92x |     1733    2506
+push1            3000 |     0  0.00%     1 |  16.97x |     1736    2570
+
+push2             100 |    42  4.67%   284 |  17.25x |     1675    2255
+push2             300 |     7  0.78%    71 |  16.91x |     1729    2434
+push2            1000 |     2  0.22%    12 |  16.96x |     1736    2534
+push2            3000 |     0  0.00%     1 |  16.98x |     1736    2577
+
+push3             100 |    67  7.44%   349 |  17.33x |     1673    2241
+push3             300 |    13  1.44%   111 |  17.15x |     1729    2416
+push3            1000 |     1  0.11%    13 |  16.99x |     1736    2534
+push3            3000 |     0  0.00%     1 |  16.98x |     1736    2580
+
+push2+strat1      100 |    35  3.89%   183 |  17.38x |     1736    2368
+push2+strat1      300 |     7  0.78%    38 |  16.95x |     1736    2476
+push2+strat1     1000 |     5  0.56%    13 |  16.97x |     1736    2532
+push2+strat1     3000 |     0  0.00%     4 |  17.00x |     1736    2564
+
+push2+strat2      100 |    27  3.00%   194 |  16.77x |     1706    2344
+push2+strat2      300 |     6  0.67%    34 |  16.95x |     1728    2476
+push2+strat2     1000 |     3  0.33%    12 |  16.99x |     1736    2526
+push2+strat2     3000 |     2  0.22%     5 |  16.98x |     1736    2565
+
+hand              100 |    47  5.22%   310 |  17.08x |     1605    2215
+hand              300 |     7  0.78%    85 |  17.00x |     1715    2433
+hand             1000 |     2  0.22%    22 |  17.04x |     1735    2535
+hand             3000 |     0  0.00%     8 |  17.05x |     1733    2570
+
+scalemix          100 |    54  6.00%   275 |  17.13x |     1605    2198
+scalemix          300 |    14  1.56%    87 |  16.99x |     1732    2441
+scalemix         1000 |     1  0.11%    15 |  17.03x |     1736    2546
+scalemix         3000 |     0  0.00%     2 |  17.04x |     1736    2584
+
+Lost tasks and their defects (first 3), per configuration with a loss:
+  old-iid|100|0          S8     dbl_all(filter_odd(inc_all(dec_all(xs))))          [('filter_odd', 'caplen5', (2,), 2)]
+  old-iid|100|0          S10    filter_even(take3(init(xs)))                       [('filter_even', 'caplen5', (2,), 0)]
+  old-iid|100|0          S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('zip_sub', 'order', (0, 3), 2), ('zip_sub', 'parity', (3, 1), 1), ('zip_sub', 'order', (0, 1), 2)]
+  old-iid|100|0          S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'parity', (3, 1), 3), ('zip_add', 'sign', (1, 2), 0)]
+  old-iid|100|0          S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'caplen5', (0, 2), 1)]
+  old-iid|100|0          S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0)]
+  old-iid|100|0          S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  old-iid|100|0          S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'order', (0, 1), 2), ('running_sum', 'order', (2,), 0)]
+  old-iid|100|0          S78    filter_odd(running_sum(half_all(inc_all(xs))))     [('filter_odd', 'order', (2,), 2), ('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 0)]
+  old-iid|100|0          S96    count_even(running_max(shift1(reverse(xs))))       [('count_even', 'parity', (1,), 0)]
+  old-iid|100|0          S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 0)]
+  old-iid|100|0          S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (3,), 1), ('running_sum', 'order', (2,), 0)]
+  old-iid|100|0          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|100|0          S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'parity', (1, 3), 3), ('abs_all', 'order', (1,), 0)]
+  old-iid|100|0          S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'order', (2, 0), 0), ('dedup_adj', 'caplen5', (2,), 1)]
+  old-iid|100|0          S155   filter_even(running_max(neg_all(take3(xs))))       [('filter_even', 'caplen5', (3,), 3), ('filter_even', 'caplen5', (2,), 0)]
+  old-iid|100|0          S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'order', (2,), 2), ('map_adj_sub', 'order', (2,), 2)]
+  old-iid|100|0          S177   count_distinct(evens_idx(map_adj_add(filter_neg(xs)))) []
+  old-iid|100|0          S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'parity', (1, 3), 1), ('zip_sub', 'parity', (1, 3), 3), ('zip_sub', 'order', (1, 0), 1)]
+  old-iid|100|0          S194   len(map_adj_mul(abs_all(filter_even(xs))))         [('filter_even', 'caplen5', (2,), 0), ('abs_all', 'order', (1,), 3), ('len', 'parity', (1,), 0)]
+  old-iid|100|0          S196   dedup_adj(evens_idx(sq_all(tail(xs))))             [('dedup_adj', 'caplen5', (2,), 1)]
+  old-iid|100|0          S199   filter_odd(take2(sort(xs)))                        [('filter_odd', 'caplen5', (2,), 2), ('filter_odd', 'caplen5', (2,), 0), ('filter_odd', 'sign', (1,), 0)]
+  old-iid|100|0          S218   inc_all(odds_idx(map_adj_min(xs)))                 [('odds_idx', 'order', (2,), 2)]
+  old-iid|100|0          S224   map_adj_mul(shift1(map_adj_max(sq_all(xs))))       [('map_adj_mul', 'order', (2,), 2)]
+  old-iid|100|0          S237   map_adj_sub(shift1(zip_min(ys, xs)))               [('map_adj_sub', 'order', (2,), 2)]
+  old-iid|100|0          S242   dedup_adj(map_adj_mul(running_min(odds_idx(xs))))  [('dedup_adj', 'caplen5', (2,), 1)]
+  old-iid|100|0          S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  old-iid|100|0          S259   zip_max(filter_pos(abs_all(xs)), ys)               [('abs_all', 'order', (1,), 0), ('zip_max', 'parity', (1, 3), 2)]
+  old-iid|100|0          S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  old-iid|100|0          S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'order', (2,), 2)]
+  old-iid|100|0          S280   count_even(map_adj_min(take3(map_adj_max(xs))))    [('count_even', 'parity', (1,), 0)]
+  old-iid|100|0          S284   len(filter_even(tail(xs)))                         [('filter_even', 'caplen5', (2,), 0), ('filter_even', 'caplen5', (4,), 4), ('len', 'parity', (1,), 0)]
+  old-iid|100|0          S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0), ('map_adj_mul', 'order', (0,), 3)]
+  old-iid|100|0          S294   zip_mul(xs, dbl_all(map_adj_add(xs)))              [('zip_mul', 'order', (0, 1), 2), ('zip_mul', 'order', (0, 3), 1), ('zip_mul', 'order', (0, 2), 0)]
+  old-iid|100|1          S76    dec(count_even(sort_desc(shift1(xs))))             [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  old-iid|100|1          S81    dec(count_even(evens_idx(sq_all(xs))))             [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  old-iid|100|1          S88    dec(sum(init(xs)))                                 [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  old-iid|100|1          S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  old-iid|100|1          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|100|1          S141   abs_all(zip_max(filter_neg(xs), ys))               [('abs_all', 'order', (2,), 0), ('zip_max', 'parity', (3, 1), 3)]
+  old-iid|100|1          S151   dec(count_even(take3(drop2(xs))))                  [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0), ('drop2', 'order', (2,), 2)]
+  old-iid|100|1          S176   drop2(sort(sq_all(dec_all(xs))))                   [('drop2', 'order', (1,), 1)]
+  old-iid|100|1          S218   inc_all(odds_idx(map_adj_min(xs)))                 [('odds_idx', 'order', (1,), 1), ('odds_idx', 'order', (2,), 2)]
+  old-iid|100|1          S243   cons(abs(last(ys)), xs)                            [('cons', 'order', (0, 2), 0)]
+  old-iid|100|1          S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('running_sum', 'order', (3,), 1)]
+  old-iid|100|1          S252   dec(count_pos(map_adj_max(map_adj_max(xs))))       [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  old-iid|100|1          S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'parity', (3, 1), 3), ('zip_max', 'parity', (1, 3), 2)]
+  old-iid|100|1          S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  old-iid|100|1          S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'order', (2,), 1)]
+  old-iid|100|1          S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'order', (1, 0), 0), ('zip_add', 'parity', (3, 1), 2)]
+  old-iid|100|1          S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0)]
+  old-iid|100|2          S8     dbl_all(filter_odd(inc_all(dec_all(xs))))          [('filter_odd', 'order', (1,), 1)]
+  old-iid|100|2          S14    map_adj_mul(running_sum(filter_odd(xs)))           [('running_sum', 'order', (1,), 1), ('map_adj_mul', 'order', (1,), 1)]
+  old-iid|100|2          S21    filter_pos(map_adj_add(sort(map_adj_add(xs))))     [('filter_pos', 'order', (1,), 1)]
+  old-iid|100|2          S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('zip_sub', 'order', (2, 2), 2), ('zip_sub', 'order', (0, 3), 2), ('zip_sub', 'order', (0, 1), 2)]
+  old-iid|100|2          S37    zip_add(xs, filter_even(abs_all(xs)))              [('abs_all', 'order', (1,), 1), ('zip_add', 'order', (0, 1), 1)]
+  old-iid|100|2          S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 1), ('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2)]
+  old-iid|100|2          S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0)]
+  old-iid|100|2          S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 1), ('sq_all', 'order', (1,), 0)]
+  old-iid|100|2          S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('running_sum', 'order', (1,), 1), ('zip_mul', 'sign', (3, 2), 1), ('running_sum', 'order', (2,), 0)]
+  old-iid|100|2          S74    filter_pos(evens_idx(sort(xs)))                    [('filter_pos', 'order', (1,), 1)]
+  old-iid|100|2          S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 0)]
+  old-iid|100|2          S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (3,), 1), ('running_sum', 'order', (2,), 0)]
+  old-iid|100|2          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|100|2          S128   sq_all(dedup_adj(filter_pos(inc_all(xs))))         [('filter_pos', 'caplen5', (3,), 3), ('sq_all', 'order', (1,), 1), ('dedup_adj', 'caplen5', (3,), 2)]
+  old-iid|100|2          S141   abs_all(zip_max(filter_neg(xs), ys))               [('abs_all', 'order', (1,), 1), ('zip_max', 'sign', (1, 3), 3), ('abs_all', 'order', (1,), 0)]
+  old-iid|100|2          S160   len(odds_idx(zip_add(ys, xs)))                     [('len', 'sign', (0,), 1), ('zip_add', 'order', (0, 0), 1)]
+  old-iid|100|2          S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 0), 1)]
+  old-iid|100|2          S188   sq_all(running_sum(abs_all(xs)))                   [('running_sum', 'order', (1,), 1), ('sq_all', 'order', (1,), 1), ('abs_all', 'order', (1,), 1)]
+  old-iid|100|2          S196   dedup_adj(evens_idx(sq_all(tail(xs))))             [('dedup_adj', 'caplen5', (2,), 1)]
+  old-iid|100|2          S199   filter_odd(take2(sort(xs)))                        [('filter_odd', 'order', (1,), 1)]
+  old-iid|100|2          S206   inc_all(shift1(half_all(filter_pos(xs))))          [('inc_all', 'sign', (0,), 2)]
+  old-iid|100|2          S226   filter_pos(zip_max(xs, running_sum(xs)))           [('running_sum', 'order', (1,), 1), ('filter_pos', 'order', (1,), 1), ('zip_max', 'order', (0, 1), 0)]
+  old-iid|100|2          S228   sq_all(map_adj_sub(filter_even(xs)))               [('map_adj_sub', 'order', (2,), 2), ('sq_all', 'order', (1,), 1)]
+  old-iid|100|2          S237   map_adj_sub(shift1(zip_min(ys, xs)))               [('map_adj_sub', 'order', (2,), 2), ('zip_min', 'order', (0, 1), 0)]
+  old-iid|100|2          S242   dedup_adj(map_adj_mul(running_min(odds_idx(xs))))  [('dedup_adj', 'caplen5', (2,), 1)]
+  old-iid|100|2          S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('running_sum', 'order', (1,), 1), ('sq_all', 'order', (1,), 1), ('running_sum', 'order', (3,), 1)]
+  old-iid|100|2          S259   zip_max(filter_pos(abs_all(xs)), ys)               [('filter_pos', 'caplen5', (3,), 3), ('filter_pos', 'order', (1,), 1), ('abs_all', 'order', (1,), 0)]
+  old-iid|100|2          S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'sign', (2,), 2), ('map_adj_sub', 'order', (2,), 2)]
+  old-iid|100|2          S279   inc_all(map_adj_sub(map_adj_min(filter_neg(xs))))  [('inc_all', 'sign', (0,), 2), ('filter_neg', 'order', (1,), 3), ('map_adj_sub', 'order', (2,), 2)]
+  old-iid|100|2          S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'order', (1, 0), 0), ('zip_add', 'order', (0, 1), 1)]
+  old-iid|100|2          S285   filter_neg(half_all(tail(map_adj_max(xs))))        [('filter_neg', 'order', (1,), 3), ('filter_neg', 'caplen5', (3,), 0)]
+  old-iid|100|2          S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0)]
+  old-iid|100|2          S294   zip_mul(xs, dbl_all(map_adj_add(xs)))              [('zip_mul', 'order', (0, 3), 1)]
+  old-iid|300|0          S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0)]
+  old-iid|300|0          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|300|0          S224   map_adj_mul(shift1(map_adj_max(sq_all(xs))))       [('map_adj_mul', 'order', (2,), 2)]
+  old-iid|300|0          S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0)]
+  old-iid|300|1          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|300|1          S131   concat(odds_idx(map_adj_add(xs)), ys)              [('concat', 'order', (3, 2), 2)]
+  old-iid|300|1          S141   abs_all(zip_max(filter_neg(xs), ys))               [('abs_all', 'order', (2,), 0)]
+  old-iid|300|2          S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  old-iid|300|2          S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  old-iid|300|2          S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  old-iid|300|2          S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('running_sum', 'order', (3,), 1)]
+  old-iid|1000|0         S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|1000|1         S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  old-iid|1000|1         S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|1000|2         S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  old-iid|3000|0         S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  old-iid|3000|1         S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|100|0              S10    filter_even(take3(init(xs)))                       [('filter_even', 'sign', (2,), 0)]
+  iid|100|0              S21    filter_pos(map_adj_add(sort(map_adj_add(xs))))     [('filter_pos', 'parity', (2,), 2)]
+  iid|100|0              S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('zip_sub', 'order', (0, 3), 2), ('zip_sub', 'parity', (3, 1), 1), ('evens_idx', 'order', (0,), 3)]
+  iid|100|0              S37    zip_add(xs, filter_even(abs_all(xs)))              [('filter_even', 'caplen5', (4,), 0), ('filter_even', 'sign', (2,), 0), ('zip_add', 'parity', (3, 1), 1)]
+  iid|100|0              S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2)]
+  iid|100|0              S51    filter_pos(init(drop2(half_all(xs))))              [('filter_pos', 'parity', (2,), 2), ('drop2', 'parity', (2,), 2)]
+  iid|100|0              S54    filter_pos(shift1(map_adj_add(running_min(xs))))   [('filter_pos', 'parity', (2,), 2), ('filter_pos', 'caplen5', (5,), 0), ('filter_pos', 'caplen5', (2,), 2)]
+  iid|100|0              S57    half_all(odds_idx(shift1(drop2(xs))))              [('half_all', 'parity', (2,), 1), ('half_all', 'sign', (2,), 0)]
+  iid|100|0              S59    count_even(sort(neg_all(take3(xs))))               [('count_even', 'sign', (3,), 0)]
+  iid|100|0              S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'sign', (2, 3), 2), ('running_sum', 'order', (2,), 1), ('zip_mul', 'sign', (3, 2), 1)]
+  iid|100|0              S74    filter_pos(evens_idx(sort(xs)))                    [('filter_pos', 'parity', (2,), 2)]
+  iid|100|0              S96    count_even(running_max(shift1(reverse(xs))))       [('count_even', 'sign', (2,), 0)]
+  iid|100|0              S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 1)]
+  iid|100|0              S100   running_sum(running_sum(dec_all(xs)))              [('running_sum', 'order', (2,), 1)]
+  iid|100|0              S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (3,), 1)]
+  iid|100|0              S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|100|0              S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'caplen5', (4,), 4)]
+  iid|100|0              S180   filter_even(filter_pos(evens_idx(xs)))             [('filter_pos', 'caplen5', (3,), 3), ('filter_pos', 'caplen5', (2,), 2), ('evens_idx', 'order', (0,), 3)]
+  iid|100|0              S181   filter_neg(half_all(drop2(tail(xs))))              [('half_all', 'parity', (2,), 1), ('half_all', 'parity', (2,), 3), ('filter_neg', 'parity', (2,), 0)]
+  iid|100|0              S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 1), 2), ('filter_even', 'sign', (3,), 0)]
+  iid|100|0              S189   count_pos(init(init(map_adj_mul(xs))))             []
+  iid|100|0              S191   half_all(zip_max(half_all(xs), xs))                [('half_all', 'parity', (2,), 3)]
+  iid|100|0              S196   dedup_adj(evens_idx(sq_all(tail(xs))))             [('evens_idx', 'order', (0,), 3), ('dedup_adj', 'caplen5', (2,), 1)]
+  iid|100|0              S216   sum(evens_idx(inc_all(xs)))                        [('sum', 'sign', (3,), 0)]
+  iid|100|0              S218   inc_all(odds_idx(map_adj_min(xs)))                 [('odds_idx', 'order', (2,), 2)]
+  iid|100|0              S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4)]
+  iid|100|0              S242   dedup_adj(map_adj_mul(running_min(odds_idx(xs))))  [('dedup_adj', 'caplen5', (2,), 1)]
+  iid|100|0              S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  iid|100|0              S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  iid|100|0              S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'sign', (2,), 2), ('map_adj_sub', 'order', (2,), 1)]
+  iid|100|0              S280   count_even(map_adj_min(take3(map_adj_max(xs))))    [('count_even', 'sign', (3,), 0)]
+  iid|100|0              S284   len(filter_even(tail(xs)))                         [('filter_even', 'sign', (2,), 0), ('filter_even', 'caplen5', (4,), 4), ('filter_even', 'sign', (3,), 0)]
+  iid|100|0              S285   filter_neg(half_all(tail(map_adj_max(xs))))        []
+  iid|100|0              S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0), ('half_all', 'parity', (2,), 3)]
+  iid|100|0              S294   zip_mul(xs, dbl_all(map_adj_add(xs)))              [('zip_mul', 'order', (0, 3), 1), ('map_adj_add', 'order', (0,), 3)]
+  iid|100|0              S295   count_pos(mul_k(last(xs), xs))                     [('count_pos', 'parity', (2,), 1)]
+  iid|100|1              S14    map_adj_mul(running_sum(filter_odd(xs)))           [('map_adj_mul', 'order', (1,), 1)]
+  iid|100|1              S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 1), ('take_n', 'caplen5', (0, 2), 1), ('take_n', 'parity', (1, 3), 2)]
+  iid|100|1              S41    filter_neg(dec_all(map_adj_min(xs)))               [('filter_neg', 'caplen5', (3,), 3)]
+  iid|100|1              S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  iid|100|1              S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  iid|100|1              S80    filter_neg(odds_idx(dec_all(map_adj_sub(xs))))     [('filter_neg', 'caplen5', (3,), 3), ('map_adj_sub', 'order', (2,), 1)]
+  iid|100|1              S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  iid|100|1              S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|100|1              S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (2, 1), 1), ('zip_max', 'parity', (3, 2), 3), ('zip_max', 'order', (1, 0), 1)]
+  iid|100|1              S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (1, 3), 3), ('filter_neg', 'caplen5', (3,), 3)]
+  iid|100|1              S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4), ('zip_max', 'order', (0, 1), 0)]
+  iid|100|1              S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  iid|100|1              S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'parity', (3, 3), 2), ('zip_max', 'order', (1, 0), 1), ('zip_max', 'parity', (3, 1), 3)]
+  iid|100|1              S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  iid|100|1              S264   map_adj_sub(shift1(filter_pos(xs)))                [('filter_pos', 'caplen5', (4,), 0), ('map_adj_sub', 'order', (2,), 1)]
+  iid|100|1              S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'order', (1, 0), 0)]
+  iid|100|2              S1     shift1(sort_desc(sq_all(xs)))                      [('shift1', 'order', (2,), 0)]
+  iid|100|2              S10    filter_even(take3(init(xs)))                       [('filter_even', 'caplen5', (3,), 1)]
+  iid|100|2              S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('filter_even', 'caplen5', (3,), 1), ('zip_sub', 'order', (0, 3), 2), ('evens_idx', 'order', (0,), 3)]
+  iid|100|2              S37    zip_add(xs, filter_even(abs_all(xs)))              [('filter_even', 'caplen5', (3,), 1), ('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  iid|100|2              S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2), ('take_n', 'caplen5', (0, 5), 3)]
+  iid|100|2              S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0)]
+  iid|100|2              S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  iid|100|2              S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'order', (0, 2), 1), ('running_sum', 'order', (2,), 0)]
+  iid|100|2              S91    shift1(running_min(filter_even(xs)))               [('filter_even', 'caplen5', (3,), 1), ('shift1', 'order', (2,), 0)]
+  iid|100|2              S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 0)]
+  iid|100|2              S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1), ('running_sum', 'order', (2,), 0)]
+  iid|100|2              S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|100|2              S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (0, 0), 2), ('zip_max', 'order', (1, 0), 2), ('zip_max', 'sign', (1, 3), 2)]
+  iid|100|2              S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (1, 3), 1)]
+  iid|100|2              S160   len(odds_idx(zip_add(ys, xs)))                     [('zip_add', 'order', (0, 0), 2), ('len', 'sign', (0,), 1), ('zip_add', 'parity', (1, 3), 1)]
+  iid|100|2              S172   filter_odd(map_adj_sub(inc_all(xs)))               [('map_adj_sub', 'order', (2,), 2), ('filter_odd', 'caplen5', (3,), 2)]
+  iid|100|2              S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'parity', (1, 3), 1), ('filter_even', 'caplen5', (3,), 1), ('zip_sub', 'order', (1, 1), 2)]
+  iid|100|2              S206   inc_all(shift1(half_all(filter_pos(xs))))          [('inc_all', 'sign', (0,), 2)]
+  iid|100|2              S224   map_adj_mul(shift1(map_adj_max(sq_all(xs))))       [('map_adj_mul', 'order', (2,), 2)]
+  iid|100|2              S237   map_adj_sub(shift1(zip_min(ys, xs)))               [('map_adj_sub', 'order', (2,), 2), ('zip_min', 'parity', (3, 1), 3)]
+  iid|100|2              S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  iid|100|2              S259   zip_max(filter_pos(abs_all(xs)), ys)               [('filter_pos', 'caplen5', (3,), 3), ('zip_max', 'order', (0, 0), 2), ('zip_max', 'parity', (1, 3), 2)]
+  iid|100|2              S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  iid|100|2              S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'order', (2,), 2)]
+  iid|100|2              S279   inc_all(map_adj_sub(map_adj_min(filter_neg(xs))))  [('inc_all', 'sign', (0,), 2), ('map_adj_sub', 'order', (2,), 2)]
+  iid|300|0              S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  iid|300|0              S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  iid|300|0              S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  iid|300|0              S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|300|0              S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  iid|300|0              S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'order', (2,), 1)]
+  iid|300|1              S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 4), 2), ('take_n', 'order', (0, 0), 1)]
+  iid|300|1              S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|300|1              S222   concat(map_adj_max(xs), abs_all(xs))               [('concat', 'order', (2, 2), 0)]
+  iid|300|2              S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  iid|300|2              S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('running_sum', 'order', (2,), 0)]
+  iid|300|2              S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 0)]
+  iid|300|2              S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1), ('running_sum', 'order', (2,), 0)]
+  iid|300|2              S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|300|2              S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 1), 2)]
+  iid|300|2              S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  iid|300|2              S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  iid|1000|0             S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  iid|1000|0             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|1000|1             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|1000|2             S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  iid|1000|2             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  iid|3000|1             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|100|0           S21    filter_pos(map_adj_add(sort(map_adj_add(xs))))     [('filter_pos', 'caplen5', (5,), 1)]
+  strat1|100|0           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  strat1|100|0           S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0)]
+  strat1|100|0           S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0), ('half_all', 'sign', (2,), 0)]
+  strat1|100|0           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|100|0           S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (2, 1), 1), ('abs_all', 'order', (2,), 0), ('zip_max', 'parity', (3, 1), 3)]
+  strat1|100|0           S253   filter_pos(shift1(tail(xs)))                       [('filter_pos', 'caplen5', (5,), 1)]
+  strat1|100|0           S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  strat1|100|1           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  strat1|100|1           S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 1), ('take_n', 'order', (0, 0), 2), ('take_n', 'caplen5', (0, 2), 1)]
+  strat1|100|1           S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  strat1|100|1           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  strat1|100|1           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|100|1           S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'order', (0, 0), 2)]
+  strat1|100|2           S37    zip_add(xs, filter_even(abs_all(xs)))              [('filter_even', 'caplen5', (4,), 0), ('zip_add', 'sign', (1, 2), 0)]
+  strat1|100|2           S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'order', (0, 0), 2)]
+  strat1|100|2           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|100|2           S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'caplen5', (4,), 4), ('map_adj_sub', 'order', (1,), 0)]
+  strat1|100|2           S176   drop2(sort(sq_all(dec_all(xs))))                   [('drop2', 'order', (1,), 1)]
+  strat1|100|2           S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (2, 0), 2)]
+  strat1|100|2           S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  strat1|100|2           S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0), ('map_adj_mul', 'order', (1,), 2), ('map_adj_mul', 'order', (0,), 3)]
+  strat1|300|0           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|300|1           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  strat1|300|1           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|300|2           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  strat1|300|2           S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 5), 2)]
+  strat1|300|2           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  strat1|300|2           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|1000|1          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|1000|2          S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  strat1|1000|2          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat1|3000|0          S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  strat2|100|0           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  strat2|100|0           S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'lenmod2', (0, 0), 1)]
+  strat2|100|0           S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2)]
+  strat2|100|0           S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2)]
+  strat2|100|0           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat2|100|0           S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'order', (0, 0), 2)]
+  strat2|100|1           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0), ('zip_add', 'parity', (3, 1), 1)]
+  strat2|100|1           S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'order', (0, 0), 2), ('take_n', 'caplen5', (0, 4), 2)]
+  strat2|100|1           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  strat2|100|1           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat2|100|1           S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'sign', (0, 2), 0)]
+  strat2|100|1           S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (5,), 5)]
+  strat2|100|1           S253   filter_pos(shift1(tail(xs)))                       [('filter_pos', 'caplen5', (5,), 5)]
+  strat2|100|1           S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'parity', (3, 3), 2), ('filter_pos', 'caplen5', (5,), 5)]
+  strat2|100|1           S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0), ('map_adj_mul', 'order', (0,), 3)]
+  strat2|100|2           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0), ('zip_add', 'order', (0, 1), 1)]
+  strat2|100|2           S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'order', (0, 0), 2)]
+  strat2|100|2           S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0)]
+  strat2|100|2           S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0)]
+  strat2|300|0           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  strat2|300|0           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat2|300|1           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  strat2|300|1           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat2|300|1           S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  strat2|300|2           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  strat2|300|2           S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 1), 2)]
+  strat2|1000|2          S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|100|0            S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('zip_sub', 'order', (0, 3), 2), ('zip_sub', 'order', (0, 1), 1)]
+  push1|100|0            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push1|100|0            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'parity', (0, 2), 2), ('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2)]
+  push1|100|0            S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'parity', (3, 2), 1), ('running_sum', 'order', (2,), 0)]
+  push1|100|0            S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 0)]
+  push1|100|0            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (3,), 1), ('running_sum', 'order', (2,), 0)]
+  push1|100|0            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|100|0            S131   concat(odds_idx(map_adj_add(xs)), ys)              [('concat', 'order', (3, 2), 2)]
+  push1|100|0            S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 1), 2)]
+  push1|100|0            S196   dedup_adj(evens_idx(sq_all(tail(xs))))             [('dedup_adj', 'caplen5', (2,), 1)]
+  push1|100|0            S216   sum(evens_idx(inc_all(xs)))                        [('sum', 'sign', (3,), 0)]
+  push1|100|0            S224   map_adj_mul(shift1(map_adj_max(sq_all(xs))))       [('map_adj_mul', 'order', (2,), 2)]
+  push1|100|0            S237   map_adj_sub(shift1(zip_min(ys, xs)))               [('map_adj_sub', 'order', (2,), 2)]
+  push1|100|0            S242   dedup_adj(map_adj_mul(running_min(odds_idx(xs))))  [('dedup_adj', 'caplen5', (2,), 1)]
+  push1|100|0            S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  push1|100|0            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  push1|100|0            S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'order', (2,), 2), ('filter_pos', 'caplen5', (4,), 0)]
+  push1|100|0            S294   zip_mul(xs, dbl_all(map_adj_add(xs)))              [('zip_mul', 'order', (0, 3), 1), ('zip_mul', 'order', (1, 1), 2), ('map_adj_add', 'order', (0,), 3)]
+  push1|100|1            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'order', (0, 0), 2), ('take_n', 'caplen5', (0, 4), 2), ('take_n', 'caplen5', (0, 5), 2)]
+  push1|100|1            S41    filter_neg(dec_all(map_adj_min(xs)))               [('filter_neg', 'order', (1,), 1)]
+  push1|100|1            S54    filter_pos(shift1(map_adj_add(running_min(xs))))   [('filter_pos', 'caplen5', (5,), 0), ('filter_pos', 'caplen5', (2,), 2)]
+  push1|100|1            S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  push1|100|1            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('filter_neg', 'caplen5', (4,), 2), ('zip_min', 'order', (2, 1), 3), ('filter_neg', 'order', (1,), 1)]
+  push1|100|1            S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'sign', (1, 3), 3), ('zip_mul', 'order', (2, 1), 2), ('running_sum', 'order', (2,), 1)]
+  push1|100|1            S74    filter_pos(evens_idx(sort(xs)))                    [('filter_pos', 'caplen5', (4,), 3), ('filter_pos', 'caplen5', (4,), 2)]
+  push1|100|1            S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 1)]
+  push1|100|1            S100   running_sum(running_sum(dec_all(xs)))              [('running_sum', 'order', (2,), 1)]
+  push1|100|1            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  push1|100|1            S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (4,), 2), ('filter_neg', 'caplen5', (4,), 1), ('filter_neg', 'order', (1,), 1)]
+  push1|100|1            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|100|1            S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (2, 1), 1), ('zip_max', 'order', (1, 0), 2), ('filter_neg', 'caplen5', (4,), 2)]
+  push1|100|1            S176   drop2(sort(sq_all(dec_all(xs))))                   [('drop2', 'order', (1,), 1), ('sq_all', 'order', (1,), 0)]
+  push1|100|1            S178   filter_pos(tail(map_adj_sub(xs)))                  [('filter_pos', 'caplen5', (4,), 3), ('filter_pos', 'caplen5', (4,), 2)]
+  push1|100|1            S180   filter_even(filter_pos(evens_idx(xs)))             [('filter_pos', 'caplen5', (2,), 2), ('evens_idx', 'order', (0,), 3)]
+  push1|100|1            S218   inc_all(odds_idx(map_adj_min(xs)))                 [('odds_idx', 'order', (1,), 1)]
+  push1|100|1            S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 3), ('zip_max', 'order', (0, 1), 0)]
+  push1|100|1            S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  push1|100|1            S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'parity', (3, 3), 2), ('filter_pos', 'caplen5', (2,), 2), ('abs_all', 'order', (1,), 0)]
+  push1|100|1            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 2)]
+  push1|100|2            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push1|100|2            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'caplen5', (0, 2), 1)]
+  push1|100|2            S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push1|100|2            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push1|100|2            S74    filter_pos(evens_idx(sort(xs)))                    [('filter_pos', 'caplen5', (4,), 3)]
+  push1|100|2            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  push1|100|2            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|100|2            S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'order', (2, 0), 0)]
+  push1|100|2            S178   filter_pos(tail(map_adj_sub(xs)))                  [('filter_pos', 'caplen5', (4,), 3)]
+  push1|100|2            S214   map_adj_sub(odds_idx(map_adj_mul(xs)))             [('map_adj_sub', 'sign', (1,), 2)]
+  push1|100|2            S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 3)]
+  push1|100|2            S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  push1|100|2            S259   zip_max(filter_pos(abs_all(xs)), ys)               [('filter_pos', 'caplen5', (3,), 3), ('zip_max', 'order', (0, 0), 2), ('zip_max', 'parity', (1, 3), 2)]
+  push1|100|2            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  push1|100|2            S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'sign', (3, 3), 1), ('zip_add', 'parity', (3, 1), 2)]
+  push1|300|0            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2)]
+  push1|300|0            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push1|300|0            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  push1|300|0            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|300|0            S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('running_sum', 'order', (3,), 1)]
+  push1|300|1            S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  push1|300|1            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push1|300|1            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|300|1            S141   abs_all(zip_max(filter_neg(xs), ys))               [('abs_all', 'order', (1,), 0)]
+  push1|300|1            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (5,), 2)]
+  push1|300|2            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push1|300|2            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push1|300|2            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  push1|300|2            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|300|2            S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  push1|300|2            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3)]
+  push1|1000|0           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push1|1000|0           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push1|1000|0           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push1|1000|2           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push1|1000|2           S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2|100|0            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push2|100|0            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'order', (0, 0), 1)]
+  push2|100|0            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push2|100|0            S71    take3(concat(ys, filter_odd(xs)))                  [('take3', 'sign', (3,), 2)]
+  push2|100|0            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  push2|100|0            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2|100|0            S214   map_adj_sub(odds_idx(map_adj_mul(xs)))             [('map_adj_sub', 'sign', (1,), 2)]
+  push2|100|0            S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  push2|100|0            S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0), ('map_adj_mul', 'order', (0,), 3)]
+  push2|100|0            S294   zip_mul(xs, dbl_all(map_adj_add(xs)))              [('zip_mul', 'order', (0, 3), 1), ('map_adj_add', 'order', (0,), 3)]
+  push2|100|1            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2|100|1            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 4), 2)]
+  push2|100|1            S41    filter_neg(dec_all(map_adj_min(xs)))               [('dec_all', 'sign', (2,), 3), ('filter_neg', 'caplen5', (4,), 3)]
+  push2|100|1            S43    add(last(xs), count_distinct(ys))                  [('add', 'sign', (-1, 1), 0), ('add', 'isempty', (False, False), True)]
+  push2|100|1            S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  push2|100|1            S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (4,), 3)]
+  push2|100|1            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2|100|1            S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (0, 0), 2), ('zip_max', 'order', (1, 0), 2), ('zip_max', 'parity', (3, 2), 3)]
+  push2|100|1            S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'order', (2, 0), 0)]
+  push2|100|1            S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 0), 1), ('zip_sub', 'order', (1, 1), 2)]
+  push2|100|1            S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'order', (0, 0), 2), ('abs_all', 'order', (1,), 0)]
+  push2|100|1            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  push2|100|1            S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'order', (1, 0), 0)]
+  push2|100|2            S8     dbl_all(filter_odd(inc_all(dec_all(xs))))          [('filter_odd', 'order', (1,), 1)]
+  push2|100|2            S21    filter_pos(map_adj_add(sort(map_adj_add(xs))))     [('filter_pos', 'caplen5', (5,), 1)]
+  push2|100|2            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 5), 3)]
+  push2|100|2            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  push2|100|2            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2|100|2            S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (3, 3), 2)]
+  push2|100|2            S160   len(odds_idx(zip_add(ys, xs)))                     [('zip_add', 'order', (2, 0), 0), ('odds_idx', 'order', (1,), 1), ('zip_add', 'sign', (3, 3), 1)]
+  push2|100|2            S176   drop2(sort(sq_all(dec_all(xs))))                   [('drop2', 'order', (1,), 1)]
+  push2|100|2            S199   filter_odd(take2(sort(xs)))                        [('filter_odd', 'order', (1,), 1)]
+  push2|100|2            S206   inc_all(shift1(half_all(filter_pos(xs))))          [('inc_all', 'sign', (0,), 2), ('half_all', 'sign', (2,), 0)]
+  push2|100|2            S216   sum(evens_idx(inc_all(xs)))                        [('sum', 'isempty', (False,), True), ('sum', 'sign', (3,), 0)]
+  push2|100|2            S218   inc_all(odds_idx(map_adj_min(xs)))                 [('odds_idx', 'order', (1,), 1)]
+  push2|100|2            S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4), ('zip_max', 'order', (0, 1), 0)]
+  push2|100|2            S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  push2|100|2            S253   filter_pos(shift1(tail(xs)))                       [('filter_pos', 'caplen5', (5,), 1)]
+  push2|100|2            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  push2|100|2            S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'order', (2,), 1)]
+  push2|100|2            S279   inc_all(map_adj_sub(map_adj_min(filter_neg(xs))))  [('inc_all', 'sign', (0,), 2)]
+  push2|100|2            S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'sign', (3, 3), 1)]
+  push2|300|0            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2|300|0            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push2|300|1            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2|300|1            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3)]
+  push2|300|2            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push2|300|2            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2|300|2            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (5,), 2)]
+  push2|1000|0           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2|1000|0           S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push3|100|0            S37    zip_add(xs, filter_even(abs_all(xs)))              [('filter_even', 'caplen5', (4,), 0), ('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push3|100|0            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2)]
+  push3|100|0            S41    filter_neg(dec_all(map_adj_min(xs)))               [('filter_neg', 'caplen5', (4,), 3)]
+  push3|100|0            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push3|100|0            S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (5,), 1), ('filter_neg', 'caplen5', (4,), 3)]
+  push3|100|0            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push3|100|0            S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (1, 3), 3), ('zip_min', 'order', (2, 0), 0)]
+  push3|100|0            S160   len(odds_idx(zip_add(ys, xs)))                     [('zip_add', 'sign', (3, 3), 1), ('zip_add', 'order', (0, 0), 2), ('len', 'sign', (0,), 1)]
+  push3|100|0            S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'caplen5', (4,), 4)]
+  push3|100|0            S181   filter_neg(half_all(drop2(tail(xs))))              [('filter_neg', 'caplen5', (4,), 3)]
+  push3|100|0            S198   zip_max(xs, half_all(abs_all(xs)))                 [('zip_max', 'parity', (2, 1), 3)]
+  push3|100|0            S206   inc_all(shift1(half_all(filter_pos(xs))))          [('inc_all', 'sign', (0,), 2), ('filter_pos', 'caplen5', (4,), 0), ('half_all', 'sign', (2,), 0)]
+  push3|100|0            S216   sum(evens_idx(inc_all(xs)))                        [('sum', 'isempty', (False,), True), ('sum', 'sign', (3,), 0)]
+  push3|100|0            S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'parity', (1, 3), 2)]
+  push3|100|0            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (5,), 3), ('dedup_adj', 'caplen5', (5,), 2)]
+  push3|100|0            S279   inc_all(map_adj_sub(map_adj_min(filter_neg(xs))))  [('inc_all', 'sign', (0,), 2), ('filter_neg', 'caplen5', (4,), 3)]
+  push3|100|0            S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'sign', (3, 3), 1)]
+  push3|100|1            S37    zip_add(xs, filter_even(abs_all(xs)))              [('filter_even', 'caplen5', (4,), 0), ('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push3|100|1            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'order', (0, 0), 2), ('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2)]
+  push3|100|1            S41    filter_neg(dec_all(map_adj_min(xs)))               [('dec_all', 'sign', (2,), 3), ('filter_neg', 'caplen5', (4,), 3)]
+  push3|100|1            S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0)]
+  push3|100|1            S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  push3|100|1            S71    take3(concat(ys, filter_odd(xs)))                  [('take3', 'parity', (3,), 1)]
+  push3|100|1            S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (4,), 3)]
+  push3|100|1            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push3|100|1            S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (0, 0), 2), ('zip_max', 'order', (1, 0), 2), ('zip_max', 'parity', (3, 2), 3)]
+  push3|100|1            S160   len(odds_idx(zip_add(ys, xs)))                     [('zip_add', 'sign', (3, 3), 1), ('zip_add', 'order', (0, 0), 2), ('len', 'sign', (0,), 1)]
+  push3|100|1            S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'caplen5', (4,), 4)]
+  push3|100|1            S181   filter_neg(half_all(drop2(tail(xs))))              [('filter_neg', 'caplen5', (4,), 3)]
+  push3|100|1            S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 0), 1)]
+  push3|100|1            S206   inc_all(shift1(half_all(filter_pos(xs))))          [('inc_all', 'sign', (0,), 2), ('filter_pos', 'caplen5', (4,), 1), ('filter_pos', 'caplen5', (4,), 0)]
+  push3|100|1            S259   zip_max(filter_pos(abs_all(xs)), ys)               [('filter_pos', 'caplen5', (3,), 3), ('zip_max', 'order', (0, 0), 2), ('abs_all', 'order', (1,), 0)]
+  push3|100|1            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 2)]
+  push3|100|1            S279   inc_all(map_adj_sub(map_adj_min(filter_neg(xs))))  [('inc_all', 'sign', (0,), 2), ('filter_neg', 'caplen5', (4,), 3), ('filter_neg', 'caplen5', (3,), 0)]
+  push3|100|1            S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'sign', (3, 3), 1), ('zip_add', 'order', (1, 0), 0)]
+  push3|100|2            S1     shift1(sort_desc(sq_all(xs)))                      [('shift1', 'order', (2,), 0)]
+  push3|100|2            S8     dbl_all(filter_odd(inc_all(dec_all(xs))))          [('filter_odd', 'caplen5', (2,), 2), ('dec_all', 'sign', (3,), 1)]
+  push3|100|2            S10    filter_even(take3(init(xs)))                       [('filter_even', 'caplen5', (2,), 0)]
+  push3|100|2            S21    filter_pos(map_adj_add(sort(map_adj_add(xs))))     [('filter_pos', 'caplen5', (3,), 2), ('filter_pos', 'caplen5', (5,), 1)]
+  push3|100|2            S22    dec_all(shift1(map_adj_min(xs)))                   [('dec_all', 'sign', (3,), 1), ('shift1', 'order', (2,), 0)]
+  push3|100|2            S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('zip_sub', 'order', (0, 3), 2)]
+  push3|100|2            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push3|100|2            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'order', (0, 0), 2), ('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 5), 2)]
+  push3|100|2            S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'order', (0, 1), 2), ('zip_mul', 'sign', (3, 2), 1), ('running_sum', 'order', (2,), 0)]
+  push3|100|2            S74    filter_pos(evens_idx(sort(xs)))                    [('filter_pos', 'caplen5', (3,), 2)]
+  push3|100|2            S78    filter_odd(running_sum(half_all(inc_all(xs))))     [('filter_odd', 'order', (2,), 2), ('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 0)]
+  push3|100|2            S91    shift1(running_min(filter_even(xs)))               [('shift1', 'order', (2,), 0)]
+  push3|100|2            S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 0)]
+  push3|100|2            S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (2,), 0)]
+  push3|100|2            S112   dbl_all(map_adj_min(running_sum(running_min(xs)))) [('map_adj_min', 'order', (2,), 2), ('running_sum', 'order', (2,), 0)]
+  push3|100|2            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push3|100|2            S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (1, 0), 2), ('abs_all', 'order', (2,), 0), ('zip_max', 'sign', (1, 3), 1)]
+  push3|100|2            S150   map_adj_min(half_all(dedup_adj(sort_desc(xs))))    [('half_all', 'sign', (3,), 1), ('map_adj_min', 'order', (2,), 2), ('half_all', 'parity', (2,), 3)]
+  push3|100|2            S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'order', (2,), 2), ('map_adj_sub', 'order', (2,), 2)]
+  push3|100|2            S191   half_all(zip_max(half_all(xs), xs))                [('half_all', 'parity', (2,), 3)]
+  push3|100|2            S196   dedup_adj(evens_idx(sq_all(tail(xs))))             [('sq_all', 'order', (2,), 0), ('dedup_adj', 'caplen5', (2,), 1)]
+  push3|100|2            S199   filter_odd(take2(sort(xs)))                        [('filter_odd', 'caplen5', (2,), 2)]
+  push3|100|2            S218   inc_all(odds_idx(map_adj_min(xs)))                 [('odds_idx', 'order', (2,), 2)]
+  push3|100|2            S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (3,), 2)]
+  push3|100|2            S237   map_adj_sub(shift1(zip_min(ys, xs)))               [('zip_min', 'parity', (3, 2), 3), ('map_adj_sub', 'order', (2,), 2), ('zip_min', 'order', (0, 1), 0)]
+  push3|100|2            S242   dedup_adj(map_adj_mul(running_min(odds_idx(xs))))  [('dedup_adj', 'caplen5', (2,), 1)]
+  push3|100|2            S253   filter_pos(shift1(tail(xs)))                       [('filter_pos', 'caplen5', (3,), 2), ('filter_pos', 'caplen5', (5,), 1)]
+  push3|100|2            S259   zip_max(filter_pos(abs_all(xs)), ys)               [('filter_pos', 'caplen5', (3,), 2), ('zip_max', 'parity', (1, 3), 2)]
+  push3|100|2            S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'order', (2,), 2)]
+  push3|100|2            S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'sign', (3, 3), 1), ('zip_add', 'parity', (3, 1), 2)]
+  push3|100|2            S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0), ('half_all', 'parity', (2,), 3)]
+  push3|100|2            S294   zip_mul(xs, dbl_all(map_adj_add(xs)))              [('zip_mul', 'order', (0, 1), 2), ('zip_mul', 'order', (0, 3), 1), ('zip_mul', 'order', (1, 1), 2)]
+  push3|300|0            S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 4), 2)]
+  push3|300|0            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push3|300|0            S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'caplen5', (4,), 4)]
+  push3|300|0            S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (5,), 3)]
+  push3|300|1            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push3|300|1            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push3|300|1            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push3|300|1            S160   len(odds_idx(zip_add(ys, xs)))                     [('len', 'sign', (0,), 1)]
+  push3|300|1            S206   inc_all(shift1(half_all(filter_pos(xs))))          [('inc_all', 'sign', (0,), 2), ('filter_pos', 'caplen5', (4,), 0)]
+  push3|300|1            S279   inc_all(map_adj_sub(map_adj_min(filter_neg(xs))))  [('inc_all', 'sign', (0,), 2)]
+  push3|300|2            S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push3|300|2            S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push3|300|2            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push3|1000|2           S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|100|0     S41    filter_neg(dec_all(map_adj_min(xs)))               [('filter_neg', 'caplen5', (3,), 3)]
+  push2+strat1|100|0     S43    add(last(xs), count_distinct(ys))                  [('add', 'sign', (-1, 1), 0), ('add', 'isempty', (False, False), True)]
+  push2+strat1|100|0     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0)]
+  push2+strat1|100|0     S80    filter_neg(odds_idx(dec_all(map_adj_sub(xs))))     [('filter_neg', 'caplen5', (3,), 3)]
+  push2+strat1|100|0     S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2+strat1|100|1     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|100|1     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat1|100|1     S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'sign', (2, 3), 2), ('running_sum', 'order', (2,), 0)]
+  push2+strat1|100|1     S76    dec(count_even(sort_desc(shift1(xs))))             [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|1     S81    dec(count_even(evens_idx(sq_all(xs))))             [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|1     S88    dec(sum(init(xs)))                                 [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|1     S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 0)]
+  push2+strat1|100|1     S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1), ('running_sum', 'order', (2,), 0)]
+  push2+strat1|100|1     S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2+strat1|100|1     S151   dec(count_even(take3(drop2(xs))))                  [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|1     S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 1), 2)]
+  push2+strat1|100|1     S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('map_adj_add', 'order', (0,), 3), ('running_sum', 'order', (3,), 1)]
+  push2+strat1|100|1     S252   dec(count_pos(map_adj_max(map_adj_max(xs))))       [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|2     S37    zip_add(xs, filter_even(abs_all(xs)))              [('filter_even', 'caplen5', (4,), 0), ('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|100|2     S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'order', (0, 0), 2), ('take_n', 'caplen5', (0, 2), 1)]
+  push2+strat1|100|2     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat1|100|2     S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0)]
+  push2+strat1|100|2     S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 2), 2), ('zip_min', 'order', (2, 1), 3)]
+  push2+strat1|100|2     S74    filter_pos(evens_idx(sort(xs)))                    [('filter_pos', 'caplen5', (4,), 3)]
+  push2+strat1|100|2     S76    dec(count_even(sort_desc(shift1(xs))))             [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|2     S81    dec(count_even(evens_idx(sq_all(xs))))             [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|2     S88    dec(sum(init(xs)))                                 [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|2     S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (5,), 1), ('filter_neg', 'caplen5', (4,), 1)]
+  push2+strat1|100|2     S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2+strat1|100|2     S151   dec(count_even(take3(drop2(xs))))                  [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|100|2     S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'caplen5', (4,), 4)]
+  push2+strat1|100|2     S178   filter_pos(tail(map_adj_sub(xs)))                  [('filter_pos', 'caplen5', (4,), 3)]
+  push2+strat1|100|2     S222   concat(map_adj_max(xs), abs_all(xs))               [('concat', 'order', (2, 2), 0)]
+  push2+strat1|100|2     S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 3), ('zip_max', 'order', (0, 1), 0)]
+  push2+strat1|100|2     S252   dec(count_pos(map_adj_max(map_adj_max(xs))))       [('dec', 'isempty', (False,), True), ('dec', 'sign', (1,), 0)]
+  push2+strat1|300|0     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|300|1     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|300|1     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0)]
+  push2+strat1|300|1     S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push2+strat1|300|1     S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2+strat1|300|2     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|300|2     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat1|1000|0    S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|1000|0    S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0)]
+  push2+strat1|1000|1    S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat1|1000|1    S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat1|1000|2    S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0)]
+  push2+strat2|100|0     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2)]
+  push2+strat2|100|0     S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'lenmod2', (0, 0), 1)]
+  push2+strat2|100|0     S43    add(last(xs), count_distinct(ys))                  [('add', 'sign', (-1, 1), 0), ('add', 'isempty', (False, False), True)]
+  push2+strat2|100|0     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat2|100|0     S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (5,), 1)]
+  push2+strat2|100|0     S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2+strat2|100|0     S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (3, 3), 2), ('zip_min', 'order', (2, 0), 0)]
+  push2+strat2|100|0     S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'order', (0, 0), 2), ('zip_max', 'order', (2, 0), 2), ('zip_max', 'parity', (3, 3), 2)]
+  push2+strat2|100|0     S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (5,), 3)]
+  push2+strat2|100|1     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push2+strat2|100|1     S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'lenmod2', (0, 0), 1)]
+  push2+strat2|100|1     S43    add(last(xs), count_distinct(ys))                  [('add', 'sign', (-1, 1), 0), ('add', 'isempty', (False, False), True)]
+  push2+strat2|100|1     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat2|100|1     S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push2+strat2|100|1     S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  push2+strat2|100|1     S149   add_k(dbl(len(ys)), xs)                            [('add_k', 'sign', (1, 3), 3)]
+  push2+strat2|100|1     S152   add_k(sq(count_pos(ys)), xs)                       [('add_k', 'sign', (1, 3), 3)]
+  push2+strat2|100|1     S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'order', (0, 0), 2), ('zip_max', 'parity', (3, 3), 2), ('zip_max', 'parity', (1, 3), 2)]
+  push2+strat2|100|1     S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'sign', (3, 3), 1), ('zip_add', 'order', (1, 0), 0)]
+  push2+strat2|100|2     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat2|100|2     S43    add(last(xs), count_distinct(ys))                  [('add', 'sign', (-1, 1), 0), ('add', 'isempty', (False, False), True)]
+  push2+strat2|100|2     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat2|100|2     S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  push2+strat2|100|2     S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (5,), 1)]
+  push2+strat2|100|2     S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (3, 3), 2)]
+  push2+strat2|100|2     S149   add_k(dbl(len(ys)), xs)                            [('add_k', 'sign', (1, 3), 3)]
+  push2+strat2|100|2     S152   add_k(sq(count_pos(ys)), xs)                       [('add_k', 'sign', (1, 3), 3)]
+  push2+strat2|300|1     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  push2+strat2|300|2     S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat2|300|2     S43    add(last(xs), count_distinct(ys))                  [('add', 'sign', (-1, 1), 0), ('add', 'isempty', (False, False), True)]
+  push2+strat2|300|2     S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat2|300|2     S149   add_k(dbl(len(ys)), xs)                            [('add_k', 'sign', (1, 3), 3)]
+  push2+strat2|300|2     S152   add_k(sq(count_pos(ys)), xs)                       [('add_k', 'sign', (1, 3), 3)]
+  push2+strat2|1000|0    S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat2|1000|2    S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat2|1000|2    S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  push2+strat2|3000|1    S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  push2+strat2|3000|1    S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0)]
+  hand|100|0             S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'order', (2, 3), 3), ('zip_add', 'sign', (1, 2), 0)]
+  hand|100|0             S54    filter_pos(shift1(map_adj_add(running_min(xs))))   [('filter_pos', 'caplen5', (2,), 2)]
+  hand|100|0             S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'order', (2, 1), 2), ('running_sum', 'order', (2,), 1)]
+  hand|100|0             S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 1)]
+  hand|100|0             S100   running_sum(running_sum(dec_all(xs)))              [('running_sum', 'order', (2,), 1)]
+  hand|100|0             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  hand|100|0             S180   filter_even(filter_pos(evens_idx(xs)))             [('filter_pos', 'caplen5', (2,), 2)]
+  hand|100|0             S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'order', (1, 1), 2)]
+  hand|100|0             S214   map_adj_sub(odds_idx(map_adj_mul(xs)))             [('map_adj_sub', 'sign', (2,), 1), ('map_adj_mul', 'order', (2,), 2)]
+  hand|100|0             S216   sum(evens_idx(inc_all(xs)))                        [('sum', 'sign', (3,), 0)]
+  hand|100|0             S224   map_adj_mul(shift1(map_adj_max(sq_all(xs))))       [('map_adj_mul', 'order', (2,), 2)]
+  hand|100|0             S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'parity', (3, 3), 2), ('filter_pos', 'caplen5', (2,), 2), ('zip_max', 'parity', (1, 3), 2)]
+  hand|100|0             S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  hand|100|0             S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'sign', (2,), 1), ('map_adj_sub', 'order', (2,), 1)]
+  hand|100|1             S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('filter_even', 'caplen5', (4,), 3), ('zip_sub', 'order', (0, 1), 1), ('evens_idx', 'order', (0,), 3)]
+  hand|100|1             S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'sign', (1, 2), 0)]
+  hand|100|1             S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2), ('take_n', 'parity', (1, 3), 1)]
+  hand|100|1             S60    head(half_all(init(xs)))                           [('head', 'sign', (1,), 0), ('head', 'isempty', (False,), True)]
+  hand|100|1             S63    zip_min(ys, filter_neg(neg_all(xs)))               [('filter_neg', 'caplen5', (4,), 2), ('zip_min', 'order', (2, 1), 3)]
+  hand|100|1             S71    take3(concat(ys, filter_odd(xs)))                  [('take3', 'parity', (3,), 1)]
+  hand|100|1             S74    filter_pos(evens_idx(sort(xs)))                    [('filter_pos', 'caplen5', (4,), 2)]
+  hand|100|1             S78    filter_odd(running_sum(half_all(inc_all(xs))))     [('filter_odd', 'caplen5', (4,), 1), ('filter_odd', 'caplen5', (4,), 3), ('half_all', 'order', (2,), 3)]
+  hand|100|1             S118   filter_neg(tail(map_adj_mul(xs)))                  [('filter_neg', 'caplen5', (4,), 2)]
+  hand|100|1             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  hand|100|1             S131   concat(odds_idx(map_adj_add(xs)), ys)              [('concat', 'order', (3, 2), 2)]
+  hand|100|1             S160   len(odds_idx(zip_add(ys, xs)))                     [('len', 'sign', (0,), 1), ('zip_add', 'order', (0, 0), 1)]
+  hand|100|1             S178   filter_pos(tail(map_adj_sub(xs)))                  [('map_adj_sub', 'sign', (2,), 2), ('filter_pos', 'caplen5', (4,), 2)]
+  hand|100|1             S205   head(tail(init(map_adj_min(xs))))                  [('head', 'isempty', (False,), True)]
+  hand|100|1             S206   inc_all(shift1(half_all(filter_pos(xs))))          [('inc_all', 'sign', (0,), 2), ('filter_pos', 'caplen5', (4,), 0)]
+  hand|100|1             S216   sum(evens_idx(inc_all(xs)))                        [('sum', 'isempty', (False,), True), ('sum', 'sign', (3,), 0), ('evens_idx', 'sign', (1,), 0)]
+  hand|100|1             S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  hand|100|1             S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'sign', (2,), 2), ('filter_pos', 'caplen5', (4,), 0), ('filter_pos', 'caplen5', (4,), 2)]
+  hand|100|1             S279   inc_all(map_adj_sub(map_adj_min(filter_neg(xs))))  [('inc_all', 'sign', (0,), 2)]
+  hand|100|2             S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('zip_sub', 'order', (0, 1), 1), ('filter_even', 'caplen5', (4,), 2), ('evens_idx', 'order', (0,), 3)]
+  hand|100|2             S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0), ('zip_add', 'order', (0, 1), 1)]
+  hand|100|2             S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'order', (0, 0), 2)]
+  hand|100|2             S55    sub(count_pos(xs), count_pos(ys))                  [('sub', 'sign', (1, 1), 0), ('sub', 'isempty', (False, False), True)]
+  hand|100|2             S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'order', (0, 1), 2), ('running_sum', 'order', (2,), 1)]
+  hand|100|2             S78    filter_odd(running_sum(half_all(inc_all(xs))))     [('filter_odd', 'caplen5', (5,), 2), ('filter_odd', 'caplen5', (4,), 2), ('half_all', 'order', (2,), 3)]
+  hand|100|2             S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 1)]
+  hand|100|2             S100   running_sum(running_sum(dec_all(xs)))              [('running_sum', 'order', (2,), 1)]
+  hand|100|2             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  hand|100|2             S159   drop2(add_k(count_even(xs), xs))                   [('add_k', 'sign', (1, 1), 3), ('drop2', 'order', (0,), 2), ('add_k', 'sign', (1, 1), 1)]
+  hand|100|2             S214   map_adj_sub(odds_idx(map_adj_mul(xs)))             [('map_adj_sub', 'sign', (2,), 1)]
+  hand|100|2             S259   zip_max(filter_pos(abs_all(xs)), ys)               [('filter_pos', 'caplen5', (3,), 3), ('zip_max', 'order', (0, 0), 2)]
+  hand|100|2             S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 3)]
+  hand|100|2             S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'sign', (2,), 1)]
+  hand|300|0             S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  hand|300|0             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  hand|300|0             S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 2)]
+  hand|300|1             S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  hand|300|1             S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  hand|300|1             S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (4,), 2), ('dedup_adj', 'caplen5', (5,), 2)]
+  hand|300|2             S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('sq_all', 'order', (2,), 3), ('dedup_adj', 'caplen5', (5,), 3), ('dedup_adj', 'caplen5', (5,), 2)]
+  hand|1000|1            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  hand|1000|2            S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  scalemix|100|0         S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2), ('zip_add', 'sign', (1, 2), 0)]
+  scalemix|100|0         S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2)]
+  scalemix|100|0         S54    filter_pos(shift1(map_adj_add(running_min(xs))))   [('filter_pos', 'caplen5', (5,), 0), ('filter_pos', 'caplen5', (2,), 2)]
+  scalemix|100|0         S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'sign', (2, 3), 2), ('running_sum', 'order', (2,), 1), ('zip_mul', 'sign', (3, 2), 1)]
+  scalemix|100|0         S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 1)]
+  scalemix|100|0         S100   running_sum(running_sum(dec_all(xs)))              [('running_sum', 'order', (2,), 1)]
+  scalemix|100|0         S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 1)]
+  scalemix|100|0         S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  scalemix|100|0         S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (3, 3), 2), ('zip_min', 'parity', (1, 3), 3)]
+  scalemix|100|0         S155   filter_even(running_max(neg_all(take3(xs))))       [('filter_even', 'caplen5', (3,), 3)]
+  scalemix|100|0         S180   filter_even(filter_pos(evens_idx(xs)))             [('filter_pos', 'caplen5', (2,), 2)]
+  scalemix|100|0         S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4)]
+  scalemix|100|0         S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('running_sum', 'order', (3,), 1)]
+  scalemix|100|1         S11    half_all(tail(dbl_all(xs)))                        [('tail', 'order', (0,), 1)]
+  scalemix|100|1         S37    zip_add(xs, filter_even(abs_all(xs)))              [('filter_even', 'caplen5', (4,), 0), ('zip_add', 'sign', (1, 2), 0)]
+  scalemix|100|1         S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1), ('take_n', 'caplen5', (0, 4), 2), ('take_n', 'order', (0, 0), 1)]
+  scalemix|100|1         S41    filter_neg(dec_all(map_adj_min(xs)))               [('filter_neg', 'caplen5', (4,), 3)]
+  scalemix|100|1         S43    add(last(xs), count_distinct(ys))                  [('add', 'sign', (-1, 1), 0), ('add', 'isempty', (False, False), True)]
+  scalemix|100|1         S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  scalemix|100|1         S65    running_sum(zip_mul(xs, evens_idx(ys)))            [('zip_mul', 'order', (0, 2), 1), ('zip_mul', 'order', (2, 1), 2), ('running_sum', 'order', (2,), 1)]
+  scalemix|100|1         S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (2,), 1)]
+  scalemix|100|1         S100   running_sum(running_sum(dec_all(xs)))              [('running_sum', 'order', (2,), 1)]
+  scalemix|100|1         S118   filter_neg(tail(map_adj_mul(xs)))                  [('tail', 'order', (0,), 1), ('filter_neg', 'caplen5', (4,), 3)]
+  scalemix|100|1         S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  scalemix|100|1         S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (2, 1), 1), ('abs_all', 'order', (2,), 2)]
+  scalemix|100|1         S142   zip_min(dedup_adj(filter_neg(xs)), ys)             [('zip_min', 'parity', (3, 3), 2)]
+  scalemix|100|1         S172   filter_odd(map_adj_sub(inc_all(xs)))               [('filter_odd', 'caplen5', (4,), 4)]
+  scalemix|100|1         S181   filter_neg(half_all(drop2(tail(xs))))              [('filter_neg', 'caplen5', (4,), 3)]
+  scalemix|100|1         S186   zip_sub(filter_even(tail(ys)), xs)                 [('zip_sub', 'parity', (1, 3), 2), ('tail', 'order', (0,), 1)]
+  scalemix|100|1         S198   zip_max(xs, half_all(abs_all(xs)))                 [('zip_max', 'parity', (2, 1), 3)]
+  scalemix|100|1         S214   map_adj_sub(odds_idx(map_adj_mul(xs)))             [('map_adj_sub', 'sign', (2,), 1)]
+  scalemix|100|1         S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4)]
+  scalemix|100|1         S259   zip_max(filter_pos(abs_all(xs)), ys)               [('filter_pos', 'caplen5', (3,), 3), ('abs_all', 'order', (2,), 2), ('zip_max', 'parity', (1, 3), 2)]
+  scalemix|100|1         S262   sq_all(dedup_adj(running_min(dbl_all(xs))))        [('dedup_adj', 'caplen5', (4,), 2), ('sq_all', 'order', (2,), 2)]
+  scalemix|100|1         S264   map_adj_sub(shift1(filter_pos(xs)))                [('map_adj_sub', 'sign', (2,), 1)]
+  scalemix|100|1         S282   zip_add(ys, map_adj_min(tail(xs)))                 [('zip_add', 'order', (1, 0), 0), ('zip_add', 'parity', (3, 1), 2), ('tail', 'order', (0,), 1)]
+  scalemix|100|1         S295   count_pos(mul_k(last(xs), xs))                     [('count_pos', 'parity', (1,), 1)]
+  scalemix|100|2         S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('filter_even', 'order', (2,), 2), ('zip_sub', 'order', (0, 3), 2), ('zip_sub', 'parity', (3, 1), 1)]
+  scalemix|100|2         S38    take_n(count_even(inc_all(xs)), xs)                [('take_n', 'caplen5', (0, 2), 1)]
+  scalemix|100|2         S41    filter_neg(dec_all(map_adj_min(xs)))               [('filter_neg', 'caplen5', (3,), 3)]
+  scalemix|100|2         S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  scalemix|100|2         S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  scalemix|100|2         S80    filter_neg(odds_idx(dec_all(map_adj_sub(xs))))     [('filter_neg', 'caplen5', (3,), 3)]
+  scalemix|100|2         S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2)]
+  scalemix|100|2         S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2), ('running_sum', 'order', (3,), 1)]
+  scalemix|100|2         S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (2, 1), 1), ('zip_max', 'sign', (1, 3), 1), ('zip_max', 'sign', (1, 3), 3)]
+  scalemix|100|2         S176   drop2(sort(sq_all(dec_all(xs))))                   [('drop2', 'order', (1,), 1), ('sq_all', 'order', (1,), 0)]
+  scalemix|100|2         S196   dedup_adj(evens_idx(sq_all(tail(xs))))             [('dedup_adj', 'caplen5', (2,), 1)]
+  scalemix|100|2         S198   zip_max(xs, half_all(abs_all(xs)))                 [('zip_max', 'parity', (2, 1), 3)]
+  scalemix|100|2         S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4), ('zip_max', 'order', (0, 1), 0)]
+  scalemix|100|2         S242   dedup_adj(map_adj_mul(running_min(odds_idx(xs))))  [('dedup_adj', 'caplen5', (2,), 1)]
+  scalemix|100|2         S249   running_sum(sort(map_adj_add(sq_all(xs))))         [('running_sum', 'order', (3,), 1)]
+  scalemix|100|2         S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'parity', (3, 3), 2), ('abs_all', 'order', (1,), 0)]
+  scalemix|100|2         S294   zip_mul(xs, dbl_all(map_adj_add(xs)))              [('zip_mul', 'order', (0, 3), 1)]
+  scalemix|300|0         S37    zip_add(xs, filter_even(abs_all(xs)))              [('zip_add', 'order', (0, 0), 2)]
+  scalemix|300|0         S259   zip_max(filter_pos(abs_all(xs)), ys)               [('zip_max', 'order', (0, 0), 2)]
+  scalemix|300|0         S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0)]
+  scalemix|300|1         S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  scalemix|300|1         S124   take3(sort_desc(abs_all(shift1(xs))))              [('take3', 'order', (2,), 3)]
+  scalemix|300|1         S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4)]
+  scalemix|300|2         S33    filter_even(zip_sub(ys, evens_idx(xs)))            [('zip_sub', 'order', (0, 3), 2)]
+  scalemix|300|2         S62    sq_all(running_max(inc_all(xs)))                   [('sq_all', 'order', (1,), 0)]
+  scalemix|300|2         S97    running_sum(dec_all(running_min(xs)))              [('running_sum', 'order', (3,), 2)]
+  scalemix|300|2         S101   running_sum(running_min(tail(xs)))                 [('running_sum', 'order', (3,), 2)]
+  scalemix|300|2         S141   abs_all(zip_max(filter_neg(xs), ys))               [('zip_max', 'order', (2, 1), 1), ('abs_all', 'order', (1,), 0), ('zip_max', 'order', (1, 2), 2)]
+  scalemix|300|2         S176   drop2(sort(sq_all(dec_all(xs))))                   [('drop2', 'order', (1,), 1), ('sq_all', 'order', (1,), 0)]
+  scalemix|300|2         S226   filter_pos(zip_max(xs, running_sum(xs)))           [('filter_pos', 'caplen5', (4,), 4)]
+  scalemix|300|2         S288   concat(map_adj_mul(half_all(xs)), xs)              [('concat', 'order', (3, 2), 0)]
+  scalemix|1000|0        S63    zip_min(ys, filter_neg(neg_all(xs)))               [('zip_min', 'order', (2, 1), 3)]
+  NOTE old-iid|100|0: lost with a clean reference path: ['S177']
+  NOTE iid|100|0: lost with a clean reference path: ['S189', 'S285']
+
+Occupied buckets for the stratified rules (list / int), smallest reservoir:
+  strat1|100|0           buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|100|1           buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|100|2           buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|300|0           buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|300|1           buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|300|2           buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|1000|0          buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|1000|1          buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|1000|2          buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|3000|0          buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|3000|1          buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat1|3000|2          buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  strat2|100|0           buckets {'L': 134, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|100|1           buckets {'L': 134, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|100|2           buckets {'L': 134, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|300|0           buckets {'L': 134, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|300|1           buckets {'L': 134, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|300|2           buckets {'L': 134, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|1000|0          buckets {'L': 135, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|1000|1          buckets {'L': 135, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|1000|2          buckets {'L': 135, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|3000|0          buckets {'L': 137, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|3000|1          buckets {'L': 137, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  strat2|3000|2          buckets {'L': 136, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|100|0     buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|100|1     buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|100|2     buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|300|0     buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|300|1     buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|300|2     buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|1000|0    buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|1000|1    buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|1000|2    buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|3000|0    buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|3000|1    buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat1|3000|2    buckets {'L': 22, 'I': 10}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|100|0     buckets {'L': 137, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|100|1     buckets {'L': 137, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|100|2     buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|300|0     buckets {'L': 138, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|300|1     buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|300|2     buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|1000|0    buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|1000|1    buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|1000|2    buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|3000|0    buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|3000|1    buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+  push2+strat2|3000|2    buckets {'L': 140, 'I': 35}  min distinct values {'L': 1, 'I': 1}
+
+total wall 3049 s
+
+real	50m49.506s
+user	338m6.926s
+sys	0m35.175s

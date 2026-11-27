@@ -1,0 +1,9 @@
+# SBCL 2.6.4.debian, 32 rows of fixnums per column
+FULL         448.7 live bytes per entry  (200000 entries, table count 200000)
+COLONLY      331.7 live bytes per entry  (200000 entries, table count 200000)
+HASHONLY      27.5 live bytes per entry  (200000 entries, table count 200000)
+RECORD        91.7 live bytes per entry  (200000 entries, table count 200000)
+
+real	0m3.839s
+user	0m2.752s
+sys	0m0.103s

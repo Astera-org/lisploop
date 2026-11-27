@@ -1,0 +1,10 @@
+=== Cold-bootstrapping library/*.sexp batteries ===
+[bootstrap] Saved ALGEBRA              -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/algebra.sexp (12 entries, 0 specs)
+[bootstrap] Saved ARITHMETIC           -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/arithmetic.sexp (8 entries, 8 specs)
+[bootstrap] Saved CONSTRUCTORS         -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/constructors.sexp (6 entries, 3 specs)
+[bootstrap] Saved FUNCTORS             -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/functors.sexp (10 entries, 6 specs)
+[bootstrap] Saved DESCRIPTORS          -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/descriptors.sexp (8 entries, 0 specs)
+[bootstrap] Saved SEQUENCES            -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/sequences.sexp (9 entries, 6 specs)
+[bootstrap] Saved SCANS                -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/scans.sexp (2 entries, 2 specs)
+[bootstrap] Saved SEQUENCE-SHIFT       -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/bootstrap/../library/sequence-shift.sexp (6 entries, 6 specs)
+=== Bootstrap complete in 0.44 s ===

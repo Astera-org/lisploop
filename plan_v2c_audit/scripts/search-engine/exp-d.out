@@ -1,0 +1,108 @@
+[v2 obs] L1 slack=26 flags=NIL: BOUNDED-EXHAUSTION work=141501 wall=0.00s syntax=468 records=468 buckets=38
+[v2 obs] L1 slack=26 flags=(:PRUNE-BEHAVIORS-P T): BOUNDED-EXHAUSTION work=12555 wall=0.00s syntax=38 records=38 buckets=38
+[v2 obs] L1 slack=26 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=5360 wall=0.00s syntax=38 records=38 buckets=38
+   same behaviour set plain/pruned: T   plain/pruned+columnar: T
+[v2 obs] L1 slack=30 flags=NIL: BOUNDED-EXHAUSTION work=1412531 wall=0.04s syntax=3788 records=3788 buckets=109
+[v2 obs] L1 slack=30 flags=(:PRUNE-BEHAVIORS-P T): BOUNDED-EXHAUSTION work=45249 wall=0.00s syntax=109 records=109 buckets=109
+[v2 obs] L1 slack=30 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=18244 wall=0.00s syntax=109 records=109 buckets=109
+   same behaviour set plain/pruned: T   plain/pruned+columnar: T
+[v2 obs] L1 slack=36 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=27851 wall=0.00s syntax=143 records=143 buckets=143
+[v2 obs] L1 slack=42 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=122725 wall=0.01s syntax=502 records=502 buckets=502
+[v2 obs] L1 slack=48 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=419973 wall=0.03s syntax=1509 records=1509 buckets=1509
+[v2 obs] L2 slack=24 flags=NIL: BOUNDED-EXHAUSTION work=522971 wall=0.01s syntax=1899 records=1704 buckets=91
+[v2 obs] L2 slack=24 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=18443 wall=0.00s syntax=103 records=91 buckets=91
+[v2 obs] L2 slack=36 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=194315 wall=0.02s syntax=568 records=545 buckets=545
+[v2 search] L1 (x+y)^2+y slack=40 flags=NIL: BOUNDED-EXHAUSTION work=8904757 wall=0.36s syntax=65180 rejected=65172 results=8 best=(APP
+                                                                                                                                    (OP
+                                                                                                                                     +
+                                                                                                                                     INT)
+                                                                                                                                    (VAR
+                                                                                                                                     1
+                                                                                                                                     INT)
+                                                                                                                                    (APP
+                                                                                                                                     (OP
+                                                                                                                                      *
+                                                                                                                                      INT)
+                                                                                                                                     (APP
+                                                                                                                                      (OP
+                                                                                                                                       +
+                                                                                                                                       INT)
+                                                                                                                                      (VAR
+                                                                                                                                       0
+                                                                                                                                       INT)
+                                                                                                                                      (VAR
+                                                                                                                                       1
+                                                                                                                                       INT))
+                                                                                                                                     (APP
+                                                                                                                                      (OP
+                                                                                                                                       +
+                                                                                                                                       INT)
+                                                                                                                                      (VAR
+                                                                                                                                       0
+                                                                                                                                       INT)
+                                                                                                                                      (VAR
+                                                                                                                                       1
+                                                                                                                                       INT)))) first-work=2136907
+[v2 search] L1 (x+y)^2+y slack=40 flags=(:PRUNE-BEHAVIORS-P T): BOUNDED-EXHAUSTION work=98107 wall=0.01s syntax=388 rejected=387 results=1 best=(APP
+                                                                                                                                                 (OP
+                                                                                                                                                  +
+                                                                                                                                                  INT)
+                                                                                                                                                 (VAR
+                                                                                                                                                  1
+                                                                                                                                                  INT)
+                                                                                                                                                 (APP
+                                                                                                                                                  (OP
+                                                                                                                                                   *
+                                                                                                                                                   INT)
+                                                                                                                                                  (APP
+                                                                                                                                                   (OP
+                                                                                                                                                    +
+                                                                                                                                                    INT)
+                                                                                                                                                   (VAR
+                                                                                                                                                    0
+                                                                                                                                                    INT)
+                                                                                                                                                   (VAR
+                                                                                                                                                    1
+                                                                                                                                                    INT))
+                                                                                                                                                  (APP
+                                                                                                                                                   (OP
+                                                                                                                                                    +
+                                                                                                                                                    INT)
+                                                                                                                                                   (VAR
+                                                                                                                                                    0
+                                                                                                                                                    INT)
+                                                                                                                                                   (VAR
+                                                                                                                                                    1
+                                                                                                                                                    INT)))) first-work=49880
+[v2 search] L1 (x+y)^2+y slack=40 flags=(:PRUNE-BEHAVIORS-P T :COLUMNAR-P T): BOUNDED-EXHAUSTION work=72786 wall=0.01s syntax=388 rejected=387 results=1 best=(APP
+                                                                                                                                                               (OP
+                                                                                                                                                                +
+                                                                                                                                                                INT)
+                                                                                                                                                               (VAR
+                                                                                                                                                                1
+                                                                                                                                                                INT)
+                                                                                                                                                               (APP
+                                                                                                                                                                (OP
+                                                                                                                                                                 *
+                                                                                                                                                                 INT)
+                                                                                                                                                                (APP
+                                                                                                                                                                 (OP
+                                                                                                                                                                  +
+                                                                                                                                                                  INT)
+                                                                                                                                                                 (VAR
+                                                                                                                                                                  0
+                                                                                                                                                                  INT)
+                                                                                                                                                                 (VAR
+                                                                                                                                                                  1
+                                                                                                                                                                  INT))
+                                                                                                                                                                (APP
+                                                                                                                                                                 (OP
+                                                                                                                                                                  +
+                                                                                                                                                                  INT)
+                                                                                                                                                                 (VAR
+                                                                                                                                                                  0
+                                                                                                                                                                  INT)
+                                                                                                                                                                 (VAR
+                                                                                                                                                                  1
+                                                                                                                                                                  INT)))) first-work=30841
+exit=0

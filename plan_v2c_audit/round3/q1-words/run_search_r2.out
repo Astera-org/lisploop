@@ -1,0 +1,200 @@
+# 60 tasks, 20 vocabularies, tables from 2000 probes per operator (seed 0); setup 39.6 s
+search wall 353.6 s
+
+vocabulary                                                  K entries miss  aud  cand_lib  cand_rnd    min    max   store  store_j1
+main|pairs|K=3|compcap                                      3    2014    0    1    11.24x    10.89x    2.8   48.4   2.08x     3.54x
+main|pairs|K=6|compcap                                      6    3484    0    2    13.87x    13.85x    3.6   54.1   2.08x     6.51x
+main|pairs|K=10|compcap                                    10    6177    0    6    14.94x    14.97x    4.2   54.4   2.08x     7.53x
+main|pairs|K=6|nmi=0.50|compcap                             6    4251    1    5    12.25x    12.28x    2.8   50.3   2.09x     6.69x
+main|pairs|K=6|nmi=0.80|compcap                             6    3598    3   10    12.38x    10.59x    3.2   49.0   2.17x     3.29x
+main|pairs|K=6|card=4|compcap                               6    1873    0    1     8.74x     6.79x    3.5   23.1   2.13x     2.29x
+nolib_fold|pairs|K=6|compcap                                6    3113    0    4    13.47x    13.55x    3.7   49.1   2.08x     4.79x
+nolib|pairs|K=6|compcap                                     6    3195    0    2    11.88x    11.71x    3.1   47.4   2.12x     3.42x
+nolib_fold|pairs<=11|K=6                                    6    3500    0    2    12.72x    12.20x    3.1   53.6   2.24x     4.34x
+nolib_fold|pairs<=11|K=10                                  10    5814    0    4    14.21x    14.02x    4.5   54.2   2.24x     5.23x
+nolib_fold|pairs<=11|K=6|compcap                            6    3311    3    6    12.68x    12.63x    3.1   53.3   2.03x     6.07x
+main|pairs|K=6|compcap|bool-list                            6     912    0    0     6.14x     4.26x    2.1    8.0   1.98x     1.99x
+main|nopairs|K=6|bool-info                                  6     951    0    0     8.01x     6.63x    2.8   31.1   1.53x     2.01x
+main|pairs|K=6|bool-info                                    6     951    0    0     5.30x     3.78x    1.5   11.7   1.65x     1.81x
+hand6|all four multi-valued -> Boolean (info)               6     864    0    0     9.24x     7.72x    3.1   25.7   1.89x     3.05x
+reviewer [3] NMI-selected six, int side trivial             6    1884    3    6     9.66x     9.85x    2.6   53.9   1.93x     5.22x
+reviewer [3] NMI-selected six, int side sgn / mod 2 / sgn   6    2070    3    6    15.99x    16.32x    4.1   54.1   2.32x     8.84x
+reviewer [2] six length variants, int side trivial          6    2088    0    1     6.26x     5.39x    2.6   22.5   1.89x     1.89x
+@hand6                                                      6    1736    0    2    15.31x    15.78x    3.9   50.9   2.32x     8.37x
+@types                                                      1      61    0    0     1.83x     1.66x    1.0    3.4   1.14x     1.14x
+
+columns: K = words; entries = verb-table rows; miss = tasks NOT found at the size plain search
+finds them (answers lost); aud = tasks whose reference program uses a transition absent from the
+tables; cand_lib = geometric mean of plain (library order) / filtered (soft operator order);
+cand_rnd = geometric mean of plain / filtered, both averaged over random operator orders, all
+deepening passes counted (the figure quoted as 15.7x for the hand list); store = ratio of classes
+stored below the last level; store_j1 = the same with a one-step look-ahead.
+LOST under main|pairs|K=6|nmi=0.50|compcap: ['Ma2 map_adj_sub(inc_all(map_adj_max(reverse(xs))))']
+LOST under main|pairs|K=6|nmi=0.80|compcap: ['Ma1 map_adj_sub(running_min(zip_max(xs, ys)))', 'X23 map_adj_mul(half_all(inc_all(map_adj_add(xs))))', 'X39 map_adj_max(map_adj_max(sq_all(xs)))']
+LOST under nolib_fold|pairs<=11|K=6|compcap: ['Ma1 map_adj_sub(running_min(zip_max(xs, ys)))', 'Ma2 map_adj_sub(inc_all(map_adj_max(reverse(xs))))', 'X38 map_adj_sub(running_max(zip_sub(ys, xs)))']
+LOST under reviewer [3] NMI-selected six, int side trivial: ['X6 evens_idx(sq_all(running_max(xs)))', 'X23 map_adj_mul(half_all(inc_all(map_adj_add(xs))))', 'X39 map_adj_max(map_adj_max(sq_all(xs)))']
+LOST under reviewer [3] NMI-selected six, int side sgn / mod 2 / sgn: ['X6 evens_idx(sq_all(running_max(xs)))', 'X23 map_adj_mul(half_all(inc_all(map_adj_add(xs))))', 'X39 map_adj_max(map_adj_max(sq_all(xs)))']
+
+main|pairs|K=3|compcap:
+     (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) | int: (sgn (abs v))
+     (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))
+     (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) | int: (sgn (abs v))
+
+main|pairs|K=6|compcap:
+     (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) | int: (sgn (abs v))
+     (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))
+     (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) | int: (sgn (abs v))
+     (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs)))) | int: (sgn (abs v))
+     (pair (sgn (head (dec_all xs))) (sgn (head (inc_all xs)))) | int: (sgn (abs v))
+     (count_distinct (map_adj_mul (map_adj_sub (sort xs)))) | int: (mod 1 (abs (dec v)))
+
+main|pairs|K=10|compcap:
+     (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) | int: (sgn (abs v))
+     (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))
+     (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) | int: (sgn (abs v))
+     (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs)))) | int: (sgn (abs v))
+     (pair (sgn (head (dec_all xs))) (sgn (head (inc_all xs)))) | int: (sgn (abs v))
+     (count_distinct (map_adj_mul (map_adj_sub (sort xs)))) | int: (mod 1 (abs (dec v)))
+     (count_distinct (map_adj_max (map_adj_min (abs_all xs)))) | int: (mod 1 (abs (dec v)))
+     (pair (count_pos (take2 (map_adj_max xs))) (sgn (min_el (map_adj_max xs)))) | int: (pair (< 1 v) (< v 0))
+     (pair (count_distinct (running_max (take2 xs))) (sgn (head (map_adj_add xs)))) | int: (sgn (abs v))
+     (pair (mod (head xs) 4) (sgn (count_even (take2 xs)))) | int: (sgn (abs v))
+
+main|pairs|K=6|nmi=0.50|compcap:
+     (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) | int: (sgn (abs v))
+     (pair (count_pos (running_max (take2 xs))) (sgn (min_el (take2 xs)))) | int: (sgn (abs v))
+     (pair (len (take3 (filter_neg xs))) (sgn (count_pos (dec_all xs)))) | int: (sgn (abs v))
+     (pair (count_even (running_sum (take2 xs))) (count_even (take2 (inc_all xs)))) | int: (sgn (abs v))
+     (pair (sgn (min_el (abs_all xs))) (sgn (sum (map_adj_add xs)))) | int: (sgn (abs v))
+     (pair (= 1 (count_even xs)) (len (take3 (filter_odd xs)))) | int: (sgn (abs v))
+
+main|pairs|K=6|nmi=0.80|compcap:
+     (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) | int: (sgn (abs v))
+     (pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))
+     (pair (count_distinct (take3 xs)) (count_distinct (take3 (init xs)))) | int: (sgn (abs v))
+     (min 5 (dec (count_distinct xs))) | int: (sgn (abs v))
+     (min 5 (count_distinct (drop2 xs))) | int: (mod 1 (abs (dec v)))
+     (count_distinct (map_adj_mul (evens_idx (sort xs)))) | int: (mod 1 (abs (dec v)))
+
+main|pairs|K=6|card=4|compcap:
+     (pair (< 4 (len xs)) (len (take2 (map_adj_add xs)))) | int: (< v (sq v))
+     (pair (sgn (len xs)) (< 5 (len xs))) | int: (sgn (abs v))
+     (mod (len (map_adj_add xs)) 4) | int: (sgn (abs v))
+     (pair (= 1 (len xs)) (mod (len xs) 3)) | int: (pair (= 1 v) (sgn (abs v)))
+     (count_distinct (odds_idx (odds_idx (running_max xs)))) | int: (pair (< 3 v) (< v 0))
+     (mod 5 (len (map_adj_add xs))) | int: (pair (sgn (abs v)) (< 5 (dec v)))
+
+nolib_fold|pairs|K=6|compcap:
+     (pair (min 5 (len xs)) (mod (len xs) 3)) | int: (sgn (abs v))
+     (pair (sgn (head xs)) (all (min x 0) xs)) | int: (sgn (abs v))
+     (pair (all x xs) (< 5 (count x xs))) | int: (pair (< 5 v) (< 1 (neg v)))
+     (mod (count x xs) 5) | int: (sgn (abs v))
+     (pair (mod (head xs) 4) (sgn (abs (last xs)))) | int: (sgn (abs v))
+     (pair (all (dec x) xs) (all (inc x) xs)) | int: (pair (= 1 v) (= 1 (abs v)))
+
+nolib|pairs|K=6|compcap:
+     (pair (min 5 (len xs)) (mod (len xs) 3)) | int: (sgn (abs v))
+     (pair (sgn (head xs)) (sgn (abs (last xs)))) | int: (sgn (abs v))
+     (pair (mod (head xs) 2) (mod (head xs) 3)) | int: (sgn (abs v))
+     (pair (= 5 (head xs)) (mod (head xs) 5)) | int: (sgn (abs v))
+     (min 5 (abs (head xs))) | int: (sgn (abs v))
+     (sgn (mod 2 (head xs))) | int: (pair (sgn (abs v)) (< 2 (neg v)))
+
+nolib_fold|pairs<=11|K=6:
+     (pair (min 4 (len xs)) (mod 5 (dec (len xs)))) | int: (sgn (abs v))
+     (pair (< (head xs) 0) (min 3 (len xs))) | int: (sgn (abs v))
+     (pair (min 3 (len xs)) (mod (head xs) 2)) | int: (sgn (abs v))
+     (pair (all (add x 5) xs) (sgn (dec (dec (len xs))))) | int: (pair (< v (sq v)) (= 5 (neg v)))
+     (pair (all x xs) (sgn (dec (len xs)))) | int: (sgn (abs v))
+     (pair (all (inc x) xs) (sgn (dec (len xs)))) | int: (sgn (abs v))
+
+nolib_fold|pairs<=11|K=10:
+     (pair (min 4 (len xs)) (mod 5 (dec (len xs)))) | int: (sgn (abs v))
+     (pair (< (head xs) 0) (min 3 (len xs))) | int: (sgn (abs v))
+     (pair (min 3 (len xs)) (mod (head xs) 2)) | int: (sgn (abs v))
+     (pair (all (add x 5) xs) (sgn (dec (dec (len xs))))) | int: (pair (< v (sq v)) (= 5 (neg v)))
+     (pair (all x xs) (sgn (dec (len xs)))) | int: (sgn (abs v))
+     (pair (all (inc x) xs) (sgn (dec (len xs)))) | int: (sgn (abs v))
+     (pair (min 3 (len xs)) (sgn (mod (head xs) 3))) | int: (sgn (abs v))
+     (pair (sgn (dec (len xs))) (all (sub x 5) xs)) | int: (sgn (abs v))
+     (pair (< (head xs) 0) (sgn (sub 5 (len xs)))) | int: (pair (< 4 v) (< v 0))
+     (pair (min 3 (len xs)) (< 3 (abs (head xs)))) | int: (sgn (abs v))
+
+nolib_fold|pairs<=11|K=6|compcap:
+     (pair (min 4 (len xs)) (mod 5 (dec (len xs)))) | int: (sgn (abs v))
+     (pair (all (mod x 2) xs) (any (mod x 2) xs)) | int: (sgn (abs v))
+     (pair (all (min x 0) xs) (any (min x 0) xs)) | int: (sgn (abs v))
+     (pair (all x xs) (sgn (head xs))) | int: (sgn (abs v))
+     (pair (all (mod 1 x) xs) (mod (count x xs) 4)) | int: (sgn (abs v))
+     (pair (mod (head xs) 3) (all (mod x 3) xs)) | int: (sgn (abs v))
+
+main|pairs|K=6|compcap|bool-list:
+     (in (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) {(0,1) (0,0)}) | int: (sgn (abs v))
+     (in (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) {(1,1) (0,0)}) | int: (sgn (abs v))
+     (in (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) {(0,0)}) | int: (sgn (abs v))
+     (in (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs)))) {(0,0)}) | int: (sgn (abs v))
+     (in (pair (sgn (head (dec_all xs))) (sgn (head (inc_all xs)))) {(0,0)}) | int: (sgn (abs v))
+     (in (count_distinct (map_adj_mul (map_adj_sub (sort xs)))) {0}) | int: (mod 1 (abs (dec v)))
+
+main|nopairs|K=6|bool-info:
+     (in (min 5 (dec (len xs))) {0 2 1 -1}) | int: (sgn (abs v))
+     (in (mod (len (map_adj_add xs)) 3) {1}) | int: (sgn (abs v))
+     (in (sgn (min_el (inc_all (dbl_all xs)))) {1 0}) | int: (sgn (abs v))
+     (in (sgn (head (inc_all (dbl_all xs)))) {-1 0}) | int: (sgn (abs v))
+     (in (sgn (max_el (inc_all (dbl_all xs)))) {-1 0}) | int: (sgn (abs v))
+     (in (len (drop2 (odds_idx (map_adj_add xs)))) {1 5 2 3 4}) | int: (pair (< 1 (neg v)) (< 5 (dec v)))
+
+main|pairs|K=6|bool-info:
+     (in (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) {(0,1) (1,1) (1,0) (0,0)}) | int: (sgn (abs v))
+     (in (pair (len (take3 xs)) (< (head xs) 0)) {(1,1) (2,0) (1,0) (0,0) (2,1)}) | int: (sgn (abs v))
+     (in (pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs)))) {(1,1) (2,1) (0,0)}) | int: (sgn (abs v))
+     (in (pair (len (take3 xs)) (count_even (evens_idx (take2 xs)))) {(1,0) (2,1) (1,1) (0,0) (2,0)}) | int: (sgn (abs v))
+     (in (pair (len (odds_idx (evens_idx xs))) (mod 2 (count_pos xs))) {(0,0)}) | int: (sgn (mod 1 (dec v)))
+     (in (pair (len (take3 xs)) (count_pos (tail (take2 xs)))) {(1,0) (2,1) (0,0) (2,0)}) | int: (sgn (abs v))
+
+hand6|all four multi-valued -> Boolean (info):
+     sign in [0, 1, 2]
+     parity in [0, 1, 2]
+     order in [3]
+     caplen5 in [0, 1, 2, 3]
+     lenmod2
+     isempty
+
+reviewer [3] NMI-selected six, int side trivial:
+     reviewer len_cap6 | int: trivial
+     reviewer all_even | int: trivial
+     reviewer all_nonneg | int: trivial
+     reviewer is_sorted | int: trivial
+     reviewer max_le_2 | int: trivial
+     reviewer has_zero | int: trivial
+
+reviewer [3] NMI-selected six, int side sgn / mod 2 / sgn:
+     reviewer len_cap6 | int: trivial
+     reviewer all_even | int: (mod v 2)
+     reviewer all_nonneg | int: (sgn v)
+     reviewer is_sorted | int: trivial
+     reviewer max_le_2 | int: (< 2 v)
+     reviewer has_zero | int: (sgn (abs v))
+
+reviewer [2] six length variants, int side trivial:
+     reviewer len_cap6 | int: trivial
+     reviewer len_cap5 | int: trivial
+     reviewer len_cap4 | int: trivial
+     reviewer len_mod3 | int: trivial
+     reviewer len_cap3 | int: trivial
+     reviewer len_mod2 | int: trivial
+
+@hand6:
+     sign
+     parity
+     order
+     caplen5
+     lenmod2
+     isempty
+
+@types:
+     type
+
+real	5m53.992s
+user	21m43.150s
+sys	0m3.232s

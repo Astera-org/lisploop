@@ -1,0 +1,37 @@
+# Q3: G1 = {+,-,*,neg} over x, y, 0, 1; 32 rows, x,y in [-9,9], seed 1
+abstract domains: F_2 on rows [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] (16 states), F_3 on rows [0, 1, 2, 3] (81 states), F_5 on rows [0, 1, 2] (125 states)
+closure + operation tables + forward DP for the three domains: 106.8 ms (once per row set)
+A2   (x+x)*(y+1)              size found  7 | plain:      2047 cands,     127 stored, 0.00s | colhom: found=True N_min=6 cum 37 (last pass 26), stored 14, lookups 780, search 0.00s + DP 0.023s
+A3   x*y + x - y              size found  7 | plain:       860 cands,     127 stored, 0.00s | colhom: found=True N_min=7 cum 17 (last pass 17), stored 12, lookups 255, search 0.00s + DP 0.023s
+A4   (x+y)*(x-y) + 1          size found  9 | plain:      6101 cands,     595 stored, 0.01s | colhom: found=True N_min=7 cum 81 (last pass 70), stored 36, lookups 3487, search 0.00s + DP 0.028s
+A8   (x+y)^2 - x*y + 1        size found 11 | plain:     35601 cands,    3147 stored, 0.06s | colhom: found=True N_min=7 cum 662 (last pass 457), stored 127, lookups 59353, search 0.05s + DP 0.024s
+A11  (x*y + x + 1)*(y - x)    size found 11 | plain:     68023 cands,    3147 stored, 0.11s | colhom: found=True N_min=5 cum 2766 (last pass 1756), stored 378, lookups 161997, search 0.13s + DP 0.019s
+A12  2*(x^2 + y^2) - x*y      size found 13 | plain:    439253 cands,   17609 stored, 0.63s | colhom: found=True N_min=5 cum 10086 (last pass 6613), stored 1208, lookups 917180, search 0.72s + DP 0.023s
+
+== Table: candidates evaluated until the target is found, and classes stored below the last level ==
+     target                    sz      plain   stored |     colhom   (1 pass)  stored cand gain  RAM gain | plain ms  scan ms  join ms  lookups  w/ join |  per-row RAM gain
+A2   (x+x)*(y+1)                7       2047      127 |         37         26      14     55.3x      9.1x |      3.3     24.2     25.7      780      560 |        -        -
+A3   x*y + x - y                7        860      127 |         17         17      12     50.6x     10.6x |      1.4     23.2     24.8      255      132 |        -        -
+A4   (x+y)*(x-y) + 1            9       6101      595 |         81         70      36     75.3x     16.5x |      9.5     30.9     33.7     3487     2480 |        -        -
+A8   (x+y)^2 - x*y + 1         11      35601     3147 |        662        457     127     53.8x     24.8x |     58.5     70.7     57.6    59353    34253 |        -        -
+A11  (x*y + x + 1)*(y - x)     11      68023     3147 |       2766       1756     378     24.6x      8.3x |    114.1    146.4     90.3   161997    78916 |        -        -
+A12  2*(x^2 + y^2) - x*y       13     439253    17609 |      10086       6613    1208     43.6x     14.6x |    630.4    742.4    412.3   917180   470854 |        -        -
+
+== Variant: abstract filter BEFORE evaluation on the last level only (below it: evaluate, then discard) ==
+     target                        plain |        cum   (1 pass)  stored cand gain  (1 pass)
+A2   (x+x)*(y+1)                    2047 |        382        280      14      5.4x      7.3x
+A3   x*y + x - y                     860 |        110        110      12      7.8x      7.8x
+A4   (x+y)*(x-y) + 1                6101 |       1424       1308      36      4.3x      4.7x
+A8   (x+y)^2 - x*y + 1             35601 |      11815       9260     127      3.0x      3.8x
+A11  (x*y + x + 1)*(y - x)         68023 |      28681      18424     378      2.4x      3.7x
+A12  2*(x^2 + y^2) - x*y          439253 |     152244      96802    1208      2.9x      4.5x
+
+colhom = all iterative-deepening passes from N_min to the size found; (1 pass) = last pass alone;
+scan ms / join ms = search (best of 3) + backward DP for this target, testing every pair of abstract
+buckets / using the last-level join; lookups = abstract bucket-pair tests; the one-off cost of the
+domains (closure, tables, forward DP) is NOT included; per-row = candidate gain with the same primes
+applied to single rows (0 one-row domains).
+
+real	0m8.892s
+user	0m8.875s
+sys	0m0.014s

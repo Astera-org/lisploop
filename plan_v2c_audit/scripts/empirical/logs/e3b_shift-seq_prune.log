@@ -1,0 +1,96 @@
+E3b target=SHIFT-SEQ mode=prune inputs=2 rows=13 operators=26 literals=(2 0 1) header=29 bits
+body syn_cum    syn_new    behav_cum    work_cum     w/syn    x_syn    x_work   x_behav  cpu_s     work/s      cand/s   
+   3          6          6            6          204     34.0    0.000    2.615    0.000      0.00     204000.     6000.
+       tried=6 column-cache-entries=6 dyn_MiB=41.
+   6          7          1            7          326     46.6    1.167    1.156    1.167      0.00     326000.     7000.
+       tried=7 column-cache-entries=7 dyn_MiB=41.
+   7          8          1            8          371     46.4    1.143    1.138    1.143      0.00     371000.     8000.
+       tried=8 column-cache-entries=8 dyn_MiB=41.
+  11          9          1            9          581     64.6    1.125    1.148    1.125      0.00     581000.     9000.
+       tried=9 column-cache-entries=9 dyn_MiB=41.
+  12         15          6           15          862     57.5    1.667    1.484    1.667      0.00     862000.    15000.
+       tried=25 column-cache-entries=25 dyn_MiB=41.
+  15         21          6           21         1921     91.5    1.400    1.759    1.400      0.00    1921000.    21000.
+       tried=69 column-cache-entries=69 dyn_MiB=41.
+  16         27          6           27         2333     86.4    1.286    1.214    1.286      0.00    2333000.    27000.
+       tried=85 column-cache-entries=85 dyn_MiB=41.
+  17         35          8           35         9201    262.9    1.296    3.944    1.296      0.00    6897301.    26237.
+       tried=98 column-cache-entries=98 dyn_MiB=41.
+  18         40          5           40         9816    245.4    1.143    1.067    1.143      0.00    5005609.    20398.
+       tried=124 column-cache-entries=124 dyn_MiB=42.
+  19         42          2           42        10452    248.9    1.050    1.065    1.050      0.00    5034682.    20231.
+       tried=144 column-cache-entries=144 dyn_MiB=42.
+  20         46          4           46        11295    245.5    1.095    1.081    1.095      0.00    4891728.    19922.
+       tried=160 column-cache-entries=160 dyn_MiB=42.
+  21         63         17           63        13896    220.6    1.370    1.230    1.370      0.00    4627373.    20979.
+       tried=261 column-cache-entries=261 dyn_MiB=42.
+  23         65          2           65        15265    234.8    1.032    1.053    1.032      0.00    4552639.    19386.
+       tried=282 column-cache-entries=282 dyn_MiB=43.
+  24         86         21           86        20122    234.0    1.323    1.318    1.323      0.00    4528922.    19356.
+       tried=490 column-cache-entries=490 dyn_MiB=43.
+  25        112         26          112        23845    212.9    1.302    1.185    1.302      0.01    4352866.    20445.
+       tried=634 column-cache-entries=634 dyn_MiB=44.
+  26        123         11          123        26124    212.4    1.098    1.096    1.098      0.01    4566335.    21500.
+       tried=650 column-cache-entries=650 dyn_MiB=44.
+  27        151         28          151        31461    208.4    1.228    1.204    1.228      0.01    4680303.    22464.
+       tried=860 column-cache-entries=860 dyn_MiB=45.
+  28        163         12          163        37341    229.1    1.079    1.187    1.079      0.01    4893330.    21360.
+       tried=1074 column-cache-entries=1074 dyn_MiB=46.
+  29        188         25          188        43741    232.7    1.153    1.171    1.153      0.01    4981323.    21410.
+       tried=1260 column-cache-entries=1260 dyn_MiB=46.
+  30        251         63          251        59226    236.0    1.335    1.354    1.335      0.01    5107010.    21644.
+       tried=1790 column-cache-entries=1790 dyn_MiB=48.
+  31        297         46          297       103244    347.6    1.183    1.743    1.183      0.02    6196003.    17824.
+       tried=1972 column-cache-entries=1972 dyn_MiB=51.
+  32        333         36          333       111313    334.3    1.121    1.078    1.121      0.02    5076295.    15186.
+       tried=2242 column-cache-entries=2242 dyn_MiB=54.
+  33        365         32          365       139871    383.2    1.096    1.257    1.096      0.03    5197733.    13564.
+       tried=3271 column-cache-entries=3271 dyn_MiB=57.
+  34        440         75          440       176482    401.1    1.205    1.262    1.205      0.03    5333555.    13297.
+       tried=4163 column-cache-entries=4163 dyn_MiB=60.
+  35        512         72          512       196943    384.7    1.164    1.116    1.164      0.04    5425726.    14105.
+       tried=4358 column-cache-entries=4358 dyn_MiB=62.
+  36        686        174          686       236764    345.1    1.340    1.202    1.340      0.04    5378922.    15585.
+       tried=5822 column-cache-entries=5822 dyn_MiB=67.
+  37        744         58          744       282819    380.1    1.085    1.195    1.085      0.05    5617284.    14777.
+       tried=7317 column-cache-entries=7317 dyn_MiB=71.
+  38        846        102          846       317716    375.6    1.137    1.123    1.137      0.06    5620805.    14967.
+       tried=8322 column-cache-entries=8322 dyn_MiB=75.
+  39       1135        289         1135       398729    351.3    1.342    1.255    1.342      0.07    5776756.    16444.
+       tried=10882 column-cache-entries=10882 dyn_MiB=82.
+  40       1433        298         1433       489270    341.4    1.263    1.227    1.263      0.08    6026383.    17650.
+       tried=12523 column-cache-entries=12523 dyn_MiB=89.
+  41       1711        278         1711       569075    332.6    1.194    1.163    1.194      0.10    5954785.    17904.
+       tried=14479 column-cache-entries=14479 dyn_MiB=98.
+  42       1907        196         1907       714257    374.5    1.115    1.255    1.115      0.12    6049027.    16150.
+       tried=18962 column-cache-entries=18962 dyn_MiB=111.
+  43       2285        378         2285       917200    401.4    1.198    1.284    1.198      0.15    6316543.    15736.
+       tried=23702 column-cache-entries=23702 dyn_MiB=127.
+  44       2886        601         2886      1079425    374.0    1.263    1.177    1.263      0.17    6403461.    17121.
+       tried=26269 column-cache-entries=26269 dyn_MiB=140.
+  45       4030       1144         4030      1583253    392.9    1.396    1.467    1.396      0.27    5811020.    14791.
+       tried=34657 column-cache-entries=34657 dyn_MiB=93.
+  46       4344        314         4344      1903478    438.2    1.078    1.202    1.078      0.33    5762074.    13150.
+       tried=42385 column-cache-entries=42385 dyn_MiB=127.
+  47       4836        492         4836      2144471    443.4    1.113    1.127    1.113      0.37    5834009.    13156.
+       tried=48691 column-cache-entries=48691 dyn_MiB=147.
+  48       6410       1574         6410      2781920    434.0    1.325    1.297    1.325      0.45    6219611.    14331.
+       tried=63760 column-cache-entries=63760 dyn_MiB=197.
+  49       8429       2019         8429      3490686    414.1    1.315    1.255    1.315      0.58    6047923.    14604.
+       tried=77415 column-cache-entries=77415 dyn_MiB=168.
+  50       9817       1388         9817      3992615    406.7    1.165    1.144    1.165      0.66    6074802.    14937.
+       tried=90275 column-cache-entries=90275 dyn_MiB=216.
+  51      11180       1363        11180      4837079    432.7    1.139    1.212    1.139      0.82    5910417.    13661.
+       tried=112493 column-cache-entries=112493 dyn_MiB=201.
+  52      13710       2530        13710      6004934    438.0    1.226    1.241    1.226      0.96    6233278.    14231.
+       tried=139504 column-cache-entries=139504 dyn_MiB=280.
+  53      17490       3780        17490      7143963    408.5    1.276    1.190    1.276      1.16    6165105.    15094.
+       tried=163605 column-cache-entries=163605 dyn_MiB=296.
+  54      23290       5800        23290      9488713    407.4    1.332    1.328    1.332      1.71    5557411.    13641.
+       tried=212668 column-cache-entries=212668 dyn_MiB=284.
+  55      26120       2830        26120     11591247    443.8    1.122    1.222    1.122      2.03    5714241.    12877.
+       tried=250825 column-cache-entries=250825 dyn_MiB=378.
+  56      30043       3923        30043     13456777    447.9    1.150    1.161    1.150      2.34    5758883.    12857.
+       tried=294840 column-cache-entries=294840 dyn_MiB=437.
+STOP body=56 cpu_s=2.34 syntax=30043 work=13456777 results=0
+PROCESS rc=0

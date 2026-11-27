@@ -1,0 +1,10 @@
+MAP-ADJACENT   grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=    8 nogoods=  0 reused=  0 bits=NIL 4.6s
+POSITIONS      grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=  205 nogoods=  0 reused=  0 bits=NIL 5.6s
+SCAN           grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=    8 nogoods=  0 reused=  0 bits=NIL 4.7s
+SHIFT-SEQ      grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   3 msgs=   10 nogoods=  0 reused=  0 bits=NIL 5.0s
+BEST-SHIFT     grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=    7 nogoods=  0 reused=  0 bits=NIL 4.7s
+MAP-ADJACENT   grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=    8 nogoods=  0 reused=  0 bits=NIL 4.9s
+POSITIONS      grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=  205 nogoods=  0 reused=  0 bits=NIL 5.3s
+SCAN           grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=    8 nogoods=  0 reused=  0 bits=NIL 5.0s
+SHIFT-SEQ      grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   3 msgs=   10 nogoods=  0 reused=  0 bits=NIL 5.5s
+BEST-SHIFT     grammar=whitelist schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=   2 msgs=    7 nogoods=  0 reused=  0 bits=NIL 5.6s

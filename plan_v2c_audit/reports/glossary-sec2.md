@@ -1,0 +1,81 @@
+# Glossary entries from §2, §3 and Appendix A
+
+Format: term | one-sentence definition | section that defines it or first uses it.
+
+- frame | The kernel's table of problem rows, each row holding a key, the known inputs, and a requirement on the unknown. | §2.1
+- requirement | A Boolean expression over the single unknown `x0` that says which values a row allows. | §2.1
+- `pairs`, `anchors`, `edges` | Three additions to the frame: links between rows whose values should agree, rows whose values should differ, and typed links (equal, distinct, or neighbours in an order). | §2.1
+- pullback | Turning a requirement on a whole program into a requirement on a missing part of it, by substituting the known outer part (the decoder) into the requirement. | §2.1
+- decoder | The outer part of a program that is already known, with the place of the missing part left open. | §2.1
+- lift (in the kernel) | Pullback when the missing part is a function that the decoder calls, such as the argument of `map`; the code also uses the word for three other operations. | §2.1, §2.2
+- `coupled` | The list in which the kernel returns, beside a frame, constraints that join several unknowns and that the frame cannot hold. | §2.1
+- snapshot | A copy of a frame that the kernel takes before starting a resumable computation, such as a search, on it. | §2.1
+- `lift-frame` | The host function that expands a decoder symbolically to reach the calls of an unknown function, building and then discarding an implicit execution graph. | §2.1
+- solver | A library entry that computes an unknown argument of an operator from its other arguments and its result. | §2.1
+- object language | The small language of the programs that the kernel synthesizes and that its VM runs. | §2.2
+- host | Common Lisp, the language the kernel itself is written in; an operation that exists only in the host is out of reach of synthesized programs. | §2.2
+- v1 | The root kernel, as distinct from the copy in `v2/`. | §2.2, §2.3
+- `iota` | A primitive, absent from v1, that produces the index list 0, 1, …. | §2.2
+- fiber | The set of inputs that give one output (a preimage); in the code the word also names a class of rows and the child rows of one parent row. | §2.2, defined in words §2.8
+- anti-unification | The operation that finds the most specific pattern several expressions share, with holes where they differ. | first used §2.2; defined §2.5
+- reentrancy | The kernel applying its own search to its own programs and records ("freely shifting abstraction level"). | §2.2
+- proposal generator | A host function that suggests one way to decompose a sub-problem into smaller ones. | §2.2, defined §2.3
+- spec | One function that the bootstrap asks the kernel to synthesize, given as a few rows of inputs and outputs. | §2.3
+- work unit | The kernel's unit of search effort: the cheapest VM instruction costs one, larger arguments cost more, and host work is charged in the same units. | §2.3
+- recursion-synthesis job | The kernel's full search for one recursive function: a tree of sub-problems, each searched, with every candidate checked on all of the spec's rows. | §2.3
+- flat search (flat exact search) | A single bottom-up enumeration over one table of rows, with no sub-problems. | §2.3
+- the kernel's first search phase ("Stage A" in the code) | The search that runs first inside each sub-problem, pricing small programs by their bits plus the bits to correct their errors, on a budget of its own; not Stage A of this plan. | §2.3
+- schema | A hand-written skeleton of a recursive program, supplied for one function. | §2.3
+- whitelist | The list of operators that the author allows the search to use for one spec. | §2.3
+- full grammar | Every operator the kernel has, including the library functions defined so far, with no whitelist. | §2.3
+- held-out-sound | Said of a solution that is also right on fresh inputs that were not among the spec's rows. | §2.3
+- impostor | A program that fits the spec's rows and is wrong on fresh inputs. | §2.3
+- bit bound | The largest program size, in bits of the kernel's code for programs, that enumeration may reach. | §2.3
+- sub-problem | A node of the search tree: the spec at the root, or a smaller problem that a decomposition of its parent produced. | §2.3
+- lockstep | The second built-in recursion form, which walks two sequences in step. | §2.3
+- body bit | One bit of a program's body, not counting its header. | §2.3
+- lane | One of the two or three sub-problems of a job, each with its own flat enumeration, served by the scheduler in turns. | §2.3
+- AST node | One node of a program's syntax tree, about 6–7 bits. | §2.3
+- behavioural duplicate | An enumerated expression that gives the same outputs on the spec's rows as one built earlier. | §2.3
+- behaviour pruner | The dormant v2 option that drops a candidate whose outputs on every row equal those of a candidate already kept. | §2.3
+- columnar evaluator | The dormant v2 option that computes a new expression's outputs on all rows at once from the stored output columns of its parts. | §2.3
+- reflection | The kernel reading the record of its own searches and acting on it. | §2.3, §2.6
+- GF(3) | The finite field of the integers modulo 3. | §2.4
+- battery | One of the eight files of library entries that the bootstrap script builds. | §2.4
+- shape filter (`law-operator-fact`) | The host function that keeps a discovered equation only if it is commutativity, associativity, or identity. | §2.4
+- knowledge kind | One of 14 labels (such as `:law` or `:solver`) on the single record type that holds every library entry. | §2.4
+- operator fact | An edge recording that an operator is commutative, associative, or has an identity. | §2.4
+- star (of laws) | The set of tested laws that make an operator associative with an identity on both sides. | §2.4
+- fold motif | The library law that `foldr` and `foldl` agree when their step is an operator with such a star of laws. | §2.4
+- dependency test | A check of whether one quantity depends on another; the kernel's only one is `target-sensitive-p`, which only tests reach. | §2.4 (the plan's own dependency test is defined in §5.3)
+- `:spec` entry | A library entry that holds a spec's example rows and its whitelist. | §2.5
+- seed function | One of the six first-order list functions the bootstrap synthesizes first, so that anti-unification can derive `:map` and `:foldr` from them. | §2.5
+- answer term (witness in the code) | The expression of a solver that computes the unknown from the known values. | §2.5
+- atom | One symbol or number of the printed expression; a literal counts as two. | §2.5
+- leaf (found at a leaf) | The expression that the winning sub-problem's own search produced, as opposed to the decoder skeleton around it. | §2.5
+- decoder skeleton | The part of an answer that the decoders of a proposal generator or schema supplied, rather than enumeration. | §2.5
+- type signature | The input and output types of a function; anti-unification compares only functions with the same one. | §2.5
+- used for lifting (library) | Proposing a library function that takes a function argument as the outer part of an answer, and searching only for that argument. | §2.5
+- answer key | The hand-written library files that defined 21 of the entries before the bootstrap re-derived them. | §2.5
+- trace-complete rows | Example rows that are the execution trace of the intended program, including intermediate accumulator states. | §2.5
+- message | A short record that the search emits for one event, such as a sub-problem prepared or a candidate rejected. | §2.6
+- trace | A job's log of each turn of its scheduler. | §2.6
+- predictor | A learned correction, clamped to a fixed range, added to the priority of each sub-problem. | §2.6
+- nogood | A record that one choice of decomposition merged rows that need different outputs, so that the same choice can be refused later. | §2.6
+- residual | The information still needed to reconstruct a target after a model has accounted for part of it. | §2.7
+- frame metric | An expression over two values, attached to a frame, that prices a correction and cannot depend on the row. | §2.7
+- ambient and induced pricing | Pricing in the original space of the root problem, as against pricing in a space derived from it. | §2.7
+- name bits | The bits that the kernel's code for programs spends to name an operator, set by the operator's position in a list. | §2.7
+- work tariff (price list for work) | The table of how many work units each VM operation is charged. | §2.7
+- metric decoder | An invertible operator that applies a change to a value, paired with the solver that finds the change, so that distance is the bits of the change. | §2.7
+- counting identity | H(X) = H(f(X)) + E log|fiber|: the bits of an input equal the bits of its output plus the bits that say which member of the fiber it was. | §2.8
+- section | A choice of one member of the fiber for each row. | §2.8
+- uniqueness law | A law certifying that a fiber has only one member. | §2.8
+- conjunctive-query matching | Finding where a pattern that is a conjunction of relations holds, as a database query with joins does; hard in pattern size and polynomial for acyclic patterns. | §2.8
+- explanation-based generalization | Replacing by variables the parts of a problem that a successful derivation never depended on. | §2.8
+- Stage 0, Stage 1 of the v2 plans | The first two stages of the earlier v2 plans; Stage 1's code is the work in `v2/`. | §2.9
+- execution graph | Which value came from which values, by which operator, on which row. | §3
+- equivalence graph | Which expressions agree with which, on which rows. | §3
+- derivation graph | Which sub-problem came from which, by which move, and what came back. | §3
+- milestone code | The code in the kernel's `milestones/` directory, which includes the guard and solver discovery that Appendix A refers to. | Appendix A
+- observation engine | The kernel's search that runs every enumerated expression on every row and groups expressions by their results. | Appendix A (described in §2.4)

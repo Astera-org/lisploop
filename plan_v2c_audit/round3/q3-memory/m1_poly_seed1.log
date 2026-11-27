@@ -1,0 +1,80 @@
+# M1 polynomials: 32 rows, x,y in [-9,9], seed 1; domains F_2 x12 rows (16 states), F_3 x4 (81), F_5 x3 (125)
+
+== Table 1. Six targets, size GIVEN (one pass at the true size; the last size is not stored) ==
+      sz | (a) plain       | (b) bank only          | (c) test first  |  gain (b)  gain (c) |   KB (a)   KB (b)   KB (c) |  x (b)  x (c)
+         |    seen    bank |    seen    bank    sum |    seen    bank |      seen      seen |   python   python   python |  bytes  bytes
+A2     7 |     127     127 |      75      14     89 |      14      14 |      1.7x      9.1x |     90.4     46.8      8.0 |   1.9x  11.2x
+A3     7 |     127     127 |      60      12     72 |      12      12 |      2.1x     10.6x |     90.4     38.8      9.0 |   2.3x  10.0x
+A4     9 |     595     595 |     363      36    399 |      36      36 |      1.6x     16.5x |    450.3    272.4     22.0 |   1.7x  20.5x
+A8    11 |    3147    3147 |    2118     127   2245 |     127     127 |      1.5x     24.8x |   2517.7   1712.4     88.9 |   1.5x  28.3x
+A11   11 |    3147    3147 |    2777     378   3155 |     378     378 |      1.1x      8.3x |   2517.7   2235.5    289.2 |   1.1x   8.7x
+A12   13 |   17609   17609 |   13815    1208  15023 |    1208    1208 |      1.3x     14.6x |  14999.6  11794.3    906.3 |   1.3x  16.5x
+
+   model bytes (SBCL: stored class 449 B, column in the dedupe table only 332 B):
+   A2    (a)      57.0 KB  (b)      26.5 KB  (c)      6.3 KB   gain (b)  2.1x  (c)   9.1x   | tracemalloc live KB: (a)     93.8 (b)     45.2 (c)     5.0  -> (b)  2.1x (c)  18.9x
+   A3    (a)      57.0 KB  (b)      21.3 KB  (c)      5.4 KB   gain (b)  2.7x  (c)  10.6x   | tracemalloc live KB: (a)     93.6 (b)     36.4 (c)     6.2  -> (b)  2.6x (c)  15.1x
+   A4    (a)     267.0 KB  (b)     124.6 KB  (c)     16.2 KB   gain (b)  2.1x  (c)  16.5x   | tracemalloc live KB: (a)    481.6 (b)    283.7 (c)    19.8  -> (b)  1.7x (c)  24.4x
+   A8    (a)    1412.1 KB  (b)     717.4 KB  (c)     57.0 KB   gain (b)  2.0x  (c)  24.8x   | tracemalloc live KB: (a)   2812.3 (b)   1837.1 (c)    88.8  -> (b)  1.5x (c)  31.7x
+   A11   (a)    1412.1 KB  (b)     965.4 KB  (c)    169.6 KB   gain (b)  1.5x  (c)   8.3x   | tracemalloc live KB: (a)   2812.3 (b)   2408.4 (c)   303.3  -> (b)  1.2x (c)   9.3x
+   A12   (a)    7901.2 KB  (b)    4723.8 KB  (c)    542.0 KB   gain (b)  1.7x  (c)  14.6x   | tracemalloc live KB: (a)  17443.1 (b)  12892.5 (c)   979.2  -> (b)  1.4x (c)  17.8x
+
+   evaluations in that one pass: A2 plain 2461, (b) 362, (c) 362, (c') 26; A3 plain 2461, (b) 223, (c) 223, (c') 21; A4 plain 15128, (b) 2067, (c) 2067, (c') 74; A8 plain 95096, (b) 18329, (c) 18329, (c') 461; A11 plain 95096, (b) 42271, (c) 42271, (c') 1763; A12 plain 607110, (b) 235873, (c) 235873, (c') 6617
+
+== Table 2. Six targets, size UNKNOWN ==
+      sz Nmin | plain             | R + (b) bank only                 | R + (c) test first                | K: keep bank + cut records (labels after eval.)
+              |    below   at hit |    seen    bank    evals  x last |    seen    bank    evals  x last |    kept records    evals   re-ev  repl
+A2     7    6 |      127      420 |      75      14      468   1.37x |      14      14      468   1.37x |      14      61      371       5     0
+A3     7    7 |      127      177 |      60      12      112   1.00x |      12      12      112   1.00x |      12      48      112       0     0
+A4     9    7 |      595     1241 |     363      36     1430   1.09x |      36      36     1430   1.09x |      36     327     1330      18     0
+A8    11    7 |     3147     6750 |    2118     127    11959   1.29x |     127     127    11959   1.29x |     127    1991     9496      96    19
+A11   11    5 |     3147    12801 |    2777     378    42982   1.57x |     378     378    42982   1.57x |     378    2399    31529     345    11
+A12   13    5 |    17609    77032 |   13815    1208   229896   1.61x |    1208    1208   229896   1.61x |    1208   12607   178813     993   357
+
+   the same in bytes, and as gains over plain (plain = classes below the hit size):
+      |   plain KB   (at hit) |   R+(b) KB    gain |   R+(c) KB    gain |       K KB    gain || python KB:    plain    R+(b)    R+(c)        K
+A2    |       57.0      188.5 |       26.5    2.1x |        6.3    9.1x |       11.9    4.8x ||                90.4     46.8      8.0     22.4
+A3    |       57.0       79.4 |       21.3    2.7x |        5.4   10.6x |        9.8    5.8x ||                90.4     38.8      9.0     20.7
+A4    |      267.0      556.8 |      124.6    2.1x |       16.2   16.5x |       46.1    5.8x ||               450.3    272.4     22.0     92.5
+A8    |     1412.1     3028.7 |      717.4    2.0x |       57.0   24.8x |      239.6    5.9x ||              2517.7   1712.4     88.9    534.4
+A11   |     1412.1     5743.8 |      965.4    1.5x |      169.6    8.3x |      389.6    3.6x ||              2517.7   2235.5    289.2    800.9
+A12   |     7901.2    34564.3 |     4723.8    1.7x |      542.0   14.6x |     1698.1    4.7x ||             14999.6  11794.3    906.3   3876.5
+
+   evaluations until the hit: A2 plain 2047 (restarting plain 3368), R+(c) 468, R+(c') 37, K 371; A3 plain 860 (restarting plain 2181), R+(c) 112, R+(c') 17, K 112; A4 plain 6101 (restarting plain 14511), R+(c) 1430, R+(c') 81, K 1330; A8 plain 35601 (restarting plain 86549), R+(c) 11959, R+(c') 662, K 9496; A11 plain 68023 (restarting plain 118971), R+(c) 42982, R+(c') 2766, K 31529; A12 plain 439253 (restarting plain 752350), R+(c) 229896, R+(c') 10086, K 178813
+   peak over passes is reached in the last pass: True
+
+== Table 3. 100 random polynomial targets (written with 7-11 nodes; plain cap 11), by true size ==
+size    n | size given: gain in entries     | size unknown, R: gain           | K: gain                 | evaluations x last pass 
+          |  (b) seen  (c) seen (c) bytes | (b) model (c) model    (c) py |     model    rec/kept |   R (c)  R (c')       K
+   1    2 |      nanx      nanx     1.00x |      nanx      nanx     1.00x |      nanx         0.0 |   1.00x   1.00x   1.00x
+   2    2 |     1.00x     4.00x     1.91x |     1.24x     4.00x     1.91x |     2.48x         3.0 |   1.00x   1.00x   1.00x
+   3    9 |     1.27x     4.76x     2.77x |     1.56x     4.76x     2.77x |     3.02x         2.6 |   1.00x   1.00x   1.00x
+   4    7 |     2.21x     5.48x     4.24x |     2.62x     5.48x     4.24x |     4.20x         1.5 |   1.00x   1.00x   1.00x
+   5   30 |     1.81x     7.18x     6.02x |     2.24x     7.18x     6.02x |     4.44x         2.9 |   1.00x   1.01x   1.00x
+   6   10 |     2.90x    11.02x    10.79x |     3.58x    11.02x    10.79x |     6.97x         3.0 |   1.01x   1.02x   1.00x
+   7   25 |     1.61x     8.16x     8.70x |     2.03x     8.16x     8.70x |     4.43x         3.8 |   1.11x   1.19x   1.04x
+   8    3 |     2.53x    19.24x    20.83x |     3.26x    19.24x    20.83x |     8.14x         7.1 |   1.41x   1.31x   1.15x
+   9   10 |     1.30x    10.80x    12.35x |     1.68x    10.80x    12.35x |     4.27x         6.5 |   1.38x   1.34x   1.11x
+  10    2 |     2.18x    32.27x    36.67x |     2.88x    32.27x    36.67x |     8.43x        13.7 |   1.93x   1.64x   1.39x
+   targets of true size >= 7 (40): entries gain (b) 1.60x [1.00..4.54], (c) 10.0x [2.9..38.8]
+
+== Checks over all 106 targets (six + random) ==
+   found at the plain size: size given (b) 106 (c) 106 (c') 106; R (b) 106 (c) 106 (c') 106; K 106   of 106
+   bank of (b) identical to bank of (c), columns and sizes: 106 of 106
+   bank of (c') identical to bank of (c): 106 of 106
+   every kept class has the size plain search gives it: 106 of 106
+   kept set = exactly the plain classes with size + h <= N (no class lost through a cut argument): 106 of 106
+   policy K with a cut-set that carries no sizes: found at the plain size 106 of 106 (found later or not at all: []); targets with a kept class at a wrong size: 1
+   a column cut at its first test in a pass and kept at a later test in the same pass: (c) 0, (c') 0 times
+   len(seen) == len(bank) under (c): 106 of 106
+   policy K: kept sizes equal plain sizes 106 of 106; kept is a superset of the one-pass bank 106 of 106; records replaced by a SMALLER derivation found in a later pass: 414 (in 12 targets)
+   policy R peak is in the last pass: 106 of 106
+
+== Unsound labels (div and mod added; residues do not commute with them): 0 random targets, 0 with a label the tables know ==
+   bank of (b) identical to bank of (c): 0 of 0; a column cut at its first test and kept at a later one: 0 times; answers lost by (b) 0, by (c) 0
+   (the labels really are unsound here: the kept set differs from "plain classes with size + h <= N" on 0 of 0 targets; a kept class has a size other than its plain size on 0)
+
+total 247.9 s
+
+real	4m8.574s
+user	2m17.759s
+sys	0m0.395s

@@ -1,0 +1,23 @@
+b12_s11.json
+  lost by labels early: G10  dedup_adj(shift1(running_min(xs)))  n*=4 plain=16015 root_adm=False
+  steps out 1: label reachability rules out 43.3029% of classes on average (max 99.57%); n=102
+  steps out 2: label reachability rules out 0.0000% of classes on average (max 0.00%); n=80
+  steps out 3: label reachability rules out 0.0000% of classes on average (max 0.00%); n=30
+  skipped (answer of size < 3): [('G46', 'count_even(reverse(abs_all(xs)))', 2)]
+  true parents: DL rank within level and type: rank 1 in 37 of 102; within best 10 in 63
+  true parents whose residual Y - U is a constant or is itself a bank class (decode by look-up): 27 of 102; roots {'add': 6, 'dbl_all': 5, 'dbl': 5, 'dec': 3, 'sub': 3, 'dec_all': 2, 'min': 1, 'max': 1}
+  steps out 1: on-path class in the WORSE half of its level by DL in 18 of 102; in the best half in 84; exactly at the tie midpoint in 0
+  steps out 2: on-path class in the WORSE half of its level by DL in 27 of 80; in the best half in 53; exactly at the tie midpoint in 0
+  steps out 3: on-path class in the WORSE half of its level by DL in 8 of 30; in the best half in 22; exactly at the tie midpoint in 0
+b12_s12.json
+  lost by labels early: G18  zip_mul(odds_idx(xs), sort(xs))  n*=5 plain=311507 root_adm=False
+  lost by labels early: G35  evens_idx(concat(shift1(xs), xs))  n*=5 plain=318721 root_adm=False
+  steps out 1: label reachability rules out 47.3788% of classes on average (max 99.20%); n=99
+  steps out 2: label reachability rules out 0.0000% of classes on average (max 0.00%); n=77
+  steps out 3: label reachability rules out 0.0000% of classes on average (max 0.00%); n=22
+  skipped (answer of size < 3): [('G33', 'last(map_adj_min(reverse(running_max(xs))))', 2), ('G47', 'len(sq_all(dbl_all(running_sum(xs))))', 2), ('G91', 'len(reverse(dbl_all(xs)))', 2), ('G94', 'count_pos(running_min(filter_pos(xs)))', 2), ('G111', 'min_el(evens_idx(running_max(running_sum(xs))))', 2)]
+  true parents: DL rank within level and type: rank 1 in 33 of 99; within best 10 in 58
+  true parents whose residual Y - U is a constant or is itself a bank class (decode by look-up): 17 of 99; roots {'add': 6, 'dec': 4, 'dbl_all': 3, 'dbl': 2, 'inc': 1, 'dec_all': 1}
+  steps out 1: on-path class in the WORSE half of its level by DL in 23 of 99; in the best half in 76; exactly at the tie midpoint in 0
+  steps out 2: on-path class in the WORSE half of its level by DL in 32 of 77; in the best half in 44; exactly at the tie midpoint in 1
+  steps out 3: on-path class in the WORSE half of its level by DL in 5 of 22; in the best half in 15; exactly at the tie midpoint in 2

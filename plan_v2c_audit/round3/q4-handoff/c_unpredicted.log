@@ -1,0 +1,14 @@
+C. 234 ordinary tasks (b12_s11.json + b12_s12.json); six quotients; wall 142 s
+probes/kind/seed    unseen no writer path miss   lost | gain if found  sum-cost gain with 3:1 reserve reserve, no loss
+100/iid/0                0         0        99     26 |        16.6x           5.5x             1.7x            12.3x
+300/iid/0                0         0        29      7 |        16.0x           8.3x             3.2x            12.1x
+1000/iid/0               0         0         4      2 |        16.3x          14.2x             8.5x            12.1x
+2000/iid/0               0         0         5      3 |        16.3x          12.7x             6.6x            12.1x
+2000/iid/1               0         0         4      2 |        16.3x          14.2x             8.5x            12.1x
+2000/enriched/0          0         0         3      1 |        16.3x          14.3x             8.6x            12.1x
+
+lost tasks at 2,000 probes: G10 (plain cost 16015, misses ['dedup_adj:caplen5']); G18 (plain cost 311507, misses ['zip_mul:order']); G35 (plain cost 318721, misses ['evens_idx:caplen5'])
+path misses at 2,000 probes: 5 tasks; of these the search still found an answer in 2 (another program, or the miss is on a step the filter did not test)
+columns: "sum-cost gain" = total plain candidates / total candidates when a lost task is retried plain after the filtered passes;
+         "with 3:1 reserve" = the same under the reserve rule (found: 4/3 of the filtered cost; lost: 4x the plain cost);
+         "reserve, no loss" = what the reserve would cost if no task were lost (lost tasks priced as typical filtered ones).

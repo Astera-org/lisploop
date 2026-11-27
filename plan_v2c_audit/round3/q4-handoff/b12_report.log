@@ -1,0 +1,188 @@
+==============================================================================================================
+b12_s11.json: 119 tasks (seed 11, 2000 probes/op, iid); 1 skipped; plain found a shorter program than the reference on 28
+   n* (answer size): {5: 57, 4: 54, 3: 8};  operators: {4: 53, 3: 66};  target type: {'L': 63, 'I': 56};  wall 185 s
+   on-path classes (proper non-leaf subterms of the reference, 91 tasks): 212; missing from the bank: 0
+
+B1. Where the on-path class ranks among the bank classes of its own size level
+    percentile: 0 = closest to the target, 100 = farthest, 50 = a class drawn at random
+    steps out     n | DL, pool = same level, any type | DL, pool = same level and type  | L1 (same type, defined)   | L1 undefined for the on-path class
+                    |   mean median  <=10%    95% CI |   mean median  <=10%    95% CI |   mean median <=10%    n |
+    1           102 |   20.5    1.9    68%   14-26   |   20.1    3.5    58%   15-25   |   18.6    2.1   61%   59 | 42 of 102 (41%)
+    2            80 |   32.2   23.4    40%   26-39   |   32.6   35.0    34%   27-39   |   27.4   13.4   41%   17 | 59 of 80 (74%)
+    3            30 |   28.9   27.6    43%   20-38   |   34.3   35.8    40%   25-44   |    3.8    3.8  100%    2 | 27 of 30 (90%)
+    all         212 |   26.1    7.7    54%   22-30   |   26.8   13.3    46%   23-31   |   20.2    4.4   58%   78 | 128 of 212 (60%)
+    the same on-path classes where L1 is defined, against only the classes of the same type AND the
+    same list lengths as the target (a pool in which "similar size and shape" earns nothing):
+       steps out 1  n= 59   DL mean   21.1 (95% CI 14-29) median    5.9   L1 mean   18.6 median    2.1
+       steps out 2  n= 17   DL mean   26.7 (95% CI 15-39) median   18.8   L1 mean   27.4 median   13.4
+       steps out 3  n=  2   DL mean   16.3 (95% CI 8-25) median   16.3   L1 mean    3.8 median    3.8
+    same, split by whether the on-path class has the type of the target (DL, same level and type):
+       steps out 1, same type      n= 90  mean   16.1  median    1.9
+       steps out 1, other type     n= 12  mean   50.0  median   50.0
+       steps out 2, same type      n= 59  mean   26.4  median   12.5
+       steps out 2, other type     n= 21  mean   50.0  median   50.0
+       steps out 3, same type      n= 24  mean   30.3  median   11.7
+       steps out 3, other type     n=  6  mean   50.0  median   50.0
+    identity group-by (U1 regime 3 as the review states it): share of ALL bank classes for which
+    "Y is a function of U" holds on the 8 rows (zero residual): 53.8%;  on-path classes: 85.4%
+
+    Label reachability on the same classes (class kept iff size + label bound <= n*)
+    steps out     n | bank classes ruled out | on-path class ruled out  | DL rank needed to keep as many
+    1           102 | mean  43.3% med  45.2% |   0 of 102 ( 0.0%)       | DL cut at the same fraction loses 10 (10%)
+    2            80 | mean   0.0% med   0.0% |   0 of  80 ( 0.0%)       | DL cut at the same fraction loses 0 (0%)
+    3            30 | mean   0.0% med   0.0% |   0 of  30 ( 0.0%)       | DL cut at the same fraction loses 0 (0%)
+    one step out, the stronger test (some operator with this class as first argument may give the target labels):
+       rules out mean 88.9% of eligible classes;  the reference's own last step is rejected in 1 of 91 tasks;  every last step that hits is rejected in 1 of 119
+       a DL cut-off keeping the same fraction would lose the true parent in 47 of 102 (46%)
+       among the classes of its level and type that survive that test (median 31 classes), the true parent's DL percentile: mean   22.2 (95% CI 16-29), median    5.0, n=93
+
+B2. One step out: the true parent (argument of the reference root) against the classes of the
+    same size and type that carry the SAME label vector on every row and quotient ("bucket")
+    true parents: 102;  labels fail to separate (bucket > 1): 26 (25%);  bucket size median 1, mean 2.6, max 102
+    in those 26 cases, rank of the true parent inside its bucket by distance to the target:
+       DL  percentile mean   30.0 (95% CI 17-44), median    7.8, n=26 of 26 defined
+       L1  percentile mean   29.7 (95% CI 8-57), median    0.0, n=14 of 26 defined
+       DL strictly best in bucket: 12 of 26 (46%);  expected by chance 39%
+       other bucket members that also reach the target in one step (alternative parents): mean 0.04
+    with the review's two-word vocabulary only (sign and parity): bucket > 1 in 49 of 102 (48%), median bucket 1 classes;
+       true parent's DL percentile inside it: mean   19.5 (95% CI 12-28), median    0.0; strictly best in 28 of 49 (chance 24.0%)
+    by the kind of the root operator (all true parents; DL percentile within the same level and type,
+    and inside the bucket where the bucket has more than one member):
+       root operator                                           n  level pct bucket pct  best in bkt L1 defined
+       offset/scale (inc dec dbl neg add_k mul_k ...)         29       13.3       22.1       7/12          97%
+       reorder (sort sort_desc reverse shift1)                 5        2.2      100.0       0/1          100%
+       shape-changing list->list (filter tail take ...)       30       14.6       29.4       4/9            0%
+       running / zip (same length, new values)                 5        0.2          -       0/0          100%
+       reduction list->int                                    11       50.0       50.0       0/3            0%
+       int x int                                              22       30.1        0.0       1/1          100%
+    residual bucket regularity (labels of R = Y - U constant over rows), true parents, pool = same level and type:
+       residual defined for the true parent: 60 of 102;  all three value labels constant: 7;  share of the pool with all three constant: mean 0.4%
+       DL alone                                                mean pct   20.1  median    3.5  top-1%:  40%
+       regularity count first, then DL                         mean pct   23.7  median    2.5  top-1%:  44%
+       all-regular first, then DL                              mean pct   19.3  median    2.4  top-1%:  43%
+       plan 6.2: R constant or R a bank class first, then DL   mean pct   17.0  median    0.3  top-1%:  55%
+       regularity moved the true parent up in 24, down in 36, left it in place in 42 of 102
+         moved up:   roots {'add': 4, 'dbl': 3, 'sub': 2, 'dec_all': 2, 'neg_all': 2, 'mul': 1, 'half_all': 1, 'neg': 1}
+         moved down: roots {'sub': 4, 'max': 4, 'tail': 2, 'min': 2, 'half_all': 2, 'take2': 2, 'add': 2, 'map_adj_add': 2}
+
+B4. The order of the handoff
+  (a) the FINAL size level only, on the complete plain bank: candidates evaluated until the first hit
+      (classes expanded in the given order; geometric mean over tasks; "lost" = no hit survives)
+      no filter, random class order                                             37088  gain  1.00x  lost 0  beats random order on 0 of 119
+      no filter, DL order (residual late)                                         557  gain 66.56x  lost 0  beats random order on 101 of 119
+      no filter, L1 order (undefined last)                                        835  gain 44.40x  lost 0  beats random order on 91 of 119
+      no filter, regularity then DL                                               476  gain 77.95x  lost 0  beats random order on 101 of 119
+      no filter, label-mismatch count order (labels late, as a ranking)           599  gain 61.87x  lost 0  beats random order on 102 of 119
+      label filter, random order (labels late, as a filter)                        90  gain 414.11x  lost 1  beats random order on 0 of 119
+      label filter, then DL order (the review's stage 2 -> 3)                       9  gain 4269.46x  lost 1  beats random order on 90 of 119
+      label filter, then table-surprise order                                       5  gain 7517.94x  lost 1  beats random order on 112 of 119
+      label filter, then label-mismatch order                                      10  gain 3861.13x  lost 1  beats random order on 91 of 119
+      final level size: geometric mean 103330 candidates, 237 after the label filter (436.6x)
+      by answer size n*: n*=3: 8 tasks, last level 1290 candidates, all levels below 41;  n*=4: 54 tasks, last level 29584 candidates, all levels below 1366;  n*=5: 57 tasks, last level 625171 candidates, all levels below 35448
+  (b) the WHOLE search, every pass counted (geometric mean of candidates; answers lost)
+      plain                                                           44187   1.00x   lost 0
+      labels EARLY (filter during enumeration)                         2849  15.64x   lost 1 of 119
+      residual EARLY (keep best 50% by DL at every level)             10318   3.18x   lost 31 of 119
+      residual EARLY (keep best 25% by DL at every level)              2728  12.19x   lost 68 of 119
+      residual EARLY (keep best 10% by DL at every level)               651  46.12x   lost 80 of 119
+      residual LATE only (plain below, DL order at the last level)      11343   3.90x   lost 0
+      labels LATE only (plain below, label test at the last level)       5723   7.79x   lost 1 of 119
+      ceilings: the best ANY ordering of the last level could do (answer first):
+        on plain search                                                5144   8.59x
+        on top of labels early                                         2546  17.51x   (1.12x on top of labels early)
+      stored classes: plain 3215, labels early 1321 (geometric means)
+
+==============================================================================================================
+b12_s12.json: 115 tasks (seed 12, 2000 probes/op, iid); 5 skipped; plain found a shorter program than the reference on 27
+   n* (answer size): {5: 56, 4: 46, 3: 13};  operators: {4: 38, 3: 77};  target type: {'L': 68, 'I': 47};  wall 191 s
+   on-path classes (proper non-leaf subterms of the reference, 88 tasks): 198; missing from the bank: 0
+
+B1. Where the on-path class ranks among the bank classes of its own size level
+    percentile: 0 = closest to the target, 100 = farthest, 50 = a class drawn at random
+    steps out     n | DL, pool = same level, any type | DL, pool = same level and type  | L1 (same type, defined)   | L1 undefined for the on-path class
+                    |   mean median  <=10%    95% CI |   mean median  <=10%    95% CI |   mean median <=10%    n |
+    1            99 |   23.0    1.9    66%   17-30   |   23.0    4.0    59%   17-29   |   22.3    8.8   52%   52 | 43 of 99 (43%)
+    2            77 |   39.0   40.8    36%   32-46   |   37.1   50.0    32%   31-44   |   26.6   16.7   28%   18 | 57 of 77 (74%)
+    3            22 |   32.7   33.3    23%   23-43   |   39.4   50.0    23%   29-51   |   32.9   23.6   25%    4 | 18 of 22 (82%)
+    all         198 |   30.3   10.3    49%   26-35   |   30.3   18.6    44%   26-34   |   23.9   13.1   45%   74 | 118 of 198 (60%)
+    the same on-path classes where L1 is defined, against only the classes of the same type AND the
+    same list lengths as the target (a pool in which "similar size and shape" earns nothing):
+       steps out 1  n= 52   DL mean   20.8 (95% CI 13-29) median    7.7   L1 mean   22.3 median    8.8
+       steps out 2  n= 18   DL mean   25.4 (95% CI 14-39) median   16.7   L1 mean   26.6 median   16.7
+       steps out 3  n=  4   DL mean   47.4 (95% CI 16-64) median   62.0   L1 mean   32.9 median   23.6
+    same, split by whether the on-path class has the type of the target (DL, same level and type):
+       steps out 1, same type      n= 90  mean   20.3  median    2.0
+       steps out 1, other type     n=  9  mean   50.0  median   50.0
+       steps out 2, same type      n= 56  mean   32.3  median   12.9
+       steps out 2, other type     n= 21  mean   50.0  median   50.0
+       steps out 3, same type      n= 17  mean   36.3  median   35.0
+       steps out 3, other type     n=  5  mean   50.0  median   50.0
+    identity group-by (U1 regime 3 as the review states it): share of ALL bank classes for which
+    "Y is a function of U" holds on the 8 rows (zero residual): 55.5%;  on-path classes: 89.9%
+
+    Label reachability on the same classes (class kept iff size + label bound <= n*)
+    steps out     n | bank classes ruled out | on-path class ruled out  | DL rank needed to keep as many
+    1            99 | mean  47.4% med  57.2% |   0 of  99 ( 0.0%)       | DL cut at the same fraction loses 16 (16%)
+    2            77 | mean   0.0% med   0.0% |   0 of  77 ( 0.0%)       | DL cut at the same fraction loses 0 (0%)
+    3            22 | mean   0.0% med   0.0% |   0 of  22 ( 0.0%)       | DL cut at the same fraction loses 0 (0%)
+    one step out, the stronger test (some operator with this class as first argument may give the target labels):
+       rules out mean 90.9% of eligible classes;  the reference's own last step is rejected in 2 of 88 tasks;  every last step that hits is rejected in 2 of 115
+       a DL cut-off keeping the same fraction would lose the true parent in 42 of 99 (42%)
+       among the classes of its level and type that survive that test (median 28 classes), the true parent's DL percentile: mean   28.3 (95% CI 23-35), median   20.0, n=91
+
+B2. One step out: the true parent (argument of the reference root) against the classes of the
+    same size and type that carry the SAME label vector on every row and quotient ("bucket")
+    true parents: 99;  labels fail to separate (bucket > 1): 26 (26%);  bucket size median 1, mean 2.1, max 17
+    in those 26 cases, rank of the true parent inside its bucket by distance to the target:
+       DL  percentile mean   27.1 (95% CI 13-43), median    0.0, n=26 of 26 defined
+       L1  percentile mean   32.0 (95% CI 13-51), median    9.4, n=16 of 26 defined
+       DL strictly best in bucket: 14 of 26 (54%);  expected by chance 33%
+       other bucket members that also reach the target in one step (alternative parents): mean 0.00
+    with the review's two-word vocabulary only (sign and parity): bucket > 1 in 45 of 99 (45%), median bucket 1 classes;
+       true parent's DL percentile inside it: mean   29.3 (95% CI 20-39), median   18.8; strictly best in 20 of 45 (chance 19.7%)
+    by the kind of the root operator (all true parents; DL percentile within the same level and type,
+    and inside the bucket where the bucket has more than one member):
+       root operator                                           n  level pct bucket pct  best in bkt L1 defined
+       offset/scale (inc dec dbl neg add_k mul_k ...)         28       23.1       27.3       5/8           93%
+       reorder (sort sort_desc reverse shift1)                 8        2.3       47.7       1/4          100%
+       shape-changing list->list (filter tail take ...)       34       26.7       17.1       6/10           0%
+       running / zip (same length, new values)                 9       13.2       31.2       2/4           89%
+       reduction list->int                                     6       50.0          -       0/0            0%
+       int x int                                              14       20.0          -       0/0          100%
+    residual bucket regularity (labels of R = Y - U constant over rows), true parents, pool = same level and type:
+       residual defined for the true parent: 56 of 99;  all three value labels constant: 11;  share of the pool with all three constant: mean 0.2%
+       DL alone                                                mean pct   23.0  median    4.0  top-1%:  39%
+       regularity count first, then DL                         mean pct   22.2  median    2.4  top-1%:  41%
+       all-regular first, then DL                              mean pct   20.7  median    1.6  top-1%:  43%
+       plan 6.2: R constant or R a bank class first, then DL   mean pct   21.1  median    2.0  top-1%:  44%
+       regularity moved the true parent up in 23, down in 26, left it in place in 50 of 99
+         moved up:   roots {'neg': 5, 'add': 3, 'sq_all': 2, 'half_all': 2, 'mul': 2, 'shift1': 2, 'running_min': 1, 'running_max': 1}
+         moved down: roots {'min': 4, 'evens_idx': 3, 'add': 3, 'map_adj_min': 2, 'dbl_all': 2, 'running_min': 2, 'max': 2, 'dbl': 1}
+
+B4. The order of the handoff
+  (a) the FINAL size level only, on the complete plain bank: candidates evaluated until the first hit
+      (classes expanded in the given order; geometric mean over tasks; "lost" = no hit survives)
+      no filter, random class order                                             34602  gain  1.00x  lost 0  beats random order on 0 of 115
+      no filter, DL order (residual late)                                         570  gain 60.70x  lost 0  beats random order on 91 of 115
+      no filter, L1 order (undefined last)                                        832  gain 41.58x  lost 0  beats random order on 84 of 115
+      no filter, regularity then DL                                               542  gain 63.86x  lost 0  beats random order on 92 of 115
+      no filter, label-mismatch count order (labels late, as a ranking)           873  gain 39.62x  lost 0  beats random order on 97 of 115
+      label filter, random order (labels late, as a filter)                        84  gain 412.35x  lost 2  beats random order on 0 of 115
+      label filter, then DL order (the review's stage 2 -> 3)                       9  gain 3734.83x  lost 2  beats random order on 89 of 115
+      label filter, then table-surprise order                                       7  gain 5270.57x  lost 2  beats random order on 98 of 115
+      label filter, then label-mismatch order                                      12  gain 2905.49x  lost 2  beats random order on 84 of 115
+      final level size: geometric mean 93869 candidates, 222 after the label filter (423.5x)
+      by answer size n*: n*=3: 13 tasks, last level 1291 candidates, all levels below 41;  n*=4: 46 tasks, last level 28786 candidates, all levels below 1329;  n*=5: 56 tasks, last level 670476 candidates, all levels below 37904
+  (b) the WHOLE search, every pass counted (geometric mean of candidates; answers lost)
+      plain                                                           40702   1.00x   lost 0
+      labels EARLY (filter during enumeration)                         2324  16.89x   lost 2 of 115
+      residual EARLY (keep best 50% by DL at every level)             10537   3.32x   lost 37 of 115
+      residual EARLY (keep best 25% by DL at every level)              2870  11.91x   lost 64 of 115
+      residual EARLY (keep best 10% by DL at every level)               594  41.00x   lost 91 of 115
+      residual LATE only (plain below, DL order at the last level)      10378   3.92x   lost 0
+      labels LATE only (plain below, label test at the last level)       4898   8.01x   lost 2 of 115
+      ceilings: the best ANY ordering of the last level could do (answer first):
+        on plain search                                                4599   8.85x
+        on top of labels early                                         2084  18.83x   (1.11x on top of labels early)
+      stored classes: plain 2918, labels early 1148 (geometric means)
+

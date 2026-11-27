@@ -1,0 +1,686 @@
+{
+ "seed1|pairs|K=1": [
+  [
+   "('pair', ('len', ('take3', ('odds_idx', 'xs'))), ('mod', ('len', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "seed1|pairs|K=3": [
+  [
+   "('pair', ('len', ('take3', ('odds_idx', 'xs'))), ('mod', ('len', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('<', ('head', 'xs'), 0))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('count_even', ('evens_idx', ('take2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "seed1|pairs|K=6": [
+  [
+   "('pair', ('len', ('take3', ('odds_idx', 'xs'))), ('mod', ('len', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('<', ('head', 'xs'), 0))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('count_even', ('evens_idx', ('take2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('sgn', ('min_el', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('<', 3, ('count_pos', 'xs')), ('len', ('odds_idx', ('odds_idx', 'xs'))))",
+   "('pair', ('<', 3, 'v'), ('<', 'v', 0))"
+  ],
+  [
+   "('pair', ('<', ('sum', 'xs'), 0), ('len', ('take2', ('odds_idx', 'xs'))))",
+   "('pair', ('<', 1, 'v'), ('<', 'v', 0))"
+  ]
+ ],
+ "seed1|pairs|K=10": [
+  [
+   "('pair', ('len', ('take3', ('odds_idx', 'xs'))), ('mod', ('len', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('<', ('head', 'xs'), 0))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('count_even', ('evens_idx', ('take2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('sgn', ('min_el', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('<', 3, ('count_pos', 'xs')), ('len', ('odds_idx', ('odds_idx', 'xs'))))",
+   "('pair', ('<', 3, 'v'), ('<', 'v', 0))"
+  ],
+  [
+   "('pair', ('<', ('sum', 'xs'), 0), ('len', ('take2', ('odds_idx', 'xs'))))",
+   "('pair', ('<', 1, 'v'), ('<', 'v', 0))"
+  ],
+  [
+   "('pair', ('count_even', ('take2', ('drop2', 'xs'))), ('len', ('take3', ('map_adj_add', 'xs'))))",
+   "('<', 'v', ('sq', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('evens_idx', ('take3', 'xs'))), ('sgn', ('head', ('tail', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('odds_idx', ('evens_idx', 'xs'))), ('mod', 2, ('count_pos', 'xs')))",
+   "('sgn', ('mod', 1, ('dec', 'v')))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('sum', ('drop2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "seed1|nopairs|K=6": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('min_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('len', ('drop2', ('odds_idx', ('map_adj_add', 'xs'))))",
+   "('pair', ('<', 1, ('neg', 'v')), ('<', 5, ('dec', 'v')))"
+  ],
+  [
+   "('count_distinct', ('map_adj_mul', ('map_adj_sub', ('sort', 'xs'))))",
+   "('mod', 1, ('abs', ('dec', 'v')))"
+  ],
+  [
+   "('sgn', ('max_el', ('dec_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "seed1|nopairs|K=10": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('min_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('len', ('drop2', ('odds_idx', ('map_adj_add', 'xs'))))",
+   "('pair', ('<', 1, ('neg', 'v')), ('<', 5, ('dec', 'v')))"
+  ],
+  [
+   "('count_distinct', ('map_adj_mul', ('map_adj_sub', ('sort', 'xs'))))",
+   "('mod', 1, ('abs', ('dec', 'v')))"
+  ],
+  [
+   "('sgn', ('max_el', ('dec_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('min', 4, ('max_el', ('abs_all', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('count_distinct', ('map_adj_max', ('map_adj_sub', ('sort', 'xs'))))",
+   "('mod', 1, ('abs', ('dec', 'v')))"
+  ],
+  [
+   "('count_distinct', ('running_min', ('map_adj_mul', ('running_max', 'xs'))))",
+   "('<', 'v', ('sq', 'v'))"
+  ],
+  [
+   "('min', 5, ('count_distinct', ('map_adj_max', 'xs')))",
+   "('<', 'v', ('sq', 'v'))"
+  ]
+ ],
+ "lib_fold|pairs|K=6": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('all', 'x', ('dec_all', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('map_adj_mul', ('map_adj_mul', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('any', 'x', ('filter_neg', ('running_sum', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', ('sub', 'x', 5), 'xs'))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('add_k', 5, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "lib_fold|nopairs|K=6": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('mod', ('len', ('map_adj_add', 'xs')), 3)",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('min_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('max_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('len', ('drop2', ('odds_idx', ('map_adj_add', 'xs'))))",
+   "('pair', ('<', 1, ('neg', 'v')), ('<', 5, ('dec', 'v')))"
+  ]
+ ],
+ "lib_fold|pairs<=11|K=6": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('all', 'x', ('dec_all', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('map_adj_mul', ('map_adj_mul', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('any', 'x', ('filter_neg', ('running_sum', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', ('sub', 'x', 5), 'xs'))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('add_k', 5, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "lib_fold|pairs|K=10": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('all', 'x', ('dec_all', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('map_adj_mul', ('map_adj_mul', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('any', 'x', ('filter_neg', ('running_sum', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', ('sub', 'x', 5), 'xs'))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('add_k', 5, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('add_k', 3, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('sgn', ('head', 'xs')), ('any', 'x', ('inc_all', ('map_adj_mul', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', ('sub', 'x', 3), 'xs'))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('any', 'x', ('filter_even', ('take2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "lib_fold|nopairs|K=10": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('mod', ('len', ('map_adj_add', 'xs')), 3)",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('min_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('max_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('len', ('drop2', ('odds_idx', ('map_adj_add', 'xs'))))",
+   "('pair', ('<', 1, ('neg', 'v')), ('<', 5, ('dec', 'v')))"
+  ],
+  [
+   "('min', 5, ('sum', ('abs_all', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('count_distinct', ('map_adj_mul', ('map_adj_sub', ('sort', 'xs'))))",
+   "('mod', 1, ('abs', ('dec', 'v')))"
+  ],
+  [
+   "('count_distinct', ('map_adj_max', ('map_adj_min', ('abs_all', 'xs'))))",
+   "('mod', 1, ('abs', ('dec', 'v')))"
+  ],
+  [
+   "('count_pos', ('running_min', ('take3', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "lib_fold|pairs<=11|K=10": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('all', 'x', ('dec_all', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('map_adj_mul', ('map_adj_mul', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('any', 'x', ('filter_neg', ('running_sum', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', ('sub', 'x', 5), 'xs'))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('add_k', 5, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', 'x', ('add_k', 3, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('sgn', ('head', 'xs')), ('any', 'x', ('inc_all', ('map_adj_mul', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('all', ('sub', 'x', 3), 'xs'))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('any', 'x', ('filter_even', ('take2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "lib_fold|pairs<=11|K=6|compcap": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('sgn', ('count_even', 'xs')), ('any', 'x', ('filter_odd', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('sgn', ('count_pos', 'xs')), ('any', 'x', ('filter_neg', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('all', 'x', 'xs'), ('sgn', ('head', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('mod', ('len', ('map_adj_add', 'xs')), 3)",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('len', ('drop2', ('odds_idx', ('map_adj_add', 'xs'))))",
+   "('pair', ('<', 1, ('neg', 'v')), ('<', 5, ('dec', 'v')))"
+  ]
+ ],
+ "seed1|pairs|K=6|compcap": [
+  [
+   "('pair', ('len', ('take3', ('odds_idx', 'xs'))), ('mod', ('len', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('sgn', ('head', 'xs')), ('sgn', ('min_el', ('inc_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('sgn', ('count_even', 'xs')), ('sgn', ('count_even', ('inc_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('count_pos', ('take2', ('neg_all', 'xs'))), ('sgn', ('count_pos', ('inc_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('count_distinct', ('map_adj_mul', ('map_adj_sub', ('sort', 'xs'))))",
+   "('mod', 1, ('abs', ('dec', 'v')))"
+  ],
+  [
+   "('min', 4, ('max_el', ('abs_all', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "stage1|pairs|K=6": [
+  [
+   "('pair', ('<', 3, ('len', 'xs')), ('mod', ('len', 'xs'), 4))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('<', 5, ('head', 'xs')), ('len', ('take3', ('drop2', 'xs'))))",
+   "('<', 4, 'v')"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('<', 3, ('head', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('mod', ('head', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('head', ('tail', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('head', ('drop2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "stage1|nopairs|K=6": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('mod', ('len', ('tail', 'xs')), 3)",
+   "('mod', ('max', 1, 'v'), 3)"
+  ],
+  [
+   "('sgn', ('head', ('tail', 'xs')))",
+   "('<', 'v', ('sq', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('add_k', 3, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('init', 'xs')))",
+   "('pair', ('<', 1, 'v'), ('<', 'v', 0))"
+  ],
+  [
+   "('min', 5, ('abs', ('head', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "stage1|pairs|K=10": [
+  [
+   "('pair', ('<', 3, ('len', 'xs')), ('mod', ('len', 'xs'), 4))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('<', 5, ('head', 'xs')), ('len', ('take3', ('drop2', 'xs'))))",
+   "('<', 4, 'v')"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('<', 3, ('head', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('mod', ('head', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('head', ('tail', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('head', ('drop2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('last', ('drop2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('mod', ('len', 'xs'), 2), ('sgn', ('head', ('init', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('<', 5, ('len', 'xs')), ('=', 1, ('head', 'xs')))",
+   "('=', 1, 'v')"
+  ],
+  [
+   "('pair', ('<', ('head', 'xs'), 0), ('mod', ('len', 'xs'), 3))",
+   "('pair', ('<', 'v', 0), ('sgn', ('mod', 'v', 3)))"
+  ]
+ ],
+ "stage1|nopairs|K=10": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('mod', ('len', ('tail', 'xs')), 3)",
+   "('mod', ('max', 1, 'v'), 3)"
+  ],
+  [
+   "('sgn', ('head', ('tail', 'xs')))",
+   "('<', 'v', ('sq', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('add_k', 3, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('init', 'xs')))",
+   "('pair', ('<', 1, 'v'), ('<', 'v', 0))"
+  ],
+  [
+   "('min', 5, ('abs', ('head', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('add_k', 1, 'xs')))",
+   "('sgn', ('mul', 'v', ('inc', 'v')))"
+  ],
+  [
+   "('=', 2, ('neg', ('head', 'xs')))",
+   "('=', 2, ('neg', 'v'))"
+  ],
+  [
+   "('sgn', ('sum', ('add_k', 5, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('head', ('add_k', 5, 'xs')))",
+   "('pair', ('sgn', ('abs', 'v')), ('=', 5, ('neg', 'v')))"
+  ]
+ ],
+ "stage2|pairs|K=6": [
+  [
+   "('pair', ('len', ('take3', ('odds_idx', 'xs'))), ('mod', ('len', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('<', ('head', 'xs'), 0))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('mod', ('head', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('head', ('drop2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('sgn', ('min_el', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('evens_idx', ('take3', 'xs'))), ('sgn', ('head', ('tail', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "stage2|nopairs|K=6": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('max_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('mod', ('len', ('tail', 'xs')), 3)",
+   "('mod', ('max', 1, 'v'), 3)"
+  ],
+  [
+   "('sgn', ('head', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('min_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('min', 5, ('sum', ('abs_all', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "stage2|pairs|K=10": [
+  [
+   "('pair', ('len', ('take3', ('odds_idx', 'xs'))), ('mod', ('len', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('<', ('head', 'xs'), 0))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('mod', ('head', 'xs'), 2))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take3', 'xs')), ('sgn', ('head', ('drop2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('take2', 'xs')), ('sgn', ('min_el', ('abs_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('len', ('evens_idx', ('take3', 'xs'))), ('sgn', ('head', ('tail', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('<', ('sum', 'xs'), 0), ('len', ('take2', ('odds_idx', 'xs'))))",
+   "('pair', ('<', 1, 'v'), ('<', 'v', 0))"
+  ],
+  [
+   "('pair', ('<', 5, ('max_el', 'xs')), ('len', ('take2', ('tail', 'xs'))))",
+   "('<', 5, 'v')"
+  ],
+  [
+   "('pair', ('len', ('take2', ('tail', 'xs'))), ('sgn', ('last', ('drop2', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('pair', ('sgn', ('head', 'xs')), ('<', 5, ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ]
+ ],
+ "stage2|nopairs|K=10": [
+  [
+   "('min', 5, ('dec', ('len', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('max_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('mod', ('len', ('tail', 'xs')), 3)",
+   "('mod', ('max', 1, 'v'), 3)"
+  ],
+  [
+   "('sgn', ('head', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('min_el', ('inc_all', ('dbl_all', 'xs'))))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('min', 5, ('sum', ('abs_all', 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('len', ('drop2', ('odds_idx', ('tail', 'xs'))))",
+   "('pair', ('<', 1, ('neg', 'v')), ('<', 5, ('dec', 'v')))"
+  ],
+  [
+   "('min_el', ('abs_all', ('cons', 5, 'xs')))",
+   "('sgn', ('abs', 'v'))"
+  ],
+  [
+   "('sgn', ('sum', ('drop2', ('sort', 'xs'))))",
+   "('sgn', ('mod', 1, ('dec', 'v')))"
+  ],
+  [
+   "('sgn', ('last', ('drop2', ('reverse', 'xs'))))",
+   "('sgn', ('mod', 1, ('dec', 'v')))"
+  ]
+ ]
+}

@@ -1,0 +1,113 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATED-TRY
+;     (TG::PROBE-MATCH TG::LF TG::OP TG::C1 TG::C2 TG::C3)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::PROBE-MATCH
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROBE-MATCH
+;   caught 1 STYLE-WARNING condition
+=== E7. The gain depends on where the answer's outermost operator sits in the operator list. ===
+Eight single-class tasks (map-adjacent f left out: 8.5M candidates per run), seed 1; candidates fully evaluated, plain -> first;
+work gains of first, lfprobe, probe over plain (work = cells evaluated + look-ups + label cells).
+
+--- prototype order: (+ - * mod max min at = < and not call) ---
+task                     plain      first      gain    | work-gain (lfprobe) (probe)   | held-out same | "element term (plain)"
+reverse                       86434       4996  17.30x |     6.71x     6.76x    13.00x | 200/200  yes  | (at xs (- (len xs) (+ i 1)))
+rotate-left k                217920       9778  22.29x |     7.00x     7.13x    14.51x | 200/200  yes  | (at xs (mod (+ i k) (len xs)))
+map-adjacent +               291481     115673   2.52x |     1.36x     1.35x     2.39x | 200/200  yes  | (+ (at xs i) (at xs (+ i 1)))
+map-adjacent -               703183     115445   6.09x |     3.13x     3.10x     5.31x | 200/200  yes  | (- (at xs (+ i 1)) (at xs i))
+positions-of v                 8332       8101   1.03x |     0.60x     0.60x     1.00x | 200/200  yes  | (= x v)
+filter x>k                     7002       6730   1.04x |     0.68x     0.68x     1.07x | 200/200  yes  | (< k x)
+take k                          267          2 133.50x |     3.26x     3.20x    21.90x | 200/200  yes  | (at xs i)
+zip-add                       30265       9367   3.23x |     1.55x     1.53x     2.94x | 200/200  yes  | (+ (at xs i) (at zs i))
+SUMMARY prototype order: first vs plain, 8 tasks (plain cand >= 1): cand 1344884 -> 270092 (total 4.98x, geo-mean 6.38x); work 54082199 -> 20391559 (total 2.65x, geo-mean 2.12x); ms 2737.6 -> 1218.8 (total 2.25x, geo-mean 1.96x); classes held 458860 -> 70245 (6.53x); look-ups 1806417; programs changed 0; lost 0; false rejects 0
+SUMMARY prototype order: lfprobe vs plain, 8 tasks (plain cand >= 1): cand 1344884 -> 269866 (total 4.98x, geo-mean 6.40x); work 54082199 -> 20491065 (total 2.64x, geo-mean 2.12x); ms 2737.6 -> 1205.9 (total 2.27x, geo-mean 2.04x); classes held 458860 -> 70114 (6.54x); look-ups 1930598; programs changed 0; lost 0; false rejects 0
+SUMMARY prototype order: probe vs plain, 8 tasks (plain cand >= 1): cand 1344884 -> 269866 (total 4.98x, geo-mean 6.40x); work 54082199 -> 11644793 (total 4.64x, geo-mean 4.49x); ms 2737.6 -> 1084.7 (total 2.52x, geo-mean 2.37x); classes held 458860 -> 70114 (6.54x); look-ups 0; programs changed 0; lost 0; false rejects 0
+
+--- AT first: (at + - * mod max min = < and not call) ---
+task                     plain      first      gain    | work-gain (lfprobe) (probe)   | held-out same | "element term (plain)"
+reverse                        5207       4996   1.04x |     0.53x     0.53x     1.03x | 200/200  yes  | (at xs (- (len xs) (+ i 1)))
+rotate-left k                 11149       9778   1.14x |     0.53x     0.54x     1.14x | 200/200  yes  | (at xs (mod (+ i k) (len xs)))
+map-adjacent +               262788     116733   2.25x |     1.18x     1.19x     2.16x | 200/200  yes  | (+ (at xs i) (at xs (+ i 1)))
+map-adjacent -               673986     116505   5.79x |     2.88x     2.91x     5.12x | 200/200  yes  | (- (at xs (+ i 1)) (at xs i))
+positions-of v                 8332       8101   1.03x |     0.60x     0.60x     1.00x | 200/200  yes  | (= x v)
+filter x>k                     7002       6730   1.04x |     0.68x     0.68x     1.07x | 200/200  yes  | (< k x)
+take k                           51          2  25.50x |     0.40x     0.39x     3.66x | 200/200  yes  | (at xs i)
+zip-add                       27733      10025   2.77x |     1.12x     1.21x     2.72x | 200/200  yes  | (+ (at xs i) (at zs i))
+SUMMARY AT first: first vs plain, 8 tasks (plain cand >= 1): cand 996248 -> 272870 (total 3.65x, geo-mean 2.42x); work 39264166 -> 20741808 (total 1.89x, geo-mean 0.80x); ms 2181.1 -> 1205.7 (total 1.81x, geo-mean 1.10x); classes held 376444 -> 71878 (5.24x); look-ups 1864522; programs changed 0; lost 0; false rejects 0
+SUMMARY AT first: lfprobe vs plain, 8 tasks (plain cand >= 1): cand 996248 -> 269866 (total 3.69x, geo-mean 2.45x); work 39264166 -> 20427999 (total 1.92x, geo-mean 0.81x); ms 2181.1 -> 1180.6 (total 1.85x, geo-mean 1.09x); classes held 376444 -> 70114 (5.37x); look-ups 1864747; programs changed 0; lost 0; false rejects 0
+SUMMARY AT first: probe vs plain, 8 tasks (plain cand >= 1): cand 996248 -> 269866 (total 3.69x, geo-mean 2.45x); work 39264166 -> 11293206 (total 3.48x, geo-mean 1.85x); ms 2181.1 -> 1043.2 (total 2.09x, geo-mean 1.33x); classes held 376444 -> 70114 (5.37x); look-ups 0; programs changed 0; lost 0; false rejects 0
+
+--- reversed: (call not and < = at min max mod * - +) ---
+task                     plain      first      gain    | work-gain (lfprobe) (probe)   | held-out same | "element term (plain)"
+reverse                       33418       5032   6.64x |     3.28x     3.35x     6.62x | 200/200  yes  | (at xs (- (len xs) (+ i 1)))
+rotate-left k                 81129       9727   8.34x |     3.97x     4.06x     8.28x | 200/200  yes  | (at xs (mod (+ i k) (len xs)))
+map-adjacent +              2775268     116733  23.77x |     9.78x     9.88x    16.70x | 200/200  yes  | (+ (at xs i) (at xs (+ i 1)))
+map-adjacent -              2463769     116505  21.15x |     8.96x     9.05x    15.53x | 200/200  yes  | (- (at xs (+ i 1)) (at xs i))
+positions-of v                 8146       8107   1.00x |     0.55x     0.56x     0.94x | 200/200  yes  | (= x v)
+filter x>k                     6744       6727   1.00x |     0.59x     0.59x     0.93x | 200/200  yes  | (< k x)
+take k                          123          2  61.50x |     2.07x     2.01x    18.97x | 200/200  yes  | (at xs i)
+zip-add                      276380      10025  27.57x |     7.82x     8.25x    17.43x | 200/200  yes  | (+ (at xs i) (at zs i))
+SUMMARY reversed: first vs plain, 8 tasks (plain cand >= 1): cand 5644977 -> 272858 (total 20.69x, geo-mean 9.11x); work 223532419 -> 25132720 (total 8.89x, geo-mean 2.97x); ms 9113.4 -> 1423.1 (total 6.40x, geo-mean 2.57x); classes held 1388183 -> 71902 (19.31x); look-ups 6251789; programs changed 0; lost 0; false rejects 0
+SUMMARY reversed: lfprobe vs plain, 8 tasks (plain cand >= 1): cand 5644977 -> 269866 (total 20.92x, geo-mean 9.25x); work 223532419 -> 24816785 (total 9.01x, geo-mean 3.00x); ms 9113.4 -> 1391.9 (total 6.55x, geo-mean 2.65x); classes held 1388183 -> 70114 (19.80x); look-ups 6253546; programs changed 0; lost 0; false rejects 0
+SUMMARY reversed: probe vs plain, 8 tasks (plain cand >= 1): cand 5644977 -> 269866 (total 20.92x, geo-mean 9.25x); work 223532419 -> 14343911 (total 15.58x, geo-mean 6.70x); ms 9113.4 -> 1238.9 (total 7.36x, geo-mean 3.02x); classes held 1388183 -> 70114 (19.80x); look-ups 0; programs changed 0; lost 0; false rejects 0
+
+--- shuffle 1: (= min * and call max < - + not at mod) ---
+task                     plain      first      gain    | work-gain (lfprobe) (probe)   | held-out same | "element term (plain)"
+reverse                      100840       5016  20.10x |     8.36x     8.46x    15.79x | 200/200  yes  | (at xs (- (len xs) (+ i 1)))
+rotate-left k                254493       9870  25.78x |     8.89x     9.15x    17.96x | 200/200  yes  | (at xs (mod (+ i k) (len xs)))
+map-adjacent +              2436174     115673  21.06x |     9.47x     9.43x    15.45x | 200/200  yes  | (+ (at xs i) (at xs (+ i 1)))
+map-adjacent -              2121639     115445  18.38x |     8.53x     8.49x    14.13x | 200/200  yes  | (- (at xs (+ i 1)) (at xs i))
+positions-of v                 8110       8101   1.00x |     0.56x     0.56x     0.92x | 200/200  yes  | (= x v)
+filter x>k                     6888       6730   1.02x |     0.64x     0.64x     1.01x | 200/200  yes  | (< k x)
+take k                          303          2 151.50x |     4.69x     4.58x    27.82x | 200/200  yes  | (at xs i)
+zip-add                      242068       9367  25.84x |     9.10x     9.02x    16.40x | 200/200  yes  | (+ (at xs i) (at zs i))
+SUMMARY shuffle 1: first vs plain, 8 tasks (plain cand >= 1): cand 5170515 -> 270204 (total 19.14x, geo-mean 12.98x); work 205571121 -> 23157535 (total 8.88x, geo-mean 4.17x); ms 8248.3 -> 1387.9 (total 5.94x, geo-mean 3.32x); classes held 1097398 -> 70326 (15.60x); look-ups 4557544; programs changed 0; lost 0; false rejects 0
+SUMMARY shuffle 1: lfprobe vs plain, 8 tasks (plain cand >= 1): cand 5170515 -> 269866 (total 19.16x, geo-mean 13.04x); work 205571121 -> 23220205 (total 8.85x, geo-mean 4.17x); ms 8248.3 -> 1361.5 (total 6.06x, geo-mean 3.38x); classes held 1097398 -> 70114 (15.65x); look-ups 4659564; programs changed 0; lost 0; false rejects 0
+SUMMARY shuffle 1: probe vs plain, 8 tasks (plain cand >= 1): cand 5170515 -> 269866 (total 19.16x, geo-mean 13.04x); work 205571121 -> 13871870 (total 14.82x, geo-mean 8.46x); ms 8248.3 -> 1199.5 (total 6.88x, geo-mean 3.92x); classes held 1097398 -> 70114 (15.65x); look-ups 0; programs changed 0; lost 0; false rejects 0
+
+--- shuffle 2: (and < * not at max mod + call min - =) ---
+task                     plain      first      gain    | work-gain (lfprobe) (probe)   | held-out same | "element term (plain)"
+reverse                       33533       5053   6.64x |     3.15x     3.23x     6.30x | 200/200  yes  | (at xs (- (len xs) (+ i 1)))
+rotate-left k                 81081       9750   8.32x |     3.77x     3.86x     7.61x | 200/200  yes  | (at xs (mod (+ i k) (len xs)))
+map-adjacent +              1709397     116733  14.64x |     6.53x     6.60x    11.51x | 200/200  yes  | (+ (at xs i) (at xs (+ i 1)))
+map-adjacent -              2470431     116505  21.20x |     8.67x     8.76x    14.72x | 200/200  yes  | (- (at xs (+ i 1)) (at xs i))
+positions-of v                 8368       8107   1.03x |     0.60x     0.60x     1.01x | 200/200  yes  | (= x v)
+filter x>k                     6744       6727   1.00x |     0.59x     0.59x     0.93x | 200/200  yes  | (< k x)
+take k                          123          2  61.50x |     2.00x     1.94x    15.72x | 200/200  yes  | (at xs i)
+zip-add                      171203      10025  17.08x |     5.39x     5.72x    12.58x | 200/200  yes  | (+ (at xs i) (at zs i))
+SUMMARY shuffle 2: first vs plain, 8 tasks (plain cand >= 1): cand 4480880 -> 272902 (total 16.42x, geo-mean 8.11x); work 177810332 -> 24598567 (total 7.23x, geo-mean 2.67x); ms 7571.1 -> 1416.8 (total 5.34x, geo-mean 2.35x); classes held 1217447 -> 71916 (16.93x); look-ups 5713701; programs changed 0; lost 0; false rejects 0
+SUMMARY shuffle 2: lfprobe vs plain, 8 tasks (plain cand >= 1): cand 4480880 -> 269866 (total 16.60x, geo-mean 8.23x); work 177810332 -> 24295887 (total 7.32x, geo-mean 2.70x); ms 7571.1 -> 1358.1 (total 5.57x, geo-mean 2.45x); classes held 1217447 -> 70114 (17.36x); look-ups 5732602; programs changed 0; lost 0; false rejects 0
+SUMMARY shuffle 2: probe vs plain, 8 tasks (plain cand >= 1): cand 4480880 -> 269866 (total 16.60x, geo-mean 8.23x); work 177810332 -> 13979101 (total 12.72x, geo-mean 5.92x); ms 7571.1 -> 1213.9 (total 6.24x, geo-mean 2.81x); classes held 1217447 -> 70114 (17.36x); look-ups 0; programs changed 0; lost 0; false rejects 0
+
+--- shuffle 3: (< max mod call = min + not - and * at) ---
+task                     plain      first      gain    | work-gain (lfprobe) (probe)   | held-out same | "element term (plain)"
+reverse                      114652       5040  22.75x |     8.69x     8.84x    17.22x | 200/200  yes  | (at xs (- (len xs) (+ i 1)))
+rotate-left k                287574       9692  29.67x |     9.51x     9.63x    19.18x | 200/200  yes  | (at xs (mod (+ i k) (len xs)))
+map-adjacent +              2080098     115673  17.98x |     8.15x     8.10x    13.96x | 200/200  yes  | (+ (at xs i) (at xs (+ i 1)))
+map-adjacent -              2485302     115445  21.53x |     9.34x     9.28x    15.58x | 200/200  yes  | (- (at xs (+ i 1)) (at xs i))
+positions-of v                 8218       8107   1.01x |     0.57x     0.57x     0.96x | 200/200  yes  | (= x v)
+filter x>k                     6744       6727   1.00x |     0.59x     0.59x     0.93x | 200/200  yes  | (< k x)
+take k                          339          2 169.50x |     4.27x     4.19x    28.66x | 200/200  yes  | (at xs i)
+zip-add                      207210       9367  22.12x |     7.51x     7.43x    15.12x | 200/200  yes  | (+ (at xs i) (at zs i))
+SUMMARY shuffle 3: first vs plain, 8 tasks (plain cand >= 1): cand 5190137 -> 270053 (total 19.22x, geo-mean 13.33x); work 206784817 -> 23940178 (total 8.64x, geo-mean 4.02x); ms 8452.9 -> 1388.9 (total 6.09x, geo-mean 3.39x); classes held 1198783 -> 70246 (17.07x); look-ups 5355011; programs changed 0; lost 0; false rejects 0
+SUMMARY shuffle 3: lfprobe vs plain, 8 tasks (plain cand >= 1): cand 5190137 -> 269866 (total 19.23x, geo-mean 13.37x); work 206784817 -> 24040415 (total 8.60x, geo-mean 4.01x); ms 8452.9 -> 1383.1 (total 6.11x, geo-mean 3.40x); classes held 1198783 -> 70114 (17.10x); look-ups 5480007; programs changed 0; lost 0; false rejects 0
+SUMMARY shuffle 3: probe vs plain, 8 tasks (plain cand >= 1): cand 5190137 -> 269866 (total 19.23x, geo-mean 13.37x); work 206784817 -> 13910263 (total 14.87x, geo-mean 8.52x); ms 8452.9 -> 1216.2 (total 6.95x, geo-mean 3.99x); classes held 1198783 -> 70114 (17.10x); look-ups 0; programs changed 0; lost 0; false rejects 0
+
+[e7 finished in 145.2 s]

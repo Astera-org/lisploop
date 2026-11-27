@@ -1,0 +1,46 @@
+# Q3 G1 exactness / G2 unsoundness; 32 rows; states [16, 81, 125]; largest g (least term size of an abstract state) per domain: [7, 8, 9]
+
+(a) G1: 200 random polynomial targets (written with 5-9 nodes); found at the plain-OE size in 200; MISSES 0   [3.4 s]
+    true size  1:   2 targets, candidate gain gmean 1.0x [1.0..1.0], stored-class gain gmean 4.0x
+    true size  2:   2 targets, candidate gain gmean 1.1x [1.0..1.2], stored-class gain gmean 4.0x
+    true size  3:  14 targets, candidate gain gmean 4.8x [2.4..8.4], stored-class gain gmean 4.3x
+    true size  4:   8 targets, candidate gain gmean 7.2x [6.1..8.9], stored-class gain gmean 5.7x
+    true size  5:  58 targets, candidate gain gmean 24.4x [6.2..63.3], stored-class gain gmean 6.8x
+    true size  6:  19 targets, candidate gain gmean 19.7x [6.7..43.8], stored-class gain gmean 10.1x
+    true size  7:  75 targets, candidate gain gmean 41.6x [8.1..300.4], stored-class gain gmean 9.2x
+    true size  8:  11 targets, candidate gain gmean 29.9x [10.8..139.9], stored-class gain gmean 20.9x
+    true size  9:  11 targets, candidate gain gmean 16.4x [7.3..54.6], stored-class gain gmean 8.6x
+
+(b) G2: 120 random targets that need div or mod (true size 3-7 by plain G2 search)   [6.3 s]
+    bound   (DP lower bound > true size)           :   0
+    outside (target not a state of the automaton)  : 104
+    pruned  (search fails at the true size)        :  13
+    ok      (found at the true size)               :   3
+    => the ring pruning loses 117 of 120 targets (98%)
+
+    examples, bound:
+
+    examples, outside:
+       (div (neg y) (neg (+ 1 1)))              true size 5
+       (div (neg x) (neg (+ 1 1)))              true size 5
+       (div x (+ (neg 1) (neg 1)))              true size 6
+       (div (neg y) (- 1 (neg 1)))              true size 6
+       (neg (div y (- 1 (neg 1))))              true size 6
+       (div y (+ y (+ x x)))                    true size 7
+
+    examples, pruned:
+       (mod x (+ 1 (* y y)))                    true size 7, DP lower bound 5, found by the pruned search at size bound +2: 7
+       (* x (mod y (+ 1 1)))                    true size 7, DP lower bound 7, found by the pruned search at size bound +2: 7
+       (- x (mod y (+ 1 1)))                    true size 7, DP lower bound 7, found by the pruned search at size bound +2: 7
+       (- y (mod y (+ 1 1)))                    true size 7, DP lower bound 5, found by the pruned search at size bound +2: 7
+       (mod x (+ (- x 1) x))                    true size 7, DP lower bound 1, found by the pruned search at size bound +2: 7
+       (* y (mod y (+ 1 1)))                    true size 7, DP lower bound 5, found by the pruned search at size bound +2: 7
+
+    examples, ok:
+       (mod y (- (- 1 y) y))                    true size 7, DP lower bound 3
+       (mod 1 (- x (* y y)))                    true size 7, DP lower bound 7
+       (mod 1 (- y (* x x)))                    true size 7, DP lower bound 7
+
+real	0m9.738s
+user	0m9.733s
+sys	0m0.004s

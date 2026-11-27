@@ -1,0 +1,67 @@
+header(2 int inputs -> int)=23 default Stage A bound = header+18 = 41
+[stage-a] L1 x*y+x (21 body bits) work-limit=2000 -> CUTOFF spent=2000 records(priced candidates)=4 buckets=4 models=3 enum-size=6 completed-bound=28 bound=63
+   best=(VAR 0 INT) exact=NIL program-bits=26 residual-bits=64
+   ledger=((:HEURISTIC-CHECKING . 843) (:OBSERVATION . 784)
+           (:HEURISTIC-RESIDUAL . 271) (:HEURISTIC-PREPARATION . 91)
+           (:HEURISTIC-RANKING . 11))
+[stage-a] L1 x*y+x (21 body bits) work-limit=5000 -> CUTOFF spent=5000 records(priced candidates)=9 buckets=7 models=8 enum-size=12 completed-bound=34 bound=63
+   best=(APP (OP + INT) (VAR 0 INT) (VAR 0 INT)) exact=NIL program-bits=35 residual-bits=52
+   ledger=((:HEURISTIC-CHECKING . 2148) (:OBSERVATION . 2055)
+           (:HEURISTIC-RESIDUAL . 652) (:HEURISTIC-PREPARATION . 91)
+           (:HEURISTIC-RANKING . 54))
+[stage-a] L1 x*y+x (21 body bits) work-limit=15000 -> CUTOFF spent=15000 records(priced candidates)=25 buckets=12 models=25 enum-size=15 completed-bound=37 bound=63
+   best=(APP (OP + INT) (VAR 0 INT) (VAR 0 INT)) exact=NIL program-bits=35 residual-bits=52
+   ledger=((:HEURISTIC-CHECKING . 6427) (:OBSERVATION . 6234)
+           (:HEURISTIC-RESIDUAL . 2011) (:HEURISTIC-RANKING . 237)
+           (:HEURISTIC-PREPARATION . 91))
+[stage-a] L1 x*y+x (21 body bits) work-limit=100000 -> CUTOFF spent=100000 records(priced candidates)=150 buckets=26 models=149 enum-size=21 completed-bound=43 bound=63
+   best=(APP (OP + INT) (VAR 0 INT) (APP (OP * INT) (VAR 0 INT) (VAR 1 INT))) exact=T program-bits=44 residual-bits=0
+   ledger=((:OBSERVATION . 46956) (:HEURISTIC-CHECKING . 39147)
+           (:HEURISTIC-RESIDUAL . 11525) (:HEURISTIC-RANKING . 2281)
+           (:HEURISTIC-PREPARATION . 91))
+[stage-a] L1 x*y+x (21 body bits) work-limit=1000000 -> CUTOFF spent=1000000 records(priced candidates)=1340 buckets=73 models=1340 enum-size=30 completed-bound=52 bound=63
+   best=(APP (OP + INT) (VAR 0 INT) (APP (OP * INT) (VAR 0 INT) (VAR 1 INT))) exact=T program-bits=44 residual-bits=0
+   ledger=((:OBSERVATION . 513411) (:HEURISTIC-CHECKING . 353592)
+           (:HEURISTIC-RESIDUAL . 104598) (:HEURISTIC-RANKING . 28308)
+           (:HEURISTIC-PREPARATION . 91))
+[stage-a] L2 x*y+x (21 body bits) work-limit=2000 -> CUTOFF spent=2000 records(priced candidates)=4 buckets=4 models=3 enum-size=6 completed-bound=28 bound=63
+   best=(VAR 0 INT) exact=NIL program-bits=26 residual-bits=64
+   ledger=((:HEURISTIC-CHECKING . 827) (:OBSERVATION . 814)
+           (:HEURISTIC-RESIDUAL . 257) (:HEURISTIC-PREPARATION . 91)
+           (:HEURISTIC-RANKING . 11))
+[stage-a] L2 x*y+x (21 body bits) work-limit=15000 -> CUTOFF spent=15000 records(priced candidates)=25 buckets=11 models=25 enum-size=12 completed-bound=34 bound=63
+   best=(APP (OP + INT) (VAR 0 INT) (VAR 0 INT)) exact=NIL program-bits=35 residual-bits=52
+   ledger=((:HEURISTIC-CHECKING . 6413) (:OBSERVATION . 6266)
+           (:HEURISTIC-RESIDUAL . 1999) (:HEURISTIC-RANKING . 231)
+           (:HEURISTIC-PREPARATION . 91))
+[stage-a] L2 x*y+x (21 body bits) work-limit=100000 -> CUTOFF spent=100000 records(priced candidates)=154 buckets=34 models=153 enum-size=21 completed-bound=43 bound=63
+   best=(APP (OP + INT) (VAR 0 INT) (APP (OP * INT) (VAR 0 INT) (VAR 1 INT))) exact=T program-bits=44 residual-bits=0
+   ledger=((:OBSERVATION . 45756) (:HEURISTIC-CHECKING . 39634)
+           (:HEURISTIC-RESIDUAL . 12338) (:HEURISTIC-RANKING . 2181)
+           (:HEURISTIC-PREPARATION . 91))
+[stage-a] L1 (x+y)^2+y (39 body bits) work-limit=2000 -> CUTOFF spent=2000 records(priced candidates)=3 buckets=3 models=3 enum-size=6 completed-bound=28 bound=63
+   best=(VAR 0 INT) exact=NIL program-bits=26 residual-bits=84
+   ledger=((:HEURISTIC-CHECKING . 851) (:OBSERVATION . 737)
+           (:HEURISTIC-RESIDUAL . 300) (:HEURISTIC-PREPARATION . 101)
+           (:HEURISTIC-RANKING . 11))
+[stage-a] L1 (x+y)^2+y (39 body bits) work-limit=15000 -> CUTOFF spent=15000 records(priced candidates)=23 buckets=11 models=23 enum-size=15 completed-bound=37 bound=63
+   best=(VAR 0 INT) exact=NIL program-bits=26 residual-bits=84
+   ledger=((:HEURISTIC-CHECKING . 6607) (:OBSERVATION . 5793)
+           (:HEURISTIC-RESIDUAL . 2286) (:HEURISTIC-RANKING . 213)
+           (:HEURISTIC-PREPARATION . 101))
+[stage-a] L1 (x+y)^2+y (39 body bits) work-limit=1000000 -> CUTOFF spent=1000000 records(priced candidates)=1260 buckets=73 models=1260 enum-size=30 completed-bound=52 bound=63
+   best=(VAR 0 INT) exact=NIL program-bits=26 residual-bits=84
+   ledger=((:OBSERVATION . 480031) (:HEURISTIC-CHECKING . 369984)
+           (:HEURISTIC-RESIDUAL . 123494) (:HEURISTIC-RANKING . 26390)
+           (:HEURISTIC-PREPARATION . 101))
+[stage-a] L1 (x+y)^2+y (39 body bits) work-limit=10000000 -> CUTOFF spent=10000000 records(priced candidates)=11765 buckets=173 models=11764 enum-size=39 completed-bound=61 bound=63
+   best=(VAR 0 INT) exact=NIL program-bits=26 residual-bits=84
+   ledger=((:OBSERVATION . 5093323) (:HEURISTIC-CHECKING . 3460087)
+           (:HEURISTIC-RESIDUAL . 1151005) (:HEURISTIC-RANKING . 295484)
+           (:HEURISTIC-PREPARATION . 101))
+[stage-a] L1 default bound, big budget work-limit=10000000 -> BOUNDED-EXHAUSTION spent=23505 records(priced candidates)=36 buckets=13 models=36 enum-size=19 completed-bound=41 bound=41
+   best=(VAR 0 INT) exact=NIL program-bits=26 residual-bits=84
+   ledger=((:HEURISTIC-CHECKING . 10306) (:OBSERVATION . 9186)
+           (:HEURISTIC-RESIDUAL . 3544) (:HEURISTIC-RANKING . 368)
+           (:HEURISTIC-PREPARATION . 101))
+exit=0

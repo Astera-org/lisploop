@@ -1,0 +1,333 @@
+========================================================================
+=== Stage 0 Audit (v2): E0b-1a Constructor Fold Gate ===
+========================================================================
+[HOST-FOLDS-ON]
+  (:MAP-LIFT-SOLVED T :MAP-LIFT-WORK 7139 :CONS-PROP-NARROWED 0
+   :CONS-PROP-CERTIFIED NIL :CONS-PROP-RESULT
+   (:APP (:OP := (:TUPLE :INT (:SEQ :INT))) (:VAR 0 (:TUPLE :INT (:SEQ :INT)))
+    (:LIT (:TUPLE :INT (:SEQ :INT)) (10 (20))))
+   :REC-SOLVED NIL :REC-WORK 80000)
+[HOST-FOLDS-OFF-EMPTY]
+  (:MAP-LIFT-SOLVED T :MAP-LIFT-WORK 9896 :CONS-PROP-NARROWED 0
+   :CONS-PROP-CERTIFIED NIL :CONS-PROP-RESULT
+   (:APP (:OP := (:SEQ :INT))
+    (:APP (:OP :CONS :INT)
+     (:APP (:OP :AT (:TUPLE (:TUPLE :INT (:SEQ :INT)) :INT))
+      (:VAR 0 (:TUPLE :INT (:SEQ :INT))) (:LIT :INT 0))
+     (:APP (:OP :AT (:TUPLE (:TUPLE :INT (:SEQ :INT)) (:SEQ :INT)))
+      (:VAR 0 (:TUPLE :INT (:SEQ :INT))) (:LIT :INT 1)))
+    (:LIT (:SEQ :INT) (10 20)))
+   :REC-SOLVED NIL :REC-WORK 80000)
+[HOST-FOLDS-OFF-WITH-CONSTRUCTORS-SEXP]
+  (:MAP-LIFT-SOLVED T :MAP-LIFT-WORK 9896 :CONS-PROP-NARROWED 1
+   :CONS-PROP-CERTIFIED NIL :CONS-PROP-RESULT
+   (:APP (:OP :IF :BOOL)
+    (:APP (:OP := :INT)
+     (:APP (:OP :AT (:TUPLE (:TUPLE :INT (:SEQ :INT)) :INT))
+      (:VAR 0 (:TUPLE :INT (:SEQ :INT))) (:LIT :INT 0))
+     (:LIT :INT 10))
+    (:APP (:OP := (:SEQ :INT))
+     (:APP (:OP :AT (:TUPLE (:TUPLE :INT (:SEQ :INT)) (:SEQ :INT)))
+      (:VAR 0 (:TUPLE :INT (:SEQ :INT))) (:LIT :INT 1))
+     (:LIT (:SEQ :INT) (20)))
+    (:LIT :BOOL NIL))
+   :REC-SOLVED NIL :REC-WORK 80000)
+
+========================================================================
+=== Stage 0 Audit (v2): E0b-1b Descriptor Prototype Gate ===
+========================================================================
+[HOST-PROTOTYPE-SYNTHESIS]
+  install-work=18030 score-work=0
+  map=((:MAP T -17) (:FILTER T -4) (:MAP-ADJACENT NIL 4611686018427387903))
+  flt=((:MAP NIL 4611686018427387903) (:FILTER T -15)
+       (:MAP-ADJACENT NIL 4611686018427387903))
+  adj=((:MAP NIL 4611686018427387903) (:FILTER T -9) (:MAP-ADJACENT T -12))
+[LIBRARY-DESCRIPTORS-SEXP]
+  install-work=23398 score-work=0
+  map=((:MAP T -17) (:FILTER T -4) (:MAP-ADJACENT NIL 4611686018427387903))
+  flt=((:MAP NIL 4611686018427387903) (:FILTER T -15)
+       (:MAP-ADJACENT NIL 4611686018427387903))
+  adj=((:MAP NIL 4611686018427387903) (:FILTER T -9) (:MAP-ADJACENT T -17))
+
+========================================================================
+=== Stage 0 Audit (v2): E0b-2 Bootstrap Distractor & Schema Survival ===
+========================================================================
+
+Regime WHITELIST+SCHEMAS: solved 16/16, held-out sound 16/16
+  COPY             solved=YES sound=YES work=   17630
+  INC-ALL          solved=YES sound=YES work=   33929
+  DBL-ALL          solved=YES sound=YES work=   32113
+  SUM-ALL          solved=YES sound=YES work=   26298
+  LEN-ALL          solved=YES sound=YES work=   34444
+  PRD-ALL          solved=YES sound=YES work=   28337
+  FOLDL            solved=YES sound=YES work=   82539
+  FILTER           solved=YES sound=YES work=   76871
+  MAP-ADJACENT     solved=YES sound=YES work=  110559
+  POSITIONS        solved=YES sound=YES work=   47136
+  SCAN             solved=YES sound=YES work=  264818
+  SHIFT-SEQ        solved=YES sound=YES work=  100600
+  SEQ-CORR         solved=YES sound=YES work=   88666
+  BEST-SHIFT       solved=YES sound=YES work=  199252
+  ARGMAX-CORR      solved=YES sound=YES work=   98921
+  LAST-OR          solved=YES sound=YES work=   32798
+
+Regime WHITELIST-NO-SCHEMAS: solved 10/16, held-out sound 9/16
+  COPY             solved=YES sound=YES work=   16748
+  INC-ALL          solved=YES sound=YES work=   31445
+  DBL-ALL          solved=YES sound=YES work=   29409
+  SUM-ALL          solved=YES sound=YES work=   25978
+  LEN-ALL          solved=YES sound=YES work=   34038
+  PRD-ALL          solved=YES sound=YES work=   27984
+  FOLDL            solved=YES sound=IMPOSTOR! work=  121367 impostor=(:APP
+                                                                      (:OP :IF
+                                                                       :INT)
+                                                                      (:APP
+                                                                       (:OP :=
+                                                                        (:SEQ
+                                                                         :INT))
+                                                                       (:LIT
+                                                                        (:SEQ
+                                                                         :INT)
+                                                                        NIL)
+                                                                       (:VAR 0
+                                                                        (:SEQ
+                                                                         :INT)))
+                                                                      (:VAR 1
+                                                                       :INT)
+                                                                      (:APP
+                                                                       (:OP
+                                                                        :CODE-EVAL
+                                                                        (:CODE
+                                                                         ((0
+                                                                           . :INT)
+                                                                          (1
+                                                                           . :INT))
+                                                                         :INT))
+                                                                       (:VAR 2
+                                                                        (:CODE
+                                                                         ((0
+                                                                           . :INT)
+                                                                          (1
+                                                                           . :INT))
+                                                                         :INT))
+                                                                       (:APP
+                                                                        (:OP
+                                                                         :FOLDL
+                                                                         (:CODE
+                                                                          ((0
+                                                                            :SEQ
+                                                                            :INT)
+                                                                           (1
+                                                                            . :INT)
+                                                                           (2
+                                                                            :CODE
+                                                                            ((0
+                                                                              . :INT)
+                                                                             (1
+                                                                              . :INT))
+                                                                            :INT))
+                                                                          :INT))
+                                                                        (:APP
+                                                                         (:OP
+                                                                          :TAIL
+                                                                          :INT)
+                                                                         (:VAR
+                                                                          0
+                                                                          (:SEQ
+                                                                           :INT)))
+                                                                        (:VAR 1
+                                                                         :INT)
+                                                                        (:VAR 2
+                                                                         (:CODE
+                                                                          ((0
+                                                                            . :INT)
+                                                                           (1
+                                                                            . :INT))
+                                                                          :INT)))
+                                                                       (:APP
+                                                                        (:OP
+                                                                         :AT
+                                                                         (:SEQ
+                                                                          :INT))
+                                                                        (:VAR 0
+                                                                         (:SEQ
+                                                                          :INT))
+                                                                        (:LIT
+                                                                         :INT
+                                                                         0))))
+  FILTER           solved=YES sound=YES work=   76203
+  MAP-ADJACENT     solved=no  sound=-   work=  350000
+  POSITIONS        solved=no  sound=-   work=  350000
+  SCAN             solved=no  sound=-   work=  350000
+  SHIFT-SEQ        solved=no  sound=-   work=  350000
+  SEQ-CORR         solved=YES sound=YES work=   88066
+  BEST-SHIFT       solved=no  sound=-   work=  350000
+  ARGMAX-CORR      solved=no  sound=-   work=   51825
+  LAST-OR          solved=YES sound=YES work=   51078
+
+Regime ACTIVE-GRAMMAR+SCHEMAS: solved 10/16, held-out sound 9/16
+  COPY             solved=YES sound=YES work=   29645
+  INC-ALL          solved=YES sound=YES work=  196724
+  DBL-ALL          solved=YES sound=YES work=   65100
+  SUM-ALL          solved=YES sound=YES work=   28222
+  LEN-ALL          solved=YES sound=YES work=   43772
+  PRD-ALL          solved=YES sound=YES work=   37158
+  FOLDL            solved=YES sound=IMPOSTOR! work=  213355 impostor=(:APP
+                                                                      (:OP :IF
+                                                                       :INT)
+                                                                      (:APP
+                                                                       (:OP :=
+                                                                        (:SEQ
+                                                                         :INT))
+                                                                       (:VAR 0
+                                                                        (:SEQ
+                                                                         :INT))
+                                                                       (:LIT
+                                                                        (:SEQ
+                                                                         :INT)
+                                                                        NIL))
+                                                                      (:VAR 1
+                                                                       :INT)
+                                                                      (:APP
+                                                                       (:OP
+                                                                        :FOLDL
+                                                                        (:CODE
+                                                                         ((0
+                                                                           :SEQ
+                                                                           :INT)
+                                                                          (1
+                                                                           . :INT)
+                                                                          (2
+                                                                           :CODE
+                                                                           ((0
+                                                                             . :INT)
+                                                                            (1
+                                                                             . :INT))
+                                                                           :INT))
+                                                                         :INT))
+                                                                       (:APP
+                                                                        (:OP
+                                                                         :TAIL
+                                                                         :INT)
+                                                                        (:VAR 0
+                                                                         (:SEQ
+                                                                          :INT)))
+                                                                       (:APP
+                                                                        (:OP :-
+                                                                         :INT)
+                                                                        (:VAR 1
+                                                                         :INT)
+                                                                        (:APP
+                                                                         (:OP
+                                                                          :AT
+                                                                          (:SEQ
+                                                                           :INT))
+                                                                         (:VAR
+                                                                          0
+                                                                          (:SEQ
+                                                                           :INT))
+                                                                         (:LIT
+                                                                          :INT
+                                                                          0)))
+                                                                       (:VAR 2
+                                                                        (:CODE
+                                                                         ((0
+                                                                           . :INT)
+                                                                          (1
+                                                                           . :INT))
+                                                                         :INT))))
+  FILTER           solved=YES sound=YES work=  122687
+  MAP-ADJACENT     solved=no  sound=-   work=  350000
+  POSITIONS        solved=YES sound=YES work=   92605
+  SCAN             solved=no  sound=-   work=  350000
+  SHIFT-SEQ        solved=no  sound=-   work=  350000
+  SEQ-CORR         solved=no  sound=-   work=  350000
+  BEST-SHIFT       solved=no  sound=-   work=  350000
+  ARGMAX-CORR      solved=no  sound=-   work=  350000
+  LAST-OR          solved=YES sound=YES work=  152471
+
+Regime ACTIVE-GRAMMAR-NO-SCHEMAS: solved 9/16, held-out sound 8/16
+  COPY             solved=YES sound=YES work=   27291
+  INC-ALL          solved=YES sound=YES work=  195020
+  DBL-ALL          solved=YES sound=YES work=   63333
+  SUM-ALL          solved=YES sound=YES work=   27868
+  LEN-ALL          solved=YES sound=YES work=   42759
+  PRD-ALL          solved=YES sound=YES work=   36804
+  FOLDL            solved=YES sound=IMPOSTOR! work=  209723 impostor=(:APP
+                                                                      (:OP :IF
+                                                                       :INT)
+                                                                      (:APP
+                                                                       (:OP :=
+                                                                        (:SEQ
+                                                                         :INT))
+                                                                       (:LIT
+                                                                        (:SEQ
+                                                                         :INT)
+                                                                        NIL)
+                                                                       (:VAR 0
+                                                                        (:SEQ
+                                                                         :INT)))
+                                                                      (:VAR 1
+                                                                       :INT)
+                                                                      (:APP
+                                                                       (:OP :-
+                                                                        :INT)
+                                                                       (:APP
+                                                                        (:OP
+                                                                         :FOLDL
+                                                                         (:CODE
+                                                                          ((0
+                                                                            :SEQ
+                                                                            :INT)
+                                                                           (1
+                                                                            . :INT)
+                                                                           (2
+                                                                            :CODE
+                                                                            ((0
+                                                                              . :INT)
+                                                                             (1
+                                                                              . :INT))
+                                                                            :INT))
+                                                                          :INT))
+                                                                        (:APP
+                                                                         (:OP
+                                                                          :TAIL
+                                                                          :INT)
+                                                                         (:VAR
+                                                                          0
+                                                                          (:SEQ
+                                                                           :INT)))
+                                                                        (:VAR 1
+                                                                         :INT)
+                                                                        (:VAR 2
+                                                                         (:CODE
+                                                                          ((0
+                                                                            . :INT)
+                                                                           (1
+                                                                            . :INT))
+                                                                          :INT)))
+                                                                       (:APP
+                                                                        (:OP
+                                                                         :AT
+                                                                         (:SEQ
+                                                                          :INT))
+                                                                        (:VAR 0
+                                                                         (:SEQ
+                                                                          :INT))
+                                                                        (:LIT
+                                                                         :INT
+                                                                         0))))
+  FILTER           solved=YES sound=YES work=  120369
+  MAP-ADJACENT     solved=no  sound=-   work=  350000
+  POSITIONS        solved=no  sound=-   work=  350000
+  SCAN             solved=no  sound=-   work=  350000
+  SHIFT-SEQ        solved=no  sound=-   work=  350000
+  SEQ-CORR         solved=no  sound=-   work=  350000
+  BEST-SHIFT       solved=no  sound=-   work=  350000
+  ARGMAX-CORR      solved=no  sound=-   work=  350000
+  LAST-OR          solved=YES sound=YES work=  162173
+
+real	0m4.485s
+user	0m4.414s
+sys	0m0.048s
+exit=0

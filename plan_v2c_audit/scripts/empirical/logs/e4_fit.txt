@@ -1,0 +1,88 @@
+===== map-adjacent
+  final: work=350000000 cpu_s=66.79 gc_s=10.87 (16%) live_MiB=3219  => 5.24M work/s, 9.6 bytes live per work unit
+    work=     350000 cpu_s=   0.06 gc_s=  0.00 live_MiB=  184.9 rate=5.83M/s
+    work=    3500000 cpu_s=   0.57 gc_s= -0.00 live_MiB=  264.2 rate=6.14M/s
+    work=   35000000 cpu_s=   5.77 gc_s=  0.23 live_MiB=  359.9 rate=6.07M/s
+    work=  100000000 cpu_s=  16.24 gc_s=  0.98 live_MiB=  950.4 rate=6.16M/s
+    work=  350000000 cpu_s=  66.79 gc_s= 10.87 live_MiB= 3218.9 rate=5.24M/s
+  node 0 NIL                      inputs=2 ops=28 hdr=48  body-bit cap=106 ; completed body bits 28 @350k-total -> 51 @final ; node work 84844587 ; syntax 1613528 ; work/syntax=52.6
+      growth per body bit: work x1.384, syntax x1.374  (fit over 12 rungs, completed bits 36..51)
+      to exhaust the 106-bit body cap this node alone needs ~4.95e+15 work (x5.8e+07 its current work)
+       1h single-thread at 5.24M work/s (node share 24%): completed body bits ~63.3
+      10h single-thread at 5.24M work/s (node share 24%): completed body bits ~70.3
+  node 1 :HEURISTIC-CONDITIONAL   inputs=4 ops=20 hdr=67  body-bit cap=87 ; completed body bits 31 @350k-total -> 50 @final ; node work 222625705 ; syntax 5449265 ; work/syntax=40.9
+      growth per body bit: work x1.453, syntax x1.425  (fit over 13 rungs, completed bits 34..50)
+      to exhaust the 87-bit body cap this node alone needs ~2.25e+14 work (x1.0e+06 its current work)
+       1h single-thread at 5.24M work/s (node share 64%): completed body bits ~60.7
+      10h single-thread at 5.24M work/s (node share 64%): completed body bits ~66.8
+  node 2 :HEURISTIC-CONDITIONAL   inputs=4 ops=20 hdr=67  body-bit cap=87 ; completed body bits 24 @350k-total -> 45 @final ; node work 31803662 ; syntax 848233 ; work/syntax=37.5
+      growth per body bit: work x1.441, syntax x1.419  (fit over 11 rungs, completed bits 33..45)
+      to exhaust the 87-bit body cap this node alone needs ~1.45e+14 work (x4.6e+06 its current work)
+       1h single-thread at 5.24M work/s (node share 9%): completed body bits ~55.9
+      10h single-thread at 5.24M work/s (node share 9%): completed body bits ~62.2
+===== scan
+  final: work=350000000 cpu_s=69.05 gc_s=14.48 (21%) live_MiB=3460  => 5.07M work/s, 10.4 bytes live per work unit
+    work=     350000 cpu_s=   0.07 gc_s=  0.00 live_MiB=  206.5 rate=5.00M/s
+    work=    3500000 cpu_s=   0.62 gc_s= -0.00 live_MiB=  285.5 rate=5.65M/s
+    work=   35000000 cpu_s=   5.78 gc_s=  0.19 live_MiB=  376.2 rate=6.06M/s
+    work=  100000000 cpu_s=  16.62 gc_s=  1.09 live_MiB=  998.0 rate=6.02M/s
+    work=  350000000 cpu_s=  69.05 gc_s= 14.48 live_MiB= 3460.1 rate=5.07M/s
+  node 0 NIL                      inputs=3 ops=29 hdr=56  body-bit cap=98 ; completed body bits 27 @350k-total -> 46 @final ; node work 84844551 ; syntax 2183894 ; work/syntax=38.9
+      growth per body bit: work x1.465, syntax x1.445  (fit over 12 rungs, completed bits 32..46)
+      to exhaust the 98-bit body cap this node alone needs ~3.52e+16 work (x4.1e+08 its current work)
+       1h single-thread at 5.07M work/s (node share 24%): completed body bits ~56.4
+      10h single-thread at 5.07M work/s (node share 24%): completed body bits ~62.4
+  node 1 :HEURISTIC-CONDITIONAL   inputs=5 ops=20 hdr=75  body-bit cap=79 ; completed body bits 31 @350k-total -> 49 @final ; node work 254455729 ; syntax 6943338 ; work/syntax=36.6
+      growth per body bit: work x1.464, syntax x1.438  (fit over 13 rungs, completed bits 34..49)
+      to exhaust the 79-bit body cap this node alone needs ~2.37e+13 work (x9.3e+04 its current work)
+       1h single-thread at 5.07M work/s (node share 73%): completed body bits ~59.4
+      10h single-thread at 5.07M work/s (node share 73%): completed body bits ~65.4
+===== shift-seq
+  final: work=350000000 cpu_s=71.37 gc_s=13.94 (20%) live_MiB=3366  => 4.90M work/s, 10.1 bytes live per work unit
+    work=     350000 cpu_s=   0.06 gc_s=  0.00 live_MiB=  217.3 rate=5.83M/s
+    work=    3500000 cpu_s=   0.59 gc_s= -0.00 live_MiB=  300.2 rate=5.93M/s
+    work=   35000000 cpu_s=   5.64 gc_s=  0.16 live_MiB=  369.5 rate=6.21M/s
+    work=  100000000 cpu_s=  16.96 gc_s=  0.94 live_MiB=  963.5 rate=5.90M/s
+    work=  350000000 cpu_s=  71.37 gc_s= 13.94 live_MiB= 3366.1 rate=4.90M/s
+  node 0 NIL                      inputs=2 ops=26 hdr=29  body-bit cap=125 ; completed body bits 26 @350k-total -> 44 @final ; node work 84844507 ; syntax 2206873 ; work/syntax=38.4
+      growth per body bit: work x1.495, syntax x1.476  (fit over 12 rungs, completed bits 32..44)
+      to exhaust the 125-bit body cap this node alone needs ~1.18e+22 work (x1.4e+14 its current work)
+       1h single-thread at 4.90M work/s (node share 24%): completed body bits ~53.8
+      10h single-thread at 4.90M work/s (node share 24%): completed body bits ~59.5
+  node 1 :HEURISTIC-CONDITIONAL   inputs=2 ops=26 hdr=29  body-bit cap=125 ; completed body bits 26 @350k-total -> 47 @final ; node work 222622668 ; syntax 5501071 ; work/syntax=40.5
+      growth per body bit: work x1.492, syntax x1.476  (fit over 13 rungs, completed bits 32..47)
+      to exhaust the 125-bit body cap this node alone needs ~7.88e+21 work (x3.5e+13 its current work)
+       1h single-thread at 4.90M work/s (node share 64%): completed body bits ~56.8
+      10h single-thread at 4.90M work/s (node share 64%): completed body bits ~62.6
+  node 2 :HEURISTIC-CONDITIONAL   inputs=4 ops=19 hdr=48  body-bit cap=106 ; completed body bits 21 @350k-total -> 42 @final ; node work 31803232 ; syntax 883264 ; work/syntax=36.0
+      growth per body bit: work x1.443, syntax x1.428  (fit over 11 rungs, completed bits 31..42)
+      to exhaust the 106-bit body cap this node alone needs ~4.92e+17 work (x1.5e+10 its current work)
+       1h single-thread at 4.90M work/s (node share 9%): completed body bits ~52.7
+      10h single-thread at 4.90M work/s (node share 9%): completed body bits ~59.0
+===== best-shift
+  final: work=350000000 cpu_s=57.35 gc_s=6.57 (11%) live_MiB=2597  => 6.10M work/s, 7.8 bytes live per work unit
+    work=     350000 cpu_s=   0.06 gc_s=  0.00 live_MiB=  234.5 rate=5.83M/s
+    work=    3500000 cpu_s=   0.57 gc_s= -0.00 live_MiB=  293.6 rate=6.14M/s
+    work=   35000000 cpu_s=   5.64 gc_s=  0.12 live_MiB=  279.4 rate=6.21M/s
+    work=  100000000 cpu_s=  15.37 gc_s=  0.71 live_MiB=  741.7 rate=6.51M/s
+    work=  350000000 cpu_s=  57.35 gc_s=  6.57 live_MiB= 2597.1 rate=6.10M/s
+  node 0 NIL                      inputs=3 ops=30 hdr=47  body-bit cap=107 ; completed body bits 25 @350k-total -> 44 @final ; node work 84844535 ; syntax 1498204 ; work/syntax=56.6
+      growth per body bit: work x1.469, syntax x1.445  (fit over 12 rungs, completed bits 31..44)
+      to exhaust the 107-bit body cap this node alone needs ~2.84e+18 work (x3.3e+10 its current work)
+       1h single-thread at 6.10M work/s (node share 24%): completed body bits ~54.8
+      10h single-thread at 6.10M work/s (node share 24%): completed body bits ~60.7
+  node 1 :HEURISTIC-CONDITIONAL   inputs=5 ops=20 hdr=73  body-bit cap=81 ; completed body bits 25 @350k-total -> 46 @final ; node work 254453989 ; syntax 2865959 ; work/syntax=88.8
+      growth per body bit: work x1.479, syntax x1.468  (fit over 13 rungs, completed bits 31..46)
+      to exhaust the 81-bit body cap this node alone needs ~2.26e+14 work (x8.9e+05 its current work)
+       1h single-thread at 6.10M work/s (node share 73%): completed body bits ~56.6
+      10h single-thread at 6.10M work/s (node share 73%): completed body bits ~62.5
+===== argmax-corr
+  final: work=35656508 cpu_s=7.65 gc_s=0.27 (4%) live_MiB=196  => 4.66M work/s, 5.8 bytes live per work unit
+    work=     350000 cpu_s=   0.07 gc_s=  0.00 live_MiB=  247.9 rate=5.00M/s
+    work=    3500000 cpu_s=   0.73 gc_s= -0.00 live_MiB=  363.6 rate=4.79M/s
+    work=   35000000 cpu_s=   7.50 gc_s=  0.27 live_MiB=  194.3 rate=4.67M/s
+  node 0 NIL                      inputs=2 ops=26 hdr=29  body-bit cap=125 ; completed body bits 26 @350k-total -> 39 @final ; node work 6569237 ; syntax 47905 ; work/syntax=137.1
+      growth per body bit: work x1.484, syntax x1.444  (fit over 8 rungs, completed bits 32..39)
+      to exhaust the 125-bit body cap this node alone needs ~3.54e+21 work (x5.4e+14 its current work)
+       1h single-thread at 4.66M work/s (node share 18%): completed body bits ~54.6
+      10h single-thread at 4.66M work/s (node share 18%): completed body bits ~60.4

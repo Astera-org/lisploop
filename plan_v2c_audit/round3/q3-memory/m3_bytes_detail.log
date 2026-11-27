@@ -1,0 +1,7 @@
+plain, eight tasks: 67834 list-valued classes at 666 bytes each; 16399 integer-valued classes at 146 bytes each
+F-c (test before insert), eight tasks: 40810 classes at 911 bytes each, labels included
+hash-only entry (an integer in a Python set): 68.6 bytes
+
+real	0m55.612s
+user	0m20.411s
+sys	0m0.349s

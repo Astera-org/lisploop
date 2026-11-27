@@ -1,0 +1,438 @@
+===== A. The battery's own four observation jobs (bootstrap/build-batteries.lisp:120-150) =====
+[obs1 1var {+,*} lits(0 1)] claim=:BOUNDED-EXHAUSTION rows=3 slack=20 work=12516 (limit 20000) wall=0.000s
+   enumerated(target-type records)=77 complete=77 buckets=11 multi-member-buckets=10
+   proposed-laws(spanning)=66 pass-law-operator-fact=4
+   exhaustive GF(3) validation of ALL proposed: validated=66 refuted=0 work=20390
+   proposed laws:
+     F  (+ x0 0) = x0   fact=(:IDENTITY :+ (0) :RIGHT)
+     F  (+ 0 x0) = x0   fact=(:IDENTITY :+ (0) :LEFT)
+     F  (* x0 1) = x0   fact=(:IDENTITY :* (1) :RIGHT)
+     F  (* 1 x0) = x0   fact=(:IDENTITY :* (1) :LEFT)
+        (* x0 (* x0 x0)) = x0   
+        (* (* x0 x0) x0) = x0   
+        (+ x0 (* x0 0)) = x0   
+        (+ x0 (* 0 x0)) = x0   
+        (+ (* x0 0) x0) = x0   
+        (+ (* 0 x0) x0) = x0   
+        (* x0 0) = 0   
+        (* 0 x0) = 0   
+        (+ 0 0) = 0   
+        (* 0 0) = 0   
+        (* 0 1) = 0   
+        (* 1 0) = 0   
+        (+ x0 (+ x0 x0)) = 0   
+        (+ (+ x0 x0) x0) = 0   
+        (* x0 (* x0 0)) = 0   
+        (* x0 (* 0 x0)) = 0   
+        (* 0 (+ x0 x0)) = 0   
+        (* 0 (* x0 x0)) = 0   
+        (* (+ x0 x0) 0) = 0   
+        (* (* x0 x0) 0) = 0   
+        (* (* x0 0) x0) = 0   
+        (* (* 0 x0) x0) = 0   
+        (+ 0 1) = 1   
+        (+ 1 0) = 1   
+        (* 1 1) = 1   
+        (+ x0 (+ x0 0)) = (+ x0 x0)   
+        (+ x0 (+ 0 x0)) = (+ x0 x0)   
+        (+ x0 (* x0 1)) = (+ x0 x0)   
+        (+ x0 (* 1 x0)) = (+ x0 x0)   
+        (+ 0 (+ x0 x0)) = (+ x0 x0)   
+        (+ (+ x0 x0) 0) = (+ x0 x0)   
+        (+ (+ x0 0) x0) = (+ x0 x0)   
+        (+ (+ 0 x0) x0) = (+ x0 x0)   
+        (+ (* x0 1) x0) = (+ x0 x0)   
+        (+ (* 1 x0) x0) = (+ x0 x0)   
+        (* 1 (+ x0 x0)) = (+ x0 x0)   
+        (* (+ x0 x0) 1) = (+ x0 x0)   
+        (+ 0 (* x0 x0)) = (* x0 x0)   
+        (+ (* x0 x0) 0) = (* x0 x0)   
+        (* x0 (+ x0 0)) = (* x0 x0)   
+        (* x0 (+ 0 x0)) = (* x0 x0)   
+        (* x0 (* x0 1)) = (* x0 x0)   
+        (* x0 (* 1 x0)) = (* x0 x0)   
+        (* 1 (* x0 x0)) = (* x0 x0)   
+        (* (* x0 x0) 1) = (* x0 x0)   
+        (* (+ x0 0) x0) = (* x0 x0)   
+        (* (+ 0 x0) x0) = (* x0 x0)   
+        (* (* x0 1) x0) = (* x0 x0)   
+        (* (* 1 x0) x0) = (* x0 x0)   
+        (+ 1 x0) = (+ x0 1)   
+        (+ (* x0 x0) x0) = (+ x0 (* x0 x0))   
+        (* x0 (+ x0 1)) = (+ x0 (* x0 x0))   
+        (* x0 (+ 1 x0)) = (+ x0 (* x0 x0))   
+        (* (+ x0 1) x0) = (+ x0 (* x0 x0))   
+        (* (+ 1 x0) x0) = (+ x0 (* x0 x0))   
+        (* (+ x0 x0) x0) = (* x0 (+ x0 x0))   
+        (+ x0 (+ 1 x0)) = (+ x0 (+ x0 1))   
+        (+ 1 (+ x0 x0)) = (+ x0 (+ x0 1))   
+        (+ (+ x0 x0) 1) = (+ x0 (+ x0 1))   
+        (+ (+ x0 1) x0) = (+ x0 (+ x0 1))   
+        (+ (+ 1 x0) x0) = (+ x0 (+ x0 1))   
+        (+ (* x0 x0) 1) = (+ 1 (* x0 x0))   
+[obs2 2var {+,*} no-lits] claim=:BOUNDED-EXHAUSTION rows=9 slack=24 work=34391 (limit 40000) wall=0.000s
+   enumerated(target-type records)=74 complete=74 buckets=24 multi-member-buckets=20
+   proposed-laws(spanning)=50 pass-law-operator-fact=2
+   exhaustive GF(3) validation of ALL proposed: validated=50 refuted=0 work=52326
+   proposed laws:
+        (* x0 (* x0 x0)) = x0   
+        (* (* x0 x0) x0) = x0   
+        (* x1 (* x1 x1)) = x1   
+        (* (* x1 x1) x1) = x1   
+     F  (+ x1 x0) = (+ x0 x1)   fact=(:COMMUTATIVE :+)
+     F  (* x1 x0) = (* x0 x1)   fact=(:COMMUTATIVE :*)
+        (+ x1 (+ x1 x1)) = (+ x0 (+ x0 x0))   
+        (+ (+ x0 x0) x0) = (+ x0 (+ x0 x0))   
+        (+ (+ x1 x1) x1) = (+ x0 (+ x0 x0))   
+        (+ x0 (+ x1 x0)) = (+ x0 (+ x0 x1))   
+        (+ x1 (+ x0 x0)) = (+ x0 (+ x0 x1))   
+        (+ (+ x0 x0) x1) = (+ x0 (+ x0 x1))   
+        (+ (+ x0 x1) x0) = (+ x0 (+ x0 x1))   
+        (+ (+ x1 x0) x0) = (+ x0 (+ x0 x1))   
+        (+ x1 (+ x0 x1)) = (+ x0 (+ x1 x1))   
+        (+ x1 (+ x1 x0)) = (+ x0 (+ x1 x1))   
+        (+ (+ x0 x1) x1) = (+ x0 (+ x1 x1))   
+        (+ (+ x1 x0) x1) = (+ x0 (+ x1 x1))   
+        (+ (+ x1 x1) x0) = (+ x0 (+ x1 x1))   
+        (+ (* x0 x0) x0) = (+ x0 (* x0 x0))   
+        (+ x0 (* x1 x0)) = (+ x0 (* x0 x1))   
+        (+ (* x0 x1) x0) = (+ x0 (* x0 x1))   
+        (+ (* x1 x0) x0) = (+ x0 (* x0 x1))   
+        (+ (* x1 x1) x0) = (+ x0 (* x1 x1))   
+        (+ (* x0 x0) x1) = (+ x1 (* x0 x0))   
+        (+ x1 (* x1 x0)) = (+ x1 (* x0 x1))   
+        (+ (* x0 x1) x1) = (+ x1 (* x0 x1))   
+        (+ (* x1 x0) x1) = (+ x1 (* x0 x1))   
+        (+ (* x1 x1) x1) = (+ x1 (* x1 x1))   
+        (* (+ x0 x0) x0) = (* x0 (+ x0 x0))   
+        (* x0 (+ x1 x0)) = (* x0 (+ x0 x1))   
+        (* (+ x0 x1) x0) = (* x0 (+ x0 x1))   
+        (* (+ x1 x0) x0) = (* x0 (+ x0 x1))   
+        (* x1 (+ x0 x0)) = (* x0 (+ x1 x1))   
+        (* (+ x0 x0) x1) = (* x0 (+ x1 x1))   
+        (* (+ x1 x1) x0) = (* x0 (+ x1 x1))   
+        (* x0 (* x1 x0)) = (* x0 (* x0 x1))   
+        (* x1 (* x0 x0)) = (* x0 (* x0 x1))   
+        (* (* x0 x0) x1) = (* x0 (* x0 x1))   
+        (* (* x0 x1) x0) = (* x0 (* x0 x1))   
+        (* (* x1 x0) x0) = (* x0 (* x0 x1))   
+        (* x1 (* x0 x1)) = (* x0 (* x1 x1))   
+        (* x1 (* x1 x0)) = (* x0 (* x1 x1))   
+        (* (* x0 x1) x1) = (* x0 (* x1 x1))   
+        (* (* x1 x0) x1) = (* x0 (* x1 x1))   
+        (* (* x1 x1) x0) = (* x0 (* x1 x1))   
+        (* x1 (+ x1 x0)) = (* x1 (+ x0 x1))   
+        (* (+ x0 x1) x1) = (* x1 (+ x0 x1))   
+        (* (+ x1 x0) x1) = (* x1 (+ x0 x1))   
+        (* (+ x1 x1) x1) = (* x1 (+ x1 x1))   
+[obs3+ 3var {+}] claim=:CUTOFF rows=27 slack=44 work=80000 (limit 80000) wall=0.000s
+   enumerated(target-type records)=52 complete=52 buckets=17 multi-member-buckets=11
+   proposed-laws(spanning)=35 pass-law-operator-fact=4
+   exhaustive GF(3) validation of ALL proposed: validated=35 refuted=0 work=123379
+   proposed laws:
+     F  (+ x1 x0) = (+ x0 x1)   fact=(:COMMUTATIVE :+)
+     F  (+ x2 x0) = (+ x0 x2)   fact=(:COMMUTATIVE :+)
+     F  (+ x2 x1) = (+ x1 x2)   fact=(:COMMUTATIVE :+)
+        (+ x1 (+ x1 x1)) = (+ x0 (+ x0 x0))   
+        (+ x2 (+ x2 x2)) = (+ x0 (+ x0 x0))   
+        (+ (+ x0 x0) x0) = (+ x0 (+ x0 x0))   
+        (+ x0 (+ x1 x0)) = (+ x0 (+ x0 x1))   
+        (+ x1 (+ x0 x0)) = (+ x0 (+ x0 x1))   
+        (+ (+ x0 x0) x1) = (+ x0 (+ x0 x1))   
+        (+ (+ x0 x1) x0) = (+ x0 (+ x0 x1))   
+        (+ (+ x1 x0) x0) = (+ x0 (+ x0 x1))   
+        (+ x0 (+ x2 x0)) = (+ x0 (+ x0 x2))   
+        (+ x2 (+ x0 x0)) = (+ x0 (+ x0 x2))   
+        (+ (+ x0 x0) x2) = (+ x0 (+ x0 x2))   
+        (+ (+ x0 x2) x0) = (+ x0 (+ x0 x2))   
+        (+ x1 (+ x0 x1)) = (+ x0 (+ x1 x1))   
+        (+ x1 (+ x1 x0)) = (+ x0 (+ x1 x1))   
+        (+ (+ x0 x1) x1) = (+ x0 (+ x1 x1))   
+        (+ (+ x1 x0) x1) = (+ x0 (+ x1 x1))   
+        (+ (+ x1 x1) x0) = (+ x0 (+ x1 x1))   
+        (+ x0 (+ x2 x1)) = (+ x0 (+ x1 x2))   
+        (+ x1 (+ x0 x2)) = (+ x0 (+ x1 x2))   
+        (+ x1 (+ x2 x0)) = (+ x0 (+ x1 x2))   
+        (+ x2 (+ x0 x1)) = (+ x0 (+ x1 x2))   
+        (+ x2 (+ x1 x0)) = (+ x0 (+ x1 x2))   
+     F  (+ (+ x0 x1) x2) = (+ x0 (+ x1 x2))   fact=(:ASSOCIATIVE :+)
+        (+ (+ x0 x2) x1) = (+ x0 (+ x1 x2))   
+        (+ (+ x1 x0) x2) = (+ x0 (+ x1 x2))   
+        (+ x2 (+ x0 x2)) = (+ x0 (+ x2 x2))   
+        (+ x2 (+ x2 x0)) = (+ x0 (+ x2 x2))   
+        (+ (+ x0 x2) x2) = (+ x0 (+ x2 x2))   
+        (+ x1 (+ x2 x1)) = (+ x1 (+ x1 x2))   
+        (+ x2 (+ x1 x1)) = (+ x1 (+ x1 x2))   
+        (+ x2 (+ x1 x2)) = (+ x1 (+ x2 x2))   
+        (+ x2 (+ x2 x1)) = (+ x1 (+ x2 x2))   
+[obs3* 3var {*}] claim=:CUTOFF rows=27 slack=44 work=80000 (limit 80000) wall=0.000s
+   enumerated(target-type records)=52 complete=52 buckets=16 multi-member-buckets=13
+   proposed-laws(spanning)=36 pass-law-operator-fact=4
+   exhaustive GF(3) validation of ALL proposed: validated=36 refuted=0 work=124062
+   proposed laws:
+        (* x0 (* x0 x0)) = x0   
+        (* (* x0 x0) x0) = x0   
+        (* x1 (* x1 x1)) = x1   
+        (* x2 (* x2 x2)) = x2   
+     F  (* x1 x0) = (* x0 x1)   fact=(:COMMUTATIVE :*)
+     F  (* x2 x0) = (* x0 x2)   fact=(:COMMUTATIVE :*)
+     F  (* x2 x1) = (* x1 x2)   fact=(:COMMUTATIVE :*)
+        (* x0 (* x1 x0)) = (* x0 (* x0 x1))   
+        (* x1 (* x0 x0)) = (* x0 (* x0 x1))   
+        (* (* x0 x0) x1) = (* x0 (* x0 x1))   
+        (* (* x0 x1) x0) = (* x0 (* x0 x1))   
+        (* (* x1 x0) x0) = (* x0 (* x0 x1))   
+        (* x0 (* x2 x0)) = (* x0 (* x0 x2))   
+        (* x2 (* x0 x0)) = (* x0 (* x0 x2))   
+        (* (* x0 x0) x2) = (* x0 (* x0 x2))   
+        (* (* x0 x2) x0) = (* x0 (* x0 x2))   
+        (* x1 (* x0 x1)) = (* x0 (* x1 x1))   
+        (* x1 (* x1 x0)) = (* x0 (* x1 x1))   
+        (* (* x0 x1) x1) = (* x0 (* x1 x1))   
+        (* (* x1 x0) x1) = (* x0 (* x1 x1))   
+        (* (* x1 x1) x0) = (* x0 (* x1 x1))   
+        (* x0 (* x2 x1)) = (* x0 (* x1 x2))   
+        (* x1 (* x0 x2)) = (* x0 (* x1 x2))   
+        (* x1 (* x2 x0)) = (* x0 (* x1 x2))   
+        (* x2 (* x0 x1)) = (* x0 (* x1 x2))   
+        (* x2 (* x1 x0)) = (* x0 (* x1 x2))   
+     F  (* (* x0 x1) x2) = (* x0 (* x1 x2))   fact=(:ASSOCIATIVE :*)
+        (* (* x0 x2) x1) = (* x0 (* x1 x2))   
+        (* (* x1 x0) x2) = (* x0 (* x1 x2))   
+        (* x2 (* x0 x2)) = (* x0 (* x2 x2))   
+        (* x2 (* x2 x0)) = (* x0 (* x2 x2))   
+        (* (* x0 x2) x2) = (* x0 (* x2 x2))   
+        (* x1 (* x2 x1)) = (* x1 (* x1 x2))   
+        (* x2 (* x1 x1)) = (* x1 (* x1 x2))   
+        (* x2 (* x1 x2)) = (* x1 (* x2 x2))   
+        (* x2 (* x2 x1)) = (* x1 (* x2 x2))   
+TOTAL proposed=187 kept-by-shape-filter=14
+--- retype to :int and sample on residues (-3 -1 0 1 2 5) ---
+   (+ x0 0) = x0  GF3::VALIDATED assignments=3 work=227 | INT::CONJECTURE samples=6 work=370 method=:SAMPLED current=NIL tested=T
+   (+ 0 x0) = x0  GF3::VALIDATED assignments=3 work=227 | INT::CONJECTURE samples=6 work=370 method=:SAMPLED current=NIL tested=T
+   (* x0 1) = x0  GF3::VALIDATED assignments=3 work=227 | INT::CONJECTURE samples=6 work=370 method=:SAMPLED current=NIL tested=T
+   (* 1 x0) = x0  GF3::VALIDATED assignments=3 work=227 | INT::CONJECTURE samples=6 work=370 method=:SAMPLED current=NIL tested=T
+   (+ x1 x0) = (+ x0 x1)  GF3::VALIDATED assignments=9 work=823 | INT::CONJECTURE samples=36 work=2880 method=:SAMPLED current=NIL tested=T
+   (* x1 x0) = (* x0 x1)  GF3::VALIDATED assignments=9 work=823 | INT::CONJECTURE samples=36 work=2936 method=:SAMPLED current=NIL tested=T
+   (+ x1 x0) = (+ x0 x1)  GF3::VALIDATED assignments=27 work=2821 | INT::CONJECTURE samples=216 work=20822 method=:SAMPLED current=NIL tested=T
+   (+ x2 x0) = (+ x0 x2)  GF3::VALIDATED assignments=27 work=2877 | INT::CONJECTURE samples=216 work=21256 method=:SAMPLED current=NIL tested=T
+   (+ x2 x1) = (+ x1 x2)  GF3::VALIDATED assignments=27 work=2877 | INT::CONJECTURE samples=216 work=21256 method=:SAMPLED current=NIL tested=T
+   (+ (+ x0 x1) x2) = (+ x0 (+ x1 x2))  GF3::VALIDATED assignments=27 work=3599 | INT::CONJECTURE samples=216 work=25834 method=:SAMPLED current=NIL tested=T
+   (* x1 x0) = (* x0 x1)  GF3::VALIDATED assignments=27 work=2821 | INT::CONJECTURE samples=216 work=21158 method=:SAMPLED current=NIL tested=T
+   (* x2 x0) = (* x0 x2)  GF3::VALIDATED assignments=27 work=2877 | INT::CONJECTURE samples=216 work=21592 method=:SAMPLED current=NIL tested=T
+   (* x2 x1) = (* x1 x2)  GF3::VALIDATED assignments=27 work=2877 | INT::CONJECTURE samples=216 work=21592 method=:SAMPLED current=NIL tested=T
+   (* (* x0 x1) x2) = (* x0 (* x1 x2))  GF3::VALIDATED assignments=27 work=3599 | INT::CONJECTURE samples=216 work=26740 method=:SAMPLED current=NIL tested=T
+--- fate under :int sampling of the laws the shape filter DISCARDS ---
+     INT-survives: (* x2 (* x2 x1)) = (* x1 (* x2 x2))
+     INT-survives: (* x2 (* x1 x2)) = (* x1 (* x2 x2))
+     INT-survives: (* x2 (* x1 x1)) = (* x1 (* x1 x2))
+     INT-survives: (* x1 (* x2 x1)) = (* x1 (* x1 x2))
+     INT-survives: (* (* x0 x2) x2) = (* x0 (* x2 x2))
+     INT-survives: (* x2 (* x2 x0)) = (* x0 (* x2 x2))
+     INT-survives: (* x2 (* x0 x2)) = (* x0 (* x2 x2))
+     INT-survives: (* (* x1 x0) x2) = (* x0 (* x1 x2))
+     INT-survives: (* (* x0 x2) x1) = (* x0 (* x1 x2))
+     INT-survives: (* x2 (* x1 x0)) = (* x0 (* x1 x2))
+     INT-survives: (* x2 (* x0 x1)) = (* x0 (* x1 x2))
+     INT-survives: (* x1 (* x2 x0)) = (* x0 (* x1 x2))
+     INT-survives: (* x1 (* x0 x2)) = (* x0 (* x1 x2))
+     INT-survives: (* x0 (* x2 x1)) = (* x0 (* x1 x2))
+     INT-survives: (* (* x1 x1) x0) = (* x0 (* x1 x1))
+     INT-survives: (* (* x1 x0) x1) = (* x0 (* x1 x1))
+     INT-survives: (* (* x0 x1) x1) = (* x0 (* x1 x1))
+     INT-survives: (* x1 (* x1 x0)) = (* x0 (* x1 x1))
+     INT-survives: (* x1 (* x0 x1)) = (* x0 (* x1 x1))
+     INT-survives: (* (* x0 x2) x0) = (* x0 (* x0 x2))
+     INT-survives: (* (* x0 x0) x2) = (* x0 (* x0 x2))
+     INT-survives: (* x2 (* x0 x0)) = (* x0 (* x0 x2))
+     INT-survives: (* x0 (* x2 x0)) = (* x0 (* x0 x2))
+     INT-survives: (* (* x1 x0) x0) = (* x0 (* x0 x1))
+     INT-survives: (* (* x0 x1) x0) = (* x0 (* x0 x1))
+     INT-survives: (* (* x0 x0) x1) = (* x0 (* x0 x1))
+     INT-survives: (* x1 (* x0 x0)) = (* x0 (* x0 x1))
+     INT-survives: (* x0 (* x1 x0)) = (* x0 (* x0 x1))
+     INT-refuted : (* x2 (* x2 x2)) = x2  cx=(-3 -3 -3)
+     INT-refuted : (* x1 (* x1 x1)) = x1  cx=(-3 -3 -3)
+     INT-refuted : (* (* x0 x0) x0) = x0  cx=(-3 -3 -3)
+     INT-refuted : (* x0 (* x0 x0)) = x0  cx=(-3 -3 -3)
+     INT-survives: (+ x2 (+ x2 x1)) = (+ x1 (+ x2 x2))
+     INT-survives: (+ x2 (+ x1 x2)) = (+ x1 (+ x2 x2))
+     INT-survives: (+ x2 (+ x1 x1)) = (+ x1 (+ x1 x2))
+     INT-survives: (+ x1 (+ x2 x1)) = (+ x1 (+ x1 x2))
+     INT-survives: (+ (+ x0 x2) x2) = (+ x0 (+ x2 x2))
+     INT-survives: (+ x2 (+ x2 x0)) = (+ x0 (+ x2 x2))
+     INT-survives: (+ x2 (+ x0 x2)) = (+ x0 (+ x2 x2))
+     INT-survives: (+ (+ x1 x0) x2) = (+ x0 (+ x1 x2))
+     INT-survives: (+ (+ x0 x2) x1) = (+ x0 (+ x1 x2))
+     INT-survives: (+ x2 (+ x1 x0)) = (+ x0 (+ x1 x2))
+     INT-survives: (+ x2 (+ x0 x1)) = (+ x0 (+ x1 x2))
+     INT-survives: (+ x1 (+ x2 x0)) = (+ x0 (+ x1 x2))
+     INT-survives: (+ x1 (+ x0 x2)) = (+ x0 (+ x1 x2))
+     INT-survives: (+ x0 (+ x2 x1)) = (+ x0 (+ x1 x2))
+     INT-survives: (+ (+ x1 x1) x0) = (+ x0 (+ x1 x1))
+     INT-survives: (+ (+ x1 x0) x1) = (+ x0 (+ x1 x1))
+     INT-survives: (+ (+ x0 x1) x1) = (+ x0 (+ x1 x1))
+     INT-survives: (+ x1 (+ x1 x0)) = (+ x0 (+ x1 x1))
+     INT-survives: (+ x1 (+ x0 x1)) = (+ x0 (+ x1 x1))
+     INT-survives: (+ (+ x0 x2) x0) = (+ x0 (+ x0 x2))
+     INT-survives: (+ (+ x0 x0) x2) = (+ x0 (+ x0 x2))
+     INT-survives: (+ x2 (+ x0 x0)) = (+ x0 (+ x0 x2))
+     INT-survives: (+ x0 (+ x2 x0)) = (+ x0 (+ x0 x2))
+     INT-survives: (+ (+ x1 x0) x0) = (+ x0 (+ x0 x1))
+     INT-survives: (+ (+ x0 x1) x0) = (+ x0 (+ x0 x1))
+     INT-survives: (+ (+ x0 x0) x1) = (+ x0 (+ x0 x1))
+     INT-survives: (+ x1 (+ x0 x0)) = (+ x0 (+ x0 x1))
+     INT-survives: (+ x0 (+ x1 x0)) = (+ x0 (+ x0 x1))
+     INT-survives: (+ (+ x0 x0) x0) = (+ x0 (+ x0 x0))
+     INT-refuted : (+ x2 (+ x2 x2)) = (+ x0 (+ x0 x0))  cx=(-3 -3 -1)
+     INT-refuted : (+ x1 (+ x1 x1)) = (+ x0 (+ x0 x0))  cx=(-3 -1 -3)
+     INT-survives: (* (+ x1 x1) x1) = (* x1 (+ x1 x1))
+     INT-survives: (* (+ x1 x0) x1) = (* x1 (+ x0 x1))
+     INT-survives: (* (+ x0 x1) x1) = (* x1 (+ x0 x1))
+     INT-survives: (* x1 (+ x1 x0)) = (* x1 (+ x0 x1))
+     INT-survives: (* (* x1 x1) x0) = (* x0 (* x1 x1))
+     INT-survives: (* (* x1 x0) x1) = (* x0 (* x1 x1))
+     INT-survives: (* (* x0 x1) x1) = (* x0 (* x1 x1))
+     INT-survives: (* x1 (* x1 x0)) = (* x0 (* x1 x1))
+     INT-survives: (* x1 (* x0 x1)) = (* x0 (* x1 x1))
+     INT-survives: (* (* x1 x0) x0) = (* x0 (* x0 x1))
+     INT-survives: (* (* x0 x1) x0) = (* x0 (* x0 x1))
+     INT-survives: (* (* x0 x0) x1) = (* x0 (* x0 x1))
+     INT-survives: (* x1 (* x0 x0)) = (* x0 (* x0 x1))
+     INT-survives: (* x0 (* x1 x0)) = (* x0 (* x0 x1))
+     INT-survives: (* (+ x1 x1) x0) = (* x0 (+ x1 x1))
+     INT-survives: (* (+ x0 x0) x1) = (* x0 (+ x1 x1))
+     INT-survives: (* x1 (+ x0 x0)) = (* x0 (+ x1 x1))
+     INT-survives: (* (+ x1 x0) x0) = (* x0 (+ x0 x1))
+     INT-survives: (* (+ x0 x1) x0) = (* x0 (+ x0 x1))
+     INT-survives: (* x0 (+ x1 x0)) = (* x0 (+ x0 x1))
+     INT-survives: (* (+ x0 x0) x0) = (* x0 (+ x0 x0))
+     INT-survives: (+ (* x1 x1) x1) = (+ x1 (* x1 x1))
+     INT-survives: (+ (* x1 x0) x1) = (+ x1 (* x0 x1))
+     INT-survives: (+ (* x0 x1) x1) = (+ x1 (* x0 x1))
+     INT-survives: (+ x1 (* x1 x0)) = (+ x1 (* x0 x1))
+     INT-survives: (+ (* x0 x0) x1) = (+ x1 (* x0 x0))
+     INT-survives: (+ (* x1 x1) x0) = (+ x0 (* x1 x1))
+     INT-survives: (+ (* x1 x0) x0) = (+ x0 (* x0 x1))
+     INT-survives: (+ (* x0 x1) x0) = (+ x0 (* x0 x1))
+     INT-survives: (+ x0 (* x1 x0)) = (+ x0 (* x0 x1))
+     INT-survives: (+ (* x0 x0) x0) = (+ x0 (* x0 x0))
+     INT-survives: (+ (+ x1 x1) x0) = (+ x0 (+ x1 x1))
+     INT-survives: (+ (+ x1 x0) x1) = (+ x0 (+ x1 x1))
+     INT-survives: (+ (+ x0 x1) x1) = (+ x0 (+ x1 x1))
+     INT-survives: (+ x1 (+ x1 x0)) = (+ x0 (+ x1 x1))
+     INT-survives: (+ x1 (+ x0 x1)) = (+ x0 (+ x1 x1))
+     INT-survives: (+ (+ x1 x0) x0) = (+ x0 (+ x0 x1))
+     INT-survives: (+ (+ x0 x1) x0) = (+ x0 (+ x0 x1))
+     INT-survives: (+ (+ x0 x0) x1) = (+ x0 (+ x0 x1))
+     INT-survives: (+ x1 (+ x0 x0)) = (+ x0 (+ x0 x1))
+     INT-survives: (+ x0 (+ x1 x0)) = (+ x0 (+ x0 x1))
+     INT-refuted : (+ (+ x1 x1) x1) = (+ x0 (+ x0 x0))  cx=(-3 -1)
+     INT-survives: (+ (+ x0 x0) x0) = (+ x0 (+ x0 x0))
+     INT-refuted : (+ x1 (+ x1 x1)) = (+ x0 (+ x0 x0))  cx=(-3 -1)
+     INT-refuted : (* (* x1 x1) x1) = x1  cx=(-3 -3)
+     INT-refuted : (* x1 (* x1 x1)) = x1  cx=(-3 -3)
+     INT-refuted : (* (* x0 x0) x0) = x0  cx=(-3 -3)
+     INT-refuted : (* x0 (* x0 x0)) = x0  cx=(-3 -3)
+     INT-survives: (+ (* x0 x0) 1) = (+ 1 (* x0 x0))
+     INT-survives: (+ (+ 1 x0) x0) = (+ x0 (+ x0 1))
+     INT-survives: (+ (+ x0 1) x0) = (+ x0 (+ x0 1))
+     INT-survives: (+ (+ x0 x0) 1) = (+ x0 (+ x0 1))
+     INT-survives: (+ 1 (+ x0 x0)) = (+ x0 (+ x0 1))
+     INT-survives: (+ x0 (+ 1 x0)) = (+ x0 (+ x0 1))
+     INT-survives: (* (+ x0 x0) x0) = (* x0 (+ x0 x0))
+     INT-survives: (* (+ 1 x0) x0) = (+ x0 (* x0 x0))
+     INT-survives: (* (+ x0 1) x0) = (+ x0 (* x0 x0))
+     INT-survives: (* x0 (+ 1 x0)) = (+ x0 (* x0 x0))
+     INT-survives: (* x0 (+ x0 1)) = (+ x0 (* x0 x0))
+     INT-survives: (+ (* x0 x0) x0) = (+ x0 (* x0 x0))
+     INT-survives: (+ 1 x0) = (+ x0 1)
+     INT-survives: (* (* 1 x0) x0) = (* x0 x0)
+     INT-survives: (* (* x0 1) x0) = (* x0 x0)
+     INT-survives: (* (+ 0 x0) x0) = (* x0 x0)
+     INT-survives: (* (+ x0 0) x0) = (* x0 x0)
+     INT-survives: (* (* x0 x0) 1) = (* x0 x0)
+     INT-survives: (* 1 (* x0 x0)) = (* x0 x0)
+     INT-survives: (* x0 (* 1 x0)) = (* x0 x0)
+     INT-survives: (* x0 (* x0 1)) = (* x0 x0)
+     INT-survives: (* x0 (+ 0 x0)) = (* x0 x0)
+     INT-survives: (* x0 (+ x0 0)) = (* x0 x0)
+     INT-survives: (+ (* x0 x0) 0) = (* x0 x0)
+     INT-survives: (+ 0 (* x0 x0)) = (* x0 x0)
+     INT-survives: (* (+ x0 x0) 1) = (+ x0 x0)
+     INT-survives: (* 1 (+ x0 x0)) = (+ x0 x0)
+     INT-survives: (+ (* 1 x0) x0) = (+ x0 x0)
+     INT-survives: (+ (* x0 1) x0) = (+ x0 x0)
+     INT-survives: (+ (+ 0 x0) x0) = (+ x0 x0)
+     INT-survives: (+ (+ x0 0) x0) = (+ x0 x0)
+     INT-survives: (+ (+ x0 x0) 0) = (+ x0 x0)
+     INT-survives: (+ 0 (+ x0 x0)) = (+ x0 x0)
+     INT-survives: (+ x0 (* 1 x0)) = (+ x0 x0)
+     INT-survives: (+ x0 (* x0 1)) = (+ x0 x0)
+     INT-survives: (+ x0 (+ 0 x0)) = (+ x0 x0)
+     INT-survives: (+ x0 (+ x0 0)) = (+ x0 x0)
+     INT-survives: (* 1 1) = 1
+     INT-survives: (+ 1 0) = 1
+     INT-survives: (+ 0 1) = 1
+     INT-survives: (* (* 0 x0) x0) = 0
+     INT-survives: (* (* x0 0) x0) = 0
+     INT-survives: (* (* x0 x0) 0) = 0
+     INT-survives: (* (+ x0 x0) 0) = 0
+     INT-survives: (* 0 (* x0 x0)) = 0
+     INT-survives: (* 0 (+ x0 x0)) = 0
+     INT-survives: (* x0 (* 0 x0)) = 0
+     INT-survives: (* x0 (* x0 0)) = 0
+     INT-refuted : (+ (+ x0 x0) x0) = 0  cx=(-3)
+     INT-refuted : (+ x0 (+ x0 x0)) = 0  cx=(-3)
+     INT-survives: (* 1 0) = 0
+     INT-survives: (* 0 1) = 0
+     INT-survives: (* 0 0) = 0
+     INT-survives: (+ 0 0) = 0
+     INT-survives: (* 0 x0) = 0
+     INT-survives: (* x0 0) = 0
+     INT-survives: (+ (* 0 x0) x0) = x0
+     INT-survives: (+ (* x0 0) x0) = x0
+     INT-survives: (+ x0 (* 0 x0)) = x0
+     INT-survives: (+ x0 (* x0 0)) = x0
+     INT-refuted : (* (* x0 x0) x0) = x0  cx=(-3)
+     INT-refuted : (* x0 (* x0 x0)) = x0  cx=(-3)
+   discarded laws: survive-on-int=157 refuted-on-int=16 retype-error=0
+===== B. Is distributivity reachable?  3 vars, {+,*}, no literals, GF(3) and GF(5) =====
+GF(3): body bits lhs=24 rhs=34; header=47
+[dist GF(3) work-limit 80000] claim=:CUTOFF rows=27 slack=34 work=80000 (limit 80000) wall=0.004s
+   enumerated(target-type records)=54 complete=54 buckets=34 multi-member-buckets=16
+   proposed-laws(spanning)=20 pass-law-operator-fact=6
+   lhs observed=NIL rhs observed=NIL same-bucket=NIL
+   laws proposed=20
+[dist GF(3) work-limit 2000000] claim=:CUTOFF rows=27 slack=34 work=2000000 (limit 2000000) wall=0.024s
+   enumerated(target-type records)=1051 complete=1051 buckets=171 multi-member-buckets=168
+   proposed-laws(spanning)=880 pass-law-operator-fact=8
+   lhs observed=T rhs observed=NIL same-bucket=NIL
+   laws proposed=880
+[dist GF(3) work-limit 50000000] claim=:BOUNDED-EXHAUSTION rows=27 slack=34 work=6831983 (limit 50000000) wall=0.080s
+   enumerated(target-type records)=3477 complete=3477 buckets=274 multi-member-buckets=274
+   proposed-laws(spanning)=3203 pass-law-operator-fact=8
+   lhs observed=T rhs observed=T same-bucket=T
+   bucket of a*(b+c) has 12 members; representative(first)=(* x0 (+ x1 x2))
+   laws proposed=3203
+GF(5): body bits lhs=24 rhs=34; header=51
+[dist GF(5) work-limit 80000] claim=:CUTOFF rows=125 slack=34 work=80000 (limit 80000) wall=0.000s
+   enumerated(target-type records)=12 complete=12 buckets=9 multi-member-buckets=3
+   proposed-laws(spanning)=3 pass-law-operator-fact=3
+   lhs observed=NIL rhs observed=NIL same-bucket=NIL
+   laws proposed=3
+[dist GF(5) work-limit 2000000] claim=:CUTOFF rows=125 slack=34 work=2000000 (limit 2000000) wall=0.020s
+   enumerated(target-type records)=229 complete=229 buckets=68 multi-member-buckets=58
+   proposed-laws(spanning)=161 pass-law-operator-fact=8
+   lhs observed=T rhs observed=NIL same-bucket=NIL
+   laws proposed=161
+[dist GF(5) work-limit 50000000] claim=:BOUNDED-EXHAUSTION rows=125 slack=34 work=37182909 (limit 50000000) wall=0.376s
+   enumerated(target-type records)=3477 complete=3477 buckets=336 multi-member-buckets=324
+   proposed-laws(spanning)=3141 pass-law-operator-fact=8
+   lhs observed=T rhs observed=T same-bucket=T
+   bucket of a*(b+c) has 12 members; representative(first)=(* x0 (+ x1 x2))
+   laws proposed=3141
+
+real	0m2.594s
+user	0m2.567s
+sys	0m0.025s

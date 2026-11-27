@@ -1,0 +1,67 @@
+tasks kept: 196 of 200 attempts (the reviewer divides by 200)
+
+1. the reviewer's settings (review: 110, 55, 0, 50, 43)
+   separate 4, 150 random, no feedback : 110
+   separate 4, 150 random, feedback    :  55
+   separate 4, 1000 "stratified"       :   0
+   merged, 2000 "stratified"           :  50
+   merged, 2000 "stratified", feedback :  43
+   of the 1000 "stratified" probes, hand-transformed: 529; plain random: 471
+
+2. probe seed varied (20 seeds), separate 4 quotients, no feedback: misses of 196, mean [min..max], seeds with zero (20 seeds up to n=3000, 6 at 10000)
+   random  n=150      98.7 [ 64..132]  zero in  0/20
+   random  n=300      61.1 [ 43.. 87]  zero in  0/20
+   random  n=1000     13.8 [  2.. 47]  zero in  0/20
+   random  n=3000      2.3 [  0.. 12]  zero in  5/20
+   random  n=10000     0.5 [  0..  1]  zero in  3/6
+   bucket  n=150      28.9 [  8.. 53]  zero in  0/20
+   bucket  n=300       6.6 [  3.. 12]  zero in  0/20
+   bucket  n=1000      0.6 [  0..  1]  zero in  9/20
+   bucket  n=3000      0.0 [  0..  0]  zero in 20/20
+   bucket  n=10000     0.0 [  0..  0]  zero in  6/6
+   hand    n=150      54.1 [ 25.. 87]  zero in  0/20
+   hand    n=300      22.7 [  9.. 53]  zero in  0/20
+   hand    n=1000      1.9 [  0..  7]  zero in  7/20
+   hand    n=3000      0.2 [  0..  1]  zero in 15/20
+   hand    n=10000     0.0 [  0..  0]  zero in  6/6
+
+3. 1000 "stratified" probes with one hand transform left out (20 probe seeds): mean misses
+   without sorted           2.0 [  0..  7]
+   without sorted_desc      2.3 [  0..  9]
+   without abs              2.4 [  0..  7]
+   without dbl              1.8 [  0..  7]
+   without dbl+1            1.8 [  0..  7]
+   without constant         4.5 [  1.. 30]
+   without equal_prefix     2.5 [  0..  7]
+   without constant and equal_prefix   14.6 [  1.. 38]
+
+4. the structured row changed (1000 probes, 20 probe seeds): mean misses [min..max]
+   reviewer's five rows       random    13.8 [  2.. 47] of 196
+   reviewer's five rows       bucket     0.6 [  0..  1] of 196
+   reviewer's five rows       hand       1.9 [  0..  7] of 196
+   ten other structured rows  random    20.0 [  6.. 56] of 196
+   ten other structured rows  bucket     2.4 [  0..  6] of 196
+   ten other structured rows  hand       4.0 [  1.. 12] of 196
+   no structured row          random    10.6 [  6.. 28] of 193
+   no structured row          bucket     4.4 [  3..  7] of 193
+   no structured row          hand       4.5 [  2..  7] of 193
+
+5. task seed varied (10 seeds), reviewer's rows, probe seed 11: misses
+   random  n=150   [90, 108, 96, 108, 88, 97, 97, 105, 100, 107]
+   hand    n=1000  [3, 3, 8, 5, 8, 5, 2, 9, 5, 3]
+   bucket  n=1000  [7, 3, 6, 5, 7, 4, 3, 10, 5, 3]
+
+6. merged product (len + nonneg x parity x order): mean misses [min..max]
+   random  n=2000     92.7 [ 75..115] (20 seeds)
+   random  n=10000    30.8 [ 17.. 57] (6 seeds)
+   random  n=50000     6.3 [  5..  7] (3 seeds)
+   hand    n=2000     48.4 [ 31.. 67] (20 seeds)
+   hand    n=10000     6.0 [  3.. 10] (6 seeds)
+   hand    n=50000     0.0 [  0..  0] (3 seeds)
+
+7. the feedback rule: the reviewer's code also CREATES an entry for an unseen input label (one output only); variant that leaves unseen labels unseen
+   150 random: no feedback 110; feedback as coded 55; feedback without creating entries 48
+
+real	8m28.026s
+user	5m36.624s
+sys	0m0.352s

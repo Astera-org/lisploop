@@ -1,0 +1,17 @@
+(load "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/docs-v2b/kcopy/load.lisp")
+(in-package #:lisploop)
+(let* ((seq (sequence-type :int))
+       (xs (var 0 seq)) (i (var 1 :int)))
+  (flet ((show (label form)
+           (format t "~a => ~a~%" label (handler-case (if (provably-total-p form) "TOTAL" "not-total")
+                                           (error (e) (format nil "ERR ~a" e))))))
+    (show "(at xs 0)" (term `(at ,xs 0)))
+    (show "(if (= xs ()) 0 (at xs 0))" (term `(if (= ,xs ,(lit seq nil)) 0 (at ,xs 0)) :int))
+    (show "(at xs i)" (term `(at ,xs ,i)))
+    (show "(if (< i (length xs)) (at xs i) 0)" (term `(if (< ,i (length ,xs)) (at ,xs ,i) 0) :int))
+    (show "(if (< i (length xs)) (if (< i 0) 0 (at xs i)) 0)"
+          (term `(if (< ,i (length ,xs)) (if (< ,i 0) 0 (at ,xs ,i)) 0) :int))
+    (show "(if (< 0 (length xs)) (at xs (mod i (length xs))) 0)"
+          (term `(if (< 0 (length ,xs)) (at ,xs (mod ,i (length ,xs))) 0) :int))
+    (show "(gather xs '(0))" (term `(gather ,xs ,(lit seq '(0)))))
+    (show "(if (< 1 (length xs)) (at xs 1) 0)" (term `(if (< 1 (length ,xs)) (at ,xs 1) 0) :int))))

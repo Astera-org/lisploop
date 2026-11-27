@@ -1,0 +1,60 @@
+# sampled union built, 281 s
+# scope E1: probes per signature {'L': 121, 'I': 7, 'LL': 1600, 'II': 49, 'IL': 280}, 281 s
+# scope E2: probes per signature {'L': 3906, 'I': 13, 'LL': 24336, 'II': 169, 'IL': 10153}, 285 s
+# scope E3: probes per signature {'L': 107011, 'I': 25, 'LL': 609961, 'II': 625, 'IL': 97650}, 374 s
+
+1. Truth estimate U: 1736 entries (input keys), 2597 (key, output) pairs
+   sampled union (10 tables x 30,000 probes) lacks 0 pairs that scope E3 has (and 0 on keys it never saw)
+   scope E3 lacks 0 pairs that the sampled union has (and 66 on keys outside the scope)
+      by (operator, quotient): {}
+
+2. Deterministic entries of U (one output label), by quotient
+   quotient  entries  determ.   share |  tables all-determ    trivial
+   sign          367      227   61.9% |      61         22          0
+   parity        320      223   69.7% |      61         26          1
+   order         283      130   45.9% |      61         29         20
+   caplen5       491      452   92.1% |      61         45         20
+   lenmod2       123       87   70.7% |      61         38         20
+   isempty       152      123   80.9% |      61         34          1
+   ALL          1736     1242   71.5% |     366        194         62
+   ("trivial" = the table has a single output label overall, e.g. a quotient that is constant on ints; it filters nothing)
+   fully deterministic and not trivial: 132 of 366 tables
+
+3. Exhaustive scopes used as probe sets, against U
+       probes per signature                                  entries    pairs pairs lacked tables hit
+   E1  {'L': 121, 'I': 7, 'LL': 1600, 'II': 49, 'IL': 280}      1568     2326           56         20
+       lacked, by (operator, quotient): {('add_k', 'sign'): 6, ('filter_even', 'sign'): 5, ('filter_odd', 'sign'): 5, ('filter_pos', 'order'): 5, ('filter_neg', 'order'): 5, ('filter_even', 'order'): 5, ('inc_all', 'sign'): 3, ('dec_all', 'sign'): 3, ('half_all', 'parity'): 3, ('filter_pos', 'parity'): 3}
+   E2  {'L': 3906, 'I': 13, 'LL': 24336, 'II': 169, 'IL': 10153}     1612     2452           16         12
+       lacked, by (operator, quotient): {('odds_idx', 'caplen5'): 3, ('drop2', 'caplen5'): 2, ('evens_idx', 'caplen5'): 2, ('zip_mul', 'sign'): 1, ('odds_idx', 'order'): 1, ('map_adj_add', 'caplen5'): 1, ('map_adj_sub', 'caplen5'): 1, ('map_adj_mul', 'caplen5'): 1, ('map_adj_min', 'caplen5'): 1, ('map_adj_max', 'caplen5'): 1}
+   E3  {'L': 107011, 'I': 25, 'LL': 609961, 'II': 625, 'IL': 97650}     1670     2531            0          0
+
+4. Length-regular operators (output length a function of input lengths on every probe of E2, iid, push3, bank3 at 30,000)
+   list-valued operators: 41; length-regular: 35; not: ['filter_pos', 'filter_neg', 'filter_even', 'filter_odd', 'dedup_adj', 'take_n']
+   cheaply certifiable tier = trivial tables (62) + length quotients on length-regular operators (104): 166 of 366 tables, 703 of 1736 entries (556 entries in non-trivial tables)
+   of the 104 non-trivial certified tables, 68 are deterministic throughout
+
+5. Searches.  entries = input keys used for filtering; lost = answers lost; AUD = tasks with a reference-path defect; gain = candidates vs plain (order-averaged)
+
+   task set S300 (300 tasks)
+   tables                                        entries  lost   AUD     gain   store  storeJ1
+   U: all entries                                   1736     0     0   16.96x   2.52x    8.77x
+   U: deterministic entries only                    1242     0     0   10.16x   1.57x    4.72x
+   U: fully deterministic tables only                876     0     0    3.25x   1.15x    1.24x
+   U: non-deterministic entries only                 494     0     0    3.02x   1.15x    1.15x
+   U: certifiable tier only (length-regular)         703     0     0    3.60x   1.15x    1.15x
+   U: all but the certifiable tier                  1033     0     0   11.03x   1.86x    6.43x
+   no entries (types only)                             0     0     0    1.58x   1.15x    1.15x
+   scope E1 as the tables                           1568    35   173   18.63x   2.84x    8.81x
+   scope E2 as the tables                           1612    25   146   16.72x   2.50x    8.80x
+   scope E3 as the tables                           1670     0     0   16.88x   2.52x    8.77x
+   share of the gain kept by "U: deterministic entries only": 60% of the factor, 78% of the log-gain above types-only
+   share of the gain kept by "U: fully deterministic tables only": 19% of the factor, 31% of the log-gain above types-only
+   share of the gain kept by "U: certifiable tier only (length-regular)": 21% of the factor, 35% of the log-gain above types-only
+   share of the gain kept by "U: non-deterministic entries only": 18% of the factor, 27% of the log-gain above types-only
+   share of the gain kept by "U: all but the certifiable tier": 65% of the factor, 82% of the log-gain above types-only
+
+total wall 1242 s
+
+real	20m42.692s
+user	57m34.709s
+sys	0m14.166s

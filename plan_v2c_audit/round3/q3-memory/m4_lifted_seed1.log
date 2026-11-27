@@ -1,0 +1,95 @@
+# M2(2) lifted position space; seed 1; 6 sequences [(4, -4, -1, -4), (2, 2, 5, 1, -2, -4), (-5, 1, 1, 4, -5, 6), (-1, 6, -2, 4, -4, 0), (-5, -5, 5), (1, 5, -2)]; k = [2, 1, 5, 2, 2, 2]
+
+== variant A: parity, mod 3, sign; `at` keyed on the index label ==
+   `at` table A under parity : {0: [0, 1], 1: [0, 1]}
+   `at` table A under mod3   : {0: [0, 1, 2], 1: [0, 1, 2], 2: [0, 1, 2]}
+   `at` table A under sign   : {-1: [], 0: [-1, 0, 1], 1: [-1, 0, 1]}
+task     target               arith rows N* |  plain ev  stored     top |  LL given  LL unkn. stored |  EL evals   gain | EL stored    gain  cut h cut la | lost
+madd     xs[i] + xs[i+1]      both    22  7 |      8253    1326    1088 |      4065      4179   1326 |      3231   2.6x |       618   2.15x    252      6 | none
+           stored per size: plain [4, 3, 20, 66, 145, 1088] | EL [4, 3, 20, 66, 145, 380] | gains: LL given 2.0x, LL unknown 2.0x evaluations; plain with size N*-1 as hashes: 238 full classes (5.6x); EL cut 0 classes below size N*-1
+msub     xs[i+1] - xs[i]      both    22  7 |     11081    1326    1088 |      4065      4179   1326 |      3237   3.4x |       618   2.15x    223     36 | none
+           stored per size: plain [4, 3, 20, 66, 145, 1088] | EL [4, 3, 20, 66, 145, 380] | gains: LL given 2.7x, LL unknown 2.7x evaluations; plain with size N*-1 as hashes: 238 full classes (5.6x); EL cut 0 classes below size N*-1
+reverse  xs[len-1-i]          below   28  6 |       993     240     148 |       977      1013    240 |       886   1.1x |       173   1.39x     29      0 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 81] | gains: LL given 1.0x, LL unknown 1.0x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+rotl     xs[(i+k) mod len]    below   28  6 |      2518     635     468 |      2332      2398    635 |      2044   1.2x |       449   1.41x     95      0 | none
+           stored per size: plain [5, 4, 39, 119, 468] | EL [5, 4, 39, 119, 282] | gains: LL given 1.1x, LL unknown 1.1x evaluations; plain with size N*-1 as hashes: 167 full classes (3.8x); EL cut 0 classes below size N*-1
+scale    xs[i] * (i+1)        above   28  6 |      2777     240     148 |      1028      1064    240 |       952   2.9x |       173   1.39x     29      4 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 81] | gains: LL given 2.7x, LL unknown 2.6x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+stride   xs[(i+i) mod len]    below   28  6 |      1089     240     148 |      1022      1058    240 |       930   1.2x |       173   1.39x     28      0 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 81] | gains: LL given 1.1x, LL unknown 1.0x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+dlast    xs[i] - xs[len-1]    both    28  7 |      8480    1317    1077 |      4035      4152   1317 |      3272   2.6x |       620   2.12x    259     29 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 380] | gains: LL given 2.1x, LL unknown 2.0x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+revplus  xs[len-1-i] + i      both    28  8 |     14960    3607    2290 |     13486     13983   3607 |     11530   1.3x |      2135   1.69x    526     24 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077, 2290] | EL [4, 3, 20, 65, 148, 1077, 818] | gains: LL given 1.1x, LL unknown 1.1x evaluations; plain with size N*-1 as hashes: 1317 full classes (2.7x); EL cut 0 classes below size N*-1
+ctl1     (i+1) * (len-i)      none    28  7 |     10109    1317    1077 |      4054      4210   1317 |      3274   3.1x |       620   2.12x    246      0 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 380] | gains: LL given 2.5x, LL unknown 2.4x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+ctl2     i*i - len*len        none    28  7 |      9981    1317    1077 |      4037      4155   1317 |      4460   2.2x |       620   2.12x      0   1012 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 380] | gains: LL given 2.5x, LL unknown 2.4x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+
+== variant S: the same; `at` keyed on (sequence label, index label) ==
+   `at` table S under parity : 6 (sequence label, index label) entries, 2 of them allow every label
+   `at` table S under mod3   : 21 (sequence label, index label) entries, 3 of them allow every label
+   `at` table S under sign   : 21 (sequence label, index label) entries, 2 of them allow every label
+task     target               arith rows N* |  plain ev  stored     top |  LL given  LL unkn. stored |  EL evals   gain | EL stored    gain  cut h cut la | lost
+madd     xs[i] + xs[i+1]      both    22  7 |      8253    1326    1088 |      3685      3689   1326 |      1136   7.3x |       238   5.57x      8      1 | none
+           stored per size: plain [4, 3, 20, 66, 145, 1088] | EL [4, 3, 20, 66, 145, 0] | gains: LL given 2.2x, LL unknown 2.2x evaluations; plain with size N*-1 as hashes: 238 full classes (5.6x); EL cut 0 classes below size N*-1
+msub     xs[i+1] - xs[i]      both    22  7 |     11081    1326    1088 |      3685      3689   1326 |      1146   9.7x |       238   5.57x      9      0 | none
+           stored per size: plain [4, 3, 20, 66, 145, 1088] | EL [4, 3, 20, 66, 145, 0] | gains: LL given 3.0x, LL unknown 3.0x evaluations; plain with size N*-1 as hashes: 238 full classes (5.6x); EL cut 0 classes below size N*-1
+reverse  xs[len-1-i]          below   28  6 |       993     240     148 |       977      1013    240 |       886   1.1x |       173   1.39x     29      0 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 81] | gains: LL given 1.0x, LL unknown 1.0x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+rotl     xs[(i+k) mod len]    below   28  6 |      2518     635     468 |      2332      2398    635 |      2044   1.2x |       449   1.41x     95      0 | none
+           stored per size: plain [5, 4, 39, 119, 468] | EL [5, 4, 39, 119, 282] | gains: LL given 1.1x, LL unknown 1.1x evaluations; plain with size N*-1 as hashes: 167 full classes (3.8x); EL cut 0 classes below size N*-1
+scale    xs[i] * (i+1)        above   28  6 |      2777     240     148 |       947       951    240 |       324   8.6x |        92   2.61x      2      5 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 0] | gains: LL given 2.9x, LL unknown 2.9x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+stride   xs[(i+i) mod len]    below   28  6 |      1089     240     148 |      1022      1058    240 |       930   1.2x |       173   1.39x     28      0 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 81] | gains: LL given 1.1x, LL unknown 1.0x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+dlast    xs[i] - xs[len-1]    both    28  7 |      8480    1317    1077 |      3655      3659   1317 |      1300   6.5x |       240   5.49x     10      1 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 0] | gains: LL given 2.3x, LL unknown 2.3x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+revplus  xs[len-1-i] + i      both    28  8 |     14960    3607    2290 |     12668     12672   3607 |      4395   3.4x |      1317   2.74x     49      0 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077, 2290] | EL [4, 3, 20, 65, 148, 1077, 0] | gains: LL given 1.2x, LL unknown 1.2x evaluations; plain with size N*-1 as hashes: 1317 full classes (2.7x); EL cut 0 classes below size N*-1
+ctl1     (i+1) * (len-i)      none    28  7 |     10109    1317    1077 |      3674      3717   1317 |      1463   6.9x |       240   5.49x     61     11 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 0] | gains: LL given 2.8x, LL unknown 2.7x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+ctl2     i*i - len*len        none    28  7 |      9981    1317    1077 |      3657      3662   1317 |      1546   6.5x |       240   5.49x    113     47 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 0] | gains: LL given 2.7x, LL unknown 2.7x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+
+== variant SG: S plus the guard word inrange = (0 <= v < len) ==
+task     target               arith rows N* |  plain ev  stored     top |  LL given  LL unkn. stored |  EL evals   gain | EL stored    gain  cut h cut la | lost
+madd     xs[i] + xs[i+1]      both    22  7 |      8253    1326    1088 |      3685      3689   1326 |      1104   7.5x |       238   5.57x      9      0 | none
+           stored per size: plain [4, 3, 20, 66, 145, 1088] | EL [4, 3, 20, 66, 145, 0] | gains: LL given 2.2x, LL unknown 2.2x evaluations; plain with size N*-1 as hashes: 238 full classes (5.6x); EL cut 0 classes below size N*-1
+msub     xs[i+1] - xs[i]      both    22  7 |     11081    1326    1088 |      3685      3689   1326 |      1114   9.9x |       238   5.57x      9      0 | none
+           stored per size: plain [4, 3, 20, 66, 145, 1088] | EL [4, 3, 20, 66, 145, 0] | gains: LL given 3.0x, LL unknown 3.0x evaluations; plain with size N*-1 as hashes: 238 full classes (5.6x); EL cut 0 classes below size N*-1
+reverse  xs[len-1-i]          below   28  6 |       993     240     148 |       949       963    240 |       772   1.3x |       116   2.07x    114      0 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 24] | gains: LL given 1.0x, LL unknown 1.0x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+rotl     xs[(i+k) mod len]    below   28  6 |      2518     635     468 |      2160      2187    635 |      1725   1.5x |       277   2.29x    340      3 | none
+           stored per size: plain [5, 4, 39, 119, 468] | EL [5, 4, 39, 119, 110] | gains: LL given 1.2x, LL unknown 1.2x evaluations; plain with size N*-1 as hashes: 167 full classes (3.8x); EL cut 0 classes below size N*-1
+scale    xs[i] * (i+1)        above   28  6 |      2777     240     148 |       947       951    240 |       310   9.0x |        92   2.61x      6      1 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 0] | gains: LL given 2.9x, LL unknown 2.9x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+stride   xs[(i+i) mod len]    below   28  6 |      1089     240     148 |       965       979    240 |       789   1.4x |       116   2.07x    111      2 | none
+           stored per size: plain [4, 3, 20, 65, 148] | EL [4, 3, 20, 65, 24] | gains: LL given 1.1x, LL unknown 1.1x evaluations; plain with size N*-1 as hashes: 92 full classes (2.6x); EL cut 0 classes below size N*-1
+dlast    xs[i] - xs[len-1]    both    28  7 |      8480    1317    1077 |      3655      3659   1317 |      1266   6.7x |       240   5.49x     10      1 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 0] | gains: LL given 2.3x, LL unknown 2.3x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+revplus  xs[len-1-i] + i      both    28  8 |     14960    3607    2290 |     12668     12672   3607 |      4282   3.5x |      1317   2.74x     49      0 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077, 2290] | EL [4, 3, 20, 65, 148, 1077, 0] | gains: LL given 1.2x, LL unknown 1.2x evaluations; plain with size N*-1 as hashes: 1317 full classes (2.7x); EL cut 0 classes below size N*-1
+ctl1     (i+1) * (len-i)      none    28  7 |     10109    1317    1077 |      3665      3671   1317 |      1383   7.3x |       240   5.49x     61     11 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 0] | gains: LL given 2.8x, LL unknown 2.8x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+ctl2     i*i - len*len        none    28  7 |      9981    1317    1077 |      3657      3662   1317 |      1512   6.6x |       240   5.49x    113     47 | none
+           stored per size: plain [4, 3, 20, 65, 148, 1077] | EL [4, 3, 20, 65, 148, 0] | gains: LL given 2.7x, LL unknown 2.7x evaluations; plain with size N*-1 as hashes: 240 full classes (5.5x); EL cut 0 classes below size N*-1
+
+== summary (seed 1): gains over plain; "stored" counts classes below N*; EL = every size ==
+task     arith N* | LL evals LL store | EL-A evals / stored        | EL-S evals / stored        | EL-SG evals / stored       |   hash-top | cut below N*-1 (A,S,SG); lost
+madd     both   7 |     2.2x    1.00x |   2.6x /  2.15x (618)      |   7.3x /  5.57x (238)      |   7.5x /  5.57x (238)      |      5.57x | 0,0,0; 0
+msub     both   7 |     3.0x    1.00x |   3.4x /  2.15x (618)      |   9.7x /  5.57x (238)      |   9.9x /  5.57x (238)      |      5.57x | 0,0,0; 0
+reverse  below  6 |     1.0x    1.00x |   1.1x /  1.39x (173)      |   1.1x /  1.39x (173)      |   1.3x /  2.07x (116)      |      2.61x | 0,0,0; 0
+rotl     below  6 |     1.1x    1.00x |   1.2x /  1.41x (449)      |   1.2x /  1.41x (449)      |   1.5x /  2.29x (277)      |      3.80x | 0,0,0; 0
+scale    above  6 |     2.9x    1.00x |   2.9x /  1.39x (173)      |   8.6x /  2.61x (92)       |   9.0x /  2.61x (92)       |      2.61x | 0,0,0; 0
+stride   below  6 |     1.0x    1.00x |   1.2x /  1.39x (173)      |   1.2x /  1.39x (173)      |   1.4x /  2.07x (116)      |      2.61x | 0,0,0; 0
+dlast    both   7 |     2.3x    1.00x |   2.6x /  2.12x (620)      |   6.5x /  5.49x (240)      |   6.7x /  5.49x (240)      |      5.49x | 0,0,0; 0
+revplus  both   8 |     1.2x    1.00x |   1.3x /  1.69x (2135)     |   3.4x /  2.74x (1317)     |   3.5x /  2.74x (1317)     |      2.74x | 0,0,0; 0
+ctl1     none   7 |     2.7x    1.00x |   3.1x /  2.12x (620)      |   6.9x /  5.49x (240)      |   7.3x /  5.49x (240)      |      5.49x | 0,0,0; 0
+ctl2     none   7 |     2.7x    1.00x |   2.2x /  2.12x (620)      |   6.5x /  5.49x (240)      |   6.6x /  5.49x (240)      |      5.49x | 0,0,0; 0
+
+total 17.9 s
+
+real	0m18.052s
+user	0m8.877s
+sys	0m0.020s

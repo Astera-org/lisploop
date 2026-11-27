@@ -1,0 +1,527 @@
+===== algebra.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :ALGEBRA :PARAMETERS ((LISPLOOP::?N :INT)))
+- :INT/CANCEL-+-0 :LAW dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:EQUIVALENCE) bits= 36 work= 25
+    inputs= ((0 . :INT) (1 . :INT)) target= :BOOL
+    expr= (= (- (+ x1 x0) x0) x1)
+    edges= ((:GOVERNS :-) (:GOVERNS :+) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', ':INTEGER-RING-AXIOM')]
+- :INT/CANCEL-+-1 :LAW dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:EQUIVALENCE) bits= 36 work= 25
+    inputs= ((0 . :INT) (1 . :INT)) target= :BOOL
+    expr= (= (- (+ x0 x1) x0) x1)
+    edges= ((:GOVERNS :-) (:GOVERNS :+) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', ':INTEGER-RING-AXIOM')]
+- :INT/CANCEL---0 :LAW dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:EQUIVALENCE) bits= 36 work= 25
+    inputs= ((0 . :INT) (1 . :INT)) target= :BOOL
+    expr= (= (+ x0 (- x1 x0)) x1)
+    edges= ((:GOVERNS :+) (:GOVERNS :-) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', ':INTEGER-RING-AXIOM')]
+- :INT/CANCEL---1 :LAW dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:EQUIVALENCE) bits= 36 work= 25
+    inputs= ((0 . :INT) (1 . :INT)) target= :BOOL
+    expr= (= (- x0 (- x0 x1)) x1)
+    edges= ((:GOVERNS :-) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', ':INTEGER-RING-AXIOM')]
+- :INT/ID-+-RIGHT :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 25 work= 370
+    inputs= ((0 . :INT)) target= :BOOL
+    expr= (= (+ x0 '0) x0)
+    edges= ((:GOVERNS :+) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-0)')]
+- :INT/ID-+-LEFT :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 25 work= 370
+    inputs= ((0 . :INT)) target= :BOOL
+    expr= (= (+ '0 x0) x0)
+    edges= ((:GOVERNS :+) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-1)')]
+- :INT/ID-*-RIGHT :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 28 work= 370
+    inputs= ((0 . :INT)) target= :BOOL
+    expr= (= (* x0 '1) x0)
+    edges= ((:GOVERNS :*) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-2)')]
+- :INT/ID-*-LEFT :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 28 work= 370
+    inputs= ((0 . :INT)) target= :BOOL
+    expr= (= (* '1 x0) x0)
+    edges= ((:GOVERNS :*) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-3)')]
+- :INT/COMM-+ :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 36 work= 2880
+    inputs= ((0 . :INT) (1 . :INT)) target= :BOOL
+    expr= (= (+ x1 x0) (+ x0 x1))
+    edges= ((:GOVERNS :+) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-4)')]
+- :INT/COMM-* :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 36 work= 2936
+    inputs= ((0 . :INT) (1 . :INT)) target= :BOOL
+    expr= (= (* x1 x0) (* x0 x1))
+    edges= ((:GOVERNS :*) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-5)')]
+- :INT/ASSOC-+ :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 60 work= 25834
+    inputs= ((0 . :INT) (1 . :INT) (2 . :INT)) target= :BOOL
+    expr= (= (+ (+ x0 x1) x2) (+ x0 (+ x1 x2)))
+    edges= ((:GOVERNS :+) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-9)')]
+- :INT/ASSOC-* :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 60 work= 26740
+    inputs= ((0 . :INT) (1 . :INT) (2 . :INT)) target= :BOOL
+    expr= (= (* (* x0 x1) x2) (* x0 (* x1 x2)))
+    edges= ((:GOVERNS :*) (:FROM-BATTERY :ALGEBRA))
+    meta= [(':ORIGIN', '(:INSTANTIATED-FROM :LAW-13)')]
+===== arithmetic.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :ARITHMETIC :PARAMETERS ((LISPLOOP::?N :INT)))
+- :SOLVE-+-0 :SOLVER dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:UNIQUENESS) bits= 15 work= 13
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (- x1 x0)
+    edges= ((:INVERTS :+ 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-+-0) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '+'), (':OPERATOR-NAME', ':+'), (':POSITION', '0'), (':CONTEXT-MAP', '((:ARGUMENT 1) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'NIL')]
+- :SOLVE-+-1 :SOLVER dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:UNIQUENESS) bits= 15 work= 13
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (- x1 x0)
+    edges= ((:INVERTS :+ 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-+-1) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '+'), (':OPERATOR-NAME', ':+'), (':POSITION', '1'), (':CONTEXT-MAP', '((:ARGUMENT 0) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'NIL')]
+- :SOLVE---0 :SOLVER dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:UNIQUENESS) bits= 15 work= 13
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (+ x0 x1)
+    edges= ((:INVERTS :- 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE---0) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '-'), (':OPERATOR-NAME', ':-'), (':POSITION', '0'), (':CONTEXT-MAP', '((:ARGUMENT 1) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'NIL')]
+- :SOLVE---1 :SOLVER dom= :INT status= :CONJECTURE method= :TRUSTED-AXIOM obl= (:UNIQUENESS) bits= 15 work= 13
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (- x0 x1)
+    edges= ((:INVERTS :- 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE---1) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '-'), (':OPERATOR-NAME', ':-'), (':POSITION', '1'), (':CONTEXT-MAP', '((:ARGUMENT 0) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'NIL')]
+- :SOLVE-*-0 :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 39 work= 31
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (/ x1 x0)
+    guard= (if (= x0 '0) 'NIL 'T)
+    edges= ((:INVERTS :* 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-*-0) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '*'), (':OPERATOR-NAME', ':*'), (':POSITION', '0'), (':CONTEXT-MAP', '((:ARGUMENT 1) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'NIL'), (':NECESSARY-P', 'NIL'), (':FINITE-UNIQUE-P', 'T')]
+- :SOLVE-*-1 :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 39 work= 31
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (/ x1 x0)
+    guard= (if (= x0 '0) 'NIL 'T)
+    edges= ((:INVERTS :* 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-*-1) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '*'), (':OPERATOR-NAME', ':*'), (':POSITION', '1'), (':CONTEXT-MAP', '((:ARGUMENT 0) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'NIL'), (':NECESSARY-P', 'NIL'), (':FINITE-UNIQUE-P', 'T')]
+- :SOLVE-/-0 :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 39 work= 31
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (* x0 x1)
+    guard= (if (= x0 '0) 'NIL 'T)
+    edges= ((:INVERTS :/ 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-/-0) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '/'), (':OPERATOR-NAME', ':/'), (':POSITION', '0'), (':CONTEXT-MAP', '((:ARGUMENT 1) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'NIL'), (':NECESSARY-P', 'NIL'), (':FINITE-UNIQUE-P', 'T')]
+- :SOLVE-/-1 :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 48 work= 37
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= (/ x0 x1)
+    guard= (if (= (* x0 x1) '0) 'NIL 'T)
+    edges= ((:INVERTS :/ 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-/-1) (:FROM-BATTERY :ARITHMETIC))
+    meta= [(':OPERATOR', '/'), (':OPERATOR-NAME', ':/'), (':POSITION', '1'), (':CONTEXT-MAP', '((:ARGUMENT 0) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'NIL'), (':NECESSARY-P', 'NIL'), (':FINITE-UNIQUE-P', 'T')]
+- :SPEC/SOLVE-+-0 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('2 '5) '3) (('4 '1) '-3) (('-3 '7) '10)))
+    edges= ((:SPECIFIES :SOLVE-+-0))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '+'), (':POSITION', '0'), (':UNIQUE-P', 'NIL'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE-+-1 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('2 '5) '3) (('4 '1) '-3) (('-3 '7) '10)))
+    edges= ((:SPECIFIES :SOLVE-+-1))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '+'), (':POSITION', '1'), (':UNIQUE-P', 'NIL'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE---0 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('2 '5) '7) (('4 '-1) '3) (('-3 '6) '3)))
+    edges= ((:SPECIFIES :SOLVE---0))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '-'), (':POSITION', '0'), (':UNIQUE-P', 'NIL'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE---1 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('7 '5) '2) (('4 '9) '-5) (('-2 '3) '-5)))
+    edges= ((:SPECIFIES :SOLVE---1))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '-'), (':POSITION', '1'), (':UNIQUE-P', 'NIL'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE-*-0 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('3 '12) '4) (('-2 '6) '-3) (('5 '0) '0) (('0 '5) :NONE) (('0 '0) :NONE)))
+    edges= ((:SPECIFIES :SOLVE-*-0))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '*'), (':POSITION', '0'), (':UNIQUE-P', 'NIL'), (':FINITE-UNIQUE-P', 'T'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE-*-1 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('3 '12) '4) (('-2 '6) '-3) (('5 '0) '0) (('0 '5) :NONE) (('0 '0) :NONE)))
+    edges= ((:SPECIFIES :SOLVE-*-1))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '*'), (':POSITION', '1'), (':UNIQUE-P', 'NIL'), (':FINITE-UNIQUE-P', 'T'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE-/-0 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('3 '4) '12) (('-2 '5) '-10) (('4 '0) '0) (('0 '4) :NONE) (('0 '0) :NONE)))
+    edges= ((:SPECIFIES :SOLVE-/-0))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '/'), (':POSITION', '0'), (':UNIQUE-P', 'NIL'), (':FINITE-UNIQUE-P', 'T'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE-/-1 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('12 '4) '3) (('15 '3) '5) (('-12 '3) '-4) (('0 '4) :NONE) (('12 '0) :NONE) (('0 '0) :NONE)))
+    edges= ((:SPECIFIES :SOLVE-/-1))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':INVERTS', '/'), (':POSITION', '1'), (':UNIQUE-P', 'NIL'), (':FINITE-UNIQUE-P', 'T'), (':CERTIFIED-P', 'NIL')]
+===== constructors.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :CONSTRUCTORS :PARAMETERS ((LISPLOOP::?A :INT)))
+- :SOLVE-CONS-0 :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 82 work= 47
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= (at x1 '0)
+    guard= (if (= x1 'NIL) 'NIL (= x0 (tail x1)))
+    edges= ((:INVERTS :CONS 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-CONS-0) (:FROM-BATTERY :CONSTRUCTORS))
+    meta= [(':OPERATOR', 'cons'), (':OPERATOR-NAME', ':CONS'), (':POSITION', '0'), (':CONTEXT-MAP', '((:ARGUMENT 1) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'NIL')]
+- :SOLVE-CONS-1 :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 79 work= 45
+    inputs= ((0 . :INT) (1 :SEQ :INT)) target= (:SEQ :INT)
+    expr= (tail x1)
+    guard= (if (= x1 'NIL) 'NIL (= x0 (at x1 '0)))
+    edges= ((:INVERTS :CONS 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-CONS-1) (:FROM-BATTERY :CONSTRUCTORS))
+    meta= [(':OPERATOR', 'cons'), (':OPERATOR-NAME', ':CONS'), (':POSITION', '1'), (':CONTEXT-MAP', '((:ARGUMENT 0) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'NIL')]
+- :SOLVE-CONS-01 :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 73 work= 49
+    inputs= ((0 :SEQ :INT)) target= (:TUPLE :INT (:SEQ :INT))
+    expr= (tuple (at x0 '0) (tail x0))
+    guard= (if (= x0 'NIL) 'NIL 'T)
+    edges= ((:INVERTS :CONS (0 1)) (:INDUCED-FROM-SPEC :SPEC/SOLVE-CONS-01) (:FROM-BATTERY :CONSTRUCTORS))
+    meta= [(':OPERATOR', 'cons'), (':OPERATOR-NAME', ':CONS'), (':POSITION', '(0 1)'), (':CONTEXT-MAP', '(:TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'NIL')]
+- :CONS/HEAD :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 52 work= 526
+    inputs= ((0 . :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (= (at (cons x0 x1) '0) x0)
+    edges= ((:GOVERNS :AT) (:GOVERNS :CONS) (:FROM-BATTERY :CONSTRUCTORS))
+    meta= [(':ORIGIN', ':CONSTRUCTOR-DESTRUCTOR')]
+- :CONS/TAIL :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 49 work= 498
+    inputs= ((0 . :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (= (tail (cons x0 x1)) x1)
+    edges= ((:GOVERNS :TAIL) (:GOVERNS :CONS) (:FROM-BATTERY :CONSTRUCTORS))
+    meta= [(':ORIGIN', ':CONSTRUCTOR-DESTRUCTOR')]
+- :CONS/NON-EMPTY :LAW dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:EQUIVALENCE) bits= 47 work= 494
+    inputs= ((0 . :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (= (= (cons x0 x1) 'NIL) 'NIL)
+    edges= ((:GOVERNS :CONS) (:FROM-BATTERY :CONSTRUCTORS))
+    meta= [(':ORIGIN', ':CONSTRUCTOR-DESTRUCTOR')]
+- :SPEC/SOLVE-CONS-0 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('(2 3) '(1 2 3)) '1) (('NIL '(7)) '7) (('(5) '(4 5)) '4) (('(2 3) 'NIL) :NONE) (('NIL 'NIL) :NONE) (('(9) '(1 2)) :NONE) (('(2) '(7)) :NONE)))
+    edges= ((:SPECIFIES :SOLVE-CONS-0))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':OPERATORS', '(at tail)'), (':CONSTANTS', "('NIL)"), (':INVERTS', 'cons'), (':POSITION', '0'), (':GUARD-OPERATORS', '(tail =)'), (':UNIQUE-P', 'T'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE-CONS-1 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 . :INT) (1 :SEQ :INT)) target= (:SEQ :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('1 '(1 2 3)) '(2 3)) (('7 '(7)) 'NIL) (('4 '(4 5)) '(5)) (('1 'NIL) :NONE) (('0 'NIL) :NONE) (('9 '(1 2)) :NONE) (('2 '(7)) :NONE)))
+    edges= ((:SPECIFIES :SOLVE-CONS-1))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':OPERATORS', '(at tail)'), (':CONSTANTS', "('NIL)"), (':INVERTS', 'cons'), (':POSITION', '1'), (':GUARD-OPERATORS', '(at = =)'), (':UNIQUE-P', 'T'), (':CERTIFIED-P', 'NIL')]
+- :SPEC/SOLVE-CONS-01 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT)) target= (:TUPLE :INT (:SEQ :INT))
+    expr= NIL
+    :RESIDUAL (:DATA ((('(1 2 3)) '(1 (2 3))) (('(7)) '(7 NIL)) (('(4 5)) '(4 (5))) (('NIL) :NONE)))
+    edges= ((:SPECIFIES :SOLVE-CONS-01))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':OPERATORS', '(tuple at tail)'), (':CONSTANTS', "('NIL)"), (':INVERTS', 'cons'), (':POSITION', '(0 1)'), (':GUARD-OPERATORS', '(=)'), (':UNIQUE-P', 'T'), (':CERTIFIED-P', 'NIL')]
+===== descriptors.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :DESCRIPTORS :PARAMETERS ((LISPLOOP::?A :INT)))
+- :DESC/SCALAR-REDUCTION :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 3 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= :BOOL
+    expr= 'T
+    guard= (if (= x0 'NIL) 'NIL 'T)
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/SCALAR-REDUCTION'), (':FACET', ':SAMPLED-CONTENT'), (':TIER', '2'), (':WEIGHT-BITS', '5'), (':WORK-COST', '6'), (':FRAME-FACTS', '(:SEQ-IN :SCALAR-OUT)'), (':FAILURE', ':VIOLATED')]
+- :DESC/SUBSET-ELEMENTS :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 231 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (if (= x1 'NIL) 'T (if (member (at x1 '0) x0) (if (member (at x1 (- (length x1) '1)) x0) (if (< '1 (length x1)) (member (at x1 '1) x0) 'T) 'NIL) 'NIL))
+    guard= (if (= x0 'NIL) 'NIL 'T)
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/SUBSET-ELEMENTS'), (':FACET', ':SAMPLED-CONTENT'), (':TIER', '2'), (':WEIGHT-BITS', '4'), (':WORK-COST', '8'), (':FRAME-FACTS', '(:SEQ-OUT)'), (':FAILURE', ':VIOLATED')]
+- :DESC/LEN-LE :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 66 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (if (< (length x0) (length x1)) 'NIL 'T)
+    :AUXILIARY-CODE (< (length x1) (length x0))
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/LEN-LE'), (':FACET', ':SHAPE-DELTA'), (':TIER', '1'), (':WEIGHT-BITS', '5'), (':WORK-COST', '2'), (':FRAME-FACTS', '(:SEQ-OUT)'), (':FAILURE', ':VIOLATED')]
+- :DESC/LEN-DEC-1 :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 61 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (= (- (length x0) '1) (length x1))
+    guard= (if (= x0 'NIL) 'NIL 'T)
+    :AUXILIARY-CODE (< '1 (length x0))
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/LEN-DEC-1'), (':FACET', ':SHAPE-DELTA'), (':TIER', '1'), (':WEIGHT-BITS', '6'), (':WORK-COST', '2'), (':FRAME-FACTS', '(:SEQ-OUT)'), (':FAILURE', ':VIOLATED')]
+- :DESC/LEN-EQ :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 49 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (= (length x0) (length x1))
+    :AUXILIARY-CODE (if (= x0 'NIL) 'NIL 'T)
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/LEN-EQ'), (':FACET', ':SHAPE-DELTA'), (':TIER', '1'), (':WEIGHT-BITS', '6'), (':WORK-COST', '2'), (':FRAME-FACTS', '(:SEQ-OUT)'), (':FAILURE', ':VIOLATED')]
+- :DESC/OUTER-SHAPE-2D :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 3 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= 'T
+    guard= (if (= x0 'NIL) 'NIL 'T)
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/OUTER-SHAPE-2D'), (':FACET', ':SHAPE-DELTA'), (':TIER', '1'), (':WEIGHT-BITS', '4'), (':WORK-COST', '2'), (':FRAME-FACTS', '(:SEQ-2D-OUT)'), (':FAILURE', ':VIOLATED')]
+- :DESC/EMPTY->EMPTY :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 18 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (= x1 'NIL)
+    guard= (= x0 'NIL)
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/EMPTY->EMPTY'), (':FACET', ':BOUNDARY'), (':TIER', '1'), (':WEIGHT-BITS', '4'), (':WORK-COST', '2'), (':FRAME-FACTS', 'NIL'), (':FAILURE', ':VIOLATED')]
+- :DESC/POINTWISE-MAP :DESCRIPTOR dom= :INT status= :EMPIRICAL method= None obl= None bits= 49 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :BOOL
+    expr= (= (length x0) (length x1))
+    guard= (if (= x0 'NIL) 'NIL 'T)
+    edges= ((:FROM-BATTERY :DESCRIPTORS))
+    meta= [(':AUTO-DESCRIPTOR', 'T'), (':CONCEPT', ':DESC/POINTWISE-MAP'), (':FACET', ':SAMPLED-CONTENT'), (':TIER', '2'), (':WEIGHT-BITS', '5'), (':WORK-COST', '6'), (':FRAME-FACTS', '(:SEQ-OUT)'), (':FAILURE', ':VIOLATED')]
+===== functors.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :FUNCTORS :PARAMETERS ((LISPLOOP::?A :INT)))
+- :FUNCTOR/MAP-INVERSE-0 :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 448 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT)) (:CODE ((0 . :INT)) :INT))
+    expr= (code-subst '(code-subst x1 (tuple (code-bind x0 x2 '1) 'x0)) (tuple x0 x1 'x0))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/MAP-INVERSE-1 :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 445 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT)) (:CODE ((0 . :INT)) :INT))
+    expr= (code-subst '(code-subst x1 (tuple (code-bind x0 x2 '0) 'x0)) (tuple x0 x1 'x0))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/MAP-GUARD-0 :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 783 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) :BOOL)
+    expr= (code-subst '(if (code-match x0 x2) (if (= (code-bind x0 x2 '0) 'x0) (if (= (code-kind (code-bind x0 x2 '1)) '1) (code-total (code-subst x1 (tuple (code-bind x0 x2 '1) 'x0))) 'NIL) 'NIL) 'NIL) (tuple x0 x1 'x0))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/MAP-GUARD-1 :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 780 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) :BOOL)
+    expr= (code-subst '(if (code-match x0 x2) (if (= (code-bind x0 x2 '1) 'x0) (if (= (code-kind (code-bind x0 x2 '0)) '1) (code-total (code-subst x1 (tuple (code-bind x0 x2 '0) 'x0))) 'NIL) 'NIL) 'NIL) (tuple x0 x1 'x0))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/MAP-WITNESS-0 :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 557 work= 0
+    inputs= ((0 :CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) (:FN ((:SEQ :INT) (:CODE ((0 . :INT)) :INT)) (:SEQ :INT))) (1 :CODE ((0 . :INT) (1 . :INT)) :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) (:SEQ :INT))
+    expr= (code-apply x0 (tuple 'x1 (code-subst '(code-subst x1 (tuple (code-bind x0 x2 '1) 'x0)) (tuple x1 x2 'x0))))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/MAP-WITNESS-1 :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 554 work= 0
+    inputs= ((0 :CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) (:FN ((:SEQ :INT) (:CODE ((0 . :INT)) :INT)) (:SEQ :INT))) (1 :CODE ((0 . :INT) (1 . :INT)) :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) (:SEQ :INT))
+    expr= (code-apply x0 (tuple 'x1 (code-subst '(code-subst x1 (tuple (code-bind x0 x2 '0) 'x0)) (tuple x1 x2 'x0))))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/UNARY-MAP-WITNESS :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 187 work= 0
+    inputs= ((0 :CODE ((0 :SEQ :INT)) (:FN ((:SEQ :INT) (:CODE ((0 . :INT)) :INT)) (:SEQ :INT))) (1 :CODE ((0 . :INT)) :INT)) target= (:CODE ((0 :SEQ :INT)) (:SEQ :INT))
+    expr= (code-apply x0 (tuple 'x0 (code-subst 'x0 (tuple x1))))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/POINTWISE-SEQ-WITNESS :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 476 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 :SEQ :INT)) (:FN ((:SEQ :INT) (:CODE ((0 . :INT)) :INT)) (:SEQ :INT))) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 . :INT) (1 :SEQ :INT)) (:SEQ :INT))
+    expr= (code-apply x0 (tuple 'x1 (code-subst '(code-subst x0 (tuple 'x0 x1)) (tuple (code-subst x1 (tuple 'x1 'x0)) 'x0))))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :FUNCTOR/POINTWISE-PARAM-WITNESS :TRANSFORMER dom= :INT status= :EMPIRICAL method= None obl= None bits= 189 work= 50000
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :SEQ :INT) (1 :SEQ :INT)) :INT)
+    expr= (code-subst x0 (tuple '(at x0 '0) '(at x1 '0)))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':SYNTHESIZED'), (':TRAINING-ROWS', '1')]
+- :FUNCTOR/POINTWISE-PARAM-GUARD :TRANSFORMER dom= :INT status= :VALIDATED method= None obl= None bits= 498 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :BOOL)) target= (:CODE ((0 :SEQ :INT) (1 :SEQ :INT)) :BOOL)
+    expr= (code-subst '(if (< '0 (length x0)) (if (= (length x0) (length x1)) x2 'NIL) 'NIL) (tuple 'x0 'x1 (code-subst x0 (tuple '(at x0 '0) '(at x1 '0)))))
+    edges= ((:FROM-BATTERY :FUNCTORS))
+    meta= [(':ORIGIN', ':BOOTSTRAP-FUNCTOR-TRANSFORMER')]
+- :SPEC/FUNCTOR/MAP-INVERSE-0 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT)) (:CODE ((0 . :INT)) :INT))
+    expr= NIL
+    :RESIDUAL (:DATA ((('(+ x0 x1) '(- x1 x0)) '(code-subst '(- x1 x0) (tuple (code-bind '(+ x0 x1) x0 '1) 'x0)))))
+    edges= ((:SPECIFIES :FUNCTOR/MAP-INVERSE-0))
+    meta= [(':TARGET-KIND', ':TRANSFORMER')]
+- :SPEC/FUNCTOR/MAP-GUARD-0 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) :BOOL)
+    expr= NIL
+    :RESIDUAL (:DATA ((('(+ x0 x1) '(- x1 x0)) '(if (code-match '(+ x0 x1) x0) (if (= (code-bind '(+ x0 x1) x0 '0) 'x0) (if (= (code-kind (code-bind '(+ x0 x1) x0 '1)) '1) (code-total (code-subst '(- x1 x0) (tuple (code-bind '(+ x0 x1) x0 '1) 'x0))) 'NIL) 'NIL) 'NIL))))
+    edges= ((:SPECIFIES :FUNCTOR/MAP-GUARD-0))
+    meta= [(':TARGET-KIND', ':TRANSFORMER')]
+- :SPEC/FUNCTOR/MAP-INVERSE-1 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT)) (:CODE ((0 . :INT)) :INT))
+    expr= NIL
+    :RESIDUAL (:DATA ((('(+ x0 x1) '(- x1 x0)) '(code-subst '(- x1 x0) (tuple (code-bind '(+ x0 x1) x0 '0) 'x0)))))
+    edges= ((:SPECIFIES :FUNCTOR/MAP-INVERSE-1))
+    meta= [(':TARGET-KIND', ':TRANSFORMER')]
+- :SPEC/FUNCTOR/MAP-GUARD-1 :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :CODE ((0 . :INT)) :INT) (1 :SEQ :INT)) :BOOL)
+    expr= NIL
+    :RESIDUAL (:DATA ((('(+ x0 x1) '(- x1 x0)) '(if (code-match '(+ x0 x1) x0) (if (= (code-bind '(+ x0 x1) x0 '1) 'x0) (if (= (code-kind (code-bind '(+ x0 x1) x0 '0)) '1) (code-total (code-subst '(- x1 x0) (tuple (code-bind '(+ x0 x1) x0 '0) 'x0))) 'NIL) 'NIL) 'NIL))))
+    edges= ((:SPECIFIES :FUNCTOR/MAP-GUARD-1))
+    meta= [(':TARGET-KIND', ':TRANSFORMER')]
+- :SPEC/FUNCTOR/POINTWISE-PARAM-WITNESS :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:CODE ((0 :SEQ :INT) (1 :SEQ :INT)) :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('(- x1 x0)) '(- (at x1 '0) (at x0 '0)))))
+    edges= ((:SPECIFIES :FUNCTOR/POINTWISE-PARAM-WITNESS))
+    meta= [(':TARGET-KIND', ':TRANSFORMER')]
+- :SPEC/FUNCTOR/POINTWISE-PARAM-GUARD :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :CODE ((0 . :INT) (1 . :INT)) :BOOL)) target= (:CODE ((0 :SEQ :INT) (1 :SEQ :INT)) :BOOL)
+    expr= NIL
+    :RESIDUAL (:DATA ((('(if (= x0 '0) 'NIL 'T)) '(if (< '0 (length x0)) (if (= (length x0) (length x1)) (if (= (at x0 '0) '0) 'NIL 'T) 'NIL) 'NIL))))
+    edges= ((:SPECIFIES :FUNCTOR/POINTWISE-PARAM-GUARD))
+    meta= [(':TARGET-KIND', ':TRANSFORMER')]
+===== scans.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :SCANS)
+- :SCAN :FUNCTION dom= :INT status= :VALIDATED method= None obl= None bits= 211 work= 263277
+    inputs= ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:SEQ :INT)
+    expr= (if (= x0 'NIL) 'NIL (cons (code-eval x2 x1 (at x0 '0)) (scan (tail x0) (code-eval x2 x1 (at x0 '0)) x2)))
+    edges= ((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SCANS))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'NIL'), (':CONDITIONAL-CODE-PARAMS', '(2)')]
+- :SCAN-PAIR :FUNCTION dom= :INT status= :VALIDATED method= None obl= None bits= 251 work= 138
+    inputs= ((0 :SEQ :INT) (1 :TUPLE :INT :INT) (2 :CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT))) target= (:SEQ (:TUPLE :INT :INT))
+    expr= (if (= x0 'NIL) 'NIL (cons (code-eval x2 x1 (at x0 '0)) (scan-pair (tail x0) (code-eval x2 x1 (at x0 '0)) x2)))
+    edges= ((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SCANS))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'NIL'), (':CONDITIONAL-CODE-PARAMS', '(2)')]
+- :SPEC/SCAN :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:SEQ :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '4 '(+ x0 x1)) 'NIL) (('NIL '5 '(+ x0 x1)) 'NIL) (('NIL '2 '(+ x0 x1)) 'NIL) (('(3) '2 '(+ x0 x1)) '(5)) (('(-1 3) '3 '(+ x0 x1)) '(2 5)) (('(2 -1 3) '1 '(+ x0 x1)) '(3 2 5)) (('NIL '6 '(- x0 x1)) 'NIL) (('(4) '10 '(- x0 x1)) '(6)) (('(1 4) '11 '(- x0 x1)) '(10 6))))
+    edges= ((:SPECIFIES :SCAN))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(cons tail at = if code-eval)'), (':CONSTANTS', "('NIL)")]
+- :SPEC/SCAN-PAIR :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :TUPLE :INT :INT) (2 :CODE ((0 :TUPLE :INT :INT) (1 . :INT)) (:TUPLE :INT :INT))) target= (:SEQ (:TUPLE :INT :INT))
+    expr= NIL
+    :RESIDUAL (:DATA ((('(1 1) '(0 10) '(tuple (+ (at x0 '0) x1) (+ (at x0 '1) x1))) '((1 11) (2 12)))))
+    edges= ((:SPECIFIES :SCAN-PAIR))
+    meta= [(':TARGET-KIND', ':FUNCTION')]
+===== sequence-shift.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :SEQUENCE-SHIFT)
+- :SHIFT-SEQ :FUNCTION dom= :INT status= :VALIDATED method= :STRUCTURAL-TOTALITY obl= None bits= 130 work= 99009
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= (:SEQ :INT)
+    expr= (if (= x0 'NIL) 'NIL (if (< '0 x1) (concat (cons (shift-seq (tail x0) (- x1 '1)) '((0)))) x0))
+    edges= ((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:FROM-BATTERY :SEQUENCE-SHIFT))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NECESS...'), (':TOTAL-P', 'T'), (':CONDITIONAL-CODE-PARAMS', 'NIL')]
+- :SEQ-CORR :FUNCTION dom= :INT status= :VALIDATED method= :STRUCTURAL-TOTALITY obl= None bits= 160 work= 87499
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= (if (= x0 'NIL) '0 (if (= x1 'NIL) '0 (+ (* (at x0 '0) (at x1 '0)) (seq-corr (tail x0) (tail x1)))))
+    edges= ((:DESCRIBED-BY :DESC/EMPTY->ZERO) (:FROM-BATTERY :SEQUENCE-SHIFT))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/SEQ->SCALAR/ANY/EMPTY->ZERO/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/SEQ->SCALAR :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'T'), (':CONDITIONAL-CODE-PARAMS', 'NIL')]
+- :BEST-SHIFT :FUNCTION dom= :INT status= :VALIDATED method= :STRUCTURAL-TOTALITY obl= None bits= 255 work= 196019
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT) (2 . :INT)) target= (:TUPLE :INT :INT)
+    expr= (if (= x0 'NIL) (tuple '0 x2) (code-eval '(if (< x0 (at x1 '0)) x1 (tuple x0 x2)) (seq-corr x0 x1) (best-shift (tail x0) x1 (+ x2 '1)) x2))
+    edges= ((:FROM-BATTERY :SEQUENCE-SHIFT))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/SEQ->SCALAR/ANY/ANY/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/SEQ->SCALAR :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'T'), (':CONDITIONAL-CODE-PARAMS', 'NIL')]
+- :ARGMAX-CORR :FUNCTION dom= :INT status= :VALIDATED method= :STRUCTURAL-TOTALITY obl= None bits= 53 work= 36063
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= (at (best-shift x0 x1 '0) '1)
+    edges= ((:FROM-BATTERY :SEQUENCE-SHIFT))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/SEQ->SCALAR/ANY/ANY/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/SEQ->SCALAR :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'T'), (':CONDITIONAL-CODE-PARAMS', 'NIL')]
+- :LAST-OR :FUNCTION dom= :INT status= :VALIDATED method= :STRUCTURAL-TOTALITY obl= None bits= 123 work= 32013
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= :INT
+    expr= (if (= x0 'NIL) x1 (if (= (tail x0) 'NIL) (at x0 '0) (last-or (tail x0) x1)))
+    edges= ((:FROM-BATTERY :SEQUENCE-SHIFT))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/SEQ->SCALAR/ANY/ANY/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/SEQ->SCALAR :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'T'), (':CONDITIONAL-CODE-PARAMS', 'NIL')]
+- :SOLVE-SHIFT-SEQ-BY-CORRELATION :SOLVER dom= :INT status= :CONJECTURE method= None obl= None bits= 74 work= 37
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= (argmax-corr x0 x1)
+    guard= (= (shift-seq x0 (argmax-corr x0 x1)) x1)
+    edges= ((:INVERTS :SHIFT-SEQ 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-SHIFT-SEQ-BY-CORRELATION) (:METRIC-DECODER :SHIFT-SEQ :SOLVE-SHIFT-SEQ-BY-CORRELATION 14) (:FROM-BATTERY :SEQUENCE-SHIFT))
+    meta= [(':OPERATOR', 'shift-seq'), (':OPERATOR-NAME', ':SHIFT-SEQ'), (':POSITION', '1'), (':CONTEXT-MAP', '((:ARGUMENT 0) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'NIL'), (':NECESSARY-P', 'NIL')]
+- :SPEC/SHIFT-SEQ :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= (:SEQ :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '0) 'NIL) (('NIL '1) 'NIL) (('NIL '2) 'NIL) (('(5) '0) '(5)) (('(1 5) '0) '(1 5)) (('(4 1 5) '0) '(4 1 5)) (('(5) '1) '(0)) (('(1 5) '1) '(5 0)) (('(4 1 5) '1) '(1 5 0)) (('(1 5) '2) '(0 0)) (('(4 1 5) '2) '(5 0 0)) (('(3 1 4 1 5) '0) '(3 1 4 1 5)) (('(3 1 4 1 5) '2) '(4 1 5 0 0))))
+    edges= ((:SPECIFIES :SHIFT-SEQ))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(concat cons cons tail = < - if)'), (':LITERALS', '(0 1)'), (':CONSTANTS', "('NIL '((0)))")]
+- :SPEC/SEQ-CORR :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL 'NIL) '0) (('NIL '(5)) '0) (('(3) 'NIL) '0) (('(3) '(5)) '15) (('(2 3) '(4 5)) '23) (('(1 2 3) '(2 4 5)) '25) (('(2 3) '(5)) '10)))
+    edges= ((:SPECIFIES :SEQ-CORR))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(+ * tail at = if)'), (':LITERALS', '(0)'), (':CONSTANTS', "('NIL)")]
+- :SPEC/BEST-SHIFT :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT) (2 . :INT)) target= (:TUPLE :INT :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '(4 1) '3) '(0 3)) (('NIL '(4 1) '2) '(0 2)) (('NIL '(4 1) '1) '(0 1)) (('(1) '(4 1) '2) '(4 2)) (('(4 1) '(4 1) '1) '(17 1)) (('(3 4 1) '(4 1) '0) '(17 1)) (('NIL '(5 0) '2) '(0 2)) (('(2) '(5 0) '1) '(10 1)) (('(5 2) '(5 0) '0) '(25 0))))
+    edges= ((:SPECIFIES :BEST-SHIFT))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(seq-corr tuple at tail = < + if)'), (':LITERALS', '(0 1)'), (':CONSTANTS', "('NIL)")]
+- :SPEC/ARGMAX-CORR :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('(3 4 1) '(4 1)) '1) (('(5 2) '(5 0)) '0) (('(3 1 4 1 5) '(4 1 5 0 0)) '2)))
+    edges= ((:SPECIFIES :ARGMAX-CORR))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(best-shift at)'), (':LITERALS', '(0 1)')]
+- :SPEC/LAST-OR :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '7) '7) (('NIL '9) '9) (('(4) '7) '4) (('(1 4) '7) '4) (('(3 1 4) '7) '4) (('(8) '2) '8) (('(5 8) '2) '8)))
+    edges= ((:SPECIFIES :LAST-OR))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(tail at = if)'), (':CONSTANTS', "('NIL)")]
+- :SPEC/SOLVE-SHIFT-SEQ-BY-CORRELATION :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :SEQ :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('(3 1 4 1 5) '(4 1 5 0 0)) '2) (('(3 1 4 1 5) '(3 1 4 1 5)) '0) (('(1 5) '(5 0)) '1) (('(4 1) '(4 1)) '0) (('NIL 'NIL) '0) (('(3 1 4 1 5) '(4 1 5 9 2)) :NONE) (('(3 1 4 1 5) '(4 1 5 0)) :NONE) (('(1 2) '(1 2 0)) :NONE) (('(1 2) '(9 9)) :NONE) (('(5) '(7)) :NONE) (('NIL '(0)) :NONE) (('(1) 
+    edges= ((:SPECIFIES :SOLVE-SHIFT-SEQ-BY-CORRELATION))
+    meta= [(':TARGET-KIND', ':SOLVER'), (':OPERATORS', '(argmax-corr)'), (':LITERALS', '(0)'), (':CONSTANTS', "('NIL)"), (':INVERTS', 'shift-seq'), (':POSITION', '1'), (':GUARD-OPERATORS', '(last-or length = =)'), (':UNIQUE-P', 'NIL'), (':METRIC-P', 'T'), (':CERTIFIED-P', 'NIL')]
+===== sequences.sexp top keys: [':ENCODING-VERSION', ':VERSION', ':METADATA', ':FUNCTION-NAMES', ':DE-NOVO-COUNTER', ':ENTRY-COUNTER', ':ENTRIES']
+  METADATA (:BATTERY :SEQUENCES :PARAMETERS ((LISPLOOP::?A :INT)))
+- :MAP :FUNCTION dom= :INT status= :VALIDATED method= None obl= None bits= 127 work= 64
+    inputs= ((0 :SEQ :INT) (1 :CODE ((0 . :INT)) :INT)) target= (:SEQ :INT)
+    expr= (if (= x0 'NIL) 'NIL (cons (code-eval x1 (at x0 '0)) (map (tail x0) x1)))
+    :TRIGGER (if (if (= x0 'NIL) (= x1 'NIL) 'T) (= (length x0) (length x1)) 'NIL)
+    edges= ((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/HO-SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/POINTWISE-MAP'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'NIL'), (':CONDITIONAL-CODE-PARAMS', '(1)')]
+- :FOLDR :FUNCTION dom= :INT status= :VALIDATED method= None obl= None bits= 133 work= 70
+    inputs= ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= :INT
+    expr= (if (= x0 'NIL) x1 (code-eval x2 (at x0 '0) (foldr (tail x0) x1 x2)))
+    edges= ((:DESCRIBED-BY :DESC/SCALAR-REDUCTION) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/HO-SEQ->SCALAR/ANY/ANY/SCALAR-REDUCTION'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SCALAR :FACET :TYPE :TIER 1 :STATUS :...'), (':TOTAL-P', 'NIL'), (':CONDITIONAL-CODE-PARAMS', '(2)')]
+- :FOLDL :FUNCTION dom= :INT status= :VALIDATED method= None obl= None bits= 133 work= 81333
+    inputs= ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= :INT
+    expr= (if (= x0 'NIL) x1 (foldl (tail x0) (code-eval x2 x1 (at x0 '0)) x2))
+    edges= ((:DESCRIBED-BY :DESC/SCALAR-REDUCTION) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/HO-SEQ->SCALAR/ANY/ANY/SCALAR-REDUCTION'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SCALAR :FACET :TYPE :TIER 1 :STATUS :...'), (':TOTAL-P', 'NIL'), (':CONDITIONAL-CODE-PARAMS', '(2)')]
+- :FILTER :FUNCTION dom= :INT status= :VALIDATED method= None obl= None bits= 192 work= 75546
+    inputs= ((0 :SEQ :INT) (1 :CODE ((0 . :INT)) :BOOL)) target= (:SEQ :INT)
+    expr= (if (= x0 'NIL) x0 (if (code-eval x1 (at x0 '0)) (cons (at x0 '0) (filter (tail x0) x1)) (filter (tail x0) x1)))
+    edges= ((:DESCRIBED-BY :DESC/LEN-LE) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/SUBSET-ELEMENTS) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/HO-SEQ->SEQ/LEN-LE/EMPTY->EMPTY/SUBSET-ELEMENTS'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'NIL'), (':CONDITIONAL-CODE-PARAMS', '(1)')]
+- :MAP-ADJACENT :FUNCTION dom= :INT status= :VALIDATED method= None obl= None bits= 213 work= 109012
+    inputs= ((0 :SEQ :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:SEQ :INT)
+    expr= (if (= x0 'NIL) 'NIL (if (= (tail x0) 'NIL) 'NIL (cons (code-eval x1 (at (tail x0) '0) (at x0 '0)) (map-adjacent (tail x0) x1))))
+    :TRIGGER (if (= x0 'NIL) (= x1 'NIL) 'T)
+    edges= ((:DESCRIBED-BY :DESC/LEN-DEC-1) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/HO-SEQ->SEQ/LEN-DEC-1/EMPTY->EMPTY/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':TOTAL-P', 'NIL'), (':CONDITIONAL-CODE-PARAMS', '(1)')]
+- :POSITIONS :FUNCTION dom= :INT status= :VALIDATED method= :STRUCTURAL-TOTALITY obl= None bits= 88 work= 46196
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= (:SEQ :INT)
+    expr= (if (= x0 'NIL) x0 (cons x1 (positions (tail x0) (+ x1 '1))))
+    edges= ((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':COMPOSITIONAL-NAME', ':FUNCTION/SEQ->SEQ/LEN-EQ/EMPTY->EMPTY/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NECESS...'), (':TOTAL-P', 'T'), (':CONDITIONAL-CODE-PARAMS', 'NIL')]
+- :SOLVE-AT-1 :SOLVER dom= :INT status= :CONJECTURE method= :SAMPLED obl= (:WITNESS :UNIQUENESS :NECESSITY) bits= 193 work= 100
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= :INT
+    expr= (filter (positions x0 '0) (code-subst '(= x2 (at x1 x0)) (tuple 'x0 x0 x1)))
+    edges= ((:INVERTS :AT 1) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':OPERATOR', 'at'), (':OPERATOR-NAME', ':AT'), (':POSITION', '1'), (':CONTEXT-MAP', '((:ARGUMENT 0) :TARGET)'), (':CERTIFIED-P', 'NIL'), (':UNIQUE-P', 'T'), (':NECESSARY-P', 'T'), (':SET-VALUED-P', 'T')]
+- :COMPREHENSION/FILTER-MAP :DECODER-TEMPLATE dom= :INT status= :VALIDATED method= None obl= None bits= 41 work= 0
+    inputs= ((0 :SEQ :INT) (1 :CODE ((0 . :INT)) :BOOL) (2 :CODE ((0 . :INT)) :INT)) target= (:SEQ :INT)
+    expr= (map (filter x0 x1) x2)
+    :TRIGGER (if (< (length x0) (length x1)) 'NIL 'T)
+    edges= ((:FROM-BATTERY :SEQUENCES))
+    meta= [(':COMPOSITIONAL-NAME', ':DECODER-TEMPLATE/HO-SEQ->SEQ/ANY/ANY/ANY'), (':DESCRIPTOR-PROFILE', '((:ID :DESC/HO-SEQ->SEQ :FACET :TYPE :TIER 1 :STATUS :NEC...'), (':CHILD-IDS', '(1 2)'), (':CHILD-ID', '2'), (':BINDINGS', ':IDENTITY'), (':LIFT-P', 'T'), (':STRICT-CONTRACTION-P', 'T'), (':POLICY-SCORE', '-18'), (':DEPENDENCIES', '((:FILTER ((0 :SEQ :INT) (1 :CODE ((0 . :INT)) :BOOL)) (:...')]
+- :FOLDR=FOLDL/MONOID :MOTIF dom= :INT status= :CONJECTURE method= None obl= None bits= 61 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= :BOOL
+    expr= (= (foldr x0 x1 x2) (foldl x0 x1 x2))
+    edges= ((:RELATES :FOLDR :FOLDL) (:REQUIRES :ASSOCIATIVE :IDENTITY) (:FROM-BATTERY :SEQUENCES))
+    meta= [(':ORIGIN', ':THEORY-MOTIF')]
+- :SPEC/MAP :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :CODE ((0 . :INT)) :INT)) target= (:SEQ :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL 'x0) 'NIL) (('(1 2 3) '(+ x0 '1)) '(2 3 4))))
+    edges= ((:SPECIFIES :MAP))
+    meta= [(':TARGET-KIND', ':FUNCTION')]
+- :SPEC/FOLDR :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '7 '(- x0 x1)) '7) (('(1 2 3) '10 '(- x0 x1)) '-8)))
+    edges= ((:SPECIFIES :FOLDR))
+    meta= [(':TARGET-KIND', ':FUNCTION')]
+- :SPEC/FOLDL :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= :INT
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '7 '(- x0 x1)) '7) (('NIL '9 '(- x0 x1)) '9) (('NIL '6 '(- x0 x1)) '6) (('(3) '9 '(- x0 x1)) '6) (('(2 3) '11 '(- x0 x1)) '6) (('(1 2 3) '12 '(- x0 x1)) '6) (('NIL '10 '(- x0 x1)) '10) (('(4) '10 '(- x0 x1)) '6) (('(1 4) '11 '(- x0 x1)) '6)))
+    edges= ((:SPECIFIES :FOLDL))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(tail at = if code-eval)'), (':CONSTANTS', "('NIL)")]
+- :SPEC/FILTER :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :CODE ((0 . :INT)) :BOOL)) target= (:SEQ :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '(< '0 x0)) 'NIL) (('(3) '(< '0 x0)) '(3)) (('(-2 3) '(< '0 x0)) '(3)) (('(4 -2 3) '(< '0 x0)) '(4 3)) (('NIL '(= (* (/ x0 '2) '2) x0)) 'NIL) (('(3) '(= (* (/ x0 '2) '2) x0)) 'NIL) (('(4 3) '(= (* (/ x0 '2) '2) x0)) '(4))))
+    edges= ((:SPECIFIES :FILTER))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(cons tail at = if code-eval)'), (':CONSTANTS', "('NIL)")]
+- :SPEC/MAP-ADJACENT :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 :CODE ((0 . :INT) (1 . :INT)) :INT)) target= (:SEQ :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '(- x0 x1)) 'NIL) (('(9) '(- x0 x1)) 'NIL) (('(4 9) '(- x0 x1)) '(5)) (('(1 4 9) '(- x0 x1)) '(3 5)) (('NIL '(+ x0 x1)) 'NIL) (('(5) '(+ x0 x1)) 'NIL) (('(2 5) '(+ x0 x1)) '(7)) (('(1 2 5) '(+ x0 x1)) '(3 7))))
+    edges= ((:SPECIFIES :MAP-ADJACENT))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(cons tail at = if code-eval)'), (':CONSTANTS', "('NIL)")]
+- :SPEC/POSITIONS :SPEC dom= :INT status= :VALIDATED method= None obl= None bits= 0 work= 0
+    inputs= ((0 :SEQ :INT) (1 . :INT)) target= (:SEQ :INT)
+    expr= NIL
+    :RESIDUAL (:DATA ((('NIL '0) 'NIL) (('NIL '1) 'NIL) (('NIL '2) 'NIL) (('NIL '3) 'NIL) (('NIL '4) 'NIL) (('(7) '2) '(2)) (('(4) '3) '(3)) (('(7) '0) '(0)) (('(6 7) '1) '(1 2)) (('(9 4) '2) '(2 3)) (('(5 6 7) '0) '(0 1 2))))
+    edges= ((:SPECIFIES :POSITIONS))
+    meta= [(':TARGET-KIND', ':FUNCTION'), (':OPERATORS', '(cons tail at = if +)'), (':LITERALS', '(0 1)'), (':CONSTANTS', "('NIL)")]

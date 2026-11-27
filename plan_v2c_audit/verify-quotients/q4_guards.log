@@ -1,0 +1,70 @@
+# Q4: weakest guards by bitset maximality
+rows=32  seed=0  range [-6,6]; rows with b=0: 1, a=0: 4
+arithmetic terms (distinct columns): 22; syntactic guards: 1936; distinct non-trivial masks: 302
+
+law max(a,b) = a                 agrees on 20/32 rows; true condition: a >= b
+   valid guards: 49   maximal (weakest): 1   a guard with mask == A exists: True
+      (<= b a)                     covers 20 rows; 16 syntactic guards share this mask
+
+law div(a*b, b) = a              agrees on 31/32 rows; true condition: b != 0
+   valid guards: 151   maximal (weakest): 1   a guard with mask == A exists: True
+      (!= b 0)                     covers 31 rows; 40 syntactic guards share this mask
+
+law abs(a+b) = abs(a)+abs(b)     agrees on 16/32 rows; true condition: a*b >= 0
+   valid guards: 47   maximal (weakest): 1   a guard with mask == A exists: True
+      (<= 0 (* a b))               covers 16 rows; 3 syntactic guards share this mask
+
+law max(a,0) = a                 agrees on 23/32 rows; true condition: a >= 0
+   valid guards: 60   maximal (weakest): 1   a guard with mask == A exists: True
+      (<= 0 a)                     covers 23 rows; 25 syntactic guards share this mask
+
+law div(a,b)*b = a               agrees on 17/32 rows; true condition: b != 0 and b | a   (needs mod: not one comparison of + - * terms)
+   valid guards: 22   maximal (weakest): 7   a guard with mask == A exists: False
+      (= (* a a) (* b b))          covers  9 rows; 2 syntactic guards share this mask
+      (= (* a b) (- 0 a))          covers  7 rows; 2 syntactic guards share this mask
+      (= a (* a b))                covers  6 rows; 2 syntactic guards share this mask
+      (= 1 (* b b))                covers  6 rows; 2 syntactic guards share this mask
+      (< (* b b) (- a 1))          covers  3 rows; 1 syntactic guards share this mask
+      (= (- a b) (* b b))          covers  2 rows; 2 syntactic guards share this mask
+      (= (+ b 1) (- 0 1))          covers  2 rows; 4 syntactic guards share this mask
+
+law mod(a,b) = a                 agrees on 11/32 rows; true condition: 0 <= a < b or b < a <= 0   (a conjunction)
+   valid guards: 10   maximal (weakest): 3   a guard with mask == A exists: False
+      (< (* a a) (* a b))          covers  7 rows; 1 syntactic guards share this mask
+      (<= (* a a) (- 0 a))         covers  5 rows; 5 syntactic guards share this mask
+      (< (* a a) b)                covers  3 rows; 2 syntactic guards share this mask
+
+bitset time for all 6 laws (validity + pairwise maximality over 302 masks): 0.480 ms
+
+== stability over 20 random row sets ==
+
+rows=16: distinct masks 96..202 (mean 140); bitset time mean 0.164 ms
+   law                           valid (range)    #maximal: histogram exact-mask  most frequent top guard
+   max(a,b) = a                      7..31                    {1: 20}      20/20  (<= b a) (16/20)
+   div(a*b, b) = a                  31..166    {1: 15, 10: 1, 11: 2, 12: 2}      15/20  (!= b 0) (15/20)
+   abs(a+b) = abs(a)+abs(b)         11..62                    {1: 20}      20/20  (<= 0 (* a b)) (10/20)
+   max(a,0) = a                     10..29                    {1: 20}      20/20  (<= 0 a) (13/20)
+   div(a,b)*b = a                    0..16     {0: 1, 1: 1, 2: 7, 3: 6, 4: 2, 5: 3}       1/20  (= a (* a b)) (5/20)
+   mod(a,b) = a                      2..18        {1: 12, 2: 7, 3: 1}      12/20  (< (* a a) (* a b)) (14/20)
+
+rows=32: distinct masks 196..286 (mean 246); bitset time mean 0.385 ms
+   law                           valid (range)    #maximal: histogram exact-mask  most frequent top guard
+   max(a,b) = a                     13..40                    {1: 20}      20/20  (<= b a) (19/20)
+   div(a*b, b) = a                  55..137                   {1: 20}      20/20  (!= b 0) (20/20)
+   abs(a+b) = abs(a)+abs(b)         28..56                    {1: 20}      20/20  (<= 0 (* a b)) (13/20)
+   max(a,0) = a                     13..42                    {1: 20}      20/20  (<= 0 a) (18/20)
+   div(a,b)*b = a                    0..24     {0: 1, 2: 1, 3: 4, 5: 4, 6: 2, 7: 3, 8: 5}       0/20  (= a (* a b)) (7/20)
+   mod(a,b) = a                      2..14     {1: 5, 2: 11, 3: 2, 4: 2}       4/20  (< (* a a) (* a b)) (13/20)
+
+rows=64: distinct masks 280..362 (mean 330); bitset time mean 0.539 ms
+   law                           valid (range)    #maximal: histogram exact-mask  most frequent top guard
+   max(a,b) = a                     16..42                    {1: 20}      20/20  (<= b a) (20/20)
+   div(a*b, b) = a                  55..162                   {1: 20}      20/20  (!= b 0) (20/20)
+   abs(a+b) = abs(a)+abs(b)         30..63                    {1: 20}      20/20  (<= 0 (* a b)) (19/20)
+   max(a,0) = a                     23..42                    {1: 20}      20/20  (<= 0 a) (20/20)
+   div(a,b)*b = a                    3..27     {1: 4, 3: 2, 6: 1, 7: 1, 8: 3, 9: 5, 10: 2, 11: 2}       0/20  (= 1 (* b b)) (10/20)
+   mod(a,b) = a                      3..11     {1: 2, 2: 12, 3: 4, 4: 1, 5: 1}       0/20  (< (* a a) (* a b)) (20/20)
+
+real	0m6.348s
+user	0m6.336s
+sys	0m0.012s

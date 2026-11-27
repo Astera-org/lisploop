@@ -1,0 +1,14 @@
+exit 0 -> logs/baseline-d.log
+exit 0 -> logs/regress-d-r2.log
+REGRESSION OK: modified probe == repo d.log (timings masked)
+BASELINE OK: unmodified probe == repo d.log (timings masked)
+exit 0 -> logs/r1.log
+exit 0 -> logs/r1-variants.log
+exit 0 -> logs/r1-variants2.log
+dump exit 0
+kernel exit 0 -> logs/xref-kernel.log
+exit 0 -> logs/r2.log
+exit 0 -> logs/r3.log
+exit 0 -> logs/r4-kraft.log
+exit 0 -> logs/r5-metric.log
+exit 0 -> logs/r6-au.log

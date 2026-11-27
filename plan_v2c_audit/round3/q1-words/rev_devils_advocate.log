@@ -1,0 +1,65 @@
+========================================================================================
+EXP A1: TRUE RAM ACCOUNTING (TOTAL seen + bank) ON G1 POLYNOMIALS (SIZE 9, 11, 13)
+========================================================================================
+Task                               |  Plain seen / bank |  KeepSeen seen / bank |  DropPenSeen seen / bank | TRUE RAM Gain
+----------------------------------------------------------------------------------------------------------------------------
+A4 (sz9): (x+y)*(x-y)+1            |      490 / 490     |       407 / 52        |        101 / 52          |          4.9x
+A8 (sz11): (x+y)^2-xy+1            |     2713 / 2713    |      1876 / 120       |        489 / 120         |          5.5x
+A12 (sz13): 2(x^2+y^2)-xy          |    15760 / 15760   |     10719 / 687       |       2629 / 687         |          6.0x
+
+========================================================================================
+EXP A2: DO QUOTIENTS SAVE RAM INSIDE LIFTED POSITION-SPACE TASKS (§6.7 OPEN QUESTION)?
+========================================================================================
+  map-adjacent (+) [4ops]  | Plain eval=  59970 RAM= 2247 | Prefilt eval=  11218 (skip= 48752) RAM= 2247 | EvalGain=  5.3x RAMGain= 1.0x | found=('+', ('at', 'xs', 'i'), ('at', 'xs', ('+', 'i', '1')))
+  map-adjacent (-) [4ops]  | Plain eval=  85362 RAM= 2247 | Prefilt eval=  11287 (skip= 74075) RAM= 2247 | EvalGain=  7.6x RAMGain= 1.0x | found=('-', ('at', 'xs', ('+', 'i', '1')), ('at', 'xs', 'i'))
+  reverse [3ops]           | Plain eval=    898 RAM=  213 | Prefilt eval=    898 (skip=     0) RAM=  213 | EvalGain=  1.0x RAMGain= 1.0x | found=('at', 'xs', ('-', 'len', ('+', 'i', '1')))
+  rotate-left [3ops]       | Plain eval=   2383 RAM=  572 | Prefilt eval=   2383 (skip=     0) RAM=  572 | EvalGain=  1.0x RAMGain= 1.0x | found=('at', 'xs', ('mod', ('+', 'i', 'k'), 'len'))
+
+========================================================================================
+EXP B: IS GAP 3 NEEDED? (ABLATING VACUITY, REDUNDANCY, AND CROSS-TYPE SCORING)
+========================================================================================
+  [1] Naive (no vacuity, no redundancy)       -> ['const_0 (VACUOUS)', 'len>=0 (VACUOUS)', 'len_cap6', 'len_cap5', 'len_cap4', 'len_mod3']
+  [2] Vacuity guard ONLY (no redundancy)      -> ['len_cap6', 'len_cap5', 'len_cap4', 'len_mod3', 'len_cap3', 'len_mod2']
+  [3] Vacuity + 5-line pairwise NMI < 0.65    -> ['len_cap6', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)', 'has_zero']
+
+  Automatic cross-type pairing (best seq word -> int word per Seq->Int op, ZERO hand pairs):
+    sum         -> best pair: (all_nonneg -> int_sign), lump=0.19
+    prod        -> best pair: (has_zero -> int_sign), lump=0.58
+    len         -> best pair: (len_cap6 -> int_mod3), lump=0.79
+    head        -> best pair: (all_nonneg -> int_sign), lump=0.20
+    last        -> best pair: (all_nonneg -> int_sign), lump=0.18
+    max_el      -> best pair: (all_nonneg -> int_sign), lump=0.66
+    min_el      -> best pair: (all_nonneg -> int_sign), lump=1.00
+    count_pos   -> best pair: (all_nonneg -> int_sign), lump=0.60
+    count_even  -> best pair: (all_even -> int_sign), lump=1.00
+
+  Actual 61-op synthesis impact (8 sequence tasks):
+  [2] No redundancy (6 length variants!)       | Total cands:   42706 vs Plain   71299 (1.67x) | RAM:  5672 vs 11309 (1.99x)
+  [3] 5-line pairwise NMI < 0.65 (diverse!)    | Total cands:   42542 vs Plain   71299 (1.68x) | RAM:  5632 vs 11309 (2.01x)
+
+========================================================================================
+EXP C: IS GAP 4 NEEDED? (JOINT PROBES vs RULE-3 ISOLATE SLICES ON G2 ARITHMETIC)
+========================================================================================
+  False rejections on 500 fresh (a,b) in [-20..20]^2 (out of 1500 op-domain checks each):
+    +   : Rule-3 Slice tables ->  55 false rejects | Joint grid tables ->   0 false rejects
+    -   : Rule-3 Slice tables ->  50 false rejects | Joint grid tables ->   0 false rejects
+    *   : Rule-3 Slice tables ->   0 false rejects | Joint grid tables ->   0 false rejects
+    max : Rule-3 Slice tables ->   0 false rejects | Joint grid tables ->   0 false rejects
+    min : Rule-3 Slice tables ->   0 false rejects | Joint grid tables ->   0 false rejects
+    div : Rule-3 Slice tables -> 287 false rejects | Joint grid tables ->   0 false rejects
+    mod : Rule-3 Slice tables -> 422 false rejects | Joint grid tables ->   0 false rejects
+
+========================================================================================
+EXP D: IS GAP 5 NEEDED? (100-TASK STREAM: STATIC PROBES vs 5-LINE FALLBACK FEEDBACK)
+========================================================================================
+  Separate (4 doms), 150 random probes, NO feedback  | Misses 1..100: 56/100 | Misses 101..200: 54/100 | Total: 110/200 (fb_upd=0)
+  Separate (4 doms), 150 random probes, +5-line FB   | Misses 1..100: 38/100 | Misses 101..200: 17/100 | Total:  55/200 (fb_upd=106)
+  Separate (4 doms), 1000 strat probes, NO feedback  | Misses 1..100:  0/100 | Misses 101..200:  0/100 | Total:   0/200 (fb_upd=0)
+  Merged (nonneg x par x ord), 2000 rand, NO FB      | Misses 1..100: 38/100 | Misses 101..200: 46/100 | Total:  84/200 (fb_upd=0)
+  Merged (nonneg x par x ord), 2000 rand, +5-line FB | Misses 1..100: 32/100 | Misses 101..200: 34/100 | Total:  66/200 (fb_upd=98)
+  Merged (nonneg x par x ord), 2000 strat, NO FB     | Misses 1..100: 19/100 | Misses 101..200: 31/100 | Total:  50/200 (fb_upd=0)
+  Merged (nonneg x par x ord), 2000 strat, +5-line FB | Misses 1..100: 18/100 | Misses 101..200: 25/100 | Total:  43/200 (fb_upd=56)
+
+real	0m4.576s
+user	0m4.567s
+sys	0m0.008s

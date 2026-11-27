@@ -1,0 +1,74 @@
+--- package.lisp	2026-11-24 19:21:50.007984474 -0800
++++ v2/package.lisp	2026-11-24 19:21:50.061839865 -0800
+@@ -13,6 +13,7 @@
+    #:var-p #:lit-p #:app-p #:hole-p #:operator-p
+    #:operator-name #:operator-type #:operator-operand-type #:at-container-type #:application-overhead
+    #:expression-type #:free-vars #:provably-total-p #:provably-total-given-p #:instantiate #:expression-less-p
++   #:*certified-length-preserving-ops* #:*mod-range-certified-p*
+    #:function-definition #:function-definition-p #:function-definition-name
+    #:function-definition-inputs #:function-definition-return-type #:function-definition-code-type
+    #:function-definition-body #:function-definition-oracle-table
+@@ -61,6 +62,12 @@
+    ;; 5. evidence.lisp — Provenance tracking & dependency currency
+    #:attest-knowledge-entry #:knowledge-evidence-current-p #:knowledge-evidence-tested-p
+ 
++   ;; 12b / Stage 1 E2-E3 exports
++   #:effective-application-overhead #:mini-egraph #:make-mini-egraph
++   #:egraph-add-expr #:egraph-merge #:egraph-rebuild #:egraph-equal-p
++   #:ac-canonicalize-expr #:minimize-laws-with-egraph
++   #:certify-law-by-pit #:certify-law-by-induction #:totalize-forward-replay
++
+    ;; 6. persistence.lisp — Homoiconic S-expression library serialization & storage accounting
+    #:knowledge-entry->sexp #:sexp->knowledge-entry
+    #:serialize-knowledge-library #:deserialize-knowledge-library
+@@ -69,7 +76,7 @@
+ 
+    ;; 7. requirements.lisp — S-expression requirements, conjunctions, partial evaluation
+    #:singleton-requirement #:set-requirement #:extract-allowed-values #:check-requirement
+-   #:conjoin-requirements #:fold-constants
++   #:conjoin-requirements #:fold-constants #:*enable-host-cons-folds*
+ 
+    ;; 8. frame.lisp — Frames, pullbacks, 1-to-many lifts, coordinate probes, delta packets
+    #:row #:make-row #:row-key #:row-known #:row-requirement
+@@ -108,6 +115,7 @@
+    #:observation-bucket-type #:observation-bucket-values #:observation-bucket-members
+    #:observation-bucket-invariant-p #:observation-bucket-informative-p #:observation-bucket-counterexample
+    #:observation-bucket-pair-bits #:observation-bucket-anchor-bits #:observation-bucket-residual-bits
++   #:*default-row-budget*
+    #:search-job #:start-search #:resume-search #:search-job-results #:search-job-best #:search-job-ledger
+    #:search-job-completed-bound #:search-job-messages #:search-job-proposals #:search-job-reused-rejections
+    #:make-observation-scope #:observation-scope-id #:observation-scope-frame #:observation-scope-language
+@@ -131,6 +139,7 @@
+    #:law-validation-status #:law-validation-ledger #:law-validation-counterexample #:law-validation-certificate
+    #:propose-observed-laws
+    #:rewrite-rule #:rewrite-library #:rewrite-library-p #:rewrite-library-rules #:prepare-rewrite-library
++   #:current-rewrite-library #:*propagation-eval-budget*
+    #:rewriting #:start-rewriting #:advance-rewriting
+    #:rewriting-status #:rewriting-value #:rewriting-work #:rewriting-steps
+    #:propagator-library #:propagator-library-p
+@@ -145,7 +154,7 @@
+    #:register-metric-decoder #:metric-decoders #:metric-delta
+ 
+    ;; 13. templates.lisp — Polymorphic retyping, template inference & AST transformations
+-   #:retype-expr #:retype-law #:retype-knowledge-laws #:retype-function-definition
++   #:retype-expr #:retype-law #:default-law-samples #:retype-knowledge-laws #:retype-function-definition
+    #:walk-typed-ast #:infer-function-template #:instantiate-function-template
+    #:infer-entry-template #:instantiate-entry-template
+    #:learn-knowledge-transformer
+@@ -183,6 +192,7 @@
+    #:entry-descriptor-necessary-p #:entry-trigger-compatible-p
+    #:score-entry-by-descriptors #:library-function-descriptor-compatible-p
+    #:evaluate-frame-descriptors #:frame-addressed-entries
++   #:*enable-host-descriptor-synthesis*
+ 
+    ;; 18. relations.lisp — Hybrid parametric/lookup relations & delayed residual consolidation
+    #:compose-hybrid-residual-program #:register-knowledge-relation #:consolidate-residual-relations
+@@ -235,7 +245,7 @@
+    ;; 23. consolidate.lisp — Trace heuristic learning, specs, solver induction, batteries & consolidation
+    #:make-search-trace-frame #:condense-search-heuristic #:register-knowledge-heuristic
+    #:make-knowledge-spec #:register-knowledge-spec #:spec-entry-frame
+-   #:verify-entry-against-spec #:synthesize-spec-entry
++   #:verify-entry-against-spec #:synthesize-spec-entry #:*use-active-library-grammar*
+    #:induce-law-solvers #:induce-conditional-solver #:induce-conditional-solvers
+    #:consolidate-library-functions #:consolidate-policy-descriptors
+    #:commit-synthesis-job #:consolidate-knowledge-library #:*consolidation-pass-limit*

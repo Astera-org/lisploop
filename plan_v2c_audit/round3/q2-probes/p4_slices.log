@@ -1,0 +1,84 @@
+A. dependency score on parity (x mod 2): joint key (a%2, b%2) vs slice key (a%2) at fixed b
+  grid [-12, 12]^2
+    +    joint 1.00 | slices b=1:1.00 b=2:1.00 b=3:1.00 b=4:1.00 b=-1:1.00 b=5:1.00 b=6:1.00
+    *    joint 1.00 | slices b=1:1.00 b=2:const b=3:1.00 b=4:const b=-1:1.00 b=5:1.00 b=6:const
+    div  joint 0.04 | slices b=1:1.00 b=2:0.00 b=3:0.10 b=4:0.00 b=-1:1.00 b=5:0.03 b=6:0.00
+    mod  joint 0.53 | slices b=1:const b=2:1.00 b=3:0.00 b=4:1.00 b=-1:const b=5:0.00 b=6:1.00
+  grid [-20, 20]^2
+    +    joint 1.00 | slices b=1:1.00 b=2:1.00 b=3:1.00 b=4:1.00 b=-1:1.00 b=5:1.00 b=6:1.00
+    *    joint 1.00 | slices b=1:1.00 b=2:const b=3:1.00 b=4:const b=-1:1.00 b=5:1.00 b=6:const
+    div  joint 0.02 | slices b=1:1.00 b=2:0.00 b=3:0.07 b=4:0.00 b=-1:1.00 b=5:0.03 b=6:0.00
+    mod  joint 0.51 | slices b=1:const b=2:1.00 b=3:0.00 b=4:1.00 b=-1:const b=5:0.00 b=6:1.00
+  grid [-30, 30]^2
+    +    joint 1.00 | slices b=1:1.00 b=2:1.00 b=3:1.00 b=4:1.00 b=-1:1.00 b=5:1.00 b=6:1.00
+    *    joint 1.00 | slices b=1:1.00 b=2:const b=3:1.00 b=4:const b=-1:1.00 b=5:1.00 b=6:const
+    div  joint 0.01 | slices b=1:1.00 b=2:0.00 b=3:0.09 b=4:0.00 b=-1:1.00 b=5:0.03 b=6:0.00
+    mod  joint 0.51 | slices b=1:const b=2:1.00 b=3:0.00 b=4:1.00 b=-1:const b=5:0.00 b=6:1.00
+  joint parity table of mod on [-12,12]^2 (key -> output labels): {(0, 0): [0], (0, 1): [0, 1], (1, 0): [1], (1, 1): [0, 1]}
+  joint parity table of div: {(0, 0): [0, 1], (0, 1): [0, 1], (1, 0): [0, 1], (1, 1): [0, 1]}
+
+B. false rejections, label-keyed tables from slices b in {-1,0,1,2} (a in [-12,12]) vs the joint 25x25 grid; test pairs in [-20,20]^2; 3 quotients, so <= 1500 checks per 500 pairs
+  op    slice seed404    joint 404 slice 20 seeds min..max exact per 500 (slice/joint)   slice by quotient (seed 404)
+  +                55            0             41..69               56.5 / 0.0     {'mod2': 0, 'mod3': 0, 'sign': 55}
+  -                50            0             41..71               56.5 / 0.0     {'mod2': 0, 'mod3': 0, 'sign': 50}
+  *                 0            0              0..0                 0.0 / 0.0     {'mod2': 0, 'mod3': 0, 'sign': 0}
+  max               0            0              0..0                 0.0 / 0.0     {'mod2': 0, 'mod3': 0, 'sign': 0}
+  min               0            0              0..0                 0.0 / 0.0     {'mod2': 0, 'mod3': 0, 'sign': 0}
+  div             287            0            255..312             287.9 / 0.0     {'mod2': 92, 'mod3': 145, 'sign': 50}
+  mod             422            0            391..456             430.1 / 0.0     {'mod2': 92, 'mod3': 145, 'sign': 185}
+
+  other slice sets: 200 random 4-subsets of b in [-12,12]; false rejections per 500 test pairs (exact over the 41x41 grid): median [min..max]; and share of subsets with zero
+    +    median    0.0 [  0.0..  56.5]  zero in 178/200
+    -    median    0.0 [  0.0..  56.5]  zero in 178/200
+    *    median    0.0 [  0.0..   0.0]  zero in 200/200
+    max  median    0.0 [  0.0.. 143.7]  zero in 165/200
+    min  median    0.0 [  0.0.. 143.7]  zero in 165/200
+    div  median    0.0 [  0.0.. 340.9]  zero in 114/200
+    mod  median    0.0 [  0.0.. 483.0]  zero in 125/200
+
+  joint probing at the SAME budget as the 4 slices (100 random pairs in [-12,12]^2), 200 seeds: false rejections per 500 (exact): median [min..max], share with zero
+    +    median    0.0 [  0.0..  11.9]  zero in 152/200
+    -    median    0.0 [  0.0..  11.9]  zero in 150/200
+    *    median    0.0 [  0.0..   0.0]  zero in 200/200
+    max  median    0.0 [  0.0..  31.2]  zero in 191/200
+    min  median    0.0 [  0.0..  31.2]  zero in 191/200
+    div  median   14.6 [  0.0..  68.7]  zero in  51/200
+    mod  median   14.6 [  0.0..  53.5]  zero in  69/200
+
+C. table keyed on (label of a, VALUE of b), b in [-12,12], a probed on [-A, A]
+  truth = all a in [-200,200].  joint = key (label a, label b) on the 25x25 grid.
+  narrower = value-keyed entries with strictly fewer output labels than the joint entry for the same (label a, label b); det = entries with one output label;
+  unsound(A) = value-keyed entries, probed with a in [-A,A], that miss a true output label
+  op   quot  |   joint   det |   value   det narrower | b values where narrower      |  unsound12  unsound40
+  +    mod2  |       4     4 |      50    50        0 | []                           |          0          0
+  +    mod3  |       9     9 |      75    75        0 | []                           |          0          0
+  +    sign  |       9     7 |      75    51        2 | [-1, 1]                      |          2          0
+  -    mod2  |       4     4 |      50    50        0 | []                           |          0          0
+  -    mod3  |       9     9 |      75    75        0 | []                           |          0          0
+  -    sign  |       9     7 |      75    51        2 | [-1, 1]                      |          2          0
+  *    mod2  |       4     4 |      50    50        0 | []                           |          0          0
+  *    mod3  |       9     9 |      75    75        0 | []                           |          0          0
+  *    sign  |       9     9 |      75    75        0 | []                           |          0          0
+  max  mod2  |       4     2 |      50    25        0 | []                           |          2          0
+  max  mod3  |       9     3 |      75    25        0 | []                           |          6          0
+  max  sign  |       9     9 |      75    75        0 | []                           |          0          0
+  min  mod2  |       4     2 |      50    25        0 | []                           |          2          0
+  min  mod3  |       9     3 |      75    25        0 | []                           |          6          0
+  min  sign  |       9     9 |      75    75        0 | []                           |          0          0
+  div  mod2  |       4     0 |      48     4        4 | [-1, 1]                      |          0          0
+  div  mod3  |       9     0 |      72     6       12 | [-2, -1, 1, 2]               |          6          0
+  div  sign  |       6     4 |      72    50        2 | [-1, 1]                      |          0          0
+  mod  mod2  |       4     2 |      48    28        4 | [-1, 1]                      |          0          0
+  mod  mod3  |       9     3 |      72    30       12 | [-2, -1, 1, 2]               |          2          0
+  mod  sign  |       6     2 |      72    28        4 | [-1, 1]                      |          0          0
+  TOTAL      |     148   101 |    1384   948       42 |                              |         28          0
+
+  the review's example "x mod 2k is determined by x mod 2": joint parity key (a%2, b%2=0) of mod is already deterministic (see A); the value-keyed table adds nothing there.
+
+  take_n(n, xs) under caplen5 = min(len, 5) (the int side of that quotient is trivial):
+    label-keyed: 6 entries, 1 deterministic, 3.50 output labels per entry
+    keyed on (clamp(n,0,5), caplen5 xs): 36 entries, 36 deterministic
+
+real	0m32.124s
+user	0m28.146s
+sys	0m0.028s

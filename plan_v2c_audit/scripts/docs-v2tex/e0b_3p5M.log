@@ -1,0 +1,71 @@
+=== E0b-2 rerun at budget=3500000 (wall 15.9 s) ===
+Regime WHITELIST+SCHEMAS: solved 16/16, held-out sound 16/16
+  COPY             solved=YES sound=YES       work=     17630
+  INC-ALL          solved=YES sound=YES       work=     33929
+  DBL-ALL          solved=YES sound=YES       work=     32113
+  SUM-ALL          solved=YES sound=YES       work=     26298
+  LEN-ALL          solved=YES sound=YES       work=     34444
+  PRD-ALL          solved=YES sound=YES       work=     28337
+  FOLDL            solved=YES sound=YES       work=     82539
+  FILTER           solved=YES sound=YES       work=     76871
+  MAP-ADJACENT     solved=YES sound=YES       work=    110559
+  POSITIONS        solved=YES sound=YES       work=     47136
+  SCAN             solved=YES sound=YES       work=    264818
+  SHIFT-SEQ        solved=YES sound=YES       work=    100600
+  SEQ-CORR         solved=YES sound=YES       work=     88666
+  BEST-SHIFT       solved=YES sound=YES       work=    199252
+  ARGMAX-CORR      solved=YES sound=YES       work=     98921
+  LAST-OR          solved=YES sound=YES       work=     32798
+Regime WHITELIST-NO-SCHEMAS: solved 10/16, held-out sound 9/16
+  COPY             solved=YES sound=YES       work=     16748
+  INC-ALL          solved=YES sound=YES       work=     31445
+  DBL-ALL          solved=YES sound=YES       work=     29409
+  SUM-ALL          solved=YES sound=YES       work=     25978
+  LEN-ALL          solved=YES sound=YES       work=     34038
+  PRD-ALL          solved=YES sound=YES       work=     27984
+  FOLDL            solved=YES sound=IMPOSTOR! work=    121367
+  FILTER           solved=YES sound=YES       work=     76203
+  MAP-ADJACENT     solved=no  sound=-         work=   3500000
+  POSITIONS        solved=no  sound=-         work=   3500000
+  SCAN             solved=no  sound=-         work=   3500000
+  SHIFT-SEQ        solved=no  sound=-         work=   3500000
+  SEQ-CORR         solved=YES sound=YES       work=     88066
+  BEST-SHIFT       solved=no  sound=-         work=   3500000
+  ARGMAX-CORR      solved=no  sound=-         work=     51825
+  LAST-OR          solved=YES sound=YES       work=     51078
+Regime ACTIVE-GRAMMAR+SCHEMAS: solved 12/16, held-out sound 10/16
+  COPY             solved=YES sound=YES       work=     29645
+  INC-ALL          solved=YES sound=YES       work=    196724
+  DBL-ALL          solved=YES sound=YES       work=     65100
+  SUM-ALL          solved=YES sound=YES       work=     28222
+  LEN-ALL          solved=YES sound=YES       work=     43772
+  PRD-ALL          solved=YES sound=YES       work=     37158
+  FOLDL            solved=YES sound=IMPOSTOR! work=    213355
+  FILTER           solved=YES sound=YES       work=    122687
+  MAP-ADJACENT     solved=no  sound=-         work=   3500000
+  POSITIONS        solved=YES sound=YES       work=     92605
+  SCAN             solved=YES sound=IMPOSTOR! work=    405758
+  SHIFT-SEQ        solved=no  sound=-         work=   3500000
+  SEQ-CORR         solved=YES sound=YES       work=    665679
+  BEST-SHIFT       solved=no  sound=-         work=   3500000
+  ARGMAX-CORR      solved=no  sound=-         work=   3500000
+  LAST-OR          solved=YES sound=YES       work=    152525
+Regime ACTIVE-GRAMMAR-NO-SCHEMAS: solved 11/16, held-out sound 10/16
+  COPY             solved=YES sound=YES       work=     27291
+  INC-ALL          solved=YES sound=YES       work=    195020
+  DBL-ALL          solved=YES sound=YES       work=     63333
+  SUM-ALL          solved=YES sound=YES       work=     27868
+  LEN-ALL          solved=YES sound=YES       work=     42759
+  PRD-ALL          solved=YES sound=YES       work=     36804
+  FOLDL            solved=YES sound=IMPOSTOR! work=    209723
+  FILTER           solved=YES sound=YES       work=    120369
+  MAP-ADJACENT     solved=no  sound=-         work=   3500000
+  POSITIONS        solved=YES sound=YES       work=   1251494
+  SCAN             solved=no  sound=-         work=   3500000
+  SHIFT-SEQ        solved=no  sound=-         work=   3500000
+  SEQ-CORR         solved=YES sound=YES       work=    665013
+  BEST-SHIFT       solved=no  sound=-         work=   3500000
+  ARGMAX-CORR      solved=no  sound=-         work=   3500000
+  LAST-OR          solved=YES sound=YES       work=    162260
+real	0m20.511s
+exit=0

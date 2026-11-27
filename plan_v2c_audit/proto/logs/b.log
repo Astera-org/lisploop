@@ -1,0 +1,256 @@
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (x y z 0 1), 32 rows, size<=7 ===
+size cand       collisions classes    laws     sec   
+   2          5          1          9        1   0.00 done
+   3         59         39         25        8   0.00 done
+   4        155        107         53       14   0.00 done
+   5        535        418        122       31   0.00 done
+   6       1420       1120        305       51   0.00 done
+   7       3943       3282        666      105   0.00 done
+raw collisions 3282, kept laws 105 (59 after inter-reduction), time 0.01 s
+first kept laws ([n] = size being enumerated when found):
+   1. [2] (neg 0) = 0
+   2. [3] (+ x 0) = x
+   3. [3] (+ y x) = (+ x y)
+   4. [3] (+ 0 1) = 1
+   5. [3] (* x 0) = 0
+   6. [3] (* x 1) = x
+   7. [3] (* y x) = (* x y)
+   8. [3] (neg (neg x)) = x
+   9. [4] (+ x (neg x)) = 0
+  10. [4] (+ 0 (neg x)) = (neg x)
+  11. [4] (* x (neg 1)) = (neg x)
+  12. [4] (* y (neg x)) = (* x (neg y))
+  13. [4] (neg (* x x)) = (* x (neg x))
+  14. [4] (neg (* x y)) = (* x (neg y))
+  15. [5] (+ y (+ x x)) = (+ x (+ x y))
+  16. [5] (+ y (+ x y)) = (+ x (+ y y))
+  17. [5] (+ y (+ x z)) = (+ x (+ y z))
+  18. [5] (+ 0 (+ 1 1)) = (+ 1 1)
+  19. [5] (+ 0 (* x x)) = (* x x)
+  20. [5] (+ 0 (* x y)) = (* x y)
+  21. [5] (+ (neg x) (neg x)) = (neg (+ x x))
+  22. [5] (+ (neg x) (neg y)) = (neg (+ x y))
+  23. [5] (* x (+ x 1)) = (+ x (* x x))
+  24. [5] (* x (+ y 1)) = (+ x (* x y))
+  25. [5] (* y (+ x x)) = (* x (+ y y))
+  26. [5] (* y (* x x)) = (* x (* x y))
+  27. [5] (* y (* x y)) = (* x (* y y))
+  28. [5] (* y (* x z)) = (* x (* y z))
+  29. [5] (* 0 (+ x y)) = 0
+  30. [5] (* 1 (+ x y)) = (+ x y)
+  31. [5] (neg (+ x (neg y))) = (+ y (neg x))
+  32. [6] (+ x (+ y (neg x))) = y
+  33. [6] (+ x (neg (+ x x))) = (neg x)
+  34. [6] (+ x (neg (+ x y))) = (neg y)
+  35. [6] (+ y (neg (+ x y))) = (neg x)
+  36. [6] (+ 0 (+ 1 (neg x))) = (+ 1 (neg x))
+  37. [6] (* x (+ x (neg 1))) = (+ (neg x) (* x x))
+  38. [6] (* x (+ y (neg 1))) = (+ (neg x) (* x y))
+  39. [6] (* x (+ 1 (neg x))) = (+ x (* x (neg x)))
+  40. [6] (* x (+ 1 (neg y))) = (+ x (* x (neg y)))
+kept laws by size of the larger side: 2:1, 3:7, 4:6, 5:17, 6:20, 7:54
+laws surviving inter-reduction:
+  (neg 0) = 0
+  (+ x 0) = x
+  (+ y x) = (+ x y)
+  (+ 0 1) = 1
+  (* x 0) = 0
+  (* x 1) = x
+  (* y x) = (* x y)
+  (neg (neg x)) = x
+  (+ x (neg x)) = 0
+  (+ 0 (neg x)) = (neg x)
+  (* x (neg 1)) = (neg x)
+  (* y (neg x)) = (* x (neg y))
+  (neg (* x y)) = (* x (neg y))
+  (+ y (+ x z)) = (+ x (+ y z))
+  (+ 0 (+ 1 1)) = (+ 1 1)
+  (+ 0 (* x y)) = (* x y)
+  (+ (neg x) (neg y)) = (neg (+ x y))
+  (* x (+ y 1)) = (+ x (* x y))
+  (* y (+ x x)) = (* x (+ y y))
+  (* y (* x z)) = (* x (* y z))
+  (* 0 (+ x y)) = 0
+  (* 1 (+ x y)) = (+ x y)
+  (neg (+ x (neg y))) = (+ y (neg x))
+  (+ x (+ y (neg x))) = y
+  (+ x (neg (+ x y))) = (neg y)
+  (+ y (neg (+ x y))) = (neg x)
+  (+ 0 (+ 1 (neg x))) = (+ 1 (neg x))
+  (* x (+ y (neg 1))) = (+ (neg x) (* x y))
+  (* x (+ 1 (neg y))) = (+ x (* x (neg y)))
+  (* x (neg (+ 1 1))) = (neg (+ x x))
+  (* y (neg (+ x x))) = (* x (neg (+ y y)))
+  (* 0 (neg (+ x y))) = 0
+  (* 1 (neg (+ x y))) = (neg (+ x y))
+  (* (neg x) (+ y z)) = (* x (neg (+ y z)))
+  (neg (+ x (* x y))) = (* x (neg (+ y 1)))
+  (neg (+ y (* x y))) = (* y (neg (+ x 1)))
+  (+ 0 (+ 1 (+ 1 1))) = (+ 1 (+ 1 1))
+  (+ 0 (+ 1 (* x y))) = (+ 1 (* x y))
+  (+ (neg x) (* y (neg z))) = (neg (+ x (* y z)))
+  (+ (+ x x) (* y z)) = (+ x (+ x (* y z)))
+named laws: size at which the two sides first rewrite to one normal form; * = also literally kept
+  commutativity +    3 *
+  commutativity *    3 *
+  associativity +    5
+  associativity *    5
+  identity x+0       3 *
+  identity x*1       3 *
+  zero x*0           3 *
+  double negation    3 *
+  distributivity     7 *
+laws false on 1000 fresh rows in -1000..1000: 0 of 105
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (0 1 x y z), 32 rows, size<=7 ===
+size cand       collisions classes    laws     sec   
+   2          5          1          9        1   0.00 done
+   3         59         39         25       19   0.00 done
+   4        155        107         53       25   0.00 done
+   5        535        418        122       45   0.00 done
+   6       1420       1120        305       69   0.00 done
+   7       3943       3282        666      133   0.00 done
+raw collisions 3282, kept laws 133 (43 after inter-reduction), time 0.01 s
+first kept laws ([n] = size being enumerated when found):
+   1. [2] (neg 0) = 0
+   2. [3] (+ 0 0) = 0
+   3. [3] (+ 0 1) = 1
+   4. [3] (+ 0 x) = x
+   5. [3] (+ 1 0) = 1
+   6. [3] (+ x 0) = x
+   7. [3] (+ x 1) = (+ 1 x)
+   8. [3] (+ y x) = (+ x y)
+   9. [3] (* 0 0) = 0
+  10. [3] (* 0 1) = 0
+  11. [3] (* 0 x) = 0
+  12. [3] (* 1 0) = 0
+  13. [3] (* 1 1) = 1
+  14. [3] (* 1 x) = x
+  15. [3] (* x 0) = 0
+  16. [3] (* x 1) = x
+  17. [3] (* y x) = (* x y)
+  18. [3] (neg (neg 1)) = 1
+  19. [3] (neg (neg x)) = x
+  20. [4] (+ 1 (neg 1)) = 0
+  21. [4] (+ x (neg x)) = 0
+  22. [4] (* x (neg 1)) = (neg x)
+  23. [4] (* y (neg x)) = (* x (neg y))
+  24. [4] (neg (* x x)) = (* x (neg x))
+  25. [4] (neg (* x y)) = (* x (neg y))
+  26. [5] (+ x (+ 1 1)) = (+ 1 (+ 1 x))
+  27. [5] (+ x (+ 1 x)) = (+ 1 (+ x x))
+  28. [5] (+ x (+ 1 y)) = (+ 1 (+ x y))
+  29. [5] (+ y (+ x x)) = (+ x (+ x y))
+  30. [5] (+ y (+ x y)) = (+ x (+ y y))
+  31. [5] (+ y (+ x z)) = (+ x (+ y z))
+  32. [5] (+ (neg 1) (neg 1)) = (neg (+ 1 1))
+  33. [5] (+ (neg 1) (neg x)) = (neg (+ 1 x))
+  34. [5] (+ (neg x) (neg x)) = (neg (+ x x))
+  35. [5] (+ (neg x) (neg y)) = (neg (+ x y))
+  36. [5] (* x (+ 1 1)) = (+ x x)
+  37. [5] (* x (+ 1 x)) = (+ x (* x x))
+  38. [5] (* x (+ 1 y)) = (+ x (* x y))
+  39. [5] (* y (+ x x)) = (* x (+ y y))
+  40. [5] (* y (* x x)) = (* x (* x y))
+kept laws by size of the larger side: 2:1, 3:18, 4:6, 5:20, 6:24, 7:64
+laws surviving inter-reduction:
+  (neg 0) = 0
+  (+ 0 x) = x
+  (+ y x) = (+ x y)
+  (* 0 x) = 0
+  (* 1 x) = x
+  (* y x) = (* x y)
+  (neg (neg x)) = x
+  (+ x (neg x)) = 0
+  (* y (neg x)) = (* x (neg y))
+  (neg (* x y)) = (* x (neg y))
+  (+ y (+ x z)) = (+ x (+ y z))
+  (+ (neg x) (neg y)) = (neg (+ x y))
+  (* x (+ 1 y)) = (+ x (* x y))
+  (* y (+ x x)) = (* x (+ y y))
+  (* y (* x z)) = (* x (* y z))
+  (neg (+ x (neg y))) = (+ y (neg x))
+  (+ x (+ y (neg x))) = y
+  (+ x (neg (+ x y))) = (neg y)
+  (+ y (neg (+ x y))) = (neg x)
+  (* x (+ y (neg 1))) = (+ (neg x) (* x y))
+  (* y (neg (+ x x))) = (* x (neg (+ y y)))
+  (* (neg x) (+ y z)) = (* x (neg (+ y z)))
+  (neg (+ x (* x y))) = (* x (neg (+ 1 y)))
+  (neg (+ y (* x y))) = (* y (neg (+ 1 x)))
+  (+ (neg x) (* y (neg z))) = (neg (+ x (* y z)))
+  (+ (+ 1 x) (* y z)) = (+ 1 (+ x (* y z)))
+  (+ (+ x x) (* y z)) = (+ x (+ x (* y z)))
+  (+ (+ x y) (* x z)) = (+ x (+ y (* x z)))
+  (+ (+ x y) (* y z)) = (+ x (+ y (* y z)))
+  (+ (+ x y) (* z z)) = (+ x (+ y (* z z)))
+  (+ (+ x z) (* y z)) = (+ x (+ z (* y z)))
+  (+ (+ y z) (* x y)) = (+ y (+ z (* x y)))
+  (+ (* x y) (* x z)) = (* x (+ y z))
+  (+ (* x y) (* y z)) = (* y (+ x z))
+  (+ (* x z) (* y z)) = (* z (+ x y))
+  (* y (+ x (+ x x))) = (* x (+ y (+ y y)))
+  (* y (+ x (* x z))) = (* x (+ y (* y z)))
+  (* z (+ y (* x y))) = (* y (+ z (* x z)))
+  (* (neg x) (neg (+ y z))) = (* x (+ y z))
+  (* (+ 1 1) (+ x y)) = (+ x (+ x (+ y y)))
+named laws: size at which the two sides first rewrite to one normal form; * = also literally kept
+  commutativity +    3 *
+  commutativity *    3 *
+  associativity +    5
+  associativity *    5
+  identity x+0       3 *
+  identity x*1       3 *
+  zero x*0           3 *
+  double negation    3 *
+  distributivity     7 *
+laws false on 1000 fresh rows in -1000..1000: 0 of 133
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (x y z 0 1), 32 rows, size<=14 ===
+size cand       collisions classes    laws     sec   
+   2          5          1          9        1   0.00 done
+   3         59         39         25        8   0.00 done
+   4        155        107         53       14   0.00 done
+   5        535        418        122       31   0.00 done
+   6       1420       1120        305       51   0.00 done
+   7       3943       3282        666      105   0.00 done
+   8      10860       8874       1991      186   0.01 done
+   9      28317      24153       4169      481   0.04 done
+  10      82211      68147      14069     1124   0.17 done
+  11     209993     181175      28823     3163   0.96 done
+  12     633335     530216     103124     8889   6.79 done
+  13    1569792    1355618     214178    27394  60.04 time
+raw collisions 1355618, kept laws 27394 (not computed: quadratic after inter-reduction), time 60.04 s
+laws false on 1000 fresh rows in -1000..1000: 0 of 27394
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (x y z 0 1), 3 rows, size<=7 ===
+raw collisions 2429, kept laws 280 (263 after inter-reduction), time 0.03 s
+laws false on 1000 fresh rows in -1000..1000: 199 of 280
+  SPURIOUS (+ x y) = (neg z)
+  SPURIOUS (+ x z) = (neg y)
+  SPURIOUS (+ y x) = (neg z)
+  SPURIOUS (+ y z) = (neg x)
+  SPURIOUS (+ z x) = (neg y)
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (x y z 0 1), 4 rows, size<=7 ===
+raw collisions 3302, kept laws 124 (81 after inter-reduction), time 0.01 s
+laws false on 1000 fresh rows in -1000..1000: 23 of 124
+  SPURIOUS (+ (neg x) (* x x)) = (+ z (* z z))
+  SPURIOUS (+ (neg z) (* x x)) = (+ x (* z z))
+  SPURIOUS (* x (+ x (neg 1))) = (+ z (* z z))
+  SPURIOUS (* x (* x (neg z))) = (* x (* z z))
+  SPURIOUS (* x (* z (neg z))) = (* x (* x z))
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (x y z 0 1), 6 rows, size<=7 ===
+raw collisions 3283, kept laws 106 (60 after inter-reduction), time 0.00 s
+laws false on 1000 fresh rows in -1000..1000: 1 of 106
+  SPURIOUS (* z (* z (+ x z))) = (* z (neg (+ x z)))
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (x y z 0 1), 8 rows, size<=7 ===
+raw collisions 3282, kept laws 105 (59 after inter-reduction), time 0.00 s
+laws false on 1000 fresh rows in -1000..1000: 0 of 105
+
+=== B. LAWS FROM COLLISIONS: {+ * neg}, leaf order (x y z 0 1), 12 rows, size<=7 ===
+raw collisions 3282, kept laws 105 (59 after inter-reduction), time 0.01 s
+laws false on 1000 fresh rows in -1000..1000: 0 of 105

@@ -1,0 +1,53 @@
+automatic selection: 3233 list partitions scored on 37 list operators (800 probes each); 18 int partitions on 11 int operators
+top 12 list candidates by mean lumpability:
+     0.874  (min (len (map_adj_add xs)) 5)                 size 5  smallest block 0.110
+     0.869  (min (len xs) 5)                               size 4  smallest block 0.091
+     0.855  (min (len (map_adj_add xs)) 4)                 size 5  smallest block 0.110
+     0.855  (min (len (drop2 xs)) 5)                       size 5  smallest block 0.110
+     0.852  (min (len xs) 4)                               size 4  smallest block 0.091
+     0.845  (min (len (odds_idx xs)) 5)                    size 5  smallest block 0.119
+     0.845  (min (len (odds_idx xs)) 4)                    size 5  smallest block 0.119
+     0.844  (mod (len (odds_idx xs)) 5)                    size 5  smallest block 0.119
+     0.838  (min (len (evens_idx xs)) 4)                   size 5  smallest block 0.091
+     0.837  (min (len (evens_idx xs)) 5)                   size 5  smallest block 0.091
+     0.835  (mod (len (evens_idx xs)) 5)                   size 5  smallest block 0.091
+     0.833  (len (take3 xs))                               size 3  smallest block 0.091
+top int candidates kept for pairing: (mod v 4) (0.911), (mod v 5) (0.908), (mod v 3) (0.887), (sgn v) (0.877), (< 5 v) (0.511), (= v 1) (0.242), (= v 2) (0.174), (= v 5) (0.174)
+selected (K=10):
+     0.874  (min (len (map_adj_add xs)) 5)                 paired with int quotient (sgn v) (cross-lumpability 0.32)
+     0.658  (min (sum (abs_all xs)) 4)                     paired with int quotient (sgn v) (cross-lumpability 0.46)
+     0.641  (mod (len xs) 2)                               paired with int quotient trivial (cross-lumpability 0.20)
+     0.627  (sgn (head (init xs)))                         paired with int quotient (sgn v) (cross-lumpability 0.35)
+     0.608  (mod (count_pos (abs_all xs)) 5)               paired with int quotient (sgn v) (cross-lumpability 0.23)
+     0.590  (sgn (max_el (inc_all xs)))                    paired with int quotient (sgn v) (cross-lumpability 0.50)
+     0.584  (sgn (sum (map_adj_add xs)))                   paired with int quotient (sgn v) (cross-lumpability 0.35)
+     0.573  (mod (head xs) 4)                              paired with int quotient trivial (cross-lumpability 0.20)
+     0.573  (mod (head xs) 5)                              paired with int quotient (sgn v) (cross-lumpability 0.23)
+     0.564  (< 5 (len (drop2 xs)))                         paired with int quotient trivial (cross-lumpability 0.20)
+skipped above the last selected: 316 candidates (312 redundant, 4 small-block); first few: [('(min (len xs) 5)', 0.8693562515341713, 'redundant with (min (len (map_adj_add xs)) 5)'), ('(min (len (map_adj_add xs)) 4)', 0.8554659884744066, 'redundant with (min (len (map_adj_add xs)) 5)'), ('(min (len (drop2 xs)) 5)', 0.8550204215693622, 'redundant with (min (len (map_adj_add xs)) 5)'), ('(min (len xs) 4)', 0.851706744700153, 'redundant with (min (len (map_adj_add xs)) 5)'), ('(min (len (odds_idx xs)) 5)', 0.8453908215826659, 'redundant with (min (len (map_adj_add xs)) 5)'), ('(min (len (odds_idx xs)) 4)', 0.8451499256270631, 'redundant with (min (len (map_adj_add xs)) 5)')]
+selection took 18.9 s
+
+hand-listed 6              states per quotient [7, 6, 5, 7, 3, 4], table entries 1736
+hand-listed 6, M=20000     states per quotient [7, 6, 5, 7, 3, 4], table entries 1736
+auto top-1                 states per quotient [9], table entries 591
+auto top-3                 states per quotient [9, 8, 3], table entries 1151
+auto top-6                 states per quotient [9, 8, 3, 6, 8, 6], table entries 2170
+auto top-10                states per quotient [9, 8, 3, 6, 8, 6, 6, 5, 8, 3], table entries 3322
+auto top-6, M=20000        states per quotient [9, 8, 3, 6, 8, 6], table entries 2204
+auto top-10, M=20000       states per quotient [9, 8, 3, 6, 8, 6, 6, 5, 8, 3], table entries 3356
+
+60 tasks; total 64.2 s
+
+configuration              miss  aud  cand_lib  cand_rnd     min     max   store  store_j1
+hand-listed 6                 0    2    15.31x    15.76x     4.0    50.9   2.32x     8.37x
+hand-listed 6, M=20000        0    1    15.30x    15.76x     3.9    50.9   2.32x     8.37x
+auto top-1                    0    1     7.67x     5.72x     2.6    22.6   1.83x     1.93x
+auto top-3                    0    1     9.31x     7.15x     2.9    23.2   2.03x     2.33x
+auto top-6                    0    2    11.34x    10.65x     3.2    39.2   2.03x     2.84x
+auto top-10                   0    2    12.04x    11.96x     3.3    47.1   2.03x     3.85x
+auto top-6, M=20000           0    1    11.25x    10.52x     3.4    38.5   2.00x     2.80x
+auto top-10, M=20000          0    1    11.88x    11.80x     3.2    47.0   2.00x     3.76x
+
+real	1m4.282s
+user	5m15.340s
+sys	0m1.020s

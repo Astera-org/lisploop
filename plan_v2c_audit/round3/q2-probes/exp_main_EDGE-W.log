@@ -1,0 +1,155 @@
+# EDGE-W: 200 tasks (found sizes {2: 1, 3: 24, 4: 71, 5: 104, 6: 0}); 42 configurations; plain 15 s, tables 39 s
+# search 240 s
+
+Per seed.  lost = answers lost / 200; AUD = tasks whose reference path has a defect; ndef = distinct defect transitions; gain = candidates, order-averaged, vs plain; entries = input keys in all tables; pairs = (key, output label) pairs
+
+rule                M seed | lost lost%  AUD ndef |    gain  store storeJ1 | entries  pairs  cnt=1
+iid               300    0 |    8  4.0%   38   33 |  16.91x  2.55x   9.91x |    1722   2390    178
+iid               300    1 |    2  1.0%   24   24 |  17.02x  2.51x  10.01x |    1704   2406    188
+iid              1000    0 |    4  2.0%   17   18 |  16.84x  2.49x   9.90x |    1722   2482     63
+iid              1000    1 |    2  1.0%   16   17 |  17.07x  2.52x   9.94x |    1726   2474     56
+iid              3000    0 |    1  0.5%    7    8 |  17.14x  2.53x   9.95x |    1736   2543     36
+iid              3000    1 |    2  1.0%   12   12 |  17.02x  2.52x   9.94x |    1736   2524     36
+strat2            300    0 |    3  1.5%   15   16 |  16.88x  2.50x   9.91x |    1736   2484    248
+strat2            300    1 |    3  1.5%   13   14 |  16.88x  2.50x   9.90x |    1736   2467    242
+strat2           1000    0 |    2  1.0%    5    4 |  16.99x  2.51x   9.91x |    1736   2559    210
+strat2           1000    1 |    1  0.5%    7    5 |  17.15x  2.53x   9.96x |    1736   2557    202
+strat2           3000    0 |    1  0.5%    3    2 |  17.13x  2.53x   9.93x |    1736   2578    162
+strat2           3000    1 |    1  0.5%    3    1 |  17.13x  2.53x   9.92x |    1736   2585    162
+push2             300    0 |    2  1.0%   15   19 |  17.00x  2.52x   9.96x |    1726   2435    109
+push2             300    1 |    5  2.5%   28   28 |  16.71x  2.49x   9.90x |    1736   2429    105
+push2            1000    0 |    1  0.5%    3    2 |  17.00x  2.52x   9.92x |    1736   2545     56
+push2            1000    1 |    1  0.5%    7    7 |  17.05x  2.53x   9.91x |    1736   2531     63
+push2            3000    0 |    0  0.0%    0    0 |  17.07x  2.53x   9.91x |    1736   2580     29
+push2            3000    1 |    0  0.0%    0    0 |  17.07x  2.53x   9.90x |    1736   2579     22
+bank2             300    0 |    1  0.5%   20   16 |  16.99x  2.52x   9.97x |    1730   2473    137
+bank2             300    1 |    2  1.0%   25   26 |  17.51x  2.61x  10.03x |    1736   2452     99
+bank2            1000    0 |    0  0.0%    2    1 |  17.09x  2.53x   9.91x |    1736   2555     40
+bank2            1000    1 |    0  0.0%    4    4 |  17.08x  2.53x   9.91x |    1736   2549     36
+bank2            3000    0 |    0  0.0%    0    0 |  17.07x  2.53x   9.90x |    1736   2590     17
+bank2            3000    1 |    0  0.0%    0    0 |  17.07x  2.53x   9.90x |    1736   2589     19
+oelog3            300    0 |    1  0.5%   13    9 |  16.95x  2.51x   9.92x |    1736   2492     86
+oelog3            300    1 |    2  1.0%   12   10 |  16.82x  2.50x   9.90x |    1736   2483     92
+oelog3           1000    0 |    0  0.0%    1    1 |  17.09x  2.53x   9.90x |    1736   2564     39
+oelog3           1000    1 |    0  0.0%    1    1 |  17.09x  2.53x   9.91x |    1736   2557     43
+oelog3           3000    0 |    0  0.0%    0    0 |  17.07x  2.53x   9.90x |    1736   2585      7
+oelog3           3000    1 |    0  0.0%    0    0 |  17.07x  2.53x   9.90x |    1736   2586     23
+bank2+strat2      300    0 |    0  0.0%   10    6 |  17.10x  2.53x   9.96x |    1736   2534    249
+bank2+strat2      300    1 |    0  0.0%    8    6 |  17.12x  2.53x   9.95x |    1712   2475    213
+bank2+strat2     1000    0 |    0  0.0%    0    0 |  17.08x  2.53x   9.92x |    1736   2576    189
+bank2+strat2     1000    1 |    0  0.0%    0    0 |  17.09x  2.53x   9.91x |    1736   2567    184
+bank2+strat2     3000    0 |    0  0.0%    0    0 |  17.08x  2.53x   9.90x |    1736   2592    164
+bank2+strat2     3000    1 |    0  0.0%    0    0 |  17.07x  2.53x   9.91x |    1736   2592    163
+hand              300    0 |    4  2.0%   24   17 |  16.87x  2.49x   9.92x |    1716   2430    101
+hand              300    1 |    2  1.0%   23   18 |  17.14x  2.52x  10.02x |    1730   2444    131
+hand             1000    0 |    1  0.5%    9    4 |  17.14x  2.53x   9.98x |    1732   2537     49
+hand             1000    1 |    1  0.5%    8    4 |  17.14x  2.53x   9.96x |    1736   2535     54
+hand             3000    0 |    0  0.0%    0    0 |  17.17x  2.53x   9.92x |    1736   2575     23
+hand             3000    1 |    1  0.5%    3    1 |  17.14x  2.53x   9.93x |    1726   2565     21
+
+Summed over seeds [0, 1] (lost and AUD are totals over 400 task-searches)
+
+rule                M |  lost  lost%   AUD |    gain |  entries   pairs
+iid               300 |    10  2.50%    62 |  16.97x |     1713    2398
+iid              1000 |     6  1.50%    33 |  16.96x |     1724    2478
+iid              3000 |     3  0.75%    19 |  17.08x |     1736    2534
+
+strat2            300 |     6  1.50%    28 |  16.88x |     1736    2476
+strat2           1000 |     3  0.75%    12 |  17.07x |     1736    2558
+strat2           3000 |     2  0.50%     6 |  17.13x |     1736    2582
+
+push2             300 |     7  1.75%    43 |  16.85x |     1731    2432
+push2            1000 |     2  0.50%    10 |  17.02x |     1736    2538
+push2            3000 |     0  0.00%     0 |  17.07x |     1736    2580
+
+bank2             300 |     3  0.75%    45 |  17.25x |     1733    2462
+bank2            1000 |     0  0.00%     6 |  17.08x |     1736    2552
+bank2            3000 |     0  0.00%     0 |  17.07x |     1736    2590
+
+oelog3            300 |     3  0.75%    25 |  16.89x |     1736    2488
+oelog3           1000 |     0  0.00%     2 |  17.09x |     1736    2560
+oelog3           3000 |     0  0.00%     0 |  17.07x |     1736    2586
+
+bank2+strat2      300 |     0  0.00%    18 |  17.11x |     1724    2504
+bank2+strat2     1000 |     0  0.00%     0 |  17.08x |     1736    2572
+bank2+strat2     3000 |     0  0.00%     0 |  17.07x |     1736    2592
+
+hand              300 |     6  1.50%    47 |  17.00x |     1723    2437
+hand             1000 |     2  0.50%    17 |  17.14x |     1734    2536
+hand             3000 |     1  0.25%     3 |  17.16x |     1731    2570
+
+Lost tasks and their defects (first 3), per configuration with a loss:
+  iid|300|0              EW39   filter_even(zip_mul(running_max(xs), xs))          [('zip_mul', 'order', (3, 2), 1), ('zip_mul', 'order', (3, 2), 2), ('zip_mul', 'order', (3, 0), 0)]
+  iid|300|0              EW42   map_adj_mul(dec_all(map_adj_add(xs)))              [('map_adj_mul', 'order', (1,), 0)]
+  iid|300|0              EW84   take_n(sq(count_distinct(ys)), xs)                 [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'parity', (0, 3), 2)]
+  iid|300|0              EW101  zip_min(dec_all(xs), running_min(xs))              [('zip_min', 'parity', (2, 1), 2)]
+  iid|300|0              EW114  zip_sub(dbl_all(xs), drop2(ys))                    [('zip_sub', 'order', (3, 2), 1)]
+  iid|300|0              EW125  zip_min(filter_odd(xs), sort_desc(xs))             [('zip_min', 'order', (1, 2), 3)]
+  iid|300|0              EW164  zip_mul(half_all(reverse(xs)), xs)                 [('zip_mul', 'order', (2, 1), 0)]
+  iid|300|0              EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1), ('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  iid|300|1              EW84   take_n(sq(count_distinct(ys)), xs)                 [('take_n', 'caplen5', (0, 5), 4)]
+  iid|300|1              EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1), ('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  iid|1000|0             EW114  zip_sub(dbl_all(xs), drop2(ys))                    [('zip_sub', 'order', (3, 2), 1)]
+  iid|1000|0             EW125  zip_min(filter_odd(xs), sort_desc(xs))             [('zip_min', 'order', (1, 2), 1), ('zip_min', 'order', (1, 2), 3)]
+  iid|1000|0             EW164  zip_mul(half_all(reverse(xs)), xs)                 [('zip_mul', 'order', (2, 1), 0)]
+  iid|1000|0             EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1), ('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  iid|1000|1             EW114  zip_sub(dbl_all(xs), drop2(ys))                    [('zip_sub', 'order', (3, 2), 1)]
+  iid|1000|1             EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1), ('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  iid|3000|0             EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1), ('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  iid|3000|1             EW164  zip_mul(half_all(reverse(xs)), xs)                 [('zip_mul', 'order', (2, 1), 0)]
+  iid|3000|1             EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1), ('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  strat2|300|0           EW84   take_n(sq(count_distinct(ys)), xs)                 [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'parity', (0, 3), 2)]
+  strat2|300|0           EW101  zip_min(dec_all(xs), running_min(xs))              [('zip_min', 'order', (0, 3), 1)]
+  strat2|300|0           EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  strat2|300|1           EW84   take_n(sq(count_distinct(ys)), xs)                 [('take_n', 'caplen5', (0, 5), 4), ('take_n', 'caplen5', (0, 5), 1), ('take_n', 'sign', (1, 3), 1)]
+  strat2|300|1           EW101  zip_min(dec_all(xs), running_min(xs))              [('zip_min', 'order', (0, 3), 1)]
+  strat2|300|1           EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 1), ('dedup_adj', 'caplen5', (5,), 2)]
+  strat2|1000|0          EW84   take_n(sq(count_distinct(ys)), xs)                 [('take_n', 'parity', (0, 3), 2)]
+  strat2|1000|0          EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 1)]
+  strat2|1000|1          EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 1)]
+  strat2|3000|0          EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 1)]
+  strat2|3000|1          EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 1)]
+  push2|300|0            EW125  zip_min(filter_odd(xs), sort_desc(xs))             [('zip_min', 'order', (1, 2), 3)]
+  push2|300|0            EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1)]
+  push2|300|1            EW42   map_adj_mul(dec_all(map_adj_add(xs)))              [('map_adj_mul', 'order', (1,), 0)]
+  push2|300|1            EW101  zip_min(dec_all(xs), running_min(xs))              [('zip_min', 'order', (0, 3), 1)]
+  push2|300|1            EW114  zip_sub(dbl_all(xs), drop2(ys))                    [('zip_sub', 'order', (3, 2), 1)]
+  push2|300|1            EW164  zip_mul(half_all(reverse(xs)), xs)                 [('zip_mul', 'order', (2, 1), 0)]
+  push2|300|1            EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1), ('dedup_adj', 'caplen5', (5,), 1), ('abs_all', 'order', (1,), 3)]
+  push2|1000|0           EW125  zip_min(filter_odd(xs), sort_desc(xs))             [('zip_min', 'order', (1, 2), 3)]
+  push2|1000|1           EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1)]
+  bank2|300|0            EW164  zip_mul(half_all(reverse(xs)), xs)                 [('zip_mul', 'order', (2, 1), 0)]
+  bank2|300|1            EW164  zip_mul(half_all(reverse(xs)), xs)                 [('zip_mul', 'order', (2, 1), 0)]
+  bank2|300|1            EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (3,), 1)]
+  oelog3|300|0           EW84   take_n(sq(count_distinct(ys)), xs)                 [('take_n', 'parity', (0, 3), 2)]
+  oelog3|300|1           EW84   take_n(sq(count_distinct(ys)), xs)                 [('take_n', 'parity', (0, 3), 2)]
+  oelog3|300|1           EW101  zip_min(dec_all(xs), running_min(xs))              [('zip_min', 'order', (0, 3), 1)]
+  hand|300|0             EW101  zip_min(dec_all(xs), running_min(xs))              [('zip_min', 'order', (0, 3), 1)]
+  hand|300|0             EW114  zip_sub(dbl_all(xs), drop2(ys))                    [('zip_sub', 'order', (3, 2), 1)]
+  hand|300|0             EW125  zip_min(filter_odd(xs), sort_desc(xs))             [('zip_min', 'order', (1, 2), 3)]
+  hand|300|0             EW165  dedup_adj(abs_all(running_max(xs)))                [('abs_all', 'order', (1,), 3), ('dedup_adj', 'caplen5', (5,), 2)]
+  hand|300|1             EW125  zip_min(filter_odd(xs), sort_desc(xs))             [('zip_min', 'order', (1, 2), 3)]
+  hand|300|1             EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 2)]
+  hand|1000|0            EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 2)]
+  hand|1000|1            EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 2)]
+  hand|3000|1            EW165  dedup_adj(abs_all(running_max(xs)))                [('dedup_adj', 'caplen5', (5,), 2)]
+
+Occupied buckets for the stratified rules, per signature:
+  strat2|300|0           buckets {'I': 35, 'II': 97, 'IL': 315, 'L': 135, 'LL': 1310}
+  strat2|300|1           buckets {'I': 35, 'II': 97, 'IL': 318, 'L': 135, 'LL': 1315}
+  strat2|1000|0          buckets {'I': 35, 'II': 97, 'IL': 319, 'L': 135, 'LL': 1401}
+  strat2|1000|1          buckets {'I': 35, 'II': 97, 'IL': 318, 'L': 136, 'LL': 1392}
+  strat2|3000|0          buckets {'I': 35, 'II': 97, 'IL': 319, 'L': 136, 'LL': 1446}
+  strat2|3000|1          buckets {'I': 35, 'II': 97, 'IL': 319, 'L': 136, 'LL': 1447}
+  bank2+strat2|300|0     buckets {'I': 35, 'II': 97, 'IL': 329, 'L': 140, 'LL': 1509}
+  bank2+strat2|300|1     buckets {'I': 35, 'II': 97, 'IL': 327, 'L': 140, 'LL': 1508}
+  bank2+strat2|1000|0    buckets {'I': 35, 'II': 97, 'IL': 330, 'L': 140, 'LL': 1592}
+  bank2+strat2|1000|1    buckets {'I': 35, 'II': 97, 'IL': 328, 'L': 140, 'LL': 1597}
+  bank2+strat2|3000|0    buckets {'I': 35, 'II': 97, 'IL': 330, 'L': 140, 'LL': 1633}
+  bank2+strat2|3000|1    buckets {'I': 35, 'II': 97, 'IL': 330, 'L': 140, 'LL': 1638}
+
+total wall 293 s
+
+real	4m53.050s
+user	50m2.587s
+sys	0m1.012s

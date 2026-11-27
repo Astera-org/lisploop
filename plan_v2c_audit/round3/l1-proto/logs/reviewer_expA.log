@@ -1,0 +1,17 @@
+========================================================================================
+EXP A1: TRUE RAM ACCOUNTING (TOTAL seen + bank) ON G1 POLYNOMIALS (SIZE 9, 11, 13)
+========================================================================================
+Task                               |  Plain seen / bank |  KeepSeen seen / bank |  DropPenSeen seen / bank | TRUE RAM Gain
+----------------------------------------------------------------------------------------------------------------------------
+A4 (sz9): (x+y)*(x-y)+1            |      490 / 490     |       407 / 52        |        101 / 52          |          4.9x
+A8 (sz11): (x+y)^2-xy+1            |     2713 / 2713    |      1876 / 120       |        489 / 120         |          5.5x
+A12 (sz13): 2(x^2+y^2)-xy          |    15760 / 15760   |     10719 / 687       |       2629 / 687         |          6.0x
+
+========================================================================================
+EXP A2: DO QUOTIENTS SAVE RAM INSIDE LIFTED POSITION-SPACE TASKS (§6.7 OPEN QUESTION)?
+========================================================================================
+  map-adjacent (+) [4ops]  | Plain eval=  59970 RAM= 2247 | Prefilt eval=  11218 (skip= 48752) RAM= 2247 | EvalGain=  5.3x RAMGain= 1.0x | found=('+', ('at', 'xs', 'i'), ('at', 'xs', ('+', 'i', '1')))
+  map-adjacent (-) [4ops]  | Plain eval=  85362 RAM= 2247 | Prefilt eval=  11287 (skip= 74075) RAM= 2247 | EvalGain=  7.6x RAMGain= 1.0x | found=('-', ('at', 'xs', ('+', 'i', '1')), ('at', 'xs', 'i'))
+  reverse [3ops]           | Plain eval=    898 RAM=  213 | Prefilt eval=    898 (skip=     0) RAM=  213 | EvalGain=  1.0x RAMGain= 1.0x | found=('at', 'xs', ('-', 'len', ('+', 'i', '1')))
+  rotate-left [3ops]       | Plain eval=   2383 RAM=  572 | Prefilt eval=   2383 (skip=     0) RAM=  572 | EvalGain=  1.0x RAMGain= 1.0x | found=('at', 'xs', ('mod', ('+', 'i', 'k'), 'len'))
+exit 0 ; 11 s

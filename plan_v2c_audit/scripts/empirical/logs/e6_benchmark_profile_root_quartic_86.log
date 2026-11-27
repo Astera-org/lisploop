@@ -1,0 +1,185 @@
+Encoding 7, tariff 10; SBCL 2.6.4.debian; seed=none; serial baseline, GF(5) +/* with two inputs.
+SEARCH workload=quartic bound=86 oracle-size=77 status=:COMPLETE dispatch=batch
+  wall_s=20.707999 cpu_s=20.700116 gc_cpu_s=6.311394
+  work=1048334639 completed_bound=86 retained_syntax=3249673 successes=10 rejections=3249663
+  allocated_MiB=5998.381 live_heap_increment_MiB=588.262 peak_process_RSS_MiB=1250.949
+  best_bits=77 first_solution_work=26884474 model=(#:+ #:X0
+                                                   (#:* #:X1
+                                                    (#:* #:X1 (#:* #:X1 #:X1))))
+  ledger=((:CHECKING . 264820700) (:EVALUATION . 563699025)
+          (:SCHEDULING . 10592838) (:CONSTRUCTION . 205970409)
+          (:ENUMERATION . 3251667))
+  caps: wall_s=40 (checked each 1000000 units), heap_MiB=768, work=10000000000
+  Timing excludes loading, fixture construction, and final measurement GC.
+
+Number of samples:   2000
+Sample interval:     0.002 seconds
+Total sampling time: 4.0 seconds
+Graph cycles:        0
+Sampled threads:
+   #<THREAD tid=134630 "main thread" RUNNING {1200C70003}> (352984/1048576 bytes, 1433 hash buckets)
+
+           Self        Total        Cumul
+  Nr  Count     %  Count     %  Count     %    Calls  Function
+------------------------------------------------------------------------
+   1     97   4.9     97   4.9     97   4.9        -  (FLET SB-IMPL::HASH-SEARCH :IN SB-IMPL::FINDHASH-WEAK)
+   2     93   4.7    380  19.0    190   9.5        -  (FLET "WITHOUT-INTERRUPTS-BODY-" :IN SB-THREAD::CALL-WITH-RECURSIVE-SYSTEM-LOCK)
+   3     77   3.8    313  15.6    267  13.4        -  (LABELS CLOSURE :IN EXPRESSION-CLOSURE)
+   4     71   3.6     71   3.6    338  16.9        -  SB-THREAD:RELEASE-MUTEX
+   5     62   3.1    359  18.0    400  20.0        -  (LAMBDA (ARGS) :IN EXPRESSION-CLOSURE)
+   6     61   3.0    103   5.2    461  23.1        -  OPERATOR-META
+   7     57   2.8    387  19.4    518  25.9        -  SB-IMPL::GETHASH/WEAK
+   8     52   2.6    440  22.0    570  28.5        -  ENSURE-AST-META
+   9     51   2.5   1048  52.4    621  31.1        -  SETTLED-EVALUATION
+  10     50   2.5     96   4.8    671  33.6        -  (LABELS SB-IMPL::SXHASH-RECURSE :IN SB-IMPL::PERHAPS-TRUNCATED-EQUAL-HASH)
+  11     49   2.5    443  22.1    720  36.0        -  SB-THREAD::CALL-WITH-RECURSIVE-SYSTEM-LOCK
+  12     46   2.3    500  25.0    766  38.3        -  SEARCH-STEP
+  13     46   2.3    196   9.8    812  40.6        -  COMPUTE-APP-META
+  14     40   2.0    166   8.3    852  42.6        -  PRIMITIVE-COST
+  15     39   2.0    112   5.6    891  44.6        -  EXECUTE-PRIMITIVE
+  16     39   2.0     51   2.5    930  46.5        -  SB-IMPL::GET3
+  17     36   1.8   1980  99.0    966  48.3        -  RESUME-ROW-JOB
+  18     33   1.6     33   1.6    999  50.0        -  SB-IMPL::GETHASH/EQ-HASH/COMMON
+  19     32   1.6     66   3.3   1031  51.6        -  ADVANCE-EVALUATION
+  20     32   1.6     36   1.8   1063  53.2        -  %MAKE-EVALUATION
+  21     32   1.6     32   1.6   1095  54.8        -  foreign function pthread_sigmask
+  22     31   1.5     31   1.5   1126  56.3        -  SB-KERNEL:%ASSOC
+  23     29   1.4   1419  71.0   1155  57.8        -  ROW-JOB-STEP
+  24     29   1.4     48   2.4   1184  59.2        -  SB-IMPL::%MAP-FOR-EFFECT
+  25     29   1.4     47   2.3   1213  60.7        -  VALUE-WORK
+  26     29   1.4     29   1.4   1242  62.1        -  SB-IMPL::REHASH
+  27     28   1.4     42   2.1   1270  63.5        -  REDUCE
+  28     27   1.4     98   4.9   1297  64.9        -  (FLET "CLEANUP-FUN-" :IN SB-THREAD::CALL-WITH-RECURSIVE-SYSTEM-LOCK)
+  29     26   1.3     31   1.5   1323  66.2        -  (LABELS SB-IMPL::EQUAL-NOT-INLINE :IN EQUAL)
+  30     26   1.3     26   1.3   1349  67.5        -  COPY-LIST
+  31     25   1.3    207  10.4   1374  68.7        -  VALIDATION-WORK
+  32     25   1.3     25   1.3   1399  70.0        -  SB-THREAD:GRAB-MUTEX
+  33     22   1.1    155   7.8   1421  71.1        -  SB-IMPL::FINDHASH-WEAK
+  34     21   1.0     83   4.1   1442  72.1        -  SB-IMPL::GETHASH/EQUAL
+  35     19   0.9     19   0.9   1461  73.1        -  SYMBOL-PLIST
+  36     17   0.9     17   0.9   1478  73.9        -  GENERIC-+
+  37     16   0.8    103   5.2   1494  74.7        -  SB-KERNEL:%MAP
+  38     16   0.8     16   0.8   1510  75.5        -  MAKE-AST-META
+  39     15   0.8    181   9.0   1525  76.3        -  SYNTAX-WORK
+  40     15   0.8     47   2.3   1540  77.0        -  CHARGE
+  41     14   0.7     17   0.9   1554  77.7        -  TYPE-WORK
+  42     13   0.7     27   1.4   1567  78.4        -  INTEGER-WIDTH
+  43     13   0.7     13   0.7   1580  79.0        -  VALUE-P
+  44     12   0.6    441  22.1   1592  79.6        -  ENUMERATION-STEP
+  45     12   0.6    105   5.3   1604  80.2        -  AST-TYPE
+  46     12   0.6     15   0.8   1616  80.8        -  FIND-FUNCTION-DEFINITION
+  47     12   0.6     12   0.6   1628  81.4        -  ABS
+  48     11   0.6   1060  53.0   1639  82.0        -  START-EVALUATION
+  49     11   0.6     17   0.9   1650  82.5        -  SB-IMPL::GET-INFO-VALUE
+  50     11   0.6     11   0.6   1661  83.1        -  EXECUTE-INSTRUCTION
+  51     11   0.6     11   0.6   1672  83.6        -  FLOOR
+  52     10   0.5     58   2.9   1682  84.1        -  OPERATOR-OPERAND-TYPE
+  53     10   0.5     16   0.8   1692  84.6        -  (FLET SB-IMPL::INSERT-AT :IN "SYS:SRC;CODE;TARGET-HASH-TABLE.LISP")
+  54     10   0.5     12   0.6   1702  85.1        -  ROW-JOB-BOUND-COMPLETE-P
+  55      8   0.4    124   6.2   1710  85.5        -  INDEX-EXPRESSION
+  56      8   0.4     75   3.8   1718  85.9        -  (FLET SB-IMPL::BODY :IN SB-IMPL::GETHASH/WEAK)
+  57      8   0.4     75   3.8   1726  86.3        -  ADVANCE-ACCOUNTED-EVALUATION
+  58      8   0.4      8   0.4   1734  86.7        -  CANONICAL-OP-NAME
+  59      8   0.4      8   0.4   1742  87.1        -  NTH
+  60      8   0.4      8   0.4   1750  87.5        -  +
+  61      7   0.4    358  17.9   1757  87.9        -  APP
+  62      7   0.4     57   2.8   1764  88.2        -  OPERATOR-NAME
+  63      7   0.4      7   0.4   1771  88.6        -  INSTRUCTION-COST
+  64      7   0.4      7   0.4   1778  88.9        -  SB-KERNEL:TWO-ARG->=
+  65      7   0.4      7   0.4   1785  89.3        -  SB-KERNEL:%COERCE-CALLABLE-TO-FUN
+  66      6   0.3    128   6.4   1791  89.6        -  SB-IMPL::PUTHASH/WEAK
+  67      6   0.3     25   1.3   1797  89.9        -  SB-KERNEL:SPECIFIER-TYPE
+  68      6   0.3     19   0.9   1803  90.2        -  (FLET "WRAPPER3" :IN SETTLED-EVALUATION)
+  69      6   0.3     14   0.7   1809  90.5        -  OPERATOR-STEP-TOTAL-P
+  70      6   0.3      8   0.4   1815  90.8        -  ADVANCE-APPLICATION-CURSOR
+  71      6   0.3      6   0.3   1821  91.1        -  SB-IMPL::PACKED-INFO-VALUE-INDEX
+  72      6   0.3      6   0.3   1827  91.4        -  SB-IMPL::TRANSFER-CULLED-CELLS
+  73      6   0.3      6   0.3   1833  91.7        -  LENGTH
+  74      6   0.3      6   0.3   1839  92.0        -  ROW-JOB-TARGET
+  75      6   0.3      6   0.3   1845  92.3        -  SB-IMPL::EQ-HASH/NON-ADAPTIVE
+  76      6   0.3      6   0.3   1851  92.6        -  RETURN-MULTIPLE
+  77      5   0.3     36   1.8   1856  92.8        -  UNCONSTRAINED-REQUIREMENT-P
+  78      5   0.3      7   0.4   1861  93.1        -  PRIMITIVE-PATTERN
+  79      5   0.3      5   0.3   1866  93.3        -  SB-KERNEL:%MEMBER
+  80      5   0.3      5   0.3   1871  93.6        -  GENERIC-*
+  81      5   0.3      5   0.3   1876  93.8        -  HASH-TABLE-TEST
+  82      5   0.3      5   0.3   1881  94.1        -  INTEGER-LENGTH
+  83      4   0.2     38   1.9   1885  94.3        -  CONSTRAINED-ROW-P
+  84      4   0.2      6   0.3   1889  94.5        -  SB-KERNEL:%MEMBER-TEST
+  85      4   0.2      5   0.3   1893  94.7        -  SB-IMPL::LIST-REMOVE-DUPLICATES
+  86      4   0.2      4   0.2   1897  94.9        -  SB-IMPL::GETHASH/EQ-HASH/FLAT
+  87      4   0.2      4   0.2   1901  95.1        -  INPUT-ALIST
+  88      4   0.2      4   0.2   1905  95.3        -  CONSUME-SEARCH-OUTCOME
+  89      4   0.2      4   0.2   1909  95.5        -  SB-KERNEL:UB32-BASH-FILL
+  90      4   0.2      4   0.2   1913  95.7        -  SB-VM::SLOW-HAIRY-DATA-VECTOR-SET
+  91      4   0.2      4   0.2   1917  95.9        -  (SB-VM::OPTIMIZED-DATA-VECTOR-REF T)
+  92      3   0.2     29   1.4   1920  96.0        -  AST-KIND
+  93      3   0.2     19   0.9   1923  96.2        -  SB-KERNEL::BASIC-PARSE-TYPESPEC
+  94      3   0.2      9   0.4   1926  96.3        -  VECTOR-PUSH-EXTEND
+  95      3   0.2      8   0.4   1929  96.5        -  ADMIT-SEARCH-CANDIDATE
+  96      3   0.2      3   0.2   1932  96.6        -  (SETF NODE-META)
+  97      3   0.2      3   0.2   1935  96.8        -  SB-KERNEL:VECTOR-HAIRY-DATA-VECTOR-REF/CHECK-BOUNDS
+  98      3   0.2      3   0.2   1938  96.9        -  GENERIC-=
+  99      3   0.2      3   0.2   1941  97.1        -  EQUAL
+ 100      3   0.2      3   0.2   1944  97.2        -  TYPE-KIND
+ 101      3   0.2      3   0.2   1947  97.4        -  REMOVE-DUPLICATES
+ 102      3   0.2      3   0.2   1950  97.5        -  GENERIC--
+ 103      3   0.2      3   0.2   1953  97.7        -  SB-KERNEL:TWO-ARG-<=
+ 104      3   0.2      3   0.2   1956  97.8        -  VECTOR-FILL/T
+ 105      2   0.1     92   4.6   1958  97.9        -  (FLET SB-IMPL::BODY :IN SB-IMPL::PUTHASH/WEAK)
+ 106      2   0.1     30   1.5   1960  98.0        -  LIT-P
+ 107      2   0.1     30   1.5   1962  98.1        -  SCOPED-BITS
+ 108      2   0.1      9   0.4   1964  98.2        -  OPERATOR-TYPE
+ 109      2   0.1      6   0.3   1966  98.3        -  SB-IMPL::PUTHASH/EQ-HASH/COMMON
+ 110      2   0.1      5   0.3   1968  98.4        -  ARITHMETIC-COST
+ 111      2   0.1      3   0.2   1970  98.5        -  EXPRESSION-CLOSURE
+ 112      2   0.1      2   0.1   1972  98.6        -  SB-C::CHECK-DS-LIST
+ 113      2   0.1      2   0.1   1974  98.7        -  GF-TYPE-P
+ 114      2   0.1      2   0.1   1976  98.8        -  (LAMBDA (SB-IMPL::X SB-IMPL::LIST2 SB-IMPL::KEY SB-IMPL::TEST) :IN SB-IMPL::LIST-REMOVE-DUPLICATES)
+ 115      2   0.1      2   0.1   1978  98.9        -  SB-VM::SLOW-HAIRY-DATA-VECTOR-REF/CHECK-BOUNDS
+ 116      2   0.1      2   0.1   1980  99.0        -  SYNTAX-BUCKET
+ 117      2   0.1      2   0.1   1982  99.1        -  AST-META-NON-VAR-BITS
+ 118      2   0.1      2   0.1   1984  99.2        -  AST-META-SYNTAX-WORK
+ 119      1   0.1      4   0.2   1985  99.3        -  SB-IMPL::GROW-HASH-TABLE
+ 120      1   0.1      2   0.1   1986  99.3        -  REFERENCE-WIDTH
+ 121      1   0.1      1   0.1   1987  99.4        -  SB-VM::EXTEND-VECTOR
+ 122      1   0.1      1   0.1   1988  99.4        -  HASH-TABLE-COUNT
+ 123      1   0.1      1   0.1   1989  99.5        -  foreign function pthread_mutex_lock
+ 124      1   0.1      1   0.1   1990  99.5        -  NEXT-ROW
+ 125      1   0.1      1   0.1   1991  99.6        -  AST-META-VAR-COUNT
+ 126      1   0.1      1   0.1   1992  99.6        -  REJECT-CANDIDATE
+ 127      1   0.1      1   0.1   1993  99.7        -  GENERIC-<
+ 128      1   0.1      1   0.1   1994  99.7        -  NTHCDR
+ 129      1   0.1      1   0.1   1995  99.8        -  (SB-VM::OPTIMIZED-DATA-VECTOR-SET T)
+ 130      0   0.0   1982  99.1   1995  99.8        -  BENCHMARK-SEARCH
+ 131      0   0.0   1982  99.1   1995  99.8        -  (LAMBDA NIL :IN "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/benchmark.lisp")
+ 132      0   0.0   1982  99.1   1995  99.8        -  EVAL
+ 133      0   0.0   1982  99.1   1995  99.8        -  SB-INT:SIMPLE-EVAL-IN-LEXENV
+ 134      0   0.0   1982  99.1   1995  99.8        -  SB-EXT:EVAL-TLF
+ 135      0   0.0   1982  99.1   1995  99.8        -  (LABELS SB-FASL::EVAL-FORM :IN SB-INT:LOAD-AS-SOURCE)
+ 136      0   0.0   1982  99.1   1995  99.8        -  (LAMBDA (SB-KERNEL:FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT:LOAD-AS-SOURCE)
+ 137      0   0.0   1982  99.1   1995  99.8        -  SB-C::%DO-FORMS-FROM-INFO
+ 138      0   0.0   1982  99.1   1995  99.8        -  SB-INT:LOAD-AS-SOURCE
+ 139      0   0.0   1982  99.1   1995  99.8        -  (LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD)
+ 140      0   0.0   1982  99.1   1995  99.8        -  SB-FASL::CALL-WITH-LOAD-BINDINGS
+ 141      0   0.0   1982  99.1   1995  99.8        -  LOAD
+ 142      0   0.0   1982  99.1   1995  99.8        -  (FLET SB-IMPL::LOAD-SCRIPT :IN SB-IMPL::PROCESS-SCRIPT)
+ 143      0   0.0   1982  99.1   1995  99.8        -  (FLET SB-UNIX::BODY :IN SB-IMPL::PROCESS-SCRIPT)
+ 144      0   0.0   1982  99.1   1995  99.8        -  (FLET "WITHOUT-INTERRUPTS-BODY-" :IN SB-IMPL::PROCESS-SCRIPT)
+ 145      0   0.0   1982  99.1   1995  99.8        -  SB-IMPL::PROCESS-SCRIPT
+ 146      0   0.0   1982  99.1   1995  99.8        -  SB-IMPL::TOPLEVEL-INIT
+ 147      0   0.0   1982  99.1   1995  99.8        -  (FLET SB-UNIX::BODY :IN SB-IMPL::START-LISP)
+ 148      0   0.0   1982  99.1   1995  99.8        -  (FLET "WITHOUT-INTERRUPTS-BODY-3" :IN SB-IMPL::START-LISP)
+ 149      0   0.0   1982  99.1   1995  99.8        -  SB-IMPL::%START-LISP
+ 150      0   0.0   1982  99.1   1995  99.8        -  foreign function call_into_lisp_
+ 151      0   0.0     50   2.5   1995  99.8        -  SB-IMPL::PERHAPS-TRUNCATED-EQUAL-HASH
+ 152      0   0.0     32   1.6   1995  99.8        -  foreign function interrupt_handle_pending
+ 153      0   0.0     31   1.5   1995  99.8        -  (FLET "WITHOUT-INTERRUPTS-BODY-" :IN SB-IMPL::FINDHASH-WEAK)
+ 154      0   0.0     21   1.0   1995  99.8        -  DEFINED-FUNCTION-P
+ 155      0   0.0     19   0.9   1995  99.8        -  SB-SPROF::UNAVAILABLE-FRAMES
+ 156      0   0.0      4   0.2   1995  99.8        -  foreign function lisp_alloc
+ 157      0   0.0      4   0.2   1995  99.8        -  ALLOC-TRAMP
+ 158      0   0.0      1   0.1   1995  99.8        -  LIST-ALLOC-TRAMP
+ 159      0   0.0      1   0.1   1995  99.8        -  CLRHASH
+------------------------------------------------------------------------
+          5   0.3                                     elsewhere

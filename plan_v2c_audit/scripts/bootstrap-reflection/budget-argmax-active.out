@@ -1,0 +1,9 @@
+ARGMAX-CORR    grammar=active    schemas=off budget= 35,000,000 -> no       work= 35,000,000 finished=no  nodes=  18 msgs= 6835 nogoods=  0 reused=  9 bits=NIL 6.8s
+   where-work-went: ((:CHILD-SEARCH . 13140475) (:PARENT-VERIFICATION . 12837909) (:REFINEMENT . 6872992) (:SCHEDULING . 853185) (:COMPOSITION . 836364) (:PREPARATION . 421095) (:EXPANSION . 37980))
+   per-node: ((0 NIL :SEARCH 6824917) (1 :LIBRARY :SEARCH 197401) (2 :LIBRARY :DONE NIL) (3 :LIBRARY :DONE NIL) (4 :LIBRARY :SEARCH 197381) (5 :LIBRARY :DONE NIL) (6 :LIBRARY :DONE NIL) (7 :LIBRARY :SEARCH 197387) (8 :LIBRARY :SEARCH 197378) (9 :LIBRARY :SEARCH 197369) (10 :LIBRARY :DONE NIL) (11 :LIBRARY :DONE NIL) (12 :HEURISTIC-CONDITIONAL :SEARCH 4933926) (13 :LIBRARY :SEARCH 197343) (14 :LIBRARY :DONE NIL) (15 :LIBRARY :SEARCH 197373) (16 :LIBRARY :DONE NIL) (17 :LIBRARY :DONE NIL))
+ARGMAX-CORR    grammar=active    schemas=off budget=350,000,000 -> IMPOSTOR work= 57,664,468 finished=no  nodes=  18 msgs=11639 nogoods=  0 reused=  9 bits=280 10.4s
+   impostor: (:APP (:OP :FOLDR (:CODE ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 2) (:APP (:OP :CODE-SUBST (:TUPLE (:CODE ((0 . :INT) (1 . :INT) (2 :SEQ :INT)) :INT) (:TUPLE (:CODE ((0 . :INT) (1 . :INT)) :INT) (:CODE ((0 . :INT) (1 . :INT)) :INT) (:SEQ :INT)) (:CODE ((0 . :INT) (1 . :INT)) :INT))) (:LIT (:CODE ((0 . :INT) (1 . :INT) (2 :SEQ :INT)) :INT) (:APP (:OP :IF :INT) (:APP (:OP := :INT) (:LIT :INT 2) (:APP (:OP :- :INT) (:VAR 0 :INT) (:LIT :INT 1))) (:APP (:OP :/ :INT) (:APP (:OP :LENGTH :INT) (:VAR 2 (:SEQ :INT))) (:LIT :INT 2)) (:LIT :INT 0))) (:APP (:OP :TUPLE (:TUPLE (:CODE ((0 . :INT) (1 . :INT)) :INT) (:CODE ((0 . :INT) (1 . :INT)) :INT) (:SEQ :INT))) (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT) (:VAR 0 :INT)) (:LIT (:CODE ((0 . :INT) (1 . :INT)) :INT) (:VAR 1 :INT)) (:VAR 1 (:SEQ :INT)))))
+
+real	0m20.213s
+user	0m20.075s
+sys	0m0.132s

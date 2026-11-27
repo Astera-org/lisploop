@@ -1,0 +1,12 @@
+# config seed1: probe seed 1, 800 probes per operator, value table 15183 lists; grammar uses 61 library operators
+    size 2:       9 int terms generated,      1 new word partitions,      1 distinct list terms of size 1; 0.0 s
+    size 3:     342 int terms generated,     64 new word partitions,     31 distinct list terms of size 2; 1.4 s
+    size 4:    8965 int terms generated,   1462 new word partitions,    722 distinct list terms of size 3; 5.8 s
+    size 5:  191443 int terms generated,  26407 new word partitions,  14990 distinct list terms of size 4; 107.1 s
+single terms <= 5 nodes: 200759 generated, 27934 word partitions (2..8 labels on the pool); 107.3 s
+singles scored: 16888 kept, 11046 dropped (more than 8 labels on the full table); 100.2 s wall on 14 processes
+pairs: 830 components (<= 4 nodes), 344035 pairs tried, 113434 new partitions with <= 8 labels; 22.9 s
+pairs scored: 79466 kept (<= 8 labels on the full table); 137.1 s wall on 14 processes
+int words: 284 single (<= 5 nodes) + 1783 pairs; 8.4 s
+total 375.9 s wall; times: {'enumerate_s': 107.3, 'score_singles_s': 100.2, 'pair_enum_s': 22.9, 'score_pairs_s': 137.1, 'int_side_s': 8.4, 'total_wall_s': 375.9}
+wrote pool_seed1.pkl: 96354 list candidates, 2067 int candidates

@@ -1,0 +1,9 @@
+# G2 targets that need div or mod (true size 3-7): 120; with a target label known to the ring tables: 16
+bank of (b) identical to bank of (c) (columns and sizes): 16 of 16
+a column cut at its first test and kept at a later test in the same pass: 0
+answers lost: (b) 13, (c) 13 of 16
+targets where pruning removed a class that itself passes the test (a needed argument was cut, i.e. the labels are unsound there): 7 of 16
+
+real	0m55.271s
+user	0m30.944s
+sys	0m0.036s

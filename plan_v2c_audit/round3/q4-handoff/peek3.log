@@ -1,0 +1,14 @@
+b3_os_s21.json
+  arm B (labels, constant operator in grammar) lost the answer in 0 of 96
+  A / D2 = 98.7x;  A / E = 45.7x;  B / D2 = 5.14x;  A / D = 47.8x
+  arm C fired at bank level relative to the planted near miss size: {0: 76, -1: 15, -2: 4, -3: 1}
+  planted constants: {('add', -3): 16, ('add', -2): 16, ('add', 2): 16, ('add', 3): 16, ('mul', -2): 16, ('mul', 3): 16}
+  near misses with label bound 0 (n=25): D / D2 = 7.50x,  C / D = 1.39x
+  near misses with label bound 1 (n=71): D / D2 = 1.31x,  C / D = 1.69x
+b3_os_s22.json
+  arm B (labels, constant operator in grammar) lost the answer in 0 of 96
+  A / D2 = 108.1x;  A / E = 52.8x;  B / D2 = 6.09x;  A / D = 54.9x
+  arm C fired at bank level relative to the planted near miss size: {0: 67, -1: 23, -2: 6}
+  planted constants: {('add', -3): 16, ('add', -2): 16, ('add', 2): 16, ('add', 3): 16, ('mul', -2): 16, ('mul', 3): 16}
+  near misses with label bound 0 (n=27): D / D2 = 4.58x,  C / D = 1.25x
+  near misses with label bound 1 (n=69): D / D2 = 1.41x,  C / D = 1.69x

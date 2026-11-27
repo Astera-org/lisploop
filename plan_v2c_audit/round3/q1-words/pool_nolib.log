@@ -1,0 +1,12 @@
+# config nolib: probe seed 0, 800 probes per operator, value table 15819 lists; grammar uses 14 library operators
+    size 2:       3 int terms generated,      0 new word partitions,      1 distinct list terms of size 1; 0.0 s
+    size 3:      21 int terms generated,      3 new word partitions,      0 distinct list terms of size 2; 0.0 s
+    size 4:     428 int terms generated,     77 new word partitions,      0 distinct list terms of size 3; 0.0 s
+    size 5:    3616 int terms generated,    176 new word partitions,      0 distinct list terms of size 4; 0.5 s
+single terms <= 5 nodes: 4068 generated, 256 word partitions (2..8 labels on the pool); 0.5 s
+singles scored: 190 kept, 66 dropped (more than 8 labels on the full table); 1.1 s wall on 15 processes
+pairs: 62 components (<= 4 nodes), 1891 pairs tried, 1397 new partitions with <= 8 labels; 0.1 s
+pairs scored: 1393 kept (<= 8 labels on the full table); 4.3 s wall on 15 processes
+int words: 284 single (<= 5 nodes) + 1783 pairs; 4.7 s
+total 10.6 s wall; times: {'enumerate_s': 0.5, 'score_singles_s': 1.1, 'pair_enum_s': 0.1, 'score_pairs_s': 4.3, 'int_side_s': 4.7, 'total_wall_s': 10.6}
+wrote pool_nolib.pkl: 1583 list candidates, 2067 int candidates

@@ -1,0 +1,72 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATED-TRY
+;     (TG::PROBE-MATCH TG::LF TG::OP TG::C1 TG::C2 TG::C3)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::PROBE-MATCH
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROBE-MATCH
+;   caught 1 STYLE-WARNING condition
+=== E2. Ablation on the nine tasks answered by a single class (seed 1).  Mode :first.  Cells: candidates evaluated. ===
+
+--- (a) which quotient does the work (sequences unlabelled, all rows) ---
+config                     reverse     rotate-left map-adjacen map-adjacen positions-o filter x>k  take k      zip-add     map-adjacen | total-cand look-ups   lk/gat  work        ms        chg 
+plain                            86434      217920      291481      703183        8332        7002         267       30265     8458580 |    9803464 -          -         316296298   17086.1
+types only                       86434      217920      291481      703183        8110        6780         267       30265     7159365 |    8503805          0 0.00      276001541   16491.7    0
+def (defined or not)             16880       52677      128914      160532        8110        6780         201       14128     3635358 |    4023580   36827261 4.88      195664085   10044.0    0
+par                               5471       11046      115677      115452        8103        6750          15        9373     3124120 |    3396007   10470076 1.40      142848362    8953.7    0
+mod3                              5281       10659      115673      115445        8103        6750          11        9369     3124218 |    3395509    9412759 1.26      141780606    9146.5    0
+sgn                               5373       10612      116139      118556        8101        6732          14        9514     3116150 |    3391191    9435617 1.26      141763019    9069.8    0
+par+mod3                          5232       10561      115673      115445        8103        6750           9        9369     3122259 |    3393401   11268510 1.50      168615274    9461.2    0
+par+mod3+sgn                      4996        9778      115673      115445        8101        6730           2        9367     3108993 |    3379085   11454068 1.53      193189133    9814.8    0
+lfprobe par+mod3+sgn              4963        9590      115673      115445        8101        6725           2        9367     3106668 |    3376534   11637023 1.52      193171426    9650.4    0
+lfprobe par                       4963        9590      115673      115445        8101        6725           2        9367     3106668 |    3376534   10652941 1.39      142303817    8811.9    0
+probe (no labels)                 4963        9590      115673      115445        8101        6725           2        9367     3106668 |    3376534          0 -         114430067    8151.4    0
+
+--- (b) the AT table: 'anything' / + the pair quotient (index inside the sequence?) / + sequence labels ---
+config                     reverse     rotate-left map-adjacen map-adjacen positions-o filter x>k  take k      zip-add     map-adjacen | total-cand look-ups   lk/gat  work        ms        chg 
+plain                            86434      217920      291481      703183        8332        7002         267       30265     8458580 |    9803464 -          -         316296298   17251.9
+q3, AT anything                   4996        9778      115673      115445        8101        6730           2        9367     3108993 |    3379085   11454068 1.53      193189133    9773.4    0
+q3 + pair                         4964        9613      115673      115445        8101        6730           2        9367     3107101 |    3376996   10698229 1.43      192285830    9737.3    0
+q3 + seq labels                   4996        9778      115673      115445        8101        6730           2        9367     3106668 |    3376760   11168888 1.46      192724277    9673.9    0
+q3 + pair + seq labels            4964        9613      115673      115445        8101        6730           2        9367     3106668 |    3376563   10828861 1.41      192362956    9764.5    0
+
+--- (c) rows checked (evenly spaced over the lifted rows; q3) ---
+config                     reverse     rotate-left map-adjacen map-adjacen positions-o filter x>k  take k      zip-add     map-adjacen | total-cand look-ups   lk/gat  work        ms        chg 
+plain                            86434      217920      291481      703183        8332        7002         267       30265     8458580 |    9803464 -          -         316296298   17314.5
+rows 1                            7977       26637      118574      125218        8104        6745          51       10107     3229481 |    3532894    8452000 1.13      122795427    9059.7    0
+rows 2                            6578       10485      115735      115864        8104        6743           8        9499     3112917 |    3385933    8787152 1.17      120535286    8806.6    0
+rows 3                            5676       11862      115675      115460        8104        6740           6        9375     3110701 |    3383599    9006781 1.20      123034092    8761.7    0
+rows 4                            5373        9857      115678      115456        8102        6735           2        9381     3110073 |    3380657    9178192 1.22      125448442    8849.0    0
+rows 6                            5008        9840      115673      115445        8101        6740           2        9374     3109648 |    3379831    9290527 1.24      130257477    8978.4    0
+rows 8                            4999        9792      115677      115449        8102        6734           2        9367     3109136 |    3379258    9589199 1.28      135260726    8951.1    0
+rows 12                           4999        9789      115673      115445        8101        6734           2        9367     3109050 |    3379160   10366843 1.38      145493312    9156.7    0
+rows 16                           4999        9791      115673      115445        8102        6734           2        9367     3109038 |    3379151   10516866 1.40      155074683    9267.0    0
+rows 24                           4999        9789      115673      115445        8101        6734           2        9367     3108993 |    3379103   11091331 1.48      174508901    9469.8    0
+rows all                          4996        9778      115673      115445        8101        6730           2        9367     3108993 |    3379085   11454068 1.53      193189133    9735.1    0
+
+--- (d) sharpness in the level where the answer lies: share of table-tested candidates NOT ruled out, and look-ups per tested candidate ---
+rows       reverse                rotate-left k          map-adjacent +         map-adjacent -         positions-of v         filter x>k             take k                 zip-add                map-adjacent f (spec) 
+1          3015/81544=3.6974% 1.22lk 17048/207001=8.2357% 1.29lk 2893/126690=2.2835% 1.07lk 9765/536755=1.8193% 1.07lk 4/10=40.0000% 2.40lk   21/56=37.5000% 2.29lk  31/217=14.2857% 1.82lk 722/14639=4.9320% 1.20lk 122805/4001769=3.0688% 1.14lk
+2          1616/81526=1.9822% 1.26lk 896/208376=0.4300% 1.49lk 54/123589=0.0437% 1.06lk 411/534991=0.0768% 1.06lk 4/10=40.0000% 4.20lk   19/56=33.9286% 3.70lk  1/217=0.4608% 1.79lk   114/13829=0.8244% 1.24lk 6247/3999015=0.1562% 1.19lk
+4          411/81494=0.5043% 1.40lk 268/208367=0.1286% 1.60lk 2/122543=0.0016% 1.08lk 8/534056=0.0015% 1.08lk 2/10=20.0000% 7.40lk   11/56=19.6429% 6.23lk  1/217=0.4608% 2.19lk   5/13739=0.0364% 1.22lk 3406/3998905=0.0852% 1.24lk
+8          37/81484=0.0454% 1.42lk 203/208366=0.0974% 1.55lk 1/122542=0.0008% 1.09lk 1/533891=0.0002% 1.09lk 2/10=20.0000% 9.20lk   10/56=17.8571% 11.13lk 1/217=0.4608% 3.02lk   1/13739=0.0073% 1.16lk 2469/3998905=0.0617% 1.30lk
+16         37/81484=0.0454% 1.55lk 202/208366=0.0969% 1.70lk 1/122542=0.0008% 1.14lk 1/533891=0.0002% 1.13lk 2/10=20.0000% 16.70lk  10/56=17.8571% 20.11lk 1/217=0.4608% 3.44lk   1/13739=0.0073% 1.25lk 2371/3998905=0.0593% 1.44lk
+all        34/81484=0.0417% 1.98lk 189/208365=0.0907% 2.15lk 1/122542=0.0008% 1.10lk 1/533891=0.0002% 1.10lk 1/10=10.0000% 31.70lk  6/56=10.7143% 55.82lk  1/217=0.4608% 5.37lk   1/13739=0.0073% 1.23lk 2326/3998905=0.0582% 1.57lk
+
+[e2 finished in 903.1 s]

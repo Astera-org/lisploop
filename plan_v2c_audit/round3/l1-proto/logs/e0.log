@@ -1,0 +1,207 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATED-TRY
+;     (TG::PROBE-MATCH TG::LF TG::OP TG::C1 TG::C2 TG::C3)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::PROBE-MATCH
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROBE-MATCH
+;   caught 1 STYLE-WARNING condition
+
+=== E0. Verb tables: one group-by over joint probes; integer grid (-12 12) (+ the undefined cell); 703 probe sequences ===
+singleton = input-label combinations with exactly one defined output label; anything = combinations that
+rule no defined label out; useless = the whole table rules nothing out; unsound/n = probes on a WIDER range
+(-40..40, 60 values up to +-10000, 400 fresh sequences) whose output label the table does not list.
+
+--- sequences labelled by nothing (one label) ---
+op       quot  probes   entries  singleton  anything  useless  dep-score unsound/n 
++        def        676        4          1         1 no           1.000 0/20164
++        par        676        9          4         0 no           1.000 0/20164
++        mod3       676       16          9         0 no           1.000 0/20164
++        sgn        676       16          7         2 no           0.621 0/20164
+-        def        676        4          1         1 no           1.000 0/20164
+-        par        676        9          4         0 no           1.000 0/20164
+-        mod3       676       16          9         0 no           1.000 0/20164
+-        sgn        676       16          7         2 no           0.621 0/20164
+*        def        676        4          1         1 no           1.000 0/20164
+*        par        676        9          4         0 no           1.000 0/20164
+*        mod3       676       16          9         0 no           1.000 0/20164
+*        sgn        676       16          9         0 no           1.000 0/20164
+mod      def        676        4          1         1 no           0.558 0/20164
+mod      par        676        9          2         2 no           0.564 0/20164
+mod      mod3       676       16          3         6 no           0.445 0/20164
+mod      sgn        676       16          2         0 no           0.642 0/20164
+max      def        676        4          1         1 no           1.000 0/20164
+max      par        676        9          2         2 no           0.648 0/20164
+max      mod3       676       16          3         0 no           0.668 0/20164
+max      sgn        676       16          9         0 no           1.000 0/20164
+min      def        676        4          1         1 no           1.000 0/20164
+min      par        676        9          2         2 no           0.648 0/20164
+min      mod3       676       16          3         0 no           0.668 0/20164
+min      sgn        676       16          9         0 no           1.000 0/20164
+at       def      18278        2          1         1 no           0.016 0/56942
+at       par      18278        3          0         2 no           0.014 0/56942
+at       mod3     18278        4          0         3 no           0.013 0/56942
+at       sgn      18278        4          0         2 no           0.292 0/56942
+=        def        676        4          0         1 no           0.633 0/20164
+=        par        676        9          2         2 no           0.695 0/20164
+=        mod3       676       16          6         3 no           0.732 0/20164
+=        sgn        676       16          7         2 no           0.711 0/20164
+<        def        676        4          0         1 no           0.295 0/20164
+<        par        676        9          0         4 no           0.296 0/20164
+<        mod3       676       16          0         9 no           0.298 0/20164
+<        sgn        676       16          7         2 no           0.676 0/20164
+and      def          9        9          4         0 no           1.000 0/9
+and      par          9        9          4         0 no           1.000 0/9
+and      mod3         9        9          4         0 no           1.000 0/9
+and      sgn          9        9          4         0 no           1.000 0/9
+not      def          3        3          2         0 no           1.000 0/3
+not      par          3        3          2         0 no           1.000 0/3
+not      mod3         3        3          2         0 no           1.000 0/3
+not      sgn          3        3          2         0 no           1.000 0/3
+call     def       2028       28          3        19 no           1.000 0/60492
+call     par       2028       63         12        36 no           1.000 0/60492
+call     mod3      2028      112         27        64 no           1.000 0/60492
+call     sgn       2028      112         23        68 no           0.754 0/60492
+call1b   def         78       14          0        11 no           0.197 0/426
+call1b   par         78       21          2        16 no           0.465 0/426
+call1b   mod3        78       28          0        25 no           0.199 0/426
+call1b   sgn         78       28          7        18 no           0.743 0/426
+neg      def         26        2          1         1 no           1.000 0/142
+neg      par         26        3          2         0 no           1.000 0/142
+neg      mod3        26        4          3         0 no           1.000 0/142
+neg      sgn         26        4          3         0 no           1.000 0/142
+div      def        676        4          1         1 no           0.558 0/20164
+div      par        676        9          0         4 no           0.253 0/20164
+div      mod3       676       16          0         9 no           0.212 0/20164
+div      sgn        676       16          4         0 no           0.772 0/20164
+if       def       2028       12          4         4 no           1.000 0/60492
+if       par       2028       27         12         0 no           1.000 0/60492
+if       mod3      2028       48         24         0 no           1.000 0/60492
+if       sgn       2028       48         24         0 no           1.000 0/60492
+len      def        703        1          1         1 yes          0.000 0/401
+len      par        703        1          0         1 yes          0.000 0/401
+len      mod3       703        1          0         1 yes         -0.000 0/401
+len      sgn        703        1          0         0 no           0.000 0/401
+
+--- sequences labelled by the SET of their elements' labels ---
+op       quot  probes   entries  singleton  anything  useless  dep-score unsound/n 
+at       def      18278        4          1         1 no           0.017 0/56942
+at       par      18278       12          4         2 no           0.059 0/56942
+at       mod3     18278       32          9         3 no           0.093 0/56942
+at       sgn      18278       32          6         2 no           0.382 0/56942
+len      def        703        2          2         2 yes          0.000 0/401
+len      par        703        4          1         3 no           0.002 0/401
+len      mod3       703        8          1         7 no           0.033 0/401
+len      sgn        703        8          8         0 no           1.000 0/401
+
+pair table for AT (index below / inside / above the sequence / undefined; 1 = defined seen, 2 = undefined seen): #(2 1 2 2)
+
+=== E0. Verb tables: one group-by over joint probes; integer grid (-3 3) (+ the undefined cell); 703 probe sequences ===
+singleton = input-label combinations with exactly one defined output label; anything = combinations that
+rule no defined label out; useless = the whole table rules nothing out; unsound/n = probes on a WIDER range
+(-40..40, 60 values up to +-10000, 400 fresh sequences) whose output label the table does not list.
+
+--- sequences labelled by nothing (one label) ---
+op       quot  probes   entries  singleton  anything  useless  dep-score unsound/n 
++        def         64        4          1         1 no           1.000 0/20164
++        par         64        9          4         0 no           1.000 0/20164
++        mod3        64       16          9         0 no           1.000 0/20164
++        sgn         64       16          7         2 no           0.765 0/20164
+-        def         64        4          1         1 no           1.000 0/20164
+-        par         64        9          4         0 no           1.000 0/20164
+-        mod3        64       16          9         0 no           1.000 0/20164
+-        sgn         64       16          7         2 no           0.765 0/20164
+*        def         64        4          1         1 no           1.000 0/20164
+*        par         64        9          4         0 no           1.000 0/20164
+*        mod3        64       16          9         0 no           1.000 0/20164
+*        sgn         64       16          9         0 no           1.000 0/20164
+mod      def         64        4          1         1 no           0.512 0/20164
+mod      par         64        9          2         2 no           0.626 0/20164
+mod      mod3        64       16          3         0 no           0.626 3953/20164
+mod      sgn         64       16          2         0 no           0.692 0/20164
+max      def         64        4          1         1 no           1.000 0/20164
+max      par         64        9          2         2 no           0.756 0/20164
+max      mod3        64       16          3         0 no           0.758 0/20164
+max      sgn         64       16          9         0 no           1.000 0/20164
+min      def         64        4          1         1 no           1.000 0/20164
+min      par         64        9          2         2 no           0.756 0/20164
+min      mod3        64       16          3         0 no           0.758 0/20164
+min      sgn         64       16          9         0 no           1.000 0/20164
+at       def       5624        2          1         1 no           0.112 0/56942
+at       par       5624        3          0         2 no           0.105 0/56942
+at       mod3      5624        4          0         3 no           0.068 0/56942
+at       sgn       5624        4          0         2 no           0.461 0/56942
+=        def         64        4          0         1 no           0.634 0/20164
+=        par         64        9          2         2 no           0.732 0/20164
+=        mod3        64       16          6         3 no           0.795 0/20164
+=        sgn         64       16          7         2 no           0.791 0/20164
+<        def         64        4          0         1 no           0.510 0/20164
+<        par         64        9          0         4 no           0.518 0/20164
+<        mod3        64       16          0         9 no           0.541 0/20164
+<        sgn         64       16          7         2 no           0.832 0/20164
+and      def          9        9          4         0 no           1.000 0/9
+and      par          9        9          4         0 no           1.000 0/9
+and      mod3         9        9          4         0 no           1.000 0/9
+and      sgn          9        9          4         0 no           1.000 0/9
+not      def          3        3          2         0 no           1.000 0/3
+not      par          3        3          2         0 no           1.000 0/3
+not      mod3         3        3          2         0 no           1.000 0/3
+not      sgn          3        3          2         0 no           1.000 0/3
+call     def        192       28          3        19 no           1.000 0/60492
+call     par        192       63         12        36 no           1.000 0/60492
+call     mod3       192      112         27        64 no           1.000 0/60492
+call     sgn        192      112         23        68 no           0.847 0/60492
+call1b   def         24       14          0        11 no           0.387 0/426
+call1b   par         24       21          2        16 no           0.600 0/426
+call1b   mod3        24       28          0        25 no           0.399 0/426
+call1b   sgn         24       28          7        18 no           0.837 0/426
+neg      def          8        2          1         1 no           1.000 0/142
+neg      par          8        3          2         0 no           1.000 0/142
+neg      mod3         8        4          3         0 no           1.000 0/142
+neg      sgn          8        4          3         0 no           1.000 0/142
+div      def         64        4          1         1 no           0.512 0/20164
+div      par         64        9          0         4 no           0.511 0/20164
+div      mod3        64       16          0         1 no           0.516 4871/20164
+div      sgn         64       16          4         0 no           0.868 0/20164
+if       def        192       12          4         4 no           1.000 0/60492
+if       par        192       27         12         0 no           1.000 0/60492
+if       mod3       192       48         24         0 no           1.000 0/60492
+if       sgn        192       48         24         0 no           1.000 0/60492
+len      def        703        1          1         1 yes          0.000 0/401
+len      par        703        1          0         1 yes          0.000 0/401
+len      mod3       703        1          0         1 yes         -0.000 0/401
+len      sgn        703        1          0         0 no           0.000 0/401
+
+--- sequences labelled by the SET of their elements' labels ---
+op       quot  probes   entries  singleton  anything  useless  dep-score unsound/n 
+at       def       5624        4          1         1 no           0.114 0/56942
+at       par       5624       12          4         2 no           0.176 0/56942
+at       mod3      5624       32          9         3 no           0.186 0/56942
+at       sgn       5624       32          6         2 no           0.600 0/56942
+len      def        703        2          2         2 yes          0.000 0/401
+len      par        703        4          1         3 no           0.002 0/401
+len      mod3       703        8          1         7 no           0.033 0/401
+len      sgn        703        8          8         0 no           1.000 0/401
+
+pair table for AT (index below / inside / above the sequence / undefined; 1 = defined seen, 2 = undefined seen): #(2 1 2 2)
+
+build time, 13 operators x 3 quotients, grid -12..12, sequences unlabelled: 26.3 ms
+build time, AT with sequence labels x 3 quotients + pair table: 36.9 ms
+
+[e0 finished in 1.6 s]

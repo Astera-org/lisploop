@@ -1,0 +1,74 @@
+E4-SEQUENCE budget=350000 (x1.0 of 350k) prereq-fix=T total_cpu_s=2.2
+
+Regime WHITELIST+SCHEMAS budget=350000: solved 16/16, held-out sound 16/16
+  COPY           solved=YES sound=YES       work=     17630 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") "()/NIL" (:CONS (:AT :X0 0) (:COPY (:TAIL :X0))))
+  INC-ALL        solved=YES sound=YES       work=     33929 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) 1) (:INC-ALL (:TAIL :X0))))
+  DBL-ALL        solved=YES sound=YES       work=     32113 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) (:AT :X0 0)) (:DBL-ALL (:TAIL :X0))))
+  SUM-ALL        solved=YES sound=YES       work=     26298 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:AT :X0 0) (:SUM-ALL (:TAIL :X0))))
+  LEN-ALL        solved=YES sound=YES       work=     34444 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:LEN-ALL (:TAIL :X0)) 1))
+  PRD-ALL        solved=YES sound=YES       work=     28337 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 1 (:* (:AT :X0 0) (:PRD-ALL (:TAIL :X0))))
+  FOLDL          solved=YES sound=YES       work=     82539 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") :X1 (:FOLDL (:TAIL :X0) (:CODE-EVAL :X2 :X1 (:AT :X0 0)) :X2))
+  FILTER         solved=YES sound=YES       work=     76871 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") :X0 (:IF (:CODE-EVAL :X1 (:AT :X0 0)) (:CONS (:AT :X0 0) (:FILTER (:TAIL :X0) :X1)) (:FILTER (:TAIL :X0) :X1)))
+  MAP-ADJACENT   solved=YES sound=YES       work=    110559 cpu_s=   0.03 program=(:IF (:= :X0 "()/NIL") "()/NIL" (:IF (:= (:TAIL :X0) "()/NIL") "()/NIL" (:CONS (:CODE-EVAL :X1 (:AT (:TAIL :X0) 0) (:AT :X0 0)) (:MAP-ADJACENT (:TAIL :X0) :X1))))
+  POSITIONS      solved=YES sound=YES       work=     47136 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS :X1 (:POSITIONS (:TAIL :X0) (:+ :X1 1))))
+  SCAN           solved=YES sound=YES       work=    264818 cpu_s=   0.07 program=(:IF (:= :X0 "()/NIL") "()/NIL" (:CONS (:CODE-EVAL :X2 :X1 (:AT :X0 0)) (:SCAN (:TAIL :X0) (:CODE-EVAL :X2 :X1 (:AT :X0 0)) :X2)))
+  SHIFT-SEQ      solved=YES sound=YES       work=    100600 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") "()/NIL" (:IF (:< 0 :X1) (:CONCAT (:CONS (:SHIFT-SEQ (:TAIL :X0) (:- :X1 1)) (QUOTE ((0))))) :X0))
+  SEQ-CORR       solved=YES sound=YES       work=     88666 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") 0 (:IF (:= :X1 "()/NIL") 0 (:+ (:* (:AT :X0 0) (:AT :X1 0)) (:SEQ-CORR (:TAIL :X0) (:TAIL :X1)))))
+  BEST-SHIFT     solved=YES sound=YES       work=    199199 cpu_s=   0.04 program=(:IF (:= :X0 "()/NIL") (:TUPLE 0 :X2) (:CODE-EVAL (QUOTE (:APP (:OP :IF (:TUPLE :INT :INT)) (:APP (:OP :< :INT) (:VAR 0 :INT) (:APP (:OP :AT (:TUPLE (:TUPLE :INT :INT) :INT)) (:VAR 1 (:TUPLE :INT :INT)) (:LIT :INT 0))) (:VAR 1 (:TUPLE :INT :INT)) (:APP (:OP :TUPLE (:TUPLE :INT :INT)) (:VAR 0 :INT) (:VAR 2 :INT)))) (:SEQ-CORR :X0 :X1) (:BEST-SHIFT (:TAIL :X0) :X1 (:+ :X2 1)) :X2))
+  ARGMAX-CORR    solved=YES sound=YES       work=     99180 cpu_s=   0.04 program=(:AT (:BEST-SHIFT :X0 :X1 0) 1)
+  LAST-OR        solved=YES sound=YES       work=     32798 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") :X1 (:IF (:= (:TAIL :X0) "()/NIL") (:AT :X0 0) (:LAST-OR (:TAIL :X0) :X1)))
+
+Regime WHITELIST-NO-SCHEMAS budget=350000: solved 11/16, held-out sound 10/16
+  COPY           solved=YES sound=YES       work=     16748 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") "()/NIL" (:CONS (:AT :X0 0) (:COPY (:TAIL :X0))))
+  INC-ALL        solved=YES sound=YES       work=     31445 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) 1) (:INC-ALL (:TAIL :X0))))
+  DBL-ALL        solved=YES sound=YES       work=     29409 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) (:AT :X0 0)) (:DBL-ALL (:TAIL :X0))))
+  SUM-ALL        solved=YES sound=YES       work=     25978 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:AT :X0 0) (:SUM-ALL (:TAIL :X0))))
+  LEN-ALL        solved=YES sound=YES       work=     34038 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:LEN-ALL (:TAIL :X0)) 1))
+  PRD-ALL        solved=YES sound=YES       work=     27984 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 1 (:* (:AT :X0 0) (:PRD-ALL (:TAIL :X0))))
+  FOLDL          solved=YES sound=IMPOSTOR  work=    121367 cpu_s=   0.03 program=(:IF (:= "()/NIL" :X0) :X1 (:CODE-EVAL :X2 (:FOLDL (:TAIL :X0) :X1 :X2) (:AT :X0 0)))
+  FILTER         solved=YES sound=YES       work=     76203 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") :X0 (:IF (:CODE-EVAL :X1 (:AT :X0 0)) (:CONS (:AT :X0 0) (:FILTER (:TAIL :X0) :X1)) (:FILTER (:TAIL :X0) :X1)))
+  MAP-ADJACENT   solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :MAP-ADJACENT within budget 350000
+  POSITIONS      solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :POSITIONS within budget 350000
+  SCAN           solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :SCAN within budget 350000
+  SHIFT-SEQ      solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :SHIFT-SEQ within budget 350000
+  SEQ-CORR       solved=YES sound=YES       work=     88066 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") 0 (:IF (:= :X1 "()/NIL") 0 (:+ (:* (:AT :X0 0) (:AT :X1 0)) (:SEQ-CORR (:TAIL :X0) (:TAIL :X1)))))
+  BEST-SHIFT     solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :BEST-SHIFT within budget 350000
+  ARGMAX-CORR    solved=YES sound=YES       work=     99198 cpu_s=   0.03 program=(:AT (:BEST-SHIFT :X0 :X1 0) 1)
+  LAST-OR        solved=YES sound=YES       work=     51078 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") :X1 (:IF (:= :X1 (:LAST-OR (:TAIL :X0) :X1)) (:AT :X0 0) (:LAST-OR (:TAIL :X0) :X1)))
+
+Regime ACTIVE-GRAMMAR+SCHEMAS budget=350000: solved 10/16, held-out sound 9/16
+  COPY           solved=YES sound=YES       work=     29645 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") "()/NIL" (:CONS (:AT :X0 0) (:COPY (:TAIL :X0))))
+  INC-ALL        solved=YES sound=YES       work=    196724 cpu_s=   0.05 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) 1) (:INC-ALL (:TAIL :X0))))
+  DBL-ALL        solved=YES sound=YES       work=     65100 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) (:AT :X0 0)) (:DBL-ALL (:TAIL :X0))))
+  SUM-ALL        solved=YES sound=YES       work=     28222 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:AT :X0 0) (:SUM-ALL (:TAIL :X0))))
+  LEN-ALL        solved=YES sound=YES       work=     43772 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:LEN-ALL (:TAIL :X0)) 1))
+  PRD-ALL        solved=YES sound=YES       work=     37158 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 1 (:* (:AT :X0 0) (:PRD-ALL (:TAIL :X0))))
+  FOLDL          solved=YES sound=IMPOSTOR  work=    213355 cpu_s=   0.04 program=(:IF (:= :X0 "()/NIL") :X1 (:FOLDL (:TAIL :X0) (:- :X1 (:AT :X0 0)) :X2))
+  FILTER         solved=YES sound=YES       work=    122687 cpu_s=   0.03 program=(:IF (:= :X0 "()/NIL") :X0 (:IF (:CODE-EVAL :X1 (:AT :X0 0)) (:CONS (:AT :X0 0) (:FILTER (:TAIL :X0) :X1)) (:FILTER (:TAIL :X0) :X1)))
+  MAP-ADJACENT   solved=no  sound=-         work=    350000 cpu_s=   0.09 err=Failed to synthesize spec :MAP-ADJACENT within budget 350000
+  POSITIONS      solved=YES sound=YES       work=     92569 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS :X1 (:POSITIONS (:TAIL :X0) (:+ :X1 1))))
+  SCAN           solved=no  sound=-         work=    350000 cpu_s=   0.07 err=Failed to synthesize spec :SCAN within budget 350000
+  SHIFT-SEQ      solved=no  sound=-         work=    350000 cpu_s=   0.07 err=Failed to synthesize spec :SHIFT-SEQ within budget 350000
+  SEQ-CORR       solved=no  sound=-         work=    350000 cpu_s=   0.07 err=Failed to synthesize spec :SEQ-CORR within budget 350000
+  BEST-SHIFT     solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :BEST-SHIFT within budget 350000
+  ARGMAX-CORR    solved=no  sound=-         work=    350000 cpu_s=   0.07 err=Failed to synthesize spec :ARGMAX-CORR within budget 350000
+  LAST-OR        solved=YES sound=YES       work=    152511 cpu_s=   0.03 program=(:IF (:= :X0 "()/NIL") :X1 (:IF (:= (:TAIL :X0) "()/NIL") (:AT :X0 0) (:LAST-OR (:TAIL :X0) :X1)))
+
+Regime ACTIVE-GRAMMAR-NO-SCHEMAS budget=350000: solved 9/16, held-out sound 8/16
+  COPY           solved=YES sound=YES       work=     27291 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") "()/NIL" (:CONS (:AT :X0 0) (:COPY (:TAIL :X0))))
+  INC-ALL        solved=YES sound=YES       work=    195020 cpu_s=   0.04 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) 1) (:INC-ALL (:TAIL :X0))))
+  DBL-ALL        solved=YES sound=YES       work=     63333 cpu_s=   0.02 program=(:IF (:= :X0 "()/NIL") :X0 (:CONS (:+ (:AT :X0 0) (:AT :X0 0)) (:DBL-ALL (:TAIL :X0))))
+  SUM-ALL        solved=YES sound=YES       work=     27868 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:AT :X0 0) (:SUM-ALL (:TAIL :X0))))
+  LEN-ALL        solved=YES sound=YES       work=     42759 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 0 (:+ (:LEN-ALL (:TAIL :X0)) 1))
+  PRD-ALL        solved=YES sound=YES       work=     36804 cpu_s=   0.01 program=(:IF (:= :X0 "()/NIL") 1 (:* (:AT :X0 0) (:PRD-ALL (:TAIL :X0))))
+  FOLDL          solved=YES sound=IMPOSTOR  work=    209723 cpu_s=   0.04 program=(:IF (:= "()/NIL" :X0) :X1 (:- (:FOLDL (:TAIL :X0) :X1 :X2) (:AT :X0 0)))
+  FILTER         solved=YES sound=YES       work=    120369 cpu_s=   0.03 program=(:IF (:= :X0 "()/NIL") :X0 (:IF (:CODE-EVAL :X1 (:AT :X0 0)) (:CONS (:AT :X0 0) (:FILTER (:TAIL :X0) :X1)) (:FILTER (:TAIL :X0) :X1)))
+  MAP-ADJACENT   solved=no  sound=-         work=    350000 cpu_s=   0.07 err=Failed to synthesize spec :MAP-ADJACENT within budget 350000
+  POSITIONS      solved=no  sound=-         work=    350000 cpu_s=   0.07 err=Failed to synthesize spec :POSITIONS within budget 350000
+  SCAN           solved=no  sound=-         work=    350000 cpu_s=   0.08 err=Failed to synthesize spec :SCAN within budget 350000
+  SHIFT-SEQ      solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :SHIFT-SEQ within budget 350000
+  SEQ-CORR       solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :SEQ-CORR within budget 350000
+  BEST-SHIFT     solved=no  sound=-         work=    350000 cpu_s=   0.06 err=Failed to synthesize spec :BEST-SHIFT within budget 350000
+  ARGMAX-CORR    solved=no  sound=-         work=    350000 cpu_s=   0.07 err=Failed to synthesize spec :ARGMAX-CORR within budget 350000
+  LAST-OR        solved=YES sound=YES       work=    162250 cpu_s=   0.03 program=(:IF (:= :X0 "()/NIL") :X1 (:IF (:= :X1 (:LAST-OR (:TAIL :X0) :X1)) (:AT :X0 0) (:LAST-OR (:TAIL :X0) :X1)))
+PROCESS rc=0

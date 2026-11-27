@@ -1,0 +1,7 @@
+(defvar cl-user::*ablate* '(:function))
+(load "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/docs-v2b/kcopy/load.lisp")
+(load "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/docs-v2b/kcopy/tests/support.lisp")
+(in-package #:lisploop)
+(load "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/docs-v2b/kcopy/tests/library.instr.lisp")
+(handler-case (library-l4-continual-learning-curriculum-amortization) (error (e) (format t "~&STOPPED: ~a~%" (subseq (princ-to-string e) 0 (min 90 (length (princ-to-string e)))))))
+(format t "~&done~%")

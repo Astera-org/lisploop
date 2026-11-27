@@ -1,0 +1,27 @@
+
+========================================================================================
+EXP C: IS GAP 4 NEEDED? (JOINT PROBES vs RULE-3 ISOLATE SLICES ON G2 ARITHMETIC)
+========================================================================================
+  False rejections on 500 fresh (a,b) in [-20..20]^2 (out of 1500 op-domain checks each):
+    +   : Rule-3 Slice tables ->  55 false rejects | Joint grid tables ->   0 false rejects
+    -   : Rule-3 Slice tables ->  50 false rejects | Joint grid tables ->   0 false rejects
+    *   : Rule-3 Slice tables ->   0 false rejects | Joint grid tables ->   0 false rejects
+    max : Rule-3 Slice tables ->   0 false rejects | Joint grid tables ->   0 false rejects
+    min : Rule-3 Slice tables ->   0 false rejects | Joint grid tables ->   0 false rejects
+    div : Rule-3 Slice tables -> 287 false rejects | Joint grid tables ->   0 false rejects
+    mod : Rule-3 Slice tables -> 422 false rejects | Joint grid tables ->   0 false rejects
+
+========================================================================================
+EXP D: IS GAP 5 NEEDED? (100-TASK STREAM: STATIC PROBES vs 5-LINE FALLBACK FEEDBACK)
+========================================================================================
+  Separate (4 doms), 150 random probes, NO feedback  | Misses 1..100: 56/100 | Misses 101..200: 54/100 | Total: 110/200 (fb_upd=0)
+  Separate (4 doms), 150 random probes, +5-line FB   | Misses 1..100: 38/100 | Misses 101..200: 17/100 | Total:  55/200 (fb_upd=106)
+  Separate (4 doms), 1000 strat probes, NO feedback  | Misses 1..100:  0/100 | Misses 101..200:  0/100 | Total:   0/200 (fb_upd=0)
+  Merged (nonneg x par x ord), 2000 rand, NO FB      | Misses 1..100: 38/100 | Misses 101..200: 46/100 | Total:  84/200 (fb_upd=0)
+  Merged (nonneg x par x ord), 2000 rand, +5-line FB | Misses 1..100: 32/100 | Misses 101..200: 34/100 | Total:  66/200 (fb_upd=98)
+  Merged (nonneg x par x ord), 2000 strat, NO FB     | Misses 1..100: 19/100 | Misses 101..200: 31/100 | Total:  50/200 (fb_upd=0)
+  Merged (nonneg x par x ord), 2000 strat, +5-line FB | Misses 1..100: 18/100 | Misses 101..200: 25/100 | Total:  43/200 (fb_upd=56)
+
+real	0m1.473s
+user	0m1.469s
+sys	0m0.004s

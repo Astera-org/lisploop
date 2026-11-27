@@ -1,0 +1,112 @@
+[audit] battery ALGEBRA: ledger-total=9105 cats=((:LAW-PROPOSAL . 9105))
+        source-library kinds=((:LAW . 12)) saved-ids=12
+[bootstrap] Saved ALGEBRA              -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/algebra.sexp (12 entries, 0 specs)
+[time] BUILD-ALGEBRA-BATTERY 0.008 s
+[audit] battery ARITHMETIC: ledger-total=672221 cats=((:SYNTHESIS . 480000) (:GUARD-SEARCH . 131231) (:REWRITING . 59420) (:SIMULATION . 1550) (:SIMPLIFICATION . 20))
+        source-library kinds=((:SOLVER . 8) (:SPEC . 8) (:LAW . 12)) saved-ids=8
+[bootstrap] Saved ARITHMETIC           -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/arithmetic.sexp (8 entries, 8 specs)
+[time] BUILD-ARITHMETIC-BATTERY 0.040 s
+[audit] battery CONSTRUCTORS: ledger-total=91927 cats=((:GUARD-SEARCH . 73401) (:SYNTHESIS . 17084) (:SIMULATION . 1103) (:GUARD-FRAME . 339))
+        source-library kinds=((:LAW . 3) (:SOLVER . 3) (:SPEC . 3)) saved-ids=6
+[bootstrap] Saved CONSTRUCTORS         -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/constructors.sexp (6 entries, 3 specs)
+[time] BUILD-CONSTRUCTORS-BATTERY 0.008 s
+[job BUILD-CONSTRUCTORS-BATTERY] self=NIL limit=95000 work=22362 solved=T bits=88 nodes=2 msgs=9 trace=679 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=0
+        claims=((:PREPARED . 2) (:STAGE-A . 2) (:EXPANDED . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:EXPANSION . 9633) (:CHILD-SEARCH . 6427) (:PREPARATION . 4741) (:PARENT-VERIFICATION . 848) (:SCHEDULING . 679) (:COMPOSITION . 34))
+[job BUILD-CONSTRUCTORS-BATTERY] self=NIL limit=95000 work=23555 solved=T bits=88 nodes=2 msgs=8 trace=715 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=0
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:EXPANSION . 10020) (:PREPARATION . 6608) (:CHILD-SEARCH . 5264) (:PARENT-VERIFICATION . 910) (:SCHEDULING . 715) (:COMPOSITION . 38))
+[audit] battery FUNCTORS: ledger-total=33739 cats=((:SIMULATION . 33739))
+        source-library kinds=((:SPEC . 6) (:TRANSFORMER . 10) (:DESCRIPTOR . 3) (:FUNCTION . 1)) saved-ids=10
+[bootstrap] Saved FUNCTORS             -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/functors.sexp (10 entries, 6 specs)
+[time] BUILD-FUNCTORS-BATTERY 0.016 s
+[audit] battery DESCRIPTORS: ledger-total=679044 cats=((:SYNTHESIS . 652327) (:SIMULATION . 21919) (:LAW-CHECKING . 3451) (:CONSTRUCTION . 1132) (:MATCHING . 117) (:ANTI-UNIFICATION . 98))
+        source-library kinds=((:MOTIF . 1) (:DECODER-TEMPLATE . 1) (:SOLVER . 1) (:SPEC . 6) (:DESCRIPTOR . 8) (:FUNCTION . 7)) saved-ids=8
+[bootstrap] Saved DESCRIPTORS          -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/descriptors.sexp (8 entries, 0 specs)
+[audit] battery SEQUENCES: ledger-total=679044 cats=((:SYNTHESIS . 652327) (:SIMULATION . 21919) (:LAW-CHECKING . 3451) (:CONSTRUCTION . 1132) (:MATCHING . 117) (:ANTI-UNIFICATION . 98))
+        source-library kinds=((:MOTIF . 1) (:DECODER-TEMPLATE . 1) (:SOLVER . 1) (:SPEC . 6) (:DESCRIPTOR . 8) (:FUNCTION . 7)) saved-ids=9
+[bootstrap] Saved SEQUENCES            -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/sequences.sexp (9 entries, 6 specs)
+[time] BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES 0.128 s
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:COPY limit=80000 work=17145 solved=T bits=111 nodes=2 msgs=8 trace=521 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=0
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 8919) (:EXPANSION . 4260) (:CHILD-SEARCH . 2473) (:PARENT-VERIFICATION . 926) (:SCHEDULING . 521) (:COMPOSITION . 46))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:INC-ALL limit=80000 work=33398 solved=T bits=122 nodes=2 msgs=8 trace=1013 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=0
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 21544) (:EXPANSION . 5430) (:CHILD-SEARCH . 4312) (:PARENT-VERIFICATION . 1045) (:SCHEDULING . 1013) (:COMPOSITION . 54))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:DBL-ALL limit=80000 work=31486 solved=T bits=138 nodes=2 msgs=8 trace=955 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=0
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 19745) (:EXPANSION . 5691) (:CHILD-SEARCH . 3839) (:PARENT-VERIFICATION . 1194) (:SCHEDULING . 955) (:COMPOSITION . 62))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:SUM-ALL limit=80000 work=25829 solved=T bits=104 nodes=3 msgs=8 trace=783 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=1
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 17835) (:EXPANSION . 3865) (:CHILD-SEARCH . 2453) (:PARENT-VERIFICATION . 847) (:SCHEDULING . 783) (:COMPOSITION . 46))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:LEN-ALL limit=80000 work=34079 solved=T bits=88 nodes=3 msgs=8 trace=1034 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=1
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 23928) (:CHILD-SEARCH . 4488) (:EXPANSION . 3916) (:SCHEDULING . 1034) (:PARENT-VERIFICATION . 675) (:COMPOSITION . 38))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:PRD-ALL limit=80000 work=27858 solved=T bits=107 nodes=3 msgs=8 trace=845 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=1
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 19287) (:EXPANSION . 3865) (:CHILD-SEARCH . 2953) (:PARENT-VERIFICATION . 862) (:SCHEDULING . 845) (:COMPOSITION . 46))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:FOLDL limit=350000 work=81333 solved=T bits=186 nodes=3 msgs=10 trace=2465 nogoods=0 reused=0
+        win-chain=(:STATE-FOLD-INDUCTIVE) schema-on-win=(:STATE-FOLD-INDUCTIVE) schema-nodes=1
+        claims=((:EXPANDED . 1) (:PREPARED . 3) (:STAGE-A . 3) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 44858) (:EXPANSION . 16025) (:CHILD-SEARCH . 15814) (:SCHEDULING . 2465) (:PARENT-VERIFICATION . 2101) (:COMPOSITION . 70))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:FILTER limit=350000 work=75546 solved=T bits=233 nodes=3 msgs=11 trace=2290 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL :HEURISTIC-CONDITIONAL) schema-on-win=NIL schema-nodes=0
+        claims=((:EXPANDED . 2) (:PREPARED . 3) (:STAGE-A . 3) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 32118) (:EXPANSION . 22291) (:CHILD-SEARCH . 16458) (:SCHEDULING . 2290) (:PARENT-VERIFICATION . 2255) (:COMPOSITION . 134))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:MAP-ADJACENT limit=350000 work=109012 solved=T bits=261 nodes=3 msgs=10 trace=3305 nogoods=0 reused=0
+        win-chain=(:LOOKAHEAD-INDUCTIVE) schema-on-win=(:LOOKAHEAD-INDUCTIVE) schema-nodes=1
+        claims=((:EXPANDED . 1) (:PREPARED . 3) (:STAGE-A . 3) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 70888) (:CHILD-SEARCH . 22584) (:EXPANSION . 9353) (:SCHEDULING . 3305) (:PARENT-VERIFICATION . 2773) (:COMPOSITION . 109))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=:POSITIONS limit=350000 work=46196 solved=T bits=117 nodes=4 msgs=8 trace=1401 nogoods=0 reused=0
+        win-chain=(:COUNTER-INDUCTIVE) schema-on-win=(:COUNTER-INDUCTIVE) schema-nodes=2
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 23530) (:EXPANSION . 12079) (:CHILD-SEARCH . 7318) (:PARENT-VERIFICATION . 1821) (:SCHEDULING . 1401) (:COMPOSITION . 47))
+[job BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES] self=NIL limit=500000 work=170445 solved=T bits=215 nodes=4 msgs=8 trace=5166 nogoods=0 reused=0
+        win-chain=(:LIBRARY) schema-on-win=NIL schema-nodes=0
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 96507) (:CHILD-SEARCH . 40005) (:EXPANSION . 19555) (:PARENT-VERIFICATION . 9123) (:SCHEDULING . 5166) (:COMPOSITION . 89))
+[audit] battery SCANS: ledger-total=265434 cats=((:SYNTHESIS . 263277) (:SIMULATION . 2157))
+        source-library kinds=((:DESCRIPTOR . 3) (:FUNCTION . 2) (:SPEC . 2)) saved-ids=2
+[bootstrap] Saved SCANS                -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/scans.sexp (2 entries, 2 specs)
+[time] BUILD-SCANS-BATTERY 0.048 s
+[job BUILD-SCANS-BATTERY] self=:SCAN limit=350000 work=263277 solved=T bits=267 nodes=5 msgs=21 trace=7981 nogoods=0 reused=0
+        win-chain=(:STATE-SCAN-INDUCTIVE) schema-on-win=(:STATE-SCAN-INDUCTIVE) schema-nodes=3
+        claims=((:EXPANDED . 3) (:PREPARED . 5) (:STAGE-A . 5) (:REJECTED . 2) (:BOUNDED-EXHAUSTION . 1) (:CHILD-CANDIDATE . 3) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 133855) (:CHILD-SEARCH . 87189) (:EXPANSION . 24522) (:PARENT-VERIFICATION . 9266) (:SCHEDULING . 7981) (:COMPOSITION . 464))
+[audit] battery SEQUENCE-SHIFT: ledger-total=524828 cats=((:SYNTHESIS . 471035) (:SIMULATION . 53793))
+        source-library kinds=((:SOLVER . 1) (:DESCRIPTOR . 3) (:FUNCTION . 5) (:SPEC . 6)) saved-ids=6
+[bootstrap] Saved SEQUENCE-SHIFT       -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/bootstrap-reflection/out-library/sequence-shift.sexp (6 entries, 6 specs)
+[time] BUILD-SEQUENCE-SHIFT-BATTERY 0.072 s
+[job BUILD-SEQUENCE-SHIFT-BATTERY] self=:SHIFT-SEQ limit=350000 work=99009 solved=T bits=159 nodes=3 msgs=8 trace=3001 nogoods=0 reused=0
+        win-chain=(:COUNTDOWN-INDUCTIVE) schema-on-win=(:COUNTDOWN-INDUCTIVE) schema-nodes=1
+        claims=((:EXPANDED . 1) (:PREPARED . 2) (:STAGE-A . 2) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 54672) (:CHILD-SEARCH . 20048) (:EXPANSION . 17904) (:PARENT-VERIFICATION . 3308) (:SCHEDULING . 3001) (:COMPOSITION . 76))
+[job BUILD-SEQUENCE-SHIFT-BATTERY] self=:SEQ-CORR limit=350000 work=87499 solved=T bits=189 nodes=4 msgs=11 trace=2653 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-ADDITIVE :LOCKSTEP-INDUCTIVE) schema-on-win=NIL schema-nodes=0
+        claims=((:EXPANDED . 2) (:PREPARED . 3) (:STAGE-A . 3) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 53986) (:CHILD-SEARCH . 17374) (:EXPANSION . 11265) (:SCHEDULING . 2653) (:PARENT-VERIFICATION . 2116) (:COMPOSITION . 105))
+[job BUILD-SEQUENCE-SHIFT-BATTERY] self=:BEST-SHIFT limit=350000 work=196019 solved=T bits=302 nodes=4 msgs=13 trace=5941 nogoods=0 reused=0
+        win-chain=(:HEURISTIC-CONDITIONAL :COUNTER-INDUCTIVE) schema-on-win=(:COUNTER-INDUCTIVE) schema-nodes=2
+        claims=((:EXPANDED . 2) (:PREPARED . 4) (:STAGE-A . 4) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 100604) (:CHILD-SEARCH . 43620) (:EXPANSION . 40350) (:SCHEDULING . 5941) (:PARENT-VERIFICATION . 5327) (:COMPOSITION . 177))
+[job BUILD-SEQUENCE-SHIFT-BATTERY] self=NIL limit=350000 work=36063 solved=T bits=82 nodes=1 msgs=6 trace=1093 nogoods=0 reused=0
+        win-chain=NIL schema-on-win=NIL schema-nodes=0
+        claims=((:PREPARED . 1) (:STAGE-A . 1) (:EXPANDED . 1) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:CHILD-SEARCH . 22229) (:EXPANSION . 5533) (:PARENT-VERIFICATION . 4924) (:PREPARATION . 2283) (:SCHEDULING . 1093) (:COMPOSITION . 1))
+[job BUILD-SEQUENCE-SHIFT-BATTERY] self=:LAST-OR limit=350000 work=32013 solved=T bits=149 nodes=4 msgs=10 trace=971 nogoods=0 reused=0
+        win-chain=(:LOOKAHEAD-INDUCTIVE) schema-on-win=(:LOOKAHEAD-INDUCTIVE) schema-nodes=2
+        claims=((:EXPANDED . 1) (:PREPARED . 3) (:STAGE-A . 3) (:CHILD-CANDIDATE . 1) (:CANDIDATE . 2))
+        cats=((:PREPARATION . 14043) (:EXPANSION . 8445) (:CHILD-SEARCH . 6981) (:PARENT-VERIFICATION . 1511) (:SCHEDULING . 971) (:COMPOSITION . 62))
+[total] wall=0.320 s  sum-of-battery-ledgers=2955342 (sequences+descriptors share one ledger and are counted twice)
+
+real	0m2.323s
+user	0m2.275s
+sys	0m0.036s

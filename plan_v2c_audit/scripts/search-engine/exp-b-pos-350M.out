@@ -1,0 +1,23 @@
+SPEC positions bound=130 max-depth=2 heuristic-budget=15000 condense-budget=20000 max-work=700000000 wall=200 schemas=NIL
+RESULT status=:WORK-CUTOFF work=700000000 wall_s=98.28 work/s=7122507.
+  quantum=1000 heap_MiB=1208.9 best-bits=NIL best-run-work=NIL
+  best=NIL
+  ledger=((:CHILD-SEARCH . 698606393) (:SCHEDULING . 699388)
+          (:PARENT-VERIFICATION . 590163) (:PREPARATION . 51795)
+          (:COMPOSITION . 26601) (:EXPANSION . 25660))
+  nodes=2 by-phase=((:PREPARE . 0) (:PREPARATION . 0) (:SEARCH . 2) (:DONE . 0)) expansions=((NIL
+                                                                                              . 0)
+                                                                                             (:PAYING
+                                                                                              . 0)
+                                                                                             (:DONE
+                                                                                              . 2)) deferred-total=0 pending=0
+  nogoods=0 reused-subproblems=0 messages=1408 trace-entries=699388
+  claims=((:PREPARED . 2) (:STAGE-A . 2) (:EXPANDED . 2)
+          (:CHILD-CANDIDATE . 351) (:REJECTED . 351) (:CUTOFF . 700))
+  node   0 parent=NIL depth=0 phase=SEARCH   exp=DONE   bound=130  prio=139 rows=11 inputs=2
+      proposal=NIL
+      search: work=174842469 completed-bound=93 header=29 rejected=367935 results=0 enum-size=65 syntax=681755
+  node   1 parent=0   depth=1 phase=SEARCH   exp=DONE   bound=130  prio=170 rows=11 inputs=4
+      proposal=(:HEURISTIC-CONDITIONAL (#:= #:X0 (#:QUOTE NIL)) #:X0)
+      search: work=523763924 completed-bound=119 header=48 rejected=369219 results=351 enum-size=72 syntax=4491792
+exit=0

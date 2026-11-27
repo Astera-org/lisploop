@@ -1,0 +1,190 @@
+# Q1 sequences: P=1500 probes/op, lists len 0..8, elements [-9,9], q-terms up to 4 nodes, seed 0
+# 15 operators: ['reverse', 'sort', 'inc_all', 'dbl_all', 'neg_all', 'abs_all', 'running_sum', 'tail', 'take3', 'map_adj_add', 'map_adj_sub', 'filter_pos', 'filter_even', 'zip_add', 'concat']
+
+####################################################################################################
+# pool WITHOUT `min` in the q-grammar: 470 q-terms x 32 g x 9 r = 135360 raw candidates -> 4820 distinct partitions with 2..6 blocks
+# enumeration 7.0 s, lumpability 33.7 s; 13969 distinct probe values
+
+== top 15 by mean Lump over 15 ops (constant output = 0) ==
+rank term                                                 sz nb   mean pooled  mean1 exact const  minblk
+   1 (len (take3 xs))                                      3  4  0.853  0.820  0.853    10     0  0.0007
+   2 (len (take2 xs))                                      3  3  0.829  0.783  0.829    10     0  0.0007
+   3 (mod (len (odds_idx xs)) 5)                           5  5  0.826  0.843  0.826     9     0  0.0127
+   4 (mod (len (evens_idx xs)) 5)                          5  5  0.819  0.826  0.819     9     0  0.0007
+   5 (mod (len xs) 5)                                      4  5  0.804  0.811  0.804     8     0  0.1380
+   6 (< (len xs) 3)                                        4  2  0.797  0.797  0.797     9     0  0.1280
+   7 (< (len xs) 2)                                        4  2  0.789  0.760  0.789     9     0  0.0127
+   8 (sgn (len xs))                                        3  2  0.786  0.713  0.786    10     0  0.0007
+   9 (mod (len xs) 4)                                      4  4  0.783  0.790  0.783     8     0  0.1493
+  10 (mod (len (map_adj_add xs)) 5)                        5  5  0.781  0.799  0.781     7     0  0.1373
+  11 (mod (len (map_adj_add xs)) 4)                        5  4  0.778  0.794  0.778     7     0  0.1500
+  12 (< (count_distinct (map_adj_sub xs)) 2)               5  2  0.775  0.775  0.775     4     0  0.1320
+  13 (< (count_distinct xs) 2)                             4  2  0.767  0.739  0.767     5     0  0.0160
+  14 (mod (len (drop2 xs)) 5)                              5  5  0.766  0.800  0.766     7     0  0.1373
+  15 (< (count_distinct (map_adj_add xs)) 2)               5  2  0.762  0.762  0.762     4     0  0.1313
+
+== top 15 by pooled entropies 1 - sum H(out|in) / sum H(out) ==
+rank term                                                 sz nb   mean pooled  mean1 exact const  minblk
+   1 (< 5 (len xs))                                        4  2  0.711  0.848  0.777     8     1  0.4540
+   2 (mod (len (odds_idx xs)) 5)                           5  5  0.826  0.843  0.826     9     0  0.0127
+   3 (< (len xs) 5)                                        4  2  0.724  0.842  0.791     8     1  0.4087
+   4 (< 5 (len (map_adj_add xs)))                          5  2  0.696  0.839  0.762     8     1  0.2980
+   5 (< 5 (len (drop2 xs)))                                5  2  0.581  0.826  0.847     8     4  0.1573
+   6 (mod (len (evens_idx xs)) 5)                          5  5  0.819  0.826  0.819     9     0  0.0007
+   7 (= (len (odds_idx xs)) 4)                             5  2  0.569  0.825  0.836     8     4  0.1573
+   8 (= (len (evens_idx xs)) 4)                            5  2  0.675  0.825  0.742     8     1  0.2980
+   9 (len (take3 xs))                                      3  4  0.853  0.820  0.853    10     0  0.0007
+  10 (< (len xs) 4)                                        4  2  0.732  0.815  0.798     8     1  0.2673
+  11 (mod (len xs) 5)                                      4  5  0.804  0.811  0.804     8     0  0.1380
+  12 (mod (len (drop2 xs)) 5)                              5  5  0.766  0.800  0.766     7     0  0.1373
+  13 (mod (len (map_adj_add xs)) 5)                        5  5  0.781  0.799  0.781     7     0  0.1373
+  14 (< (len xs) 3)                                        4  2  0.797  0.797  0.797     9     0  0.1280
+  15 (mod (len (map_adj_add xs)) 4)                        5  4  0.778  0.794  0.778     7     0  0.1500
+
+== top 15 by mean Lump over 15 ops, constant output counted as exact (=1) ==
+rank term                                                 sz nb   mean pooled  mean1 exact const  minblk
+   1 (< (count_distinct (evens_idx xs)) 5)                 5  2  0.000  0.000  0.933     0    14  1.0000
+   2 (< (count_distinct (odds_idx xs)) 5)                  5  2  0.000  0.000  0.933     0    14  1.0000
+   3 (< (count_even (evens_idx xs)) 5)                     5  2  0.000  0.000  0.933     0    14  1.0000
+   4 (< (count_even (odds_idx xs)) 5)                      5  2  0.000  0.000  0.933     0    14  1.0000
+   5 (< (count_pos (evens_idx xs)) 5)                      5  2  0.000  0.000  0.933     0    14  1.0000
+   6 (< (count_pos (odds_idx xs)) 5)                       5  2  0.000  0.000  0.933     0    14  1.0000
+   7 (< (len (evens_idx xs)) 5)                            5  2  0.000  0.000  0.933     0    14  1.0000
+   8 (< (len (odds_idx xs)) 5)                             5  2  0.000  0.000  0.933     0    14  1.0000
+   9 (< 5 (count_distinct (evens_idx xs)))                 5  2  0.000  0.000  0.933     0    14  1.0000
+  10 (< 5 (count_distinct (odds_idx xs)))                  5  2  0.000  0.000  0.933     0    14  1.0000
+  11 (< 5 (count_even (evens_idx xs)))                     5  2  0.000  0.000  0.933     0    14  1.0000
+  12 (< 5 (count_even (odds_idx xs)))                      5  2  0.000  0.000  0.933     0    14  1.0000
+  13 (< 5 (count_pos (evens_idx xs)))                      5  2  0.000  0.000  0.933     0    14  1.0000
+  14 (< 5 (count_pos (odds_idx xs)))                       5  2  0.000  0.000  0.933     0    14  1.0000
+  15 (< 5 (len (evens_idx xs)))                            5  2  0.000  0.000  0.933     0    14  1.0000
+
+== named quotients and distractors (score computed directly; rank if the partition is in the pool) ==
+name                           mean pooled  mean1 exact const | rank/4820 by mean, pooled, mean1 | pool term
+len_cap5                      0.877  0.863  0.877    10     0 |    not in pool    | -
+len_mod2                      0.707  0.713  0.707     8     0 |    52    65   107 | (mod (len xs) 2)
+all_even                      0.590  0.638  0.723     6     2 |   180   115    97 | (sgn (count_even (inc_all xs)))
+is_empty                      0.786  0.713  0.786    10     0 |     8    66    40 | (sgn (len xs))
+all_nonneg                    0.527  0.573  0.661     4     2 |   368   237   147 | (< (min_el xs) 0)
+sign pattern (any<0, any>0)   0.745  0.688  0.745     7     0 |    not in pool    | -
+parity pattern                0.799  0.750  0.799     8     0 |    not in pool    | -
+order (asc, desc)             0.699  0.672  0.699     5     0 |    not in pool    | -
+len_cap3                      0.853  0.820  0.853    10     0 |     1     9    26 | (len (take3 xs))
+len_mod3                      0.761  0.773  0.761     8     0 |    17    25    52 | (mod (len xs) 3)
+JUNK head_eq_2                0.313  0.352  0.313     2     0 |  2746  2416  3509 | (= (head xs) 2)
+JUNK sum_gt_5                 0.418  0.428  0.418     2     0 |  1126  1234  1967 | (< 5 (sum xs))
+JUNK last_even                0.351  0.359  0.351     2     0 |  2075  2291  2980 | (mod (last (inc_all xs)) 2)
+JUNK max_lt_3                 0.603  0.583  0.603     4     0 |   154   210   282 | (< (max_el xs) 3)
+per-operator Lump of the named quotients:
+                             reverse    sort inc_all dbl_all neg_all abs_all running    tail   take3 map_adj map_adj filter_ filter_ zip_add  concat
+len_cap5                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.85    1.00    0.85    0.85    0.29    0.30    1.00    1.00
+len_mod2                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.60    0.29    0.60    0.60    0.01    0.01    0.50    1.00
+all_even                        1.00    1.00    0.10    0.00    1.00    1.00    1.00    0.50    0.69    0.48    0.48    0.38    0.00    0.21    1.00
+is_empty                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.37    1.00    0.37    0.37    0.33    0.35    1.00    1.00
+all_nonneg                      1.00    1.00    0.78    1.00    0.09    0.00    0.44    0.49    0.65    0.43    0.27    0.00    0.33    0.43    1.00
+sign pattern (any<0, any>0)     1.00    1.00    0.81    1.00    1.00    1.00    0.50    0.53    0.66    0.44    0.38    1.00    0.31    0.52    1.00
+parity pattern                  1.00    1.00    1.00    1.00    1.00    1.00    0.72    0.53    0.68    0.60    0.60    0.33    1.00    0.51    1.00
+order (asc, desc)               1.00    1.00    1.00    1.00    1.00    0.67    0.54    0.59    0.62    0.53    0.54    0.27    0.27    0.68    0.78
+len_cap3                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.74    1.00    0.74    0.74    0.28    0.30    1.00    1.00
+len_mod3                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.80    0.39    0.80    0.80    0.02    0.01    0.60    1.00
+JUNK head_eq_2                  0.02    0.26    0.02    0.02    0.01    0.42    1.00    0.00    1.00    0.00    0.00    0.51    0.49    0.01    0.94
+JUNK sum_gt_5                   1.00    1.00    0.50    0.55    0.18    0.14    0.43    0.33    0.40    0.48    0.00    0.26    0.23    0.27    0.50
+JUNK last_even                  0.03    0.13    0.60    0.20    1.00    1.00    0.03    0.75    0.15    0.00    0.00    0.23    0.29    0.01    0.85
+JUNK max_lt_3                   1.00    1.00    0.81    0.81    0.06    0.49    0.38    0.57    0.57    0.42    0.24    1.00    0.33    0.37    1.00
+score distribution (mean): min 0.000 q25 0.251 median 0.331 q75 0.412 q90 0.504 q99 0.711 max 0.853
+
+####################################################################################################
+# pool WITH `min` in the q-grammar: 561 q-terms x 32 g x 9 r = 161568 raw candidates -> 5475 distinct partitions with 2..6 blocks
+# enumeration 8.0 s, lumpability 38.0 s; 13969 distinct probe values
+
+== top 15 by mean Lump over 15 ops (constant output = 0) ==
+rank term                                                 sz nb   mean pooled  mean1 exact const  minblk
+   1 (min (len xs) 5)                                      4  6  0.877  0.863  0.877    10     0  0.0007
+   2 (min (len (map_adj_add xs)) 5)                        5  6  0.868  0.877  0.868     9     0  0.0127
+   3 (min (len xs) 4)                                      4  5  0.867  0.844  0.867    10     0  0.0007
+   4 (min (len (drop2 xs)) 5)                              5  6  0.865  0.895  0.865     9     0  0.1280
+   5 (min (len (map_adj_add xs)) 4)                        5  5  0.859  0.859  0.859     9     0  0.0127
+   6 (len (take3 xs))                                      3  4  0.853  0.820  0.853    10     0  0.0007
+   7 (min (len (drop2 xs)) 4)                              5  5  0.852  0.876  0.852     9     0  0.1280
+   8 (min (len (map_adj_add xs)) 3)                        5  4  0.847  0.838  0.847     9     0  0.0127
+   9 (min (len (drop2 xs)) 3)                              5  4  0.841  0.857  0.841     9     0  0.1280
+  10 (min (len (odds_idx xs)) 4)                           5  5  0.830  0.849  0.830     9     0  0.0127
+  11 (min (len (odds_idx xs)) 5)                           5  6  0.829  0.847  0.829     9     0  0.0127
+  12 (len (take2 xs))                                      3  3  0.829  0.783  0.829    10     0  0.0007
+  13 (min (len (drop2 xs)) 2)                              5  3  0.827  0.834  0.827     9     0  0.1280
+  14 (min (len (evens_idx xs)) 4)                          5  5  0.826  0.834  0.826     9     0  0.0007
+  15 (mod (len (odds_idx xs)) 5)                           5  5  0.826  0.843  0.826     9     0  0.0127
+
+== top 15 by pooled entropies 1 - sum H(out|in) / sum H(out) ==
+rank term                                                 sz nb   mean pooled  mean1 exact const  minblk
+   1 (min (len (drop2 xs)) 5)                              5  6  0.865  0.895  0.865     9     0  0.1280
+   2 (min (len (map_adj_add xs)) 5)                        5  6  0.868  0.877  0.868     9     0  0.0127
+   3 (min (len (drop2 xs)) 4)                              5  5  0.852  0.876  0.852     9     0  0.1280
+   4 (min (len xs) 5)                                      4  6  0.877  0.863  0.877    10     0  0.0007
+   5 (min (len (map_adj_add xs)) 4)                        5  5  0.859  0.859  0.859     9     0  0.0127
+   6 (min (len (drop2 xs)) 3)                              5  4  0.841  0.857  0.841     9     0  0.1280
+   7 (min (len (odds_idx xs)) 4)                           5  5  0.830  0.849  0.830     9     0  0.0127
+   8 (< 5 (len xs))                                        4  2  0.711  0.848  0.777     8     1  0.4540
+   9 (min (len (odds_idx xs)) 5)                           5  6  0.829  0.847  0.829     9     0  0.0127
+  10 (min (len xs) 4)                                      4  5  0.867  0.844  0.867    10     0  0.0007
+  11 (mod (len (odds_idx xs)) 5)                           5  5  0.826  0.843  0.826     9     0  0.0127
+  12 (< (len xs) 5)                                        4  2  0.724  0.842  0.791     8     1  0.4087
+  13 (< 5 (len (map_adj_add xs)))                          5  2  0.696  0.839  0.762     8     1  0.2980
+  14 (min (len (map_adj_add xs)) 3)                        5  4  0.847  0.838  0.847     9     0  0.0127
+  15 (min (len (evens_idx xs)) 4)                          5  5  0.826  0.834  0.826     9     0  0.0007
+
+== top 15 by mean Lump over 15 ops, constant output counted as exact (=1) ==
+rank term                                                 sz nb   mean pooled  mean1 exact const  minblk
+   1 (< (count_distinct (evens_idx xs)) 5)                 5  2  0.000  0.000  0.933     0    14  1.0000
+   2 (< (count_distinct (odds_idx xs)) 5)                  5  2  0.000  0.000  0.933     0    14  1.0000
+   3 (< (count_even (evens_idx xs)) 5)                     5  2  0.000  0.000  0.933     0    14  1.0000
+   4 (< (count_even (odds_idx xs)) 5)                      5  2  0.000  0.000  0.933     0    14  1.0000
+   5 (< (count_pos (evens_idx xs)) 5)                      5  2  0.000  0.000  0.933     0    14  1.0000
+   6 (< (count_pos (odds_idx xs)) 5)                       5  2  0.000  0.000  0.933     0    14  1.0000
+   7 (< (len (evens_idx xs)) 5)                            5  2  0.000  0.000  0.933     0    14  1.0000
+   8 (< (len (odds_idx xs)) 5)                             5  2  0.000  0.000  0.933     0    14  1.0000
+   9 (< 5 (count_distinct (evens_idx xs)))                 5  2  0.000  0.000  0.933     0    14  1.0000
+  10 (< 5 (count_distinct (odds_idx xs)))                  5  2  0.000  0.000  0.933     0    14  1.0000
+  11 (< 5 (count_even (evens_idx xs)))                     5  2  0.000  0.000  0.933     0    14  1.0000
+  12 (< 5 (count_even (odds_idx xs)))                      5  2  0.000  0.000  0.933     0    14  1.0000
+  13 (< 5 (count_pos (evens_idx xs)))                      5  2  0.000  0.000  0.933     0    14  1.0000
+  14 (< 5 (count_pos (odds_idx xs)))                       5  2  0.000  0.000  0.933     0    14  1.0000
+  15 (< 5 (len (evens_idx xs)))                            5  2  0.000  0.000  0.933     0    14  1.0000
+
+== named quotients and distractors (score computed directly; rank if the partition is in the pool) ==
+name                           mean pooled  mean1 exact const | rank/5475 by mean, pooled, mean1 | pool term
+len_cap5                      0.877  0.863  0.877    10     0 |     1     4    26 | (min (len xs) 5)
+len_mod2                      0.707  0.713  0.707     8     0 |   136   136   191 | (mod (len xs) 2)
+all_even                      0.590  0.638  0.723     6     2 |   311   208   177 | (sgn (count_even (inc_all xs)))
+is_empty                      0.786  0.713  0.786    10     0 |    48   137    80 | (sgn (len xs))
+all_nonneg                    0.527  0.573  0.661     4     2 |   615   408   238 | (< (min_el xs) 0)
+sign pattern (any<0, any>0)   0.745  0.688  0.745     7     0 |    not in pool    | -
+parity pattern                0.799  0.750  0.799     8     0 |    not in pool    | -
+order (asc, desc)             0.699  0.672  0.699     5     0 |    not in pool    | -
+len_cap3                      0.853  0.820  0.853    10     0 |     6    23    31 | (len (take3 xs))
+len_mod3                      0.761  0.773  0.761     8     0 |    73    66   108 | (mod (len xs) 3)
+JUNK head_eq_2                0.313  0.352  0.313     2     0 |  3393  3056  4156 | (= (head xs) 2)
+JUNK sum_gt_5                 0.418  0.428  0.418     2     0 |  1694  1766  2544 | (< 5 (sum xs))
+JUNK last_even                0.351  0.359  0.351     2     0 |  2717  2923  3622 | (mod (last (inc_all xs)) 2)
+JUNK max_lt_3                 0.603  0.583  0.603     4     0 |   271   361   427 | (< (max_el xs) 3)
+per-operator Lump of the named quotients:
+                             reverse    sort inc_all dbl_all neg_all abs_all running    tail   take3 map_adj map_adj filter_ filter_ zip_add  concat
+len_cap5                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.85    1.00    0.85    0.85    0.29    0.30    1.00    1.00
+len_mod2                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.60    0.29    0.60    0.60    0.01    0.01    0.50    1.00
+all_even                        1.00    1.00    0.10    0.00    1.00    1.00    1.00    0.50    0.69    0.48    0.48    0.38    0.00    0.21    1.00
+is_empty                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.37    1.00    0.37    0.37    0.33    0.35    1.00    1.00
+all_nonneg                      1.00    1.00    0.78    1.00    0.09    0.00    0.44    0.49    0.65    0.43    0.27    0.00    0.33    0.43    1.00
+sign pattern (any<0, any>0)     1.00    1.00    0.81    1.00    1.00    1.00    0.50    0.53    0.66    0.44    0.38    1.00    0.31    0.52    1.00
+parity pattern                  1.00    1.00    1.00    1.00    1.00    1.00    0.72    0.53    0.68    0.60    0.60    0.33    1.00    0.51    1.00
+order (asc, desc)               1.00    1.00    1.00    1.00    1.00    0.67    0.54    0.59    0.62    0.53    0.54    0.27    0.27    0.68    0.78
+len_cap3                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.74    1.00    0.74    0.74    0.28    0.30    1.00    1.00
+len_mod3                        1.00    1.00    1.00    1.00    1.00    1.00    1.00    0.80    0.39    0.80    0.80    0.02    0.01    0.60    1.00
+JUNK head_eq_2                  0.02    0.26    0.02    0.02    0.01    0.42    1.00    0.00    1.00    0.00    0.00    0.51    0.49    0.01    0.94
+JUNK sum_gt_5                   1.00    1.00    0.50    0.55    0.18    0.14    0.43    0.33    0.40    0.48    0.00    0.26    0.23    0.27    0.50
+JUNK last_even                  0.03    0.13    0.60    0.20    1.00    1.00    0.03    0.75    0.15    0.00    0.00    0.23    0.29    0.01    0.85
+JUNK max_lt_3                   1.00    1.00    0.81    0.81    0.06    0.49    0.38    0.57    0.57    0.42    0.24    1.00    0.33    0.37    1.00
+score distribution (mean): min 0.000 q25 0.264 median 0.349 q75 0.444 q90 0.541 q99 0.776 max 0.877
+
+real	1m27.525s
+user	1m27.281s
+sys	0m0.236s

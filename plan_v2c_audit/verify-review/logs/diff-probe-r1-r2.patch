@@ -1,0 +1,39 @@
+--- tg-probe-r1.lisp	2026-11-25 15:43:09.995411430 -0800
++++ tg-probe-r2.lisp	2026-11-25 15:43:09.995584450 -0800
+@@ -226,6 +226,11 @@
+ ;;; ===================================================================
+ ;;; SECTION 2: INTERPRETER for terms and the emitted array-style programs
+ ;;; ===================================================================
++;; VERIFY-REVIEW MOD 4 (R2): the fixed fold algebras (name cell-type identity step); identity NIL = none
++(defparameter *aggs*
++  `((+ :int 0 ,#'+) (* :int 1 ,#'*) (max :int nil ,#'max) (min :int nil ,#'min)
++    (count :bool 0 ,(lambda (a v) (if (eq v :t) (1+ a) a)))))
++(defun agg-step (a v fn) (cond ((or (eq a :err) (eq v :err)) :err) ((null a) v) (t (funcall fn a v))))
+ (defvar *steps* 0)                        ; fold-step applications (cost accounting)
+ (defun ev (e env)
+   "Evaluate term E; ENV is an alist symbol -> value.  Used to VERIFY results on
+@@ -241,6 +246,11 @@
+                     (if (integerp n) (loop for i below n collect (setf prev (lam b i prev))) :err)))
+                  (select (loop for x in (ev a env) for j from 0 when (eq :t (lam b j x)) collect x))
+                  (where  (loop for x in (ev a env) for j from 0 when (eq :t (lam b j x)) collect j))
++                 (fold-space              ; VERIFY-REVIEW MOD 5 (R2): (fold-space L agg (lambda (i) elem))
++                  (let ((n (ev a env)) (acc (third (assoc b *aggs*))))
++                    (if (integerp n)
++                        (dotimes (i n (or acc :err)) (setf acc (agg-step acc (lam c i) (fourth (assoc b *aggs*)))))
++                        :err)))
+                  ((fold foldr)            ; (fold init (lambda (acc x) step) xs)
+                   (let ((acc (ev a env)) (xs (ev c env)))
+                     (dolist (x (if (eq head 'fold) xs (reverse xs)) acc)
+@@ -268,6 +278,12 @@
+   (let ((out (make-array (base-n (base-parent b2)) :initial-element nil)))
+     (loop for r across (base-pmap b2) for v across col do (push v (svref out r)))
+     (map 'simple-vector #'reverse out)))
++;; VERIFY-REVIEW MOD 6 (R2): the monoidal pushforward -- COLLECT with a fold algebra (E, FN) in place of LIST
++(defun reduce-pmap (b2 col e fn)
++  "Push a column forward: per parent row, its children's cells folded in order from E; :err poisons a fibre."
++  (let ((out (make-array (base-n (base-parent b2)) :initial-element e)))
++    (loop for r across (base-pmap b2) for v across col do (setf (svref out r) (agg-step (svref out r) v fn)))
++    (substitute :err nil out)))
+ (defun elt-col (seqs idx &optional (off 0))
+   "Column: element IDX+OFF of each row's sequence, :err out of range."
+   (map 'simple-vector

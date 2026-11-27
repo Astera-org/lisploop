@@ -1,0 +1,65 @@
+42c42,43
+<   term)   ; representative term, e.g. (+ x (* y 2)); a leaf is a symbol or integer
+---
+>   term    ; representative term, e.g. (+ x (* y 2)); a leaf is a symbol or integer
+>   labs)   ; L1 MOD 1: label columns, one (unsigned-byte 8) vector per quotient; nil when no label filter is attached
+58c59,64
+<   frontier nfront)                        ; hash-only mode for a last size level (experiment A only)
+---
+>   frontier nfront                         ; hash-only mode for a last size level (experiment A only)
+>   lf)                                     ; L1 MOD 2: label-filter context (struct LF, labels.lisp), or nil = plain search
+> ;; L1 MOD 2b: the label machinery lives in labels.lisp, loaded after this file
+> (declaim (ftype function lf-label-class lf-decline-p lf-gate lf-gated-try lf-run-level lf-set-target lf-note-level
+>                 lf-tally lf-solve-col-la lf-bound))
+> (defvar *lf-stop* nil)                    ; L1 MOD 2c: stop SOLVE-COL after this size level (strict-filter experiments only)
+89a96
+>     (when (bank-lf bank) (lf-label-class (bank-lf bank) c)) ; L1 MOD 3: label columns of a newly stored class
+131a139,140
+>               ;; L1 MOD 4: look-ahead variant -- decline to STORE a class no operator can take to the target's labels
+>               ((and (bank-lf bank) (lf-decline-p (bank-lf bank) buf (op-res op) size)) nil)
+136c145
+< (defun enumerate-size (bank s)
+---
+> (defun enumerate-size (bank s &optional pass) ; L1 MOD 5: PASS = nil (plain), or a label-filter pass (labels.lisp)
+139a149,152
+>     (let ((gate (and pass (lf-gate (bank-lf bank) op s)))) ; L1 MOD 5: this operator's verb tables for the target
+>       (macrolet ((try* (c1 c2 c3)             ; L1 MOD 5: every candidate goes through the gate when PASS is set
+>                    `(if pass (lf-gated-try bank op s ,c1 ,c2 ,c3 pass gate) (try bank op s ,c1 ,c2 ,c3))))
+>         (unless (eq gate :dead)               ; L1 MOD 5: look-ahead only: result type cannot reach the target in the size left
+146c159
+<                           (loop for c3 across v3 do (try bank op s c1 c2 c3))))))))
+---
+>                           (loop for c3 across v3 do (try* c1 c2 c3))))))))   ; L1 MOD 5: TRY -> TRY*
+150,151c163,164
+<                       (loop for c2 across v2 do (try bank op s c1 c2 nil))))))
+<             (t (loop for c1 across (classes bank t1 (- s 1)) do (try bank op s c1 nil nil)))))))
+---
+>                       (loop for c2 across v2 do (try* c1 c2 nil))))))        ; L1 MOD 5: TRY -> TRY*
+>             (t (loop for c1 across (classes bank t1 (- s 1)) do (try* c1 nil nil))))))))))  ; L1 MOD 5: TRY -> TRY*
+164c177,179
+<           do (enumerate-size bank s) (setf (bank-done bank) s))
+---
+>           do (if (bank-lf bank) (lf-run-level bank s) (enumerate-size bank s)) ; L1 MOD 6: filtered passes over a level
+>              (setf (bank-done bank) s)
+>              (lf-note-level bank s))      ; L1 MOD 6b: per-level trace (candidates, classes), also in plain mode
+366c381,382
+< (defun tally (bank) (incf *cand* (bank-ncand bank)) (incf *cells* (bank-ncells bank)))
+---
+> (defun tally (bank) (incf *cand* (bank-ncand bank)) (incf *cells* (bank-ncells bank))
+>   (lf-tally bank))                        ; L1 MOD 8: record this bank's counters (skips, look-ups, classes) for the report
+424a441,442
+>     (when (eq :la (lf-set-target bank :int y :elem)) ; L1 MOD 7a: the target is known here; attach the label filter
+>       (return-from solve-col (lf-solve-col-la bank y max-size limit))) ; look-ahead variant: restarts per size bound
+431,432c449,453
+<                          (cover bank y rows (if (or *greedy* (= s max-size) (not (eq r :done))) 2 1)))))
+<         (when (or (not (eq r :done)) (and held (or (not *occam*) (>= s (1- (tsize held))))))
+---
+>                          (cover bank y rows (if (or *greedy* (= s max-size) (not (eq r :done))) 2 1))))
+>           (when (and held *occam* (bank-lf bank)) ; L1 MOD 7e: a held split gives a size bound with no oracle
+>             (lf-bound (bank-lf bank) (min max-size (1- (tsize held))))))
+>         (when (or (not (eq r :done)) (and held (or (not *occam*) (>= s (1- (tsize held)))))
+>                   (and *lf-stop* (>= s *lf-stop*))) ; L1 MOD 7b: strict-filter experiments stop after the filtered level
+441a463
+>     (lf-set-target shape :int lens :shape) ; L1 MOD 7c: the shape bank's target (the output lengths) is known
+480a503
+>                 (lf-set-target bank :bool (elt-col (pull b2 keeps) j) :select) ; L1 MOD 7d: boolean keep-column target

@@ -1,0 +1,57 @@
+# Q5 (a): operator neighbours by Jaccard overlap of table supports (6 quotients, 2000 probes)
+  map_adj_sub  ~ map_adj_mul 0.79, map_adj_add 0.78, tail 0.76, init 0.76, map_adj_min 0.72, map_adj_max 0.72
+                 review: map_adj_mul .61, map_adj_add .61, map_adj_min .53, map_adj_max .53
+  filter_pos   ~ filter_neg 0.89, filter_odd 0.82, filter_even 0.82, odds_idx 0.65, drop2 0.65, map_adj_max 0.64
+                 review: filter_neg .57, filter_odd .45, filter_even .41
+  zip_add      ~ zip_sub 0.84, zip_max 0.82, zip_min 0.82, zip_mul 0.76, concat 0.17
+                 review: zip_sub .74, zip_max .69, zip_min .68, zip_mul .66 (concat .07)
+  sum          ~ last 0.90, head 0.90, min_el 0.86, max_el 0.86, count_pos 0.83, len 0.77
+                 review: head .61, last .51, min_el .47, max_el .43
+  sort         ~ reverse 0.83, shift1 0.78, sort_desc 0.76, running_max 0.75, neg_all 0.69, dbl_all 0.69
+  inc_all      ~ dec_all 0.71, dbl_all 0.69, running_max 0.59, sort_desc 0.58, sort 0.58, reverse 0.58
+  dbl_all      ~ dec_all 0.71, sort_desc 0.69, sort 0.69, reverse 0.69, inc_all 0.69, running_min 0.63
+  zip_add vs concat: 0.17
+
+  recovery of the hand-listed families by the top-k same-type neighbours:
+     top-1: 22 of 32 neighbour slots are family members (69%)
+     top-2: 45 of 64 neighbour slots are family members (70%)
+     top-4: 77 of 112 neighbour slots are family members (69%)
+
+# Q5 (b): 20 sequential 3-operator tasks, disjoint inputs (seed 0); + marks a hit, numbers are replay candidates
+    1 base     neg_all(running_sum(dbl_all(xs)))            abs    301 | B     0  C     0  D     0  E     0
+    2 base     map_adj_add(sort(map_adj_add(xs)))           abs    650 | B     3  C     0  D     0  E    39
+    3 base     filter_neg(dedup_adj(neg_all(xs)))           abs    337 | B     6  C     0  D     0  E    78
+    4 base     map_adj_add(map_adj_add(map_adj_add(xs)))    abs    712 | B     9  C     0  D     0  E   117
+    5 base     len(abs_all(inc_all(xs)))                    abs      3 | B    12  C     0  D     0  E   156
+    6 base     running_max(neg_all(filter_neg(xs)))         abs    636 | B    15  C     0  D     0  E   195
+    7 base     max_el(tail(take3(xs)))                      abs   1468 | B    18  C     0  D     0  E   234
+    8 base     dbl_all(init(odds_idx(xs)))                  abs    976 | B    21  C     0  D     0  E   273
+    9 base     dbl(dbl(last(xs)))                           abs   1050 | B    24  C     0  D     0  E   312
+   10 sibling  len(abs_all(abs_all(xs)))                    abs      3 | B +  15  C     0  D     0  E +  15
+   11 sibling  filter_odd(dedup_adj(neg_all(xs)))           abs    588 | B    30  C     0  D     0  E + 108
+   12 repeat   len(abs_all(inc_all(xs)))                    abs      4 | B +  15  C     0  D     0  E +  15
+   13 sibling  filter_even(dedup_adj(neg_all(xs)))          abs     32 | B    36  C     0  D     0  E + 117
+   14 repeat   map_adj_add(sort(map_adj_add(xs)))           abs    725 | B +   6  C +   3  D +   3  E +   6
+   15 sibling  len(abs_all(sq_all(xs)))                     abs      3 | B +  15  C +   3  D +   3  E +  15
+   16 repeat   dbl(dbl(last(xs)))                           abs    963 | B +  27  C +   3  D +   3  E +  27
+   17 sibling  map_adj_add(reverse(map_adj_add(xs)))        abs    632 | B    48  C     3  D    39  E +  99
+   18 repeat   running_max(neg_all(filter_neg(xs)))         abs    357 | B +  18  C     0  D     0  E +  18
+   19 sibling  running_max(neg_all(filter_odd(xs)))         abs    392 | B    54  C     0  D     0  E + 264
+   20 repeat   neg_all(running_sum(dbl_all(xs)))            abs    278 | B +   3  C +   3  D +   3  E +   3
+
+   totals (candidates): {'A': 10110, 'B': 8152, 'C': 8156, 'D': 8192, 'E': 8224}
+   hits: {'B': {'repeat': 5, 'sibling': 2, 'base': 0}, 'C': {'repeat': 3, 'sibling': 1, 'base': 0}, 'D': {'repeat': 3, 'sibling': 1, 'base': 0}, 'E': {'repeat': 5, 'sibling': 6, 'base': 0}}  repeats whose signature matched the original: 3 of 5
+
+   over 5 random streams:
+    seed         A | B                      C                      D                      E                      | sig-stable repeats
+     100     11534 | 1.50x  5 hits (5r 0s)  1.21x  3 hits (3r 0s)  1.19x  5 hits (3r 2s)  1.16x 10 hits (5r 5s)  | 3/5
+     101     12689 | 1.29x  5 hits (5r 0s)  1.34x  5 hits (5r 0s)  1.46x  6 hits (5r 1s)  1.14x  8 hits (5r 3s)  | 5/5
+     102     12887 | 1.17x  5 hits (5r 0s)  1.10x  4 hits (4r 0s)  1.18x  6 hits (5r 1s)  1.15x  9 hits (5r 4s)  | 4/5
+     103     16743 | 1.34x  5 hits (5r 0s)  1.15x  2 hits (2r 0s)  1.35x  4 hits (2r 2s)  1.29x  7 hits (5r 2s)  | 2/5
+     104     15400 | 1.30x  5 hits (5r 0s)  1.34x  5 hits (5r 0s)  1.32x  5 hits (5r 0s)  1.08x  7 hits (5r 2s)  | 5/5
+   pooled gain over A:  B 1.31x (25/100 hits)  C 1.22x (19/100 hits)  D 1.30x (26/100 hits)  E 1.17x (41/100 hits)
+   (11 hits out of 20 equal-cost tasks would by itself give 20/9 = 2.22x)
+
+real	0m6.000s
+user	0m5.979s
+sys	0m0.020s

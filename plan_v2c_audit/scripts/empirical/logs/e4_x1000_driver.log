@@ -1,0 +1,6 @@
+20:17:31 start map-adjacent MemAvailable=9435MiB
+20:19:18 start scan MemAvailable=12074MiB
+20:21:02 start shift-seq MemAvailable=16153MiB
+20:22:51 start best-shift MemAvailable=10151MiB
+20:24:38 start argmax-corr MemAvailable=14748MiB
+done

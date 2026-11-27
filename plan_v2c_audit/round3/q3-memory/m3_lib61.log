@@ -1,0 +1,48 @@
+# M1 on the 61-operator library: 60 tasks, 6 hand quotients; setup 3.1 s
+search 228.4 s; tasks by found size: {2: 1, 3: 5, 4: 25, 5: 29, 6: 0}
+
+plain search, summed over the 60 tasks: evaluations 10173844; classes below the hit size 594488 (345.5 MB python); classes held at the moment of the hit if every size is stored as it is enumerated 5356405 (3384.5 MB)
+plain, of those 594488 classes: 561342 (94%) have size N*-1 and are used only by unary operators at the last size; held as hashes only they leave 33146 full classes: 17.94x fewer full classes (geometric mean 19.97x)
+
+== tables from 2000 i.i.d. probes per operator; size unknown, restart per bound, peak over passes ==
+config  lost |      seen      bank       sum |  gain seen    (gmean) | MB python      gain |      evals       gain |    flips
+D-b        0 |    594488    248961    843449 |      1.00x      1.00x |     396.4     0.86x |    5436366      1.53x |        0
+D-c        0 |    248961    248961    497922 |      2.39x      2.32x |     224.0     1.47x |    5436366      1.53x |        0
+F-b        0 |    293623    248927    542550 |      2.02x      1.96x |     250.1     1.31x |     581770     14.60x |        0
+F-c        0 |    248927    248927    497854 |      2.39x      2.32x |     224.0     1.47x |     581770     14.60x |        0
+FL-b       0 |    293623     83693    377316 |      2.02x      1.96x |     216.3     1.49x |     581770     14.60x |        0
+FL-c       0 |     83693     83693    167386 |      7.10x      8.37x |      79.5     5.22x |     581770     14.60x |        0
+   F-c   with size N-1 held as hashes only: 33146 full classes + 215781 hashes; full classes vs plain (all sizes below N* full) 17.94x, vs plain with its own top size as hashes 1.00x (geometric means 19.97x, 1.00x)
+   FL-c  with size N-1 held as hashes only: 33146 full classes + 50547 hashes; full classes vs plain (all sizes below N* full) 17.94x, vs plain with its own top size as hashes 1.00x (geometric means 19.97x, 1.00x)
+   lost tasks: {}
+   bank of -b equals bank of -c in size on 60 of 60 tasks; evaluations equal on 60
+
+== tables from 200 i.i.d. probes per operator; size unknown, restart per bound, peak over passes ==
+config  lost |      seen      bank       sum |  gain seen    (gmean) | MB python      gain |      evals       gain |    flips
+D-b        0 |    594488    240480    834968 |      1.00x      1.00x |     394.5     0.87x |    5338242      1.56x |        0
+D-c        0 |    240480    240480    480960 |      2.47x      2.42x |     214.5     1.54x |    5338242      1.56x |        0
+F-b        2 |    286947    240368    527315 |      2.07x      2.01x |     243.4     1.34x |     551128     15.11x |        0
+F-c        2 |    240368    240368    480736 |      2.47x      2.42x |     214.4     1.54x |     551128     15.11x |        0
+FL-b       2 |    286947     83551    370498 |      2.07x      2.01x |     211.5     1.53x |     551128     15.11x |        0
+FL-c       2 |     83551     83551    167102 |      7.12x      8.50x |      79.4     5.32x |     551128     15.11x |        0
+   F-c   with size N-1 held as hashes only: 33146 full classes + 207222 hashes; full classes vs plain (all sizes below N* full) 17.94x, vs plain with its own top size as hashes 1.00x (geometric means 19.97x, 1.00x)
+   FL-c  with size N-1 held as hashes only: 33146 full classes + 50405 hashes; full classes vs plain (all sizes below N* full) 17.94x, vs plain with its own top size as hashes 1.00x (geometric means 19.97x, 1.00x)
+   lost tasks: {'F-b': ['Ma1', 'Ma2'], 'F-c': ['Ma1', 'Ma2'], 'FL-b': ['Ma1', 'Ma2'], 'FL-c': ['Ma1', 'Ma2']}
+   bank of -b equals bank of -c in size on 60 of 60 tasks; evaluations equal on 60
+
+== the review's eight tasks, 2,000 probes: classes held (dedupe table / bank) ==
+      N* |    plain | D-b             | D-c             | F-b             | F-c             | FL-c         
+T1     4 |      884 |     884/666     |     666/666     |     824/666     |     666/666     |    482/482   
+T3     5 |    16153 |   16153/6343    |    6343/6343    |    8424/6343    |    6343/6343    |   1144/1144  
+T4     5 |    34065 |   34065/23674   |   23674/23674   |   28906/23674   |   23674/23674   |  11116/11116 
+T5     3 |       41 |      41/41      |      41/41      |      41/41      |      41/41      |     27/27    
+T6     4 |      919 |     919/153     |     153/153     |     211/153     |     153/153     |     53/53    
+T8     4 |      918 |     918/170     |     170/170     |     221/170     |     170/170     |     61/61    
+T9     5 |    14936 |   14936/5828    |    5828/5828    |    6646/5828    |    5828/5828    |   1008/1008  
+T10    5 |    16317 |   16317/3937    |    3937/3937    |    4538/3935    |    3935/3935    |   1594/1594  
+
+total 228.5 s
+
+real	3m48.788s
+user	9m48.674s
+sys	0m4.063s

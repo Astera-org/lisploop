@@ -1,0 +1,95 @@
+====================================================================================================
+A.  ONE ROUTINE: residual(space, A_columns, B_column, qA, qB)   (30 lines)
+====================================================================================================
+
+(1) LAW (q = identity, residual 0)
+  B = x*y+x*z  given A = x*(y+z)                 H_cond=0.000 H_out=3.000 score=1.000 undet=0/8 groups=8 labels=8 dl=24.0 (free 30.7) identity table: True
+  B = x+1      given A = x                       H_cond=0.000 H_out=3.000 score=1.000 undet=0/8 groups=8 labels=8 dl=24.0 (free 30.7) identity table: False  <- zero residual, NOT a law
+  B = x*x      given A = x                       H_cond=0.000 H_out=2.750 score=1.000 undet=0/8 groups=8 labels=7 dl=22.5 (free 28.2) identity table: False  <- zero residual, NOT a law
+  B = x*x      given A = y (unrelated)           H_cond=0.000 H_out=2.750 score=1.000 undet=0/8 groups=8 labels=7 dl=22.5 (free 28.2) <- zero residual: the 8 y values are distinct
+  (dl = 22.5 bits against 28.2 unconditioned: with one row per key the "table" is as long as the column; zero conditional entropy is not compression)
+  term space {+ * neg} over x y z 0 1 to size 5: 1525 terms, 122 distinct columns
+  B = term name given A = its column             H_cond=5.019 H_out=10.575 score=0.525 undet=1525/1525 groups=122 labels=1525 dl=16242.5 (free 17551.0) 
+  -> 122 classes with more than one term (1525 terms in them): these are the laws; here a law is a POSITIVE residual (a collision), e.g.
+       (+ y (* x x))  =  (+ (* x x) y)
+       (+ x (* y y))  =  (+ (* y y) x)
+       (* x (+ y y))  =  (* y (+ x x))  =  (* (+ x x) y)
+
+(2) INVERSE (q = identity, A = (b, c), B = a; residual 0 on a sub-space)
+  c = (+ a b):  B = a given A = (b, c)           H_cond=0.000 H_out=3.700 score=1.000 undet=0/169 groups=169 labels=13 dl=625.4 (free 656.6) determined on 100.0%
+      total; witness search over {+ - * div} on b, c: (- c b) after 9 candidates
+  c = (* a b):  B = a given A = (b, c)           H_cond=0.285 H_out=3.700 score=0.923 undet=13/169 groups=157 labels=13 dl=636.7 (free 656.6) determined on 92.3%
+      guard: 10 of 13 pool guards valid; weakest: ['(not (= b 0))']
+      witness on the guarded rows: (div c b) after 17 candidates
+  c = (max a b):  B = a given A = (b, c)         H_cond=1.636 H_out=3.700 score=0.558 undet=90/169 groups=91 labels=13 dl=682.5 (free 656.6) determined on 46.7%
+      with a widened to -12..12 when grouping: determined on 46.2% of the same 169 rows (plan 8.2: 46.2%); the difference is a false dependency at the grid boundary
+      guard: 2 of 13 pool guards valid; weakest: ['(not (= b c))', '(< b c)']
+      witness on the guarded rows: c after 2 candidates
+  plan_v2c.md 8.2 reports for *: dependency on 92.3%, guard (not (= b 0)), inverse (div c b).
+
+(3) COMPUTED RESIDUAL (q = identity, A = candidate U, B = target Y)
+  Y = 2*x*x + 1;  near miss U = 2*x*x;  unrelated W = 2*y*y;  V = y + 100*x (a far-off term);  8 rows
+  as the review states it: B = Y given A = U     H_cond=0.000 H_out=2.406 score=1.000 undet=0/8 groups=6 labels=6 dl=17.9 (free 24.9) 
+                           B = Y given A = W     H_cond=1.000 H_out=2.406 score=0.584 undet=6/8 groups=4 labels=6 dl=21.7 (free 24.9) 
+                           B = Y given A = V     H_cond=0.000 H_out=2.406 score=1.000 undet=0/8 groups=8 labels=6 dl=20.7 (free 24.9) <- kernel code L(Y|V) = 131 bits
+  over 2,000 random 8-row spaces (x, y in -9..9) the identity group-by reports ZERO residual for U in 100%, for W in 4%, for V in 100%
+  -> with q = identity, "Y is a function of U" holds for any candidate whose values are distinct on the
+     rows; it does not measure nearness.  (On the 61-operator library: see b12_report.log, B1.)
+  after the type-specific difference R = Y - U (an operation OUTSIDE the routine):
+  B = Y - U, no A columns                        H_cond=0.000 H_out=0.000 score=0.000 undet=0/8 groups=1 labels=1 dl=0.0 (free 0.0) table {(): 1} -> propose (+ U 1)
+  B = Y - W, no A columns                        H_cond=2.750 H_out=2.750 score=0.000 undet=8/8 groups=1 labels=7 dl=28.2 (free 28.2) 
+  kernel integer code, row by row:  L(Y|U) = 32 bits,  L(Y|W) = 100 bits,  L(Y) alone = 97 bits
+  Y = (if (< x 0) 0 (* x x));  near miss U = x*x;  rows agree: [0, 0, 0, 0, 1, 1, 1, 1]
+  B = Y given A = U (identity)                   H_cond=0.000 H_out=1.549 score=1.000 undet=0/8 groups=8 labels=4 dl=16.0 (free 16.6) <- 0: says nothing of the split
+  B = agreement mask given A = (< x 0)           H_cond=0.000 H_out=1.000 score=1.000 undet=0/8 groups=2 labels=2 dl=3.7 (free 9.9) <- determined: a guard
+  proposals: ['(if (< x 0) ?else U)']
+  sequences: Y = add_k(3, sort(xs)), U = sort(xs), list lengths [3, 3, 2, 5, 6, 5, 4, 6]
+  B = Y - U (a list per row), no A, row space    H_cond=2.250 H_out=2.250 score=0.000 undet=8/8 groups=1 labels=5 dl=22.9 (free 22.9) <- not constant: the lengths differ
+  B = element of Y - U, no A, POSITION space     H_cond=0.000 H_out=0.000 score=0.000 undet=0/34 groups=1 labels=1 dl=0.0 (free 0.0) <- constant 3: propose add_k(3, U)
+  Y = tail(sort(xs)), U = sort(xs): element-wise Y - U is None (undefined: the lengths differ)
+
+(4) EXACT CONGRUENCE (q a quotient, residual 0)
+  c = (+ a b), q = mod 5 on a, b and c           H_cond=0.000 H_out=2.322 score=1.000 undet=0/625 groups=25 labels=5 dl=245.4 (free 1468.2) table of 25 entries, e.g. (3,4)->2
+  c = (- a b), q = mod 5 on a, b and c           H_cond=0.000 H_out=2.322 score=1.000 undet=0/625 groups=25 labels=5 dl=245.4 (free 1468.2) table of 25 entries, e.g. (3,4)->4
+  c = (* a b), q = mod 5 on a, b and c           H_cond=0.000 H_out=2.223 score=1.000 undet=0/625 groups=25 labels=5 dl=245.4 (free 1406.2) table of 25 entries, e.g. (3,4)->2
+  c = (div a b), q = mod 5 on a, b and c         H_cond=2.022 H_out=2.194 score=0.079 undet=625/625 groups=25 labels=5 dl=1463.0 (free 1388.4) not a congruence
+  c = (max a b), q = mod 5 on a, b and c         H_cond=0.777 H_out=2.313 score=0.664 undet=500/625 groups=25 labels=5 dl=721.0 (free 1462.4) not a congruence
+
+(5) SOFT VERB TABLE (q a quotient, residual positive)
+  dbl_all     q = parity                         H_cond=0.000 H_out=0.498 score=1.000 undet=0/2000 groups=4 labels=2 dl=20.2 (free 1002.6) same table as seqlib.Tables: True
+  dbl_all     q = sign                           H_cond=0.000 H_out=1.503 score=1.000 undet=0/2000 groups=4 labels=4 dl=54.3 (free 3022.5) same table as seqlib.Tables: True
+  dbl_all     q = caplen5                        H_cond=0.000 H_out=2.272 score=1.000 undet=0/2000 groups=6 labels=6 dl=120.9 (free 4569.7) same table as seqlib.Tables: True
+  inc_all     q = parity                         H_cond=0.000 H_out=1.440 score=1.000 undet=0/2000 groups=4 labels=4 dl=53.9 (free 2896.0) same table as seqlib.Tables: True
+  inc_all     q = sign                           H_cond=0.291 H_out=1.504 score=0.807 undet=1767/2000 groups=4 labels=4 dl=633.6 (free 3023.5) same table as seqlib.Tables: True
+  inc_all     q = caplen5                        H_cond=0.000 H_out=2.272 score=1.000 undet=0/2000 groups=6 labels=6 dl=120.9 (free 4569.7) same table as seqlib.Tables: True
+  filter_pos  q = parity                         H_cond=1.306 H_out=1.933 score=0.325 undet=1781/2000 groups=4 labels=4 dl=2662.5 (free 3882.6) same table as seqlib.Tables: True
+        E   -> {'E': 219}
+        EV  -> {'E': 80, 'EV': 130}
+        OD  -> {'E': 74, 'OD': 159}
+        M   -> {'E': 106, 'EV': 178, 'OD': 318, 'M': 736}
+  filter_pos  q = sign                           H_cond=0.000 H_out=0.794 score=1.000 undet=0/2000 groups=4 labels=2 dl=20.3 (free 1594.2) same table as seqlib.Tables: True
+  filter_pos  q = caplen5                        H_cond=1.748 H_out=2.465 score=0.291 undet=1781/2000 groups=6 labels=6 dl=3609.6 (free 4954.8) same table as seqlib.Tables: True
+  sort        q = parity                         H_cond=0.000 H_out=1.440 score=1.000 undet=0/2000 groups=4 labels=4 dl=53.9 (free 2896.0) same table as seqlib.Tables: True
+  sort        q = sign                           H_cond=0.000 H_out=1.503 score=1.000 undet=0/2000 groups=4 labels=4 dl=54.3 (free 3022.5) same table as seqlib.Tables: True
+  sort        q = caplen5                        H_cond=0.000 H_out=2.272 score=1.000 undet=0/2000 groups=6 labels=6 dl=120.9 (free 4569.7) same table as seqlib.Tables: True
+  map_adj_add q = parity                         H_cond=0.643 H_out=1.641 score=0.608 undet=1781/2000 groups=4 labels=4 dl=1338.9 (free 3298.0) same table as seqlib.Tables: True
+  map_adj_add q = sign                           H_cond=1.038 H_out=1.861 score=0.442 undet=1768/2000 groups=4 labels=4 dl=2128.3 (free 3737.8) same table as seqlib.Tables: True
+  map_adj_add q = caplen5                        H_cond=0.349 H_out=2.399 score=0.855 undet=897/2000 groups=6 labels=6 dl=817.7 (free 4822.1) same table as seqlib.Tables: True
+  take3       q = parity                         H_cond=0.541 H_out=1.677 score=0.678 undet=1338/2000 groups=4 labels=4 dl=1134.0 (free 3369.4) same table as seqlib.Tables: True
+  take3       q = sign                           H_cond=0.588 H_out=1.750 score=0.664 undet=1288/2000 groups=4 labels=4 dl=1229.0 (free 3515.4) same table as seqlib.Tables: True
+  take3       q = caplen5                        H_cond=0.000 H_out=1.443 score=1.000 undet=0/2000 groups=6 labels=4 dl=78.1 (free 2902.0) same table as seqlib.Tables: True
+
+====================================================================================================
+LINES OF CODE: the shared routine and what each regime needs beyond it
+====================================================================================================
+  shared routine residual()                     30 lines   all five regimes call it unchanged
+  (1) law: identity-table test                   2 lines   zero residual is "B is a function of A"; a law also needs the table to be the identity
+  (1) law: term enumerator                      15 lines   the group-by runs on the TERM space (key = whole column), not on the row space
+  (2) inverse: guard from a pool                 9 lines   plus the guard pool itself (enumerated Boolean terms) and the grid design (padding)
+  (2) inverse: witness search                   18 lines   the routine returns the table (b,c)->a, i.e. the specification; the term is a search
+  (3) residual: Y minus U                        6 lines   type-specific; undefined when list lengths differ
+  (3) residual: to the position space            3 lines   a constant offset on lists of varying length is constant only per position
+  (3) residual: integer code                     5 lines   L(R) is a code length on values, not an entropy of a group-by
+  (3) residual: guard for the disagreeing rows   9 lines   plus the guard pool; then a separate problem for ?else
+  (4) congruence                                 0 lines   nothing; choosing q is a separate search (verify-quotients: 19 s)
+  (5) soft verb table                            0 lines   nothing; probe design (count, edge cases) is outside the routine

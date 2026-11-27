@@ -1,0 +1,177 @@
+=== D. LIFT BY CHANGE OF BASE (seed 1, 12 examples, max size 10, budget 30000000 cand, greedy-nested-split nil, occam nil) ===
+grammar (+ - * mod max min at = < and not call)
+goal inverses nil
+task                   ok  cand       cells       ms      held-out  program
+reverse                yes      86434     4408134  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+                          [B'=51 rows, 25636 classes; split-scan cells 332669]
+shift-seq (spec)       yes       9175      367000  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+                          [split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 2737 classes; split-scan cells 106286]
+rotate-left k          yes     217920     8716800  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (mod (+ i k) (len xs)))))
+                          [B'=40 rows, 67348 classes; split-scan cells 384926]
+map-adjacent +         yes     291481    11656468  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs i) (at xs (+ i 1)))))
+                          [B'=40 rows, 123344 classes; split-scan cells 5989096]
+map-adjacent -         yes     703183    28124548  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (- (at xs (+ i 1)) (at xs i))))
+                          [B'=40 rows, 226787 classes; split-scan cells 5958296]
+running-sum            yes       4771      243321  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+                          [split: chosen term matches 40 of 51 rows; best-matching class (guard or not) 40; B'=51 rows, 1322 classes; split-scan cells 63725]
+scan + init a (spec)   yes       9369      374760  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+                          [split: chosen term matches 29 of 40 rows; best-matching class (guard or not) 29; B'=40 rows, 2833 classes; split-scan cells 108044]
+scan 2*acc-x init a    yes     304540    13095220  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+                          [split: chosen term matches 32 of 43 rows; best-matching class (guard or not) 32; B'=43 rows, 78518 classes; split-scan cells 3789331]
+positions (spec)       yes          3         123  MS 200/200   (tabulate (len xs) (lambda (i prev) (+ i k)))
+                          [B'=41 rows, 10 classes; split-scan cells 246]
+positions-of v         yes       8332      105552  MS 200/200   (where xs (lambda (j x) (= x v)))
+                          [no shape term; where: B''=36 rows; split-scan cells 0]
+filter x>k             yes       7002       94588  MS 200/200   (select xs (lambda (j x) (< k x)))
+                          [no shape term; select: B''=50 rows; split-scan cells 0]
+take k                 yes        267        8629  MS 200/200   (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+                          [B'=37 rows, 87 classes; split-scan cells 222]
+zip-add                yes      30265      967480  MS 200/200   (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at xs i) (at zs i))))
+                          [B'=32 rows, 13102 classes; split-scan cells 451940]
+map-adjacent f (spec)  yes    8458580   262214099  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+                          [B'=31 rows, 2306343 classes; split-scan cells 53210260]
+scan f init a (spec)   yes      14186      496510  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+                          [split: chosen term matches 26 of 35 rows; best-matching class (guard or not) 26; B'=35 rows, 5407 classes; split-scan cells 461991]
+--- D negatives: scalar-output folds ---
+sum                    base-change only (size<=9): FAIL  cand 68220 cells 818640 ms MS
+                       + fold form: (fold 0 (lambda (acc x) (+ acc x)) xs) held-out 200/200  cand 2 cells 98 step-applications 1348 ms MS [21 fold programs tried, 6 step classes]
+alternating sum        base-change only (size<=9): FAIL  cand 68220 cells 818640 ms MS
+                       + fold form: (foldr 0 (lambda (acc x) (- x acc)) xs) held-out 200/200  cand 21 cells 1029 step-applications 1514 ms MS [51 fold programs tried, 13 step classes]
+horner base 2          base-change only (size<=9): FAIL  cand 68220 cells 818640 ms MS
+                       + fold form: (fold 0 (lambda (acc x) (+ acc (+ acc x))) xs) held-out 200/200  cand 147 cells 7203 step-applications 2028 ms MS [157 fold programs tried, 68 step classes]
+=== D. LIFT BY CHANGE OF BASE (seed 1, 12 examples, max size 10, budget 30000000 cand, greedy-nested-split t, occam nil) ===
+grammar (+ - * mod max min at = < and not call)
+goal inverses nil
+task                   ok  cand       cells       ms      held-out  program
+reverse                yes      86434     4408134  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+                          [B'=51 rows, 25636 classes; split-scan cells 636821]
+shift-seq (spec)       yes       9175      367000  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+                          [split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 2737 classes; split-scan cells 106286]
+rotate-left k          yes       9175      367000  MS 106/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) (if (< k (len xs)) (at xs (mod prev k)) k))))
+                          [split: chosen term matches 9 of 10 rows; best-matching class (guard or not) 9; split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 2749 classes; split-scan cells 129569]
+map-adjacent +         yes     291481    11656468  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs i) (at xs (+ i 1)))))
+                          [B'=40 rows, 123344 classes; split-scan cells 12754808]
+map-adjacent -         yes     703183    28124548  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (- (at xs (+ i 1)) (at xs i))))
+                          [B'=40 rows, 226787 classes; split-scan cells 12814796]
+running-sum            yes       4771      243321  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+                          [split: chosen term matches 40 of 51 rows; best-matching class (guard or not) 40; B'=51 rows, 1322 classes; split-scan cells 63725]
+scan + init a (spec)   yes       9369      374760  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+                          [split: chosen term matches 29 of 40 rows; best-matching class (guard or not) 29; B'=40 rows, 2833 classes; split-scan cells 108044]
+scan 2*acc-x init a    yes     304540    13095220  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+                          [split: chosen term matches 32 of 43 rows; best-matching class (guard or not) 32; B'=43 rows, 78518 classes; split-scan cells 4514067]
+positions (spec)       yes          3         123  MS 200/200   (tabulate (len xs) (lambda (i prev) (+ i k)))
+                          [B'=41 rows, 10 classes; split-scan cells 246]
+positions-of v         yes       8332      105552  MS 200/200   (where xs (lambda (j x) (= x v)))
+                          [no shape term; where: B''=36 rows; split-scan cells 0]
+filter x>k             yes       7002       94588  MS 200/200   (select xs (lambda (j x) (< k x)))
+                          [no shape term; select: B''=50 rows; split-scan cells 0]
+take k                 yes        267        8629  MS 200/200   (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+                          [B'=37 rows, 87 classes; split-scan cells 222]
+zip-add                yes      30265      967480  MS 200/200   (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at xs i) (at zs i))))
+                          [B'=32 rows, 13102 classes; split-scan cells 994452]
+map-adjacent f (spec)  yes    3106729    96306718  MS 117/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= i (- (len xs) (call f (len xs) i))) (- (at xs (+ i 1)) (at xs i)) (if (< (at xs 0) 0) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs (+ i 1)))))))
+                          [split: chosen term matches 10 of 14 rows; best-matching class (guard or not) 10; split: chosen term matches 17 of 31 rows; best-matching class (guard or not) 17; B'=31 rows, 716812 classes; split-scan cells 48450192]
+scan f init a (spec)   yes      14186      496510  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+                          [split: chosen term matches 26 of 35 rows; best-matching class (guard or not) 26; B'=35 rows, 5407 classes; split-scan cells 785655]
+=== D. LIFT BY CHANGE OF BASE (seed 1, 12 examples, max size 10, budget 12000000 cand, greedy-nested-split nil, occam nil) ===
+grammar (+ - * neg div mod max min = < and not if at call)
+goal inverses nil
+task                   ok  cand       cells       ms      held-out  program
+reverse                yes     197071    10050621  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+                          [B'=51 rows, 53377 classes; split-scan cells 915821]
+shift-seq (spec)       yes      12753      510120  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+                          [split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 3965 classes; split-scan cells 178465]
+rotate-left k          yes     506796    20271840  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (mod (+ i k) (len xs)))))
+                          [B'=40 rows, 142050 classes; split-scan cells 1096850]
+map-adjacent +         yes    1037437    41494708  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs i) (at xs (+ i 1)))))
+                          [B'=40 rows, 342162 classes; split-scan cells 22971366]
+map-adjacent -         yes    1761194    70444988  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (- (at xs (+ i 1)) (at xs i))))
+                          [B'=40 rows, 523756 classes; split-scan cells 23085580]
+running-sum            yes       6574      335274  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+                          [split: chosen term matches 40 of 51 rows; best-matching class (guard or not) 40; B'=51 rows, 1874 classes; split-scan cells 101429]
+scan + init a (spec)   yes      12980      519200  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+                          [split: chosen term matches 29 of 40 rows; best-matching class (guard or not) 29; B'=40 rows, 4070 classes; split-scan cells 184823]
+scan 2*acc-x init a    yes     528675    22733025  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+                          [split: chosen term matches 32 of 43 rows; best-matching class (guard or not) 32; B'=43 rows, 144899 classes; split-scan cells 7796672]
+positions (spec)       yes          9         369  MS 200/200   (tabulate (len xs) (lambda (i prev) (+ i k)))
+                          [B'=41 rows, 15 classes; split-scan cells 451]
+positions-of v         yes       8373      107028  MS 200/200   (where xs (lambda (j x) (= x v)))
+                          [no shape term; where: B''=36 rows; split-scan cells 0]
+filter x>k             yes       7043       96638  MS 200/200   (select xs (lambda (j x) (< k x)))
+                          [no shape term; select: B''=50 rows; split-scan cells 0]
+take k                 yes        386       13032  MS 200/200   (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+                          [B'=37 rows, 130 classes; split-scan cells 407]
+zip-add                yes      69933     2236856  MS 200/200   (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at xs i) (at zs i))))
+                          [B'=32 rows, 25766 classes; split-scan cells 1232756]
+map-adjacent f (spec)  yes   12000100   372001219  MS 117/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (< i (call f 1 (neg i))) (- (at xs (+ i 1)) (at xs i)) (if (< (at xs 0) 0) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs (+ i 1)))))))
+                          [split: chosen term matches 10 of 14 rows; best-matching class (guard or not) 10; split: chosen term matches 17 of 31 rows; best-matching class (guard or not) 17; B'=31 rows, 3045037 classes; split-scan cells 273117563]
+scan f init a (spec)   yes      49010     1715350  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+                          [split: chosen term matches 26 of 35 rows; best-matching class (guard or not) 26; B'=35 rows, 14212 classes; split-scan cells 959791]
+=== D. LIFT BY CHANGE OF BASE (seed 1, 12 examples, max size 10, budget 12000000 cand, greedy-nested-split nil, occam nil) ===
+grammar (+ - * neg div mod max min = < and not if at call)
+goal inverses ((+  MS - t) (+ 1 - t) (- 0 + nil) (- 1 - nil))
+task                   ok  cand       cells       ms      held-out  program
+reverse                yes     197071    10050621  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+                          [B'=51 rows, 53377 classes; split-scan cells 1068617]
+shift-seq (spec)       yes      12753      510120  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+                          [split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 3965 classes; split-scan cells 302945]
+rotate-left k          yes     506796    20271840  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (mod (+ i k) (len xs)))))
+                          [B'=40 rows, 142050 classes; split-scan cells 1428210]
+map-adjacent +         yes       6489      256788  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs (+ i 1)) (at xs i))))
+                          [B'=40 rows, 1811 classes; split-scan cells 22560]
+map-adjacent -         yes       6489      256788  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs (+ i 1)) (neg (at xs i)))))
+                          [B'=40 rows, 1807 classes; split-scan cells 23120]
+running-sum            yes       6574      335274  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+                          [split: chosen term matches 40 of 51 rows; best-matching class (guard or not) 40; B'=51 rows, 1874 classes; split-scan cells 164465]
+scan + init a (spec)   yes      12980      519200  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+                          [split: chosen term matches 29 of 40 rows; best-matching class (guard or not) 29; B'=40 rows, 4070 classes; split-scan cells 325783]
+scan 2*acc-x init a    yes     528675    22733025  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+                          [split: chosen term matches 32 of 43 rows; best-matching class (guard or not) 32; B'=43 rows, 144899 classes; split-scan cells 10700376]
+positions (spec)       yes          6         246  MS 200/200   (tabulate (len xs) (lambda (i prev) (+ k i)))
+                          [B'=41 rows, 12 classes; split-scan cells 41]
+positions-of v         yes       8373      107028  MS 200/200   (where xs (lambda (j x) (= x v)))
+                          [no shape term; where: B''=36 rows; split-scan cells 0]
+filter x>k             yes       7043       96638  MS 200/200   (select xs (lambda (j x) (< k x)))
+                          [no shape term; select: B''=50 rows; split-scan cells 0]
+take k                 yes        386       13032  MS 200/200   (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+                          [B'=37 rows, 130 classes; split-scan cells 1739]
+zip-add                yes        397       11704  MS 200/200   (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at zs i) (at xs i))))
+                          [B'=32 rows, 139 classes; split-scan cells 3104]
+map-adjacent f (spec)  yes   12000100   372001219  MS 117/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (< i (call f 1 (neg i))) (- (at xs (+ i 1)) (at xs i)) (if (< (at xs 0) 0) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs (+ i 1)))))))
+                          [split: chosen term matches 10 of 14 rows; best-matching class (guard or not) 10; split: chosen term matches 17 of 31 rows; best-matching class (guard or not) 17; B'=31 rows, 3045037 classes; split-scan cells 302485971]
+scan f init a (spec)   yes      49010     1715350  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+                          [split: chosen term matches 26 of 35 rows; best-matching class (guard or not) 26; B'=35 rows, 14212 classes; split-scan cells 1515451]
+=== D. LIFT BY CHANGE OF BASE (seed 1, 12 examples, max size 10, budget 30000000 cand, greedy-nested-split nil, occam nil) ===
+grammar (+ - * mod max min at = < and not call)
+goal inverses ((+  MS - t) (+ 1 - t) (- 0 + nil) (- 1 - nil))
+task                   ok  cand       cells       ms      held-out  program
+reverse                yes      86434     4408134  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+                          [B'=51 rows, 25636 classes; split-scan cells 429365]
+shift-seq (spec)       yes       9175      367000  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+                          [split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 2737 classes; split-scan cells 213486]
+rotate-left k          yes     217920     8716800  MS 200/200   (tabulate (len xs) (lambda (i prev) (at xs (mod (+ i k) (len xs)))))
+                          [B'=40 rows, 67348 classes; split-scan cells 582846]
+map-adjacent +         yes       4791      188868  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs (+ i 1)) (at xs i))))
+                          [B'=40 rows, 1283 classes; split-scan cells 15280]
+map-adjacent -         yes       4791      188868  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs (+ i 1)) (- 0 (at xs i)))))
+                          [B'=40 rows, 1279 classes; split-scan cells 18440]
+running-sum            yes       4771      243321  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+                          [split: chosen term matches 40 of 51 rows; best-matching class (guard or not) 40; B'=51 rows, 1322 classes; split-scan cells 117989]
+scan + init a (spec)   yes       9369      374760  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+                          [split: chosen term matches 29 of 40 rows; best-matching class (guard or not) 29; B'=40 rows, 2833 classes; split-scan cells 228204]
+scan 2*acc-x init a    yes     304540    13095220  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+                          [split: chosen term matches 32 of 43 rows; best-matching class (guard or not) 32; B'=43 rows, 78518 classes; split-scan cells 5925743]
+positions (spec)       yes          0           0  MS 200/200   (tabulate (len xs) (lambda (i prev) (+ k i)))
+                          [B'=41 rows, 7 classes; split-scan cells 41]
+positions-of v         yes       8332      105552  MS 200/200   (where xs (lambda (j x) (= x v)))
+                          [no shape term; where: B''=36 rows; split-scan cells 0]
+filter x>k             yes       7002       94588  MS 200/200   (select xs (lambda (j x) (< k x)))
+                          [no shape term; select: B''=50 rows; split-scan cells 0]
+take k                 yes        267        8629  MS 200/200   (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+                          [B'=37 rows, 87 classes; split-scan cells 962]
+zip-add                yes        350       10200  MS 200/200   (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at zs i) (at xs i))))
+                          [B'=32 rows, 124 classes; split-scan cells 2304]
+map-adjacent f (spec)  yes    8458580   262214099  MS 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+                          [B'=31 rows, 2306343 classes; split-scan cells 60286072]
+scan f init a (spec)   yes      14186      496510  MS 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+                          [split: chosen term matches 26 of 35 rows; best-matching class (guard or not) 26; B'=35 rows, 5407 classes; split-scan cells 811011]

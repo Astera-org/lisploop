@@ -1,0 +1,27 @@
+FOLDL        trace-complete(orig)   rows= 9 budget=   350,000 -> SOUND    work=    81,333 nodes= 3 unresolved-rows-in-nodes=(0 3 0)
+FOLDL        black-box I/O          rows= 9 budget=   350,000 -> IMPOSTOR work=    67,366 nodes= 3 unresolved-rows-in-nodes=(0 0 NIL)
+    (:APP (:OP :IF :INT) (:APP (:OP := (:SEQ :INT)) (:LIT (:SEQ :INT) NIL) (:VAR 0 (:SEQ :INT))) (:VAR 1 :INT) (:APP (:OP :CODE-EVAL (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:APP (:OP :FOLDL (:CODE ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) :INT)) (:APP (:OP :TAIL :INT) (:VAR 0 (:SEQ :INT))) (:VAR 1 :INT) (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT))) (:APP (:OP :AT (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 0))))
+FOLDL        black-box I/O          rows= 9 budget= 3,500,000 -> IMPOSTOR work=    67,366 nodes= 3 unresolved-rows-in-nodes=(0 0 NIL)
+    (:APP (:OP :IF :INT) (:APP (:OP := (:SEQ :INT)) (:LIT (:SEQ :INT) NIL) (:VAR 0 (:SEQ :INT))) (:VAR 1 :INT) (:APP (:OP :CODE-EVAL (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:APP (:OP :FOLDL (:CODE ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) :INT)) (:APP (:OP :TAIL :INT) (:VAR 0 (:SEQ :INT))) (:VAR 1 :INT) (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT))) (:APP (:OP :AT (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 0))))
+FOLDL        black-box I/O          rows= 9 budget=35,000,000 -> IMPOSTOR work=    67,366 nodes= 3 unresolved-rows-in-nodes=(0 0 NIL)
+    (:APP (:OP :IF :INT) (:APP (:OP := (:SEQ :INT)) (:LIT (:SEQ :INT) NIL) (:VAR 0 (:SEQ :INT))) (:VAR 1 :INT) (:APP (:OP :CODE-EVAL (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT)) (:APP (:OP :FOLDL (:CODE ((0 :SEQ :INT) (1 . :INT) (2 :CODE ((0 . :INT) (1 . :INT)) :INT)) :INT)) (:APP (:OP :TAIL :INT) (:VAR 0 (:SEQ :INT))) (:VAR 1 :INT) (:VAR 2 (:CODE ((0 . :INT) (1 . :INT)) :INT))) (:APP (:OP :AT (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT :INT 0))))
+SCAN         trace-complete(orig)   rows= 9 budget=   350,000 -> SOUND    work=   263,277 nodes= 5 unresolved-rows-in-nodes=(0 4 0 0 0)
+SCAN         black-box I/O          rows= 9 budget=   350,000 -> no       work=   350,000 nodes= 3 unresolved-rows-in-nodes=(0 0 0)
+SCAN         black-box I/O          rows= 9 budget= 3,500,000 -> no       work= 3,500,000 nodes= 3 unresolved-rows-in-nodes=(0 0 0)
+SCAN         black-box I/O          rows= 9 budget=35,000,000 -> no       work=35,000,000 nodes= 3 unresolved-rows-in-nodes=(0 0 0)
+POSITIONS    trace-complete(orig)   rows=11 budget=   350,000 -> SOUND    work=    46,196 nodes= 4 unresolved-rows-in-nodes=(0 0 NIL NIL)
+POSITIONS    black-box I/O          rows=11 budget=   350,000 -> SOUND    work=    86,789 nodes= 4 unresolved-rows-in-nodes=(0 6 NIL NIL)
+POSITIONS    black-box I/O          rows=11 budget= 3,500,000 -> SOUND    work=    86,789 nodes= 4 unresolved-rows-in-nodes=(0 6 NIL NIL)
+POSITIONS    black-box I/O          rows=11 budget=35,000,000 -> SOUND    work=    86,789 nodes= 4 unresolved-rows-in-nodes=(0 6 NIL NIL)
+BEST-SHIFT   trace-complete(orig)   rows= 9 budget=   350,000 -> SOUND    work=   196,019 nodes= 4 unresolved-rows-in-nodes=(0 0 4 0)
+BEST-SHIFT   black-box I/O          rows= 9 budget=   350,000 -> no       work=   350,000 nodes= 3 unresolved-rows-in-nodes=(0 7 0)
+BEST-SHIFT   black-box I/O          rows= 9 budget= 3,500,000 -> no       work= 3,500,000 nodes= 3 unresolved-rows-in-nodes=(0 7 0)
+BEST-SHIFT   black-box I/O          rows= 9 budget=35,000,000 -> no       work=35,000,000 nodes= 3 unresolved-rows-in-nodes=(0 7 0)
+SHIFT-SEQ    trace-complete(orig)   rows=13 budget=   350,000 -> SOUND    work=    99,009 nodes= 3 unresolved-rows-in-nodes=(0 1 NIL)
+SHIFT-SEQ    black-box I/O          rows=13 budget=   350,000 -> SOUND    work=   100,739 nodes= 3 unresolved-rows-in-nodes=(0 3 NIL)
+SHIFT-SEQ    black-box I/O          rows=13 budget= 3,500,000 -> SOUND    work=   100,739 nodes= 3 unresolved-rows-in-nodes=(0 3 NIL)
+SHIFT-SEQ    black-box I/O          rows=13 budget=35,000,000 -> SOUND    work=   100,739 nodes= 3 unresolved-rows-in-nodes=(0 3 NIL)
+
+real	0m15.096s
+user	0m14.930s
+sys	0m0.160s

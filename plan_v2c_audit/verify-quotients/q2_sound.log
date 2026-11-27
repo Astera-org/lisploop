@@ -1,0 +1,64 @@
+# Q2 soundness: 300 random 3-4 operator tasks, 25 configurations; setup 39.9 s
+search time 349.8 s; tasks by found size: {2: 7, 3: 30, 4: 112, 5: 151, 6: 0}
+
+configuration                                        entries count=1  MISS  miss%   AUD cand_rnd   store store_j1
+factored 6, iid M=100                                   1596     248    34  11.3%   134   17.57x   2.63x    9.95x
+factored 6, iid M=300                                   1692     139     4   1.3%    48   16.94x   2.50x    8.89x
+factored 6, iid M=1000                                  1728      63     1   0.3%    13   17.04x   2.51x    8.81x
+factored 6, iid M=3000                                  1734      37     1   0.3%    10   17.02x   2.51x    8.81x
+factored 6, iid M=10000                                 1736      22     0   0.0%     1   17.04x   2.52x    8.80x
+factored 6, iid M=30000                                 1736       1     0   0.0%     1   17.04x   2.52x    8.80x
+factored 6, enriched M=100                              1655     237    23   7.7%    86   18.03x   2.65x    9.59x
+factored 6, enriched M=300                              1732      98     5   1.7%    35   16.84x   2.49x    8.80x
+factored 6, enriched M=1000                             1736      57     0   0.0%     3   17.05x   2.52x    8.80x
+factored 6, enriched M=3000                             1736      26     0   0.0%     0   17.06x   2.52x    8.80x
+factored 6, enriched M=10000                            1736       3     0   0.0%     0   17.03x   2.52x    8.80x
+factored 6, enriched M=30000                            1736       0     0   0.0%     0   17.06x   2.52x    8.80x
+factored 6, iid M=300, guard(30,1)                       894       0     1   0.3%     9   12.57x   2.10x    7.75x
+factored 6, iid M=3000, guard(30,1)                     1621       0     1   0.3%     9   16.87x   2.49x    8.81x
+factored 6, iid M=30000, guard(30,1)                    1725       0     0   0.0%     1   17.04x   2.52x    8.80x
+merged sign*parity*order, iid M=3000                    4260    3063    24   8.0%    95   23.38x   5.17x    9.58x
+merged sign*parity*order, iid M=3000, guard(30,1)        707       0     1   0.3%     8    7.61x   2.60x    3.37x
+merged sign*parity*order, iid M=30000                   7082    5659     4   1.3%    21   21.37x   4.96x    9.02x
+merged sign*parity*order, iid M=30000, guard(30,1)      2096       0     0   0.0%     2   12.75x   2.92x    6.01x
+merged sign*parity*order, iid M=300000                  8537    6145     0   0.0%     2   21.22x   5.00x    9.06x
+merged sign*parity*order, iid M=300000, guard(30,1)     3703       0     0   0.0%     0   17.53x   4.54x    8.87x
+merged3 + 3 length, enriched M=3000                     5804    3722    15   5.0%    67   27.73x   5.29x   10.40x
+merged3 + 3 length, enriched M=3000, guard(30,1)        1662       0     0   0.0%    11   17.07x   3.08x    6.77x
+merged3 + 3 length, enriched M=30000                    8531    6880     1   0.3%    10   27.85x   5.31x   10.51x
+merged3 + 3 length, enriched M=30000, guard(30,1)       3172       0     0   0.0%     1   22.45x   3.90x   10.40x
+
+examples of misses (configuration: task, reference, first missing transitions (operator, quotient, abstract args, abstract result, row)):
+  factored 6, iid M=100                        S8    dbl_all(filter_odd(inc_all(dec_all(xs))))            ["('filter_odd', 'caplen5', (2,), 2, 6)"]
+  factored 6, iid M=100                        S10   filter_even(take3(init(xs)))                         ["('filter_even', 'caplen5', (2,), 0, 0)"]
+  factored 6, iid M=100                        S33   filter_even(zip_sub(ys, evens_idx(xs)))              ["('filter_even', 'caplen5', (2,), 2, 5)", "('zip_sub', 'parity', (3, 1), 1, 5)", "('zip_sub', 'order', (0, 1), 2, 4)"]
+  factored 6, iid M=300                        S60   head(half_all(init(xs)))                             ["('head', 'sign', (1,), 0, 7)"]
+  factored 6, iid M=300                        S124  take3(sort_desc(abs_all(shift1(xs))))                ["('take3', 'order', (2,), 3, 4)"]
+  factored 6, iid M=300                        S224  map_adj_mul(shift1(map_adj_max(sq_all(xs))))         ["('map_adj_mul', 'order', (2,), 2, 1)", "('map_adj_mul', 'order', (2,), 2, 2)", "('map_adj_mul', 'order', (2,), 2, 3)"]
+  factored 6, iid M=1000                       S124  take3(sort_desc(abs_all(shift1(xs))))                ["('take3', 'order', (2,), 3, 4)"]
+  factored 6, iid M=3000                       S124  take3(sort_desc(abs_all(shift1(xs))))                ["('take3', 'order', (2,), 3, 4)"]
+  factored 6, enriched M=100                   S33   filter_even(zip_sub(ys, evens_idx(xs)))              ["('filter_even', 'caplen5', (2,), 2, 5)", "('zip_sub', 'parity', (3, 1), 1, 5)", "('zip_sub', 'order', (2, 2), 2, 3)"]
+  factored 6, enriched M=100                   S38   take_n(count_even(inc_all(xs)), xs)                  ["('take_n', 'parity', (1, 3), 2, 3)", "('take_n', 'order', (0, 0), 1, 2)", "('take_n', 'caplen5', (0, 5), 1, 1)"]
+  factored 6, enriched M=100                   S60   head(half_all(init(xs)))                             ["('head', 'sign', (1,), 0, 7)"]
+  factored 6, enriched M=300                   S65   running_sum(zip_mul(xs, evens_idx(ys)))              ["('running_sum', 'order', (2,), 0, 6)"]
+  factored 6, enriched M=300                   S97   running_sum(dec_all(running_min(xs)))                ["('running_sum', 'order', (2,), 0, 2)"]
+  factored 6, enriched M=300                   S101  running_sum(running_min(tail(xs)))                   ["('running_sum', 'order', (2,), 0, 3)"]
+  factored 6, iid M=300, guard(30,1)           S60   head(half_all(init(xs)))                             ["('head', 'sign', (1,), 0, 7)"]
+  factored 6, iid M=3000, guard(30,1)          S124  take3(sort_desc(abs_all(shift1(xs))))                ["('take3', 'order', (2,), 3, 4)"]
+  merged sign*parity*order, iid M=3000         S26   dec_all(map_adj_add(sq_all(filter_neg(xs))))         ["('map_adj_add', 'sign*parity*order', ((2, 2, 2),), (2, 1, 2), 3)"]
+  merged sign*parity*order, iid M=3000         S28   odds_idx(shift1(drop2(xs)))                          ["('shift1', 'sign*parity*order', ((1, 1, 0),), (1, 1, 2), 5)"]
+  merged sign*parity*order, iid M=3000         S37   zip_add(xs, filter_even(abs_all(xs)))                ["('zip_add', 'sign*parity*order', ((3, 3, 0), (2, 1, 1)), (2, 1, 1), 0)", "('zip_add', 'sign*parity*order', ((3, 3, 0), (2, 1, 0)), (2, 3, 2), 2)", "('zip_add', 'sign*parity*order', ((1, 3, 1), (2, 1, 3)), (0, 1, 3), 3)"]
+  merged sign*parity*order, iid M=3000, guard(30,1) S93   map_adj_add(map_adj_add(running_max(dec_all(xs))))   ["('map_adj_add', 'sign*parity*order', ((1, 3, 1),), (1, 2, 1), 2)"]
+  merged sign*parity*order, iid M=30000        S37   zip_add(xs, filter_even(abs_all(xs)))                ["('zip_add', 'sign*parity*order', ((1, 3, 1), (2, 1, 3)), (0, 1, 3), 3)", "('zip_add', 'sign*parity*order', ((1, 3, 1), (2, 1, 3)), (0, 1, 3), 5)"]
+  merged sign*parity*order, iid M=30000        S124  take3(sort_desc(abs_all(shift1(xs))))                ["('take3', 'sign*parity*order', ((2, 3, 2),), (2, 2, 3), 4)"]
+  merged sign*parity*order, iid M=30000        S186  zip_sub(filter_even(tail(ys)), xs)                   ["('zip_sub', 'sign*parity*order', ((1, 1, 2), (2, 3, 0)), (1, 3, 2), 1)"]
+  merged3 + 3 length, enriched M=3000          S37   zip_add(xs, filter_even(abs_all(xs)))                ["('zip_add', 'sign*parity*order', ((3, 3, 0), (2, 1, 1)), (2, 1, 1), 0)", "('zip_add', 'sign*parity*order', ((3, 3, 0), (2, 1, 1)), (2, 3, 1), 1)", "('zip_add', 'sign*parity*order', ((3, 3, 0), (2, 1, 0)), (2, 3, 2), 2)"]
+  merged3 + 3 length, enriched M=3000          S38   take_n(count_even(inc_all(xs)), xs)                  ["('take_n', 'sign*parity*order', ((1, 1, 0), (3, 3, 0)), (1, 1, 2), 6)"]
+  merged3 + 3 length, enriched M=3000          S63   zip_min(ys, filter_neg(neg_all(xs)))                 ["('zip_min', 'sign*parity*order', ((3, 3, 2), (1, 3, 2)), (1, 3, 2), 0)"]
+  merged3 + 3 length, enriched M=30000         S186  zip_sub(filter_even(tail(ys)), xs)                   ["('zip_sub', 'sign*parity*order', ((1, 1, 1), (2, 3, 1)), (1, 3, 2), 5)"]
+  NOTE factored 6, iid M=100: misses with a clean reference path (lost via an equivalent shorter program): ['S177']
+  NOTE merged sign*parity*order, iid M=3000: misses with a clean reference path (lost via an equivalent shorter program): ['S260']
+
+real	5m49.955s
+user	59m53.871s
+sys	0m2.919s

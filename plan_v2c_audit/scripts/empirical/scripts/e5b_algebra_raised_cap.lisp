@@ -1,0 +1,43 @@
+;;;; E5b: same as e5_algebra.lisp part B, but with the solver-discovery work limit raised from its
+;;;; default +completion-work+ (= 100,000,000, laws.lisp) to 20,000,000,000, so that the
+;;;; "Observation cutoff" assertion does not hide the scaling beyond body-bound 24/28.
+;;;;   sbcl --dynamic-space-size 4000 --script e5b_algebra_raised_cap.lisp KERNEL-ROOT CPU-SECONDS-PER-CELL
+(defvar *root* (pathname (second sb-ext:*posix-argv*)))
+(load (merge-pathnames "load.lisp" *root*))
+(load (merge-pathnames "milestones/load.lisp" *root*))
+(in-package #:lisploop)
+(setf *print-pretty* nil)
+(defun secs (ticks) (/ ticks (float internal-time-units-per-second 1d0)))
+(defun compact (sexp)
+  (cond ((atom sexp) sexp)
+        ((eq :app (first sexp)) (cons (second (second sexp)) (mapcar #'compact (cddr sexp))))
+        ((eq :var (first sexp)) (intern (format nil "X~D" (second sexp)) :keyword))
+        ((eq :lit (first sexp)) (let ((v (third sexp))) (if (and (listp v) v) (list 'quote v) (or v "NIL"))))
+        (t sexp)))
+(defparameter *limit* 20000000000)
+(let ((cpu-cap (parse-integer (third sb-ext:*posix-argv*))))
+  (format t "E5b kernel=~A +completion-work+=~D raised-work-limit=~D~%" cl-user::*root* +completion-work+ *limit*)
+  (dolist (domain (list (gf 7) :int))
+    (let ((prev nil)
+          (values (if (eq domain :int) '(-4 -3 -2 -1 0 1 2 3 4) (loop for i below (second domain) collect i))))
+      (loop for body-bound in '(16 20 22 24 26 28 30 32 34 36 38 40)
+            do (let* ((c0 (get-internal-run-time))
+                      (relation (observe-arithmetic-relation domain :- values :work-limit *limit*))
+                      (discovery (handler-case
+                                     (discover-arithmetic-solver relation 1 values
+                                                                 :literals (if (eq domain :int) '(-1 0 1) :all)
+                                                                 :body-bound body-bound :work-limit *limit*)
+                                   (error (c) c)))
+                      (cpu (secs (- (get-internal-run-time) c0))))
+                 (if (typep discovery 'error)
+                     (format t "~8A -/1 body-bound=~2D ERROR ~A cpu_s=~,2F~%" domain body-bound discovery cpu)
+                     (let* ((obs (solve-discovery-observations discovery))
+                            (work (+ (ledger-total (solve-discovery-ledger discovery)) (ledger-total (observation-job-ledger obs)))))
+                       (format t "~8A -/1 body-bound=~2D work=~13D x=~6,2F records=~8D behaviours=~7D rows=~D cpu_s=~8,2F work/s=~,0F witness=~S~%"
+                               domain body-bound work (if prev (/ work prev 1d0) 0)
+                               (length (observation-job-records obs)) (length (observation-job-buckets obs))
+                               (length (frame-rows (solve-discovery-frame discovery)))
+                               cpu (/ work cpu) (compact (ast->sexp (solve-discovery-witness discovery))))
+                       (setf prev work)))
+                 (finish-output)
+                 (when (> cpu cpu-cap) (return)))))))

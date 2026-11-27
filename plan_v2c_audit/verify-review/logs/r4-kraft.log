@@ -1,0 +1,1664 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN VALID-INPUTS-P
+;     (LISPLOOP:VALID-TYPE-P (CDR LISPLOOP::INPUT))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:VALID-TYPE-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     VALID-TYPE-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN VALID-SORT-P
+;     (EVERY #'LISPLOOP:VALID-TYPE-P (SECOND SORT))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:VALID-TYPE-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     VALID-TYPE-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN MATCH-TYPE-PATTERN
+;     (LISPLOOP::EXPRESSION-CODE-P TYPE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EXPRESSION-CODE-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     EXPRESSION-CODE-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN OPERATOR-ENCODED-TYPE
+;     (LISPLOOP:AT-CONTAINER-TYPE TYPE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AT-CONTAINER-TYPE
+; 
+; compilation unit finished
+;   Undefined function:
+;     AT-CONTAINER-TYPE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN HOMOGENEOUS-TUPLE-TYPE-P
+;     (EVERY #'LISPLOOP:VALID-TYPE-P (REST TYPE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:VALID-TYPE-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     VALID-TYPE-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN NORMALIZE-AT-CONTAINER-TYPE
+;     (ASSERT (LISPLOOP:VALID-TYPE-P TYPE))
+; --> LET WHEN IF 
+; ==>
+;   (LISPLOOP:VALID-TYPE-P #:TEMP0)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:VALID-TYPE-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     VALID-TYPE-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN EXPRESSION-RESPECTS-AVAILABILITY-P
+;     (LISPLOOP:FREE-VARS LISPLOOP::EXPRESSION)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:FREE-VARS
+; 
+; compilation unit finished
+;   Undefined function:
+;     FREE-VARS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN VALUE-WORK
+;     (LISPLOOP:SYNTAX-WORK LISPLOOP::VALUE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:SYNTAX-WORK
+; 
+; compilation unit finished
+;   Undefined function:
+;     SYNTAX-WORK
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN VALUE-BIT-SIZE
+;     (LISPLOOP:BODY-SIZE LISPLOOP::VALUE (LISPLOOP:CODE-INPUTS TYPE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:BODY-SIZE
+
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::VALUE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+
+;     (LISPLOOP::OPERATOR-NAME-BIT-SIZE (LISPLOOP::AST-META-ID LISPLOOP::META))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::OPERATOR-NAME-BIT-SIZE
+
+;     (LISPLOOP::TYPE-BIT-SIZE (LISPLOOP::AST-META-TYPE LISPLOOP::META))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::TYPE-BIT-SIZE
+; 
+; compilation unit finished
+;   Undefined functions:
+;     BODY-SIZE ENSURE-AST-META OPERATOR-NAME-BIT-SIZE TYPE-BIT-SIZE
+;   caught 4 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN OP
+;     (LISPLOOP::OPERATOR-BIT-SIZE LISPLOOP::KNAME LISPLOOP::NORM-TYPE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::OPERATOR-BIT-SIZE
+; 
+; compilation unit finished
+;   Undefined function:
+;     OPERATOR-BIT-SIZE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN VALUE-P
+;     (LISPLOOP:EXPRESSION-TYPE LISPLOOP::VALUE (LISPLOOP:CODE-INPUTS TYPE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:EXPRESSION-TYPE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EXPRESSION-TYPE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN PROVABLY-TOTAL-CODE-ARG-P
+;     (LISPLOOP:APP-OF-P LISPLOOP::TUPLE-ARG :TUPLE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:APP-OF-P
+
+;     (LISPLOOP:AST-TYPE LISPLOOP::B)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-TYPE
+
+;     (LISPLOOP:AST-VALUE LISPLOOP::TEMPLATE-ARG)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-VALUE
+
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+
+;     (LISPLOOP:LIT-P LISPLOOP::TEMPLATE-ARG)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:LIT-P
+
+;     (LISPLOOP:PROVABLY-TOTAL-P (LISPLOOP:AST-VALUE LISPLOOP::TEMPLATE-ARG))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:PROVABLY-TOTAL-P
+; 
+; compilation unit finished
+;   Undefined functions:
+;     APP-OF-P AST-TYPE AST-VALUE ENSURE-AST-META LIT-P PROVABLY-TOTAL-P
+;   caught 6 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN TAIL-CHAIN
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN LENGTH-CHAIN
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN LITERAL-INTEGER
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN NUMERIC-VARIABLE-ID
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN CONDITION-FACTS
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN MINIMUM-LENGTH
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN NONZERO-EXPR-P
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN OPERATOR-STEP-TOTAL-P
+;     (LISPLOOP:AST-TYPE (FIRST LISPLOOP::ARGUMENTS))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-TYPE
+
+;     (LISPLOOP:AST-VALUE (SECOND LISPLOOP::ARGUMENTS))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-VALUE
+
+;     (LISPLOOP:LIT-P (SECOND LISPLOOP::ARGUMENTS))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:LIT-P
+; 
+; compilation unit finished
+;   Undefined functions:
+;     AST-TYPE AST-VALUE LIT-P
+;   caught 3 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN EMPTY-SEQUENCE-GUARD-VAR-ID
+;     (LISPLOOP:ENSURE-AST-META VARIABLE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN EXPR-TOTAL-UNDER-P
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN COMPUTE-APP-META
+;     (MAPCAR #'LISPLOOP:ENSURE-AST-META LISPLOOP::ARGUMENTS)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN SELF-CALL-CHANGES
+;     (LISPLOOP:ENSURE-AST-META LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ENSURE-AST-META
+; 
+; compilation unit finished
+;   Undefined function:
+;     ENSURE-AST-META
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN ANALYZE-FUNCTION-BODY-TOTALITY
+;     (LISPLOOP:APP-OF-P LISPLOOP::ARG :CODE-SUBST)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:APP-OF-P
+
+;     (LISPLOOP:AST-ID LISPLOOP::ARG)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-ID
+
+;     (LISPLOOP:AST-KIND LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-KIND
+
+;     (LISPLOOP:AST-TYPE LISPLOOP::B)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-TYPE
+
+;     (LISPLOOP:AST-VALUE (SECOND LISPLOOP::ARG))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AST-VALUE
+
+;     (LISPLOOP::BIND-INPUTS
+;      (LISPLOOP:CODE-INPUTS (LISPLOOP:AST-TYPE (FIRST LISPLOOP::ARGS)))
+;      (REST LISPLOOP::ARGS))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::BIND-INPUTS
+
+;     (LISPLOOP:INSTANTIATE (LISPLOOP:AST-VALUE (FIRST LISPLOOP::ARGS))
+;      (LISPLOOP::BIND-INPUTS
+;       (LISPLOOP:CODE-INPUTS (LISPLOOP:AST-TYPE (FIRST LISPLOOP::ARGS)))
+;       (REST LISPLOOP::ARGS))
+;      :VAR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:INSTANTIATE
+
+;     (LISPLOOP:LIT-P (SECOND LISPLOOP::ARG))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:LIT-P
+
+;     (LISPLOOP:PROVABLY-TOTAL-P (LISPLOOP:AST-VALUE (SECOND LISPLOOP::ARG)))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:PROVABLY-TOTAL-P
+
+;     (LISPLOOP:VAR-P LISPLOOP::ARG)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:VAR-P
+; 
+; compilation unit finished
+;   Undefined functions:
+;     APP-OF-P AST-ID AST-KIND AST-TYPE AST-VALUE BIND-INPUTS INSTANTIATE LIT-P PROVABLY-TOTAL-P VAR-P
+;   caught 10 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN PROVABLY-TOTAL-GIVEN-P
+;     (LISPLOOP:PROVABLY-TOTAL-P CONDITION)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:PROVABLY-TOTAL-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROVABLY-TOTAL-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/ast.lisp
+; in: DEFUN BODY-SIZE
+;     (LISPLOOP:EXPRESSION-TYPE LISPLOOP::EXPRESSION LISPLOOP::NORM-INPUTS)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:EXPRESSION-TYPE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EXPRESSION-TYPE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/knowledge.lisp
+; in: DEFUN CLEAR-KNOWLEDGE-LIBRARY
+;     (LISPLOOP:CLEAR-FUNCTION-DEFINITIONS)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:CLEAR-FUNCTION-DEFINITIONS
+; 
+; compilation unit finished
+;   Undefined function:
+;     CLEAR-FUNCTION-DEFINITIONS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/knowledge.lisp
+; in: DEFUN DEFINE-FUNCTION
+;     (LISPLOOP::OPERATOR-BIT-SIZE LISPLOOP::KNAME LISPLOOP::CTYPE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::OPERATOR-BIT-SIZE
+; 
+; compilation unit finished
+;   Undefined function:
+;     OPERATOR-BIT-SIZE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/codec.lisp
+; in: DEFUN EMIT-OPERATOR-NAME
+;     (LISPLOOP::EMIT-POSITIVE (- LISPLOOP::INDEX 14) LISPLOOP::EMIT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EMIT-POSITIVE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EMIT-POSITIVE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/codec.lisp
+; in: DEFUN EMIT-OPERATOR-CODE
+;     (LISPLOOP::EMIT-BIT-TYPE LISPLOOP::ENCODED-TYPE LISPLOOP::EMIT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EMIT-BIT-TYPE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EMIT-BIT-TYPE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/codec.lisp
+; in: DEFUN TYPE-BIT-SIZE
+;     #'LISPLOOP::EMIT-BIT-TYPE
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EMIT-BIT-TYPE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EMIT-BIT-TYPE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/codec.lisp
+; in: DEFUN EMIT-BIT-TYPE
+;     (LISPLOOP::EMIT-BIT-INPUTS (LISPLOOP:CODE-INPUTS TYPE) LISPLOOP::EMIT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EMIT-BIT-INPUTS
+; 
+; compilation unit finished
+;   Undefined function:
+;     EMIT-BIT-INPUTS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/codec.lisp
+; in: DEFUN EMIT-BIT-VALUE
+;     (LISPLOOP::EMIT-BIT-EXPRESSION LISPLOOP::VALUE (LISPLOOP:CODE-INPUTS TYPE)
+;      (LISPLOOP:CODE-SORT TYPE) LISPLOOP::EMIT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EMIT-BIT-EXPRESSION
+; 
+; compilation unit finished
+;   Undefined function:
+;     EMIT-BIT-EXPRESSION
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/vm.lisp
+; in: DEFUN START-EVALUATION
+;     (LISPLOOP::SETTLED-EVALUATION LISPLOOP::EXPRESSION LISPLOOP::INPUTS VALUES)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SETTLED-EVALUATION
+; 
+; compilation unit finished
+;   Undefined function:
+;     SETTLED-EVALUATION
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/vm.lisp
+; in: DEFUN MATCH-CODE
+;     (LISPLOOP:MATCH-PATTERN (LISPLOOP::EXPRESSION-PATTERN LISPLOOP::PATTERN)
+;      LISPLOOP::SOURCE LISPLOOP::SCOPE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:MATCH-PATTERN
+; 
+; compilation unit finished
+;   Undefined function:
+;     MATCH-PATTERN
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/vm.lisp
+; in: DEFUN COMPILE-AST-FN
+;     (LISPLOOP::CONTAINS-CALL-TO-P LISPLOOP::EXPRESSION :CODE-EVAL)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::CONTAINS-CALL-TO-P
+
+;     (LISPLOOP::EXPRESSION-CLOSURE LISPLOOP::EXPRESSION LISPLOOP::INPUTS)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EXPRESSION-CLOSURE
+; 
+; compilation unit finished
+;   Undefined functions:
+;     CONTAINS-CALL-TO-P EXPRESSION-CLOSURE
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/persistence.lisp
+; in: DEFUN SERIALIZE-KNOWLEDGE-LIBRARY
+;     (DEFUN LISPLOOP:SERIALIZE-KNOWLEDGE-LIBRARY
+;            (
+;             &OPTIONAL (LISPLOOP::LIBRARY LISPLOOP:*KNOWLEDGE-LIBRARY*)
+;             &KEY LISPLOOP::METADATA)
+;       "Serialize LIBRARY into a self-contained homoiconic S-expression packet."
+;       (APPEND
+;        (LIST :KNOWLEDGE-LIBRARY :ENCODING-VERSION LISPLOOP:+ENCODING-VERSION+
+;              :VERSION (LISPLOOP:KNOWLEDGE-LIBRARY-VERSION LISPLOOP::LIBRARY))
+;        (WHEN LISPLOOP::METADATA (LIST :METADATA (COPY-TREE LISPLOOP::METADATA)))
+;        (LIST :FUNCTION-NAMES
+;              (COPY-LIST
+;               (LISPLOOP:KNOWLEDGE-LIBRARY-FUNCTION-NAMES LISPLOOP::LIBRARY))
+;              :DE-NOVO-COUNTER
+;              (LISPLOOP::KNOWLEDGE-LIBRARY-DE-NOVO-COUNTER LISPLOOP::LIBRARY)
+;              :ENTRY-COUNTER
+;              (LISPLOOP::KNOWLEDGE-LIBRARY-ENTRY-COUNTER LISPLOOP::LIBRARY)
+;              :ENTRIES
+;              (MAPCAR #'LISPLOOP:KNOWLEDGE-ENTRY->SEXP
+;                      (LISPLOOP:KNOWLEDGE-LIBRARY-ENTRIES LISPLOOP::LIBRARY)))))
+; 
+; caught STYLE-WARNING:
+;   &OPTIONAL and &KEY found in the same lambda list: (&OPTIONAL
+;                                                      (LIBRARY
+;                                                       *KNOWLEDGE-LIBRARY*)
+;                                                      &KEY METADATA)
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/persistence.lisp
+; in: DEFUN SAVE-KNOWLEDGE-LIBRARY
+;     (DEFUN LISPLOOP:SAVE-KNOWLEDGE-LIBRARY
+;            (PATHNAME
+;             &OPTIONAL (LISPLOOP::LIBRARY LISPLOOP:*KNOWLEDGE-LIBRARY*)
+;             &KEY LISPLOOP::METADATA)
+;       "Write LIBRARY as a canonical homoiconic S-expression file at PATHNAME."
+;       (WITH-OPEN-FILE
+;           (STREAM PATHNAME :DIRECTION :OUTPUT :IF-EXISTS :SUPERSEDE
+;            :IF-DOES-NOT-EXIST :CREATE)
+;         (WITH-STANDARD-IO-SYNTAX
+;          (LET (# #)
+;            (PRIN1 # STREAM)
+;            (TERPRI STREAM))))
+;       PATHNAME)
+; 
+; caught STYLE-WARNING:
+;   &OPTIONAL and &KEY found in the same lambda list: (PATHNAME &OPTIONAL
+;                                                               (LIBRARY
+;                                                                *KNOWLEDGE-LIBRARY*)
+;                                                               &KEY METADATA)
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/requirements.lisp
+; in: DEFUN FOLD-WALK
+;     (LISPLOOP::FOLD-APPLICATION LISPLOOP::STATE LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::FOLD-APPLICATION
+
+;     (LISPLOOP::FOLD-IF LISPLOOP::STATE LISPLOOP::EXPR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::FOLD-IF
+; 
+; compilation unit finished
+;   Undefined functions:
+;     FOLD-APPLICATION FOLD-IF
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/requirements.lisp
+; in: DEFUN FOLD-IF
+;     (LISPLOOP::SIMPLIFY-CONJUNCTION LISPLOOP::STATE LISPLOOP::REBUILT CONDITION
+;      LISPLOOP::YES)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SIMPLIFY-CONJUNCTION
+; 
+; compilation unit finished
+;   Undefined function:
+;     SIMPLIFY-CONJUNCTION
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/requirements.lisp
+; in: DEFUN FOLD-APPLICATION
+;     (LISPLOOP::APPLY-FOLD-RULE LISPLOOP::STATE LISPLOOP::REBUILT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::APPLY-FOLD-RULE
+
+;     (LISPLOOP:PATTERN-HAS-HOLES-P LISPLOOP::REBUILT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:PATTERN-HAS-HOLES-P
+
+;     (LISPLOOP::TRY-UNFOLD-CALL LISPLOOP::STATE LISPLOOP::REBUILT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::TRY-UNFOLD-CALL
+; 
+; compilation unit finished
+;   Undefined functions:
+;     APPLY-FOLD-RULE PATTERN-HAS-HOLES-P TRY-UNFOLD-CALL
+;   caught 3 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN DERIVE-ROW
+;     (LISPLOOP:MAKE-ROW :KEY (COPY-TREE (LISPLOOP:ROW-KEY LISPLOOP:ROW)) :KNOWN
+;      LISPLOOP::KNOWN :REQUIREMENT LISPLOOP::REQUIREMENT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:MAKE-ROW
+; 
+; compilation unit finished
+;   Undefined function:
+;     MAKE-ROW
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN DERIVE-FRAME
+;     (LISPLOOP:MAKE-FRAME
+;      (LISPLOOP:MAKE-SCHEMA :DOMAIN LISPLOOP::DOMAIN :INPUTS LISPLOOP::INPUTS
+;                            :TARGET LISPLOOP::TARGET :LOOKUP-P LISPLOOP::LOOKUP-P
+;                            :AVAILABILITY
+;                            (REMOVE-IF-NOT
+;                             (LAMBDA (LISPLOOP::ENTRY) (ASSOC # LISPLOOP::INPUTS))
+;                             (LISPLOOP:SCHEMA-AVAILABILITY LISPLOOP:SCHEMA))
+;                            :TARGET-AVAILABILITY ...)
+;      LISPLOOP::ROWS :PAIRS LISPLOOP::PAIRS :ANCHORS LISPLOOP::ANCHORS :EDGES
+;      LISPLOOP::EFFECTIVE-EDGES :METRIC LISPLOOP::EFFECTIVE-METRIC)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:MAKE-FRAME
+; 
+; compilation unit finished
+;   Undefined function:
+;     MAKE-FRAME
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN SIMPLE-FRAME
+;     (LISPLOOP:MAKE-FRAME
+;      (LISPLOOP:MAKE-SCHEMA :INPUTS LISPLOOP::INPUTS :TARGET TYPE :LOOKUP-P
+;                            LISPLOOP::LOOKUP-P)
+;      (LOOP LISPLOOP::FOR (LISPLOOP::KNOWN
+;                           LISPLOOP::TARGET) LISPLOOP::IN LISPLOOP::EXAMPLES
+;            LISPLOOP::FOR LISPLOOP::KEY LISPLOOP::FROM 0
+;            LISPLOOP::COLLECT (LISPLOOP:MAKE-ROW :KEY LISPLOOP::KEY :KNOWN
+;                               LISPLOOP::KNOWN :REQUIREMENT
+;                               (LISPLOOP:SET-REQUIREMENT TYPE
+;                                (LIST LISPLOOP::TARGET)))))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:MAKE-FRAME
+
+;     (LISPLOOP:MAKE-ROW :KEY LISPLOOP::KEY :KNOWN LISPLOOP::KNOWN :REQUIREMENT
+;      (LISPLOOP:SET-REQUIREMENT TYPE (LIST LISPLOOP::TARGET)))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:MAKE-ROW
+
+;     (LISPLOOP:SET-REQUIREMENT TYPE (LIST LISPLOOP::TARGET))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:SET-REQUIREMENT
+; 
+; compilation unit finished
+;   Undefined functions:
+;     MAKE-FRAME MAKE-ROW SET-REQUIREMENT
+;   caught 3 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN PROBE-FRAME
+;     (LISPLOOP:MAKE-FRAME
+;      (LISPLOOP:MAKE-SCHEMA :INPUTS LISPLOOP::INPUTS :TARGET TYPE)
+;      (LOOP LISPLOOP::FOR LISPLOOP::KNOWN LISPLOOP::IN LISPLOOP::KNOWN-VALUES
+;            LISPLOOP::FOR LISPLOOP::KEY LISPLOOP::FROM 0
+;            LISPLOOP::COLLECT (LISPLOOP:MAKE-ROW :KEY LISPLOOP::KEY :KNOWN
+;                               (COPY-TREE LISPLOOP::KNOWN) :REQUIREMENT
+;                               (LISPLOOP:LIT :BOOL T))))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:MAKE-FRAME
+
+;     (LISPLOOP:MAKE-ROW :KEY LISPLOOP::KEY :KNOWN (COPY-TREE LISPLOOP::KNOWN)
+;      :REQUIREMENT (LISPLOOP:LIT :BOOL T))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:MAKE-ROW
+; 
+; compilation unit finished
+;   Undefined functions:
+;     MAKE-FRAME MAKE-ROW
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN FRAME-CONFLICT-P
+;     (LISPLOOP::JOIN-SAME-INPUT LISPLOOP::JOINTS LISPLOOP:ROW LISPLOOP::FOLDED
+;      :LEDGER LISPLOOP:LEDGER :BUDGET LISPLOOP::BUDGET)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::JOIN-SAME-INPUT
+; 
+; compilation unit finished
+;   Undefined function:
+;     JOIN-SAME-INPUT
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN EVALUATE-ROW-BINDINGS
+;     (LISPLOOP::DEFAULT-VALUE-FOR-TYPE
+;      (LISPLOOP:EXPRESSION-TYPE LISPLOOP::EXPRESSION LISPLOOP::INPUTS))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::DEFAULT-VALUE-FOR-TYPE
+; 
+; compilation unit finished
+;   Undefined function:
+;     DEFAULT-VALUE-FOR-TYPE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN METRIC-INVARIANT-UNDER-DECODER-P
+;     (LISPLOOP::EVAL-EXPR-VALUE LISPLOOP::METRIC LISPLOOP::SCOPE
+;      (LIST LISPLOOP::A LISPLOOP::B) LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EVAL-EXPR-VALUE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EVAL-EXPR-VALUE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN ORACLE-CALL-SUBTERM-P
+;     (LISPLOOP::COLLECT-EXPRESSION-OPERATORS LISPLOOP::EXPRESSION)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::COLLECT-EXPRESSION-OPERATORS
+; 
+; compilation unit finished
+;   Undefined function:
+;     COLLECT-EXPRESSION-OPERATORS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN PROBE-FRAME-COORDINATES
+;     (DEFUN LISPLOOP:PROBE-FRAME-COORDINATES
+;            (LISPLOOP:FRAME LISPLOOP::DECODER LISPLOOP::CHILD-ID
+;             LISPLOOP::CHILD-TYPE
+;             &OPTIONAL LISPLOOP::BINDINGS LISPLOOP:LEDGER
+;             &KEY (LISPLOOP::COORDINATES '((0) (1))) (LISPLOOP::BUDGET 4000))
+;       #<(SIMPLE-ARRAY CHARACTER
+;          (221)) Project sequence/grid requirements of FRAME at COORDINATES (each a list of integer indices,
+;   e.g. '((0) (1)) for 1D or '((0 0) (0 1) (1 0) (1 1)) for 2D) through DECODER without unfolding
+;   the full sequ... {121628E52F}>
+;       (LET* ((LISPLOOP::RAW
+;               (LISPLOOP:PULLBACK-FRAME LISPLOOP:FRAME LISPLOOP::DECODER
+;                                        LISPLOOP::CHILD-ID LISPLOOP::CHILD-TYPE
+;                                        LISPLOOP::BINDINGS LISPLOOP:LEDGER))
+;              (LISPLOOP::CODE-P (LISPLOOP:CODE-TYPE-P LISPLOOP::CHILD-TYPE))
+;              (LISPLOOP::RET
+;               (IF LISPLOOP::CODE-P
+;                   #
+;                   LISPLOOP::CHILD-TYPE))
+;              (LISPLOOP::TARGET-TYPE (LISPLOOP:SCHEMA-TARGET #))
+;              (LISPLOOP::PROBED-TARGET NIL)
+;              (LISPLOOP::PROBED-ROWS NIL))
+;         (LABELS ((LISPLOOP::PROJECT-COORD #
+;                    #))
+;           (DOLIST (LISPLOOP:ROW #) (MULTIPLE-VALUE-BIND # # # #))
+;           (LISPLOOP:MAKE-FRAME
+;            (LISPLOOP:MAKE-SCHEMA :DOMAIN # :INPUTS # :TARGET #)
+;            (NREVERSE LISPLOOP::PROBED-ROWS)))))
+; 
+; caught STYLE-WARNING:
+;   &OPTIONAL and &KEY found in the same lambda list: (FRAME DECODER CHILD-ID
+;                                                      CHILD-TYPE &OPTIONAL
+;                                                      BINDINGS LEDGER &KEY
+;                                                      (COORDINATES
+;                                                       (QUOTE ((0) (1))))
+;                                                      (BUDGET 4000))
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN SUPPORT-FRAME
+;     (LISPLOOP:OBSERVATION-SCOPE-FRAME LISPLOOP::SCOPE-OR-FRAME)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:OBSERVATION-SCOPE-FRAME
+; 
+; compilation unit finished
+;   Undefined function:
+;     OBSERVATION-SCOPE-FRAME
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN PARTITION-ROWS
+;     (LISPLOOP:QUOTIENT-VALUES LABELS LISPLOOP:LEDGER :PARTITION)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:QUOTIENT-VALUES
+; 
+; compilation unit finished
+;   Undefined function:
+;     QUOTIENT-VALUES
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN CORRECTION
+;     (LISPLOOP::CODE-EDIT LISPLOOP::PREDICTED LISPLOOP::TARGET TYPE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::CODE-EDIT
+; 
+; compilation unit finished
+;   Undefined function:
+;     CODE-EDIT
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN CODE-EDIT
+;     (LISPLOOP:ANTI-UNIFY (LIST LISPLOOP::PREDICTED LISPLOOP::TARGET)
+;      LISPLOOP::SCOPE NIL :OPERATOR-HOLES-P NIL)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ANTI-UNIFY
+; 
+; compilation unit finished
+;   Undefined function:
+;     ANTI-UNIFY
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN PRICED-CORRECTION
+;     (LISPLOOP:METRIC-DELTA LISPLOOP::DECODER LISPLOOP::PREDICTED LISPLOOP::TARGET
+;      TYPE LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:METRIC-DELTA
+; 
+; compilation unit finished
+;   Undefined function:
+;     METRIC-DELTA
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/frame.lisp
+; in: DEFUN SELECT-CLOSEST-WITNESS
+;     (DEFUN LISPLOOP:SELECT-CLOSEST-WITNESS
+;            (LISPLOOP::PREDICTED VALUES TYPE
+;             &OPTIONAL (LISPLOOP::PREDICTED-P T)
+;             &KEY LISPLOOP::METRIC LISPLOOP::DECODERS LISPLOOP:LEDGER)
+;       #<(SIMPLE-ARRAY CHARACTER
+;          (253)) Select the witness W in VALUES minimizing (correction-bit-size predicted W type predicted-p),
+;   breaking ties by first appearance in VALUES. METRIC, DECODERS and LEDGER are those of
+;   `priced-correction`.... {12183CA41F}>
+;       (ASSERT (AND (LISTP VALUES) VALUES))
+;       (LET (LISPLOOP::BEST-WITNESS LISPLOOP::BEST-BITS LISPLOOP::BEST-PACKET)
+;         (DOLIST
+;             (LISPLOOP:CANDIDATE VALUES
+;                                 (VALUES LISPLOOP::BEST-WITNESS
+;                                         LISPLOOP::BEST-BITS
+;                                         LISPLOOP::BEST-PACKET))
+;           (MULTIPLE-VALUE-BIND (LISPLOOP::PACKET LISPLOOP::BITS)
+;               (LISPLOOP:PRICED-CORRECTION LISPLOOP::PREDICTED LISPLOOP:CANDIDATE
+;                                           TYPE :PREDICTED-P LISPLOOP::PREDICTED-P
+;                                           :METRIC LISPLOOP::METRIC :DECODERS
+;                                           LISPLOOP::DECODERS :LEDGER
+;                                           LISPLOOP:LEDGER)
+;             (WHEN # #)))))
+; 
+; caught STYLE-WARNING:
+;   &OPTIONAL and &KEY found in the same lambda list: (PREDICTED VALUES TYPE
+;                                                      &OPTIONAL (PREDICTED-P T)
+;                                                      &KEY METRIC DECODERS LEDGER)
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/enumerate.lisp
+; in: DEFUN ENTER-RULE-SETUP
+;     (LISPLOOP::REWRITE-LIBRARY-SETUP-WORK LISPLOOP::LIBRARY)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::REWRITE-LIBRARY-SETUP-WORK
+; 
+; compilation unit finished
+;   Undefined function:
+;     REWRITE-LIBRARY-SETUP-WORK
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/enumerate.lisp
+; in: DEFUN START-SEARCH
+;     (LISPLOOP:AS-REWRITE-LIBRARY LISPLOOP::LAWS :DOMAIN
+;      (LISPLOOP:LANGUAGE-DOMAIN LISPLOOP:LANGUAGE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AS-REWRITE-LIBRARY
+; 
+; compilation unit finished
+;   Undefined function:
+;     AS-REWRITE-LIBRARY
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/enumerate.lisp
+; in: DEFUN REWRITE-FILTER-STEP
+;     (LISPLOOP:ADVANCE-REWRITING (LISPLOOP::SEARCH-JOB-REWRITING LISPLOOP::JOB)
+;      LISPLOOP::BUDGET LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ADVANCE-REWRITING
+
+;     (LISPLOOP:REWRITING-STATUS LISPLOOP::STATE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:REWRITING-STATUS
+
+;     (LISPLOOP:REWRITING-VALUE LISPLOOP::STATE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:REWRITING-VALUE
+
+;     (LISPLOOP:START-REWRITING (LISPLOOP::SEARCH-JOB-EXPRESSION LISPLOOP::JOB)
+;      (LISPLOOP:LANGUAGE-INPUTS (LISPLOOP::SEARCH-JOB-LANGUAGE LISPLOOP::JOB))
+;      (LISPLOOP::SEARCH-JOB-LIBRARY LISPLOOP::JOB))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:START-REWRITING
+; 
+; compilation unit finished
+;   Undefined functions:
+;     ADVANCE-REWRITING REWRITING-STATUS REWRITING-VALUE START-REWRITING
+;   caught 4 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/enumerate.lisp
+; in: DEFUN CLASSIFY-OBSERVATION-BUCKET
+;     (LISPLOOP:METRIC-DECODERS (LISPLOOP:OBSERVATION-BUCKET-TYPE LISPLOOP::BUCKET))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:METRIC-DECODERS
+; 
+; compilation unit finished
+;   Undefined function:
+;     METRIC-DECODERS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/unify.lisp
+; in: DEFUN PATTERN-HAS-HOLES-P
+;     (LISPLOOP:PATTERN-HOLES LISPLOOP:TERM)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:PATTERN-HOLES
+; 
+; compilation unit finished
+;   Undefined function:
+;     PATTERN-HOLES
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/unify.lisp
+; in: DEFUN ANTI-UNIFY
+;     (DEFUN LISPLOOP:ANTI-UNIFY
+;            (LISPLOOP::SOURCES
+;             &OPTIONAL LISPLOOP::INPUTS LISPLOOP:LEDGER
+;             &KEY (LISPLOOP::OPERATOR-HOLES-P T) LISPLOOP::KEEP-APPLICATION-P)
+;       #<(SIMPLE-ARRAY CHARACTER
+;          (589)) Aligned typed syntactic LGG. Equal disagreement tuples reuse the same hole.
+;   An incompatible operator signature falls back to a whole-expression hole if the
+;   result types agree. Distinct result types ha... {12043A0EBF}>
+;       (ASSERT LISPLOOP::SOURCES)
+;       (LET ((LISPLOOP::DISAGREEMENTS (MAKE-HASH-TABLE :TEST #'EQUAL))
+;             (LISPLOOP::NEXT-ID 0))
+;         (LABELS ((LISPLOOP::SAME-P #
+;                    #)
+;                  (LISPLOOP::DISAGREEMENT #
+;                    #)
+;                  (LISPLOOP::GENERALIZE #
+;                    #
+;                    #))
+;           (LET (#)
+;             (VALUES LISPLOOP::PATTERN #)))))
+; 
+; caught STYLE-WARNING:
+;   &OPTIONAL and &KEY found in the same lambda list: (SOURCES &OPTIONAL INPUTS
+;                                                      LEDGER &KEY
+;                                                      (OPERATOR-HOLES-P T)
+;                                                      KEEP-APPLICATION-P)
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/unify.lisp
+; in: DEFUN AU-SUBSTITUTIONS-FRAME
+;     (LISPLOOP:PATTERN-HOLES LISPLOOP::PATTERN)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:PATTERN-HOLES
+; 
+; compilation unit finished
+;   Undefined function:
+;     PATTERN-HOLES
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/unify.lisp
+; in: DEFUN ABSTRACT-OVER-SUBTERMS
+;     (DEFUN LISPLOOP:ABSTRACT-OVER-SUBTERMS
+;            (LISPLOOP::EXPR LISPLOOP::SUBTERMS LISPLOOP::INPUTS
+;             &OPTIONAL LISPLOOP:LEDGER
+;             &KEY LISPLOOP::SELF-NAME)
+;       #<(SIMPLE-ARRAY CHARACTER
+;          (321)) Replace each subterm A_j in SUBTERMS within EXPR by positional variable `(var j type_j)`
+;   and package the resulting closed body as `(lit (:code ((0 . type_0) ...) ret-type) body)`.
+;   Returns (VALUES code... {1204EBA70F}>
+;       (LET* ((LISPLOOP::NORM-INPUTS (LISPLOOP:INPUT-ALIST LISPLOOP::INPUTS))
+;              (LISPLOOP::RET-TYPE
+;               (LISPLOOP:EXPRESSION-TYPE LISPLOOP::EXPR LISPLOOP::NORM-INPUTS))
+;              (LISPLOOP::EFF-SELF (WHEN LISPLOOP::SELF-NAME #))
+;              (LISPLOOP::CODE-IN
+;               (LOOP LISPLOOP::FOR LISPLOOP::SUB LISPLOOP::IN LISPLOOP::SUBTERMS
+;                     LISPLOOP::FOR LISPLOOP::J LISPLOOP::FROM 0
+;                     LISPLOOP::COLLECT #))
+;              (LISPLOOP::PAIRS
+;               (LOOP LISPLOOP::FOR LISPLOOP::SUB LISPLOOP::IN LISPLOOP::SUBTERMS
+;                     LISPLOOP::FOR # LISPLOOP::IN LISPLOOP::CODE-IN
+;                     LISPLOOP::COLLECT #))
+;              (LISPLOOP::UNABSTRACTED-P NIL))
+;         (FLET ((LISPLOOP::REWRITE #
+;                  #))
+;           (LET (#)
+;             (IF LISPLOOP::UNABSTRACTED-P
+;                 #
+;                 #)))))
+; 
+; caught STYLE-WARNING:
+;   &OPTIONAL and &KEY found in the same lambda list: (EXPR SUBTERMS INPUTS
+;                                                      &OPTIONAL LEDGER &KEY
+;                                                      SELF-NAME)
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN MAKE-LAW
+;     (LISPLOOP::COLLECT-EXPRESSION-OPERATORS LISPLOOP::EQUATION)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::COLLECT-EXPRESSION-OPERATORS
+; 
+; compilation unit finished
+;   Undefined function:
+;     COLLECT-EXPRESSION-OPERATORS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN START-REWRITING
+;     (LISPLOOP:AS-REWRITE-LIBRARY LISPLOOP::LIBRARY :DOMAIN
+;      (LISPLOOP::INFER-DOMAIN-FROM-TYPES (MAPCAR #'CDR LISPLOOP::INPUTS)))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AS-REWRITE-LIBRARY
+; 
+; compilation unit finished
+;   Undefined function:
+;     AS-REWRITE-LIBRARY
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN SOLVER-CONTEXT-VALUES
+;     (LISPLOOP::SOLVER-CONTEXT-MAP (FIRST LISPLOOP:TERM)
+;      (LISPLOOP::ARITHMETIC-PROPAGATOR-POSITION LISPLOOP::RULE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SOLVER-CONTEXT-MAP
+; 
+; compilation unit finished
+;   Undefined function:
+;     SOLVER-CONTEXT-MAP
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN WITNESS-REPLAYS-P
+;     (LISPLOOP::SOLVER-FORWARD-EXPRESSION (FIRST LISPLOOP:TERM)
+;      (LISPLOOP::ARITHMETIC-PROPAGATOR-POSITION LISPLOOP::RULE) LISPLOOP::MAPPING
+;      LISPLOOP::CONTEXT LISPLOOP::VALUE)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SOLVER-FORWARD-EXPRESSION
+; 
+; compilation unit finished
+;   Undefined function:
+;     SOLVER-FORWARD-EXPRESSION
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN SOLVED-CONJUNCT
+;     (LISPLOOP::SOLVER-POSITIONS
+;      (LISPLOOP::ARITHMETIC-PROPAGATOR-POSITION LISPLOOP::RULE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SOLVER-POSITIONS
+; 
+; compilation unit finished
+;   Undefined function:
+;     SOLVER-POSITIONS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN PROPAGATOR-RULES-FOR
+;     (LISPLOOP::SOLVER-POSITIONS
+;      (LISPLOOP::ARITHMETIC-PROPAGATOR-POSITION LISPLOOP::RULE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SOLVER-POSITIONS
+; 
+; compilation unit finished
+;   Undefined function:
+;     SOLVER-POSITIONS
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN SIMPLIFY-SYMBOLIC-EXPR
+;     (LISPLOOP:AS-REWRITE-LIBRARY LISPLOOP::LIBRARY :DOMAIN
+;      (LISPLOOP::INFER-DOMAIN-FROM-TYPES
+;       (CONS (LISPLOOP:AST-TYPE LISPLOOP::FOLDED)
+;             (MAPCAR #'CDR LISPLOOP::INPUTS))))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:AS-REWRITE-LIBRARY
+; 
+; compilation unit finished
+;   Undefined function:
+;     AS-REWRITE-LIBRARY
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN SOLVE-EQUALITY-SYMBOLICALLY
+;     (LISPLOOP::SOLVER-CONTEXT-MAP (FIRST LISPLOOP::CHOSEN)
+;      (LISPLOOP::ARITHMETIC-PROPAGATOR-POSITION LISPLOOP::RULE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SOLVER-CONTEXT-MAP
+
+;     (LISPLOOP::SOLVER-POSITIONS
+;      (LISPLOOP::ARITHMETIC-PROPAGATOR-POSITION LISPLOOP::RULE))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SOLVER-POSITIONS
+; 
+; compilation unit finished
+;   Undefined functions:
+;     SOLVER-CONTEXT-MAP SOLVER-POSITIONS
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN TARGET-SENSITIVE-P
+;     (LISPLOOP::EVAL-EXPR-VALUE LISPLOOP::EXPRESSION LISPLOOP::INPUTS
+;      (SUBSTITUTE-IF LISPLOOP::OTHER (CONSTANTLY T) LISPLOOP::KNOWN :START
+;                     POSITION :COUNT 1)
+;      LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EVAL-EXPR-VALUE
+
+;     (LISPLOOP::PROBE-VALUES-FOR-TYPE (CDR (NTH POSITION LISPLOOP::INPUTS)))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::PROBE-VALUES-FOR-TYPE
+; 
+; compilation unit finished
+;   Undefined functions:
+;     EVAL-EXPR-VALUE PROBE-VALUES-FOR-TYPE
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN ORIENT-CONSERVED-QUANTITY
+;     (LISPLOOP::EVAL-EXPR-VALUE LISPLOOP::GUARD LISPLOOP::INPUTS LISPLOOP::KNOWN
+;      LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EVAL-EXPR-VALUE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EVAL-EXPR-VALUE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/laws.lisp
+; in: DEFUN METRIC-DELTA
+;     (LISPLOOP::EVALUATE-GUARDED-ENTRY LISPLOOP::ENTRY
+;      (LIST LISPLOOP::PREDICTED LISPLOOP::TARGET) LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EVALUATE-GUARDED-ENTRY
+; 
+; compilation unit finished
+;   Undefined function:
+;     EVALUATE-GUARDED-ENTRY
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/templates.lisp
+; in: DEFUN RETYPE-LAW
+;     (LISPLOOP::OLD-DOMAIN (LISPLOOP:KNOWLEDGE-ENTRY-DOMAIN LISPLOOP::LAW))
+; 
+; caught STYLE-WARNING:
+;   The variable OLD-DOMAIN is defined but never used.
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/condense.lisp
+; in: DEFUN CONDENSE-HEURISTIC
+;     (LISPLOOP:HEURISTIC-SEARCH-BEST LISPLOOP::JOB)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:HEURISTIC-SEARCH-BEST
+
+;     (LISPLOOP::HEURISTIC-SEARCH-HISTORY LISPLOOP::JOB)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::HEURISTIC-SEARCH-HISTORY
+
+;     (LISPLOOP:HEURISTIC-SEARCH-LEDGER LISPLOOP::JOB)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:HEURISTIC-SEARCH-LEDGER
+
+;     (LISPLOOP::HEURISTIC-SEARCH-MODELS LISPLOOP::JOB)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::HEURISTIC-SEARCH-MODELS
+
+;     (LISPLOOP:RESUME-HEURISTIC-SEARCH LISPLOOP::JOB LISPLOOP::LIMIT)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:RESUME-HEURISTIC-SEARCH
+
+;     (LISPLOOP:START-HEURISTIC-SEARCH LISPLOOP:FRAME LISPLOOP:LANGUAGE
+;      :DESCRIPTION-LIMIT LISPLOOP::DESCRIPTION-LIMIT :RUN-WEIGHT
+;      LISPLOOP::RUN-WEIGHT :STOP-ON-EXACT-P LISPLOOP::STOP-ON-EXACT-P)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:START-HEURISTIC-SEARCH
+; 
+; compilation unit finished
+;   Undefined functions:
+;     HEURISTIC-SEARCH-BEST HEURISTIC-SEARCH-HISTORY HEURISTIC-SEARCH-LEDGER HEURISTIC-SEARCH-MODELS RESUME-HEURISTIC-SEARCH START-HEURISTIC-SEARCH
+;   caught 6 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/abstraction.lisp
+; in: DEFUN ABSTRACT-FUNCTION-BODIES
+;     (LISPLOOP::ABSTRACT-NORMALIZED-BODIES
+;      (LOOP LISPLOOP::FOR LISPLOOP::BODY LISPLOOP::IN LISPLOOP::ACTIVE-BODIES
+;            LISPLOOP::FOR LISPLOOP::SNAME LISPLOOP::IN LISPLOOP::INFERRED-SNAMES
+;            LISPLOOP::COLLECT (LISPLOOP::NORMALIZE-GUARDED-EQUALITIES
+;                               (LISPLOOP:RENAME-FUNCTION-CALLS LISPLOOP::BODY
+;                                                               LISPLOOP::SNAME
+;                                                               LISPLOOP::CANON-SELF-OP)))
+;      LISPLOOP::BODIES LISPLOOP::NORM-INPUTS LISPLOOP::RETURN-TYPE
+;      LISPLOOP::PROGRAM-NAMES LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::ABSTRACT-NORMALIZED-BODIES
+; 
+; compilation unit finished
+;   Undefined function:
+;     ABSTRACT-NORMALIZED-BODIES
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN START-SYNTHESIS
+;     (LISPLOOP::COPY-DECOMPOSITION-TREE LISPLOOP::PROPOSAL)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::COPY-DECOMPOSITION-TREE
+
+;     (LISPLOOP::PRIORITY-PREDICTOR-FUNCTION LISPLOOP::EFF-PREDICTOR)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::PRIORITY-PREDICTOR-FUNCTION
+; 
+; compilation unit finished
+;   Undefined functions:
+;     COPY-DECOMPOSITION-TREE PRIORITY-PREDICTOR-FUNCTION
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN CANONICAL-LINKAGE-SIGNATURE
+;     (LISPLOOP:CANONICAL-ROW-ORDER LISPLOOP:FRAME)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:CANONICAL-ROW-ORDER
+; 
+; compilation unit finished
+;   Undefined function:
+;     CANONICAL-ROW-ORDER
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN PRIORITY-PREDICTOR-FUNCTION
+;     (LISPLOOP::EVAL-EXPR-VALUE LISPLOOP::PREDICTOR LISPLOOP::INPUTS
+;      LISPLOOP::ARGS LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EVAL-EXPR-VALUE
+
+;     (LISPLOOP::INFER-EXPRS-INPUTS (LIST LISPLOOP::PREDICTOR))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::INFER-EXPRS-INPUTS
+; 
+; compilation unit finished
+;   Undefined functions:
+;     EVAL-EXPR-VALUE INFER-EXPRS-INPUTS
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN NODE-DIP-REPAIRS
+;     (LISPLOOP:DIP-REPAIRED-DECOMPOSITIONS LISPLOOP::PARENT LISPLOOP::PROPOSAL
+;      LISPLOOP::NOGOODS :LEDGER LISPLOOP:LEDGER :DEBUG-P
+;      (LISPLOOP:SYNTHESIS-JOB-DEBUG-P LISPLOOP::JOB) :LIBRARY
+;      (LISPLOOP::SYNTHESIS-JOB-KNOWLEDGE LISPLOOP::JOB))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:DIP-REPAIRED-DECOMPOSITIONS
+
+;     (LISPLOOP::PURE-PROJECTION-DECOMPOSITION-P LISPLOOP::PROPOSAL)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::PURE-PROJECTION-DECOMPOSITION-P
+; 
+; compilation unit finished
+;   Undefined functions:
+;     DIP-REPAIRED-DECOMPOSITIONS PURE-PROJECTION-DECOMPOSITION-P
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN PREPARE-SYNTHESIS-NODE
+;     (LISPLOOP:ANTI-UNIFY-NOGOOD-CLAUSES
+;      (APPEND LISPLOOP::NEW-NOGOODS
+;              (LISPLOOP:SYNTHESIS-JOB-NOGOODS LISPLOOP::JOB))
+;      LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:ANTI-UNIFY-NOGOOD-CLAUSES
+
+;     (LISPLOOP::CHECK-PARENT-NOGOODS LISPLOOP::JOB LISPLOOP::PARENT
+;      LISPLOOP::PROPOSAL LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::CHECK-PARENT-NOGOODS
+
+;     (LISPLOOP::COLLECT-FRAME-NOGOOD-CLAUSES LISPLOOP::PARENT LISPLOOP::PROPOSAL
+;      LISPLOOP:FRAME LISPLOOP::CONFLICT LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::COLLECT-FRAME-NOGOOD-CLAUSES
+
+;     (LISPLOOP::FINISH-SYNTHESIS-PREPARATION LISPLOOP::JOB LISPLOOP::NODE
+;      LISPLOOP::PREPARED)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::FINISH-SYNTHESIS-PREPARATION
+
+;     (LISPLOOP::PURE-PROJECTION-DECOMPOSITION-P LISPLOOP::PROPOSAL)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::PURE-PROJECTION-DECOMPOSITION-P
+; 
+; compilation unit finished
+;   Undefined functions:
+;     ANTI-UNIFY-NOGOOD-CLAUSES CHECK-PARENT-NOGOODS COLLECT-FRAME-NOGOOD-CLAUSES FINISH-SYNTHESIS-PREPARATION PURE-PROJECTION-DECOMPOSITION-P
+;   caught 5 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN SLOT-MODEL-ROW-VALUE
+;     (LISPLOOP::EVAL-EXPR-VALUE LISPLOOP::EXPRESSION
+;      (LISPLOOP:SCHEMA-INPUTS (LISPLOOP:FRAME-SCHEMA LISPLOOP:FRAME))
+;      (LISPLOOP:ROW-KNOWN LISPLOOP:ROW) LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::EVAL-EXPR-VALUE
+; 
+; compilation unit finished
+;   Undefined function:
+;     EVAL-EXPR-VALUE
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN PROPOSAL-IDENTITY
+;     (LISPLOOP::NORMALIZE-PROPOSAL-DECODER
+;      (LISPLOOP:DECOMPOSITION-DECODER LISPLOOP::PROPOSAL)
+;      (LISPLOOP:DECOMPOSITION-CHILD-ID LISPLOOP::PROPOSAL)
+;      (LISPLOOP:DECOMPOSITION-CHILD-TYPE LISPLOOP::PROPOSAL))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::NORMALIZE-PROPOSAL-DECODER
+; 
+; compilation unit finished
+;   Undefined function:
+;     NORMALIZE-PROPOSAL-DECODER
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/synthesize.lisp
+; in: DEFUN CLOSE-CONFLICTING-NODE
+;     #'LISPLOOP::NOGOOD-IDENTITY
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::NOGOOD-IDENTITY
+; 
+; compilation unit finished
+;   Undefined function:
+;     NOGOOD-IDENTITY
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/decompose.lisp
+; in: DEFUN START-HEURISTIC-SYNTHESIS
+;     #'LISPLOOP:HEURISTIC-EXPANDER
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:HEURISTIC-EXPANDER
+
+;     (LISPLOOP::SELECTOR-DECOMPOSITIONS LISPLOOP:FRAME LISPLOOP::C-LANG
+;      LISPLOOP::C-BOUND :FIBERS LISPLOOP::FIBERS :DEPENDENCIES
+;      LISPLOOP::DEPENDENCIES :DEBUG-P LISPLOOP::DEBUG-P)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::SELECTOR-DECOMPOSITIONS
+; 
+; compilation unit finished
+;   Undefined functions:
+;     HEURISTIC-EXPANDER SELECTOR-DECOMPOSITIONS
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/proposals.lisp
+; in: DEFUN LIBRARY-DECOMPOSITIONS
+;     (LISPLOOP:LEARNED-DECODER-DECOMPOSITIONS LISPLOOP:FRAME LISPLOOP::BASE-LANG
+;      LISPLOOP::C-BOUND LISPLOOP::SOLVER LISPLOOP:LEDGER :LIBRARY
+;      (OR LISPLOOP::KNOWLEDGE LISPLOOP:*KNOWLEDGE-LIBRARY*))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:LEARNED-DECODER-DECOMPOSITIONS
+
+;     (LISPLOOP::PARTIAL-LIBRARY-DECOMPOSITIONS LISPLOOP:FRAME LISPLOOP::BASE-LANG
+;      LISPLOOP::DEFS LISPLOOP::CHILD-ID LISPLOOP::C-BOUND LISPLOOP::SOLVER
+;      LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::PARTIAL-LIBRARY-DECOMPOSITIONS
+; 
+; compilation unit finished
+;   Undefined functions:
+;     LEARNED-DECODER-DECOMPOSITIONS PARTIAL-LIBRARY-DECOMPOSITIONS
+;   caught 2 STYLE-WARNING conditions
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/proposals.lisp
+; in: DEFINE-KNOWLEDGE-KIND :DECODER-TEMPLATE
+;     (LISPLOOP:GENERALIZE-DECODER-TEMPLATES LISPLOOP::LIBRARY :LEDGER
+;      LISPLOOP:LEDGER)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:GENERALIZE-DECODER-TEMPLATES
+; 
+; compilation unit finished
+;   Undefined function:
+;     GENERALIZE-DECODER-TEMPLATES
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/proposals.lisp
+; in: DEFUN GENERALIZE-DECODER-TEMPLATES
+;     (LISPLOOP:DECODER-TEMPLATE-LIVE-P LISPLOOP::ENTRY LISPLOOP::LIBRARY)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP:DECODER-TEMPLATE-LIVE-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     DECODER-TEMPLATE-LIVE-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/proposals.lisp
+; in: DEFUN INSTANTIATE-DECODER-TEMPLATE-FOR-FRAME
+;     (LISPLOOP::RETYPE-DECODER-TEMPLATE-ENTRY LISPLOOP::ENTRY
+;      (SECOND LISPLOOP::STYPE)
+;      (IF (LISPLOOP:SEQ-TYPE-P LISPLOOP::TARGET)
+;          (SECOND LISPLOOP::TARGET)
+;          LISPLOOP::TARGET))
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::RETYPE-DECODER-TEMPLATE-ENTRY
+; 
+; compilation unit finished
+;   Undefined function:
+;     RETYPE-DECODER-TEMPLATE-ENTRY
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/consolidate.lisp
+; in: DEFINE-KNOWLEDGE-KIND :SPEC
+;     (LISPLOOP::MAKE-EVALUATION :STATUS :UNRESOLVED)
+; 
+; caught STYLE-WARNING:
+;   undefined function: LISPLOOP::MAKE-EVALUATION
+; 
+; compilation unit finished
+;   Undefined function:
+;     MAKE-EVALUATION
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/verify-review/kernel/consolidate.lisp
+; in: DEFUN VERIFY-ENTRY-AGAINST-SPEC
+;     (LISPLOOP::TARGET (LISPLOOP:KNOWLEDGE-ENTRY-TARGET LISPLOOP::ENT))
+; 
+; caught STYLE-WARNING:
+;   The variable TARGET is defined but never used.
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+=== R4-A. conditional Kraft sums  sum_v 2^-d(u->v),  d = correction-bit-size (frame.lisp:1533-1582, :1713) ===
+:bool   d(T->T)=0 d(T->NIL)=1 d(NIL->T)=1 d(NIL->NIL)=0
+  :bool u=T                                                        1.5000   (= 3/2)
+  :bool u=NIL                                                      1.5000   (= 3/2)
+  (:gf 2) u=1  (min/max over all u: 1.0625 / 1.0625)               1.0625   (= 17/16)
+  (:gf 3) u=2  (min/max over all u: 1.1250 / 1.1250)               1.1250   (= 9/8)
+(:gf 5) distances from u=3 to v=0..4: (5 5 4 0 4) ; replacement price value-bit-size = 3
+  (:gf 5) u=3  (min/max over all u: 1.1875 / 1.1875)               1.1875   (= 19/16)
+  (:gf 7) u=3  (min/max over all u: 1.2500 / 1.2500)               1.2500   (= 5/4)
+  (:gf 13) u=3  (min/max over all u: 1.2734 / 1.2734)              1.2734   (= 163/128)
+:int distances from u=0 to v=0..8: (0 4 5 5 8 8 8 8 9)
+  :int u=0, |v|<=1000, correction-bit-size                         1.4059   (= 92137/65536)
+  :int |v|<=1000, plain value-bit-size (no predicted)              0.9059   (= 59369/65536)
+  :int u=17, |v-u|<=1000, correction-bit-size                      1.4059   (= 92137/65536)
+  :int u=0, |v|<=100000 (the sum tends to 1.5)                     1.4424   (= 48400033/33554432)
+the same sums with ONLY the v = u cell re-priced at the pre-override bits (line 1581 undone):
+  :bool u=T                                                        1.0000   (= 1)
+  (:gf 5) u=3                                                      0.6875   (= 11/16)
+  :int u=0, |v|<=1000                                              0.9059   (= 59369/65536)
+
+=== R4-B. Stage A (condense-heuristic): what a residual is charged ===
+  targets (0 0 0 0 0 0)  (BOUNDED-EXHAUSTION)
+    program (LIT INT 0)  program-bits 19  residual-bits 0  recomputed 0 OK  exceptions (row pred->witness idx-bits corr-bits): NIL
+    program (LIT INT 1)  program-bits 22  residual-bits 53  recomputed 53 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 1 0 1 4) (1 1 0 4 4) (2 1 0 4 4) (3 1 0 5 4) (4 1 0 5 4) (5 1 0 5 4))
+    program (VAR 0 INT)  program-bits 18  residual-bits 58  recomputed 58 OK  exceptions (row pred->witness idx-bits corr-bits): ((1 1 0 4 4) (2 2 0 4 5) (3 3 0 5 5) (4 4 0 5 8) (5 5 0 5 8))
+    program (LIT INT 3)  program-bits 23  residual-bits 59  recomputed 59 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 3 0 1 5) (1 3 0 4 5) (2 3 0 4 5) (3 3 0 5 5) (4 3 0 5 5) (5 3 0 5 5))
+  targets (0 0 0 0 7 0)  (BOUNDED-EXHAUSTION)
+    program (LIT INT 0)  program-bits 19  residual-bits 17  recomputed 17 OK  exceptions (row pred->witness idx-bits corr-bits): ((4 0 7 5 8))
+    program (VAR 0 INT)  program-bits 18  residual-bits 55  recomputed 55 OK  exceptions (row pred->witness idx-bits corr-bits): ((1 1 0 4 4) (2 2 0 4 5) (3 3 0 5 5) (4 4 7 5 5) (5 5 0 5 8))
+    program (LIT INT 1)  program-bits 22  residual-bits 57  recomputed 57 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 1 0 1 4) (1 1 0 4 4) (2 1 0 4 4) (3 1 0 5 4) (4 1 7 5 8) (5 1 0 5 4))
+    program (LIT INT 3)  program-bits 23  residual-bits 62  recomputed 62 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 3 0 1 5) (1 3 0 4 5) (2 3 0 4 5) (3 3 0 5 5) (4 3 7 5 8) (5 3 0 5 5))
+  targets (7 0 0 0 0 0)  (BOUNDED-EXHAUSTION)
+    program (LIT INT 0)  program-bits 19  residual-bits 13  recomputed 13 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 0 7 1 8))
+    program (LIT INT 1)  program-bits 22  residual-bits 57  recomputed 57 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 1 7 1 8) (1 1 0 4 4) (2 1 0 4 4) (3 1 0 5 4) (4 1 0 5 4) (5 1 0 5 4))
+    program (VAR 0 INT)  program-bits 18  residual-bits 67  recomputed 67 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 0 7 1 8) (1 1 0 4 4) (2 2 0 4 5) (3 3 0 5 5) (4 4 0 5 8) (5 5 0 5 8))
+    program (LIT INT 3)  program-bits 23  residual-bits 62  recomputed 62 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 3 7 1 8) (1 3 0 4 5) (2 3 0 4 5) (3 3 0 5 5) (4 3 0 5 5) (5 3 0 5 5))
+  targets (0 0 0 0 0 7)  (BOUNDED-EXHAUSTION)
+    program (LIT INT 0)  program-bits 19  residual-bits 17  recomputed 17 OK  exceptions (row pred->witness idx-bits corr-bits): ((5 0 7 5 8))
+    program (VAR 0 INT)  program-bits 18  residual-bits 55  recomputed 55 OK  exceptions (row pred->witness idx-bits corr-bits): ((1 1 0 4 4) (2 2 0 4 5) (3 3 0 5 5) (4 4 0 5 8) (5 5 7 5 5))
+    program (LIT INT 1)  program-bits 22  residual-bits 57  recomputed 57 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 1 0 1 4) (1 1 0 4 4) (2 1 0 4 4) (3 1 0 5 4) (4 1 0 5 4) (5 1 7 5 8))
+    program (LIT INT 3)  program-bits 23  residual-bits 62  recomputed 62 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 3 0 1 5) (1 3 0 4 5) (2 3 0 4 5) (3 3 0 5 5) (4 3 0 5 5) (5 3 7 5 8))
+  targets (0 1 0 0 7 0)  (BOUNDED-EXHAUSTION)
+    program (LIT INT 0)  program-bits 19  residual-bits 25  recomputed 25 OK  exceptions (row pred->witness idx-bits corr-bits): ((1 0 1 4 4) (4 0 7 5 8))
+    program (VAR 0 INT)  program-bits 18  residual-bits 47  recomputed 47 OK  exceptions (row pred->witness idx-bits corr-bits): ((2 2 0 4 5) (3 3 0 5 5) (4 4 7 5 5) (5 5 0 5 8))
+    program (LIT INT 1)  program-bits 22  residual-bits 49  recomputed 49 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 1 0 1 4) (2 1 0 4 4) (3 1 0 5 4) (4 1 7 5 8) (5 1 0 5 4))
+    program (LIT INT 3)  program-bits 23  residual-bits 62  recomputed 62 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 3 0 1 5) (1 3 1 4 5) (2 3 0 4 5) (3 3 0 5 5) (4 3 7 5 8) (5 3 0 5 5))
+  targets (1 1 1 1 1 1)  (BOUNDED-EXHAUSTION)
+    program (LIT INT 1)  program-bits 22  residual-bits 0  recomputed 0 OK  exceptions (row pred->witness idx-bits corr-bits): NIL
+    program (VAR 0 INT)  program-bits 18  residual-bits 51  recomputed 51 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 0 1 1 4) (2 2 1 4 4) (3 3 1 5 5) (4 4 1 5 5) (5 5 1 5 8))
+    program (LIT INT 0)  program-bits 19  residual-bits 53  recomputed 53 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 0 1 1 4) (1 0 1 4 4) (2 0 1 4 4) (3 0 1 5 4) (4 0 1 5 4) (5 0 1 5 4))
+    program (LIT INT 3)  program-bits 23  residual-bits 59  recomputed 59 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 3 1 1 5) (1 3 1 4 5) (2 3 1 4 5) (3 3 1 5 5) (4 3 1 5 5) (5 3 1 5 5))
+  targets (3 3 0 3 3 3 3 3)  (BOUNDED-EXHAUSTION)
+    program (LIT INT 3)  program-bits 23  residual-bits 13  recomputed 13 OK  exceptions (row pred->witness idx-bits corr-bits): ((2 3 0 4 5))
+    program (VAR 0 INT)  program-bits 18  residual-bits 77  recomputed 77 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 0 3 1 5) (1 1 3 4 5) (2 2 0 4 5) (4 4 3 5 4) (5 5 3 5 5) (6 6 3 5 5) (7 7 3 8 8))
+    program (LIT INT 0)  program-bits 19  residual-bits 76  recomputed 76 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 0 3 1 5) (1 0 3 4 5) (3 0 3 5 5) (4 0 3 5 5) (5 0 3 5 5) (6 0 3 5 5) (7 0 3 8 5))
+    program (LIT INT 1)  program-bits 22  residual-bits 84  recomputed 84 OK  exceptions (row pred->witness idx-bits corr-bits): ((0 1 3 1 5) (1 1 3 4 5) (2 1 0 4 4) (3 1 3 5 5) (4 1 3 5 5) (5 1 3 5 5) (6 1 3 5 5) (7 1 3 8 5))
+  every model's residual-bits equals the sparse-exception formula: YES
+  relational-linkage-residual, 4 must-agree pairs, outcomes (5 5 5 5 5): entries NIL total 0 (pair 0 anchor 0) ; recomputed over VIOLATED pairs only: 0
+  relational-linkage-residual, 4 must-agree pairs, outcomes (5 5 6 6 6): entries (((PAIR (ROW 1) (ROW 2)) . 1)) total 8 (pair 8 anchor 0) ; recomputed over VIOLATED pairs only: 8
+  relational-linkage-residual, 4 must-agree pairs, outcomes (5 6 6 6 9): entries (((PAIR (ROW 0) (ROW 1)) . 1) ((PAIR (ROW 3) (ROW 4)) . 3)) total 15 (pair 15 anchor 0) ; recomputed over VIOLATED pairs only: 15
+  sum over nonzero deltas (|delta|<=100000) of 2^-value-bit-size = 0.442433
+  N= 1 rows: Kraft weight of all INEXACT columns 0.013826 ; exact column charged 0 bits -> total 1.013826 ; with 1 bit for 'exact' -> 0.513826
+  N= 2 rows: Kraft weight of all INEXACT columns 0.015937 ; exact column charged 0 bits -> total 1.015937 ; with 1 bit for 'exact' -> 0.515937
+  N= 4 rows: Kraft weight of all INEXACT columns 0.019209 ; exact column charged 0 bits -> total 1.019209 ; with 1 bit for 'exact' -> 0.519209
+  N= 8 rows: Kraft weight of all INEXACT columns 0.022763 ; exact column charged 0 bits -> total 1.022763 ; with 1 bit for 'exact' -> 0.522763
+  N=16 rows: Kraft weight of all INEXACT columns 0.023862 ; exact column charged 0 bits -> total 1.023862 ; with 1 bit for 'exact' -> 0.523862
+
+=== R4-C. induce-row-order: the chain price sums a correction for EVERY consecutive pair ===
+  body-size of the key x0 = 2 bits
+  3 Boolean rows, all 8 target columns: sum 2^-chain-bits = 0.5625 incl. the key body, 2.2500 for the chain alone;  induce-row-order returned a key on 0 columns, its chain-bits equal mine on 0
+  4 Boolean rows, all 16 target columns: sum 2^-chain-bits = 0.8438 incl. the key body, 3.3750 for the chain alone;  induce-row-order returned a key on 0 columns, its chain-bits equal mine on 0
+  5 Boolean rows, all 32 target columns: sum 2^-chain-bits = 1.2656 incl. the key body, 5.0625 for the chain alone;  induce-row-order returned a key on 0 columns, its chain-bits equal mine on 0
+  6 Boolean rows, all 64 target columns: sum 2^-chain-bits = 1.8984 incl. the key body, 7.5938 for the chain alone;  induce-row-order returned a key on 0 columns, its chain-bits equal mine on 0
+  8 Boolean rows, all 256 target columns: sum 2^-chain-bits = 4.2715 incl. the key body, 17.0859 for the chain alone;  induce-row-order returned a key on 2 columns, its chain-bits equal mine on 2
+  a decision that flips:
+    Boolean targets (NIL NIL NIL NIL T T T T) by x0=1..8: induce-row-order -> key (VAR 0 INT) chain-bits 4 baseline 5 ; independent 8 bits ; chain with 1 bit on each equal step 10 bits
+    Boolean targets (NIL NIL NIL T T T) by x0=1..6: induce-row-order -> key NIL chain-bits NIL baseline NIL ; independent 6 bits ; chain with 1 bit on each equal step 8 bits
+  8 integer rows, the 14 one-step columns (0..0 d..d, d=+-1): chain-bits all = (7) ; sum 2^-chain-bits = 0.1094 ; a key is induced on 12 of them
+  12 integer rows, the 22 one-step columns (0..0 d..d, d=+-1): chain-bits all = (7) ; sum 2^-chain-bits = 0.1719 ; a key is induced on 20 of them
+  20 integer rows, the 38 one-step columns (0..0 d..d, d=+-1): chain-bits all = (7) ; sum 2^-chain-bits = 0.2969 ; a key is induced on 36 of them
+  40 integer rows, the 78 one-step columns (0..0 d..d, d=+-1): chain-bits all = (7) ; sum 2^-chain-bits = 0.6094 ; a key is induced on 76 of them
+
+=== R4-D. (:seq :int): truncated Kraft sums from u = (1 2) over all v of length<=3 with elements in -3..3 ===
+  400 targets; sum 2^-d(u->v) = 1.6639 ; the v = u term alone is 1.0000 ; all other terms 0.6639
+  over the 399 targets v /= u: d < value-bit-size on 77, d > value-bit-size on 0 ; sum (2^-d - 2^-vbs) = 0.0688
+  => even with the v = u cell excluded, sum over ALL sequences of 2^-d(u->v) >= 1 + 0.0688 - 2^-vbs(u) = 1.0686
+  example: d((1 2)->(1 3)) = 7 against value-bit-size((1 3)) = 13

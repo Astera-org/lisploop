@@ -1,0 +1,18 @@
+observational laws proposed at depth-1 bound: 80, validated: 80
+bound=61 bits (oracle (APP (OP + (GF 5)) (VAR 0 (GF 5))
+                       (APP (OP * (GF 5)) (LIT (GF 5) 2) (VAR 1 (GF 5)))))
+[plain, no laws] claim=:BOUNDED-EXHAUSTION results=10 rejected=639 reused-rejections=0 total-work=182181 wall=0.00s
+   ledger=((:EVALUATION . 85650) (:CHECKING . 72500) (:CONSTRUCTION . 20001)
+           (:SCHEDULING . 2910) (:ENUMERATION . 1120))
+[1 law: x+0=x] claim=:BOUNDED-EXHAUSTION results=10 rejected=639 reused-rejections=31 total-work=741101 wall=0.01s
+   ledger=((:REWRITING . 546570) (:EVALUATION . 81418) (:CHECKING . 69000)
+           (:CONSTRUCTION . 20001) (:EQUALITY-CACHE . 19536)
+           (:SCHEDULING . 3419) (:ENUMERATION . 1120) (:RULE-SETUP . 37))
+[all 80 validated depth-1 laws] claim=:BOUNDED-EXHAUSTION results=10 rejected=639 reused-rejections=502 total-work=70181164 wall=0.84s
+   ledger=((:REWRITING . 70086191) (:EVALUATION . 27964) (:CHECKING . 24400)
+           (:CONSTRUCTION . 20001) (:EQUALITY-CACHE . 16335)
+           (:RULE-SETUP . 3518) (:SCHEDULING . 1635) (:ENUMERATION . 1120))
+
+real	0m3.211s
+user	0m3.185s
+sys	0m0.024s

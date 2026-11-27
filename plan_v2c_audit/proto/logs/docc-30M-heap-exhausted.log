@@ -1,0 +1,90 @@
+
+=== D. LIFT BY CHANGE OF BASE (seed 1, 12 examples, max size 10, budget 30000000 cand, greedy-nested-split nil, occam t) ===
+grammar (+ - * mod max min at = < and not call)
+goal inverses nil
+task                   ok  cand       cells       ms      held-out  program
+reverse                yes      86434     4408134      52 200/200   (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+                          [B'=51 rows, 25636 classes; split-scan cells 332669]
+shift-seq (spec)       yes    9834897   393395880    5676 200/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+                          [split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 2330255 classes; split-scan cells 106286]
+rotate-left k          yes     217920     8716800     108 200/200   (tabulate (len xs) (lambda (i prev) (at xs (mod (+ i k) (len xs)))))
+                          [B'=40 rows, 67348 classes; split-scan cells 384926]
+map-adjacent +         yes     291481    11656468     232 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs i) (at xs (+ i 1)))))
+                          [B'=40 rows, 123344 classes; split-scan cells 5989096]
+map-adjacent -         yes     703183    28124548     420 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (- (at xs (+ i 1)) (at xs i))))
+                          [B'=40 rows, 226787 classes; split-scan cells 5958296]
+running-sum            yes    3171095   161725845    1944 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+                          [split: chosen term matches 40 of 51 rows; best-matching class (guard or not) 40; B'=51 rows, 789912 classes; split-scan cells 63725]
+scan + init a (spec)   yes   10579588   423183520    6000 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+                          [split: chosen term matches 29 of 40 rows; best-matching class (guard or not) 29; B'=40 rows, 2464750 classes; split-scan cells 108044]
+scan 2*acc-x init a    yes   10675341   459039663    6560 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+                          [split: chosen term matches 32 of 43 rows; best-matching class (guard or not) 32; B'=43 rows, 2533411 classes; split-scan cells 3789331]
+positions (spec)       yes          3         123       0 200/200   (tabulate (len xs) (lambda (i prev) (+ i k)))
+                          [B'=41 rows, 10 classes; split-scan cells 246]
+positions-of v         yes       8332      105552       0 200/200   (where xs (lambda (j x) (= x v)))
+                          [no shape term; where: B''=36 rows; split-scan cells 0]
+filter x>k             yes       7002       94588       0 200/200   (select xs (lambda (j x) (< k x)))
+                          [no shape term; select: B''=50 rows; split-scan cells 0]
+take k                 yes        267        8629       0 200/200   (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+                          [B'=37 rows, 87 classes; split-scan cells 222]
+zip-add                yes      30265      967480      20 200/200   (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at xs i) (at zs i))))
+                          [B'=32 rows, 13102 classes; split-scan cells 451940]
+map-adjacent f (spec)  yes    8458580   262214099    5692 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+                          [B'=31 rows, 2306343 classes; split-scan cells 53210260]
+scan f init a (spec)   yes   27829719   974040165   19704 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+                          [split: chosen term matches 26 of 35 rows; best-matching class (guard or not) 26; B'=35 rows, 7586298 classes; split-scan cells 461991]
+
+=== D-seeds: per task over seeds (2 3 4 5 6 7 8 9): solved / held-out-perfect, median cand, max ms ===
+reverse                solved 8/8  perfect 8/8  median-cand 86420  max-ms 52
+shift-seq (spec)       solved 8/8  perfect 8/8  median-cand 9874555  max-ms 7184
+rotate-left k          solved 8/8  perfect 8/8  median-cand 214446  max-ms 384
+map-adjacent +         solved 8/8  perfect 8/8  median-cand 284661  max-ms 288
+map-adjacent -         solved 8/8  perfect 8/8  median-cand 699206  max-ms 404
+running-sum            solved 8/8  perfect 8/8  median-cand 3086153  max-ms 1976
+scan + init a (spec)   solved 8/8  perfect 8/8  median-cand 11454291  max-ms 9352
+scan 2*acc-x init a    solved 8/8  perfect 8/8  median-cand 10244793  max-ms 8616
+positions (spec)       solved 8/8  perfect 8/8  median-cand 3  max-ms 0
+positions-of v         solved 8/8  perfect 8/8  median-cand 8332  max-ms 4
+filter x>k             solved 8/8  perfect 8/8  median-cand 8058  max-ms 4
+take k                 solved 8/8  perfect 8/8  median-cand 267  max-ms 0
+zip-add                solved 8/8  perfect 8/8  median-cand 30050  max-ms 20
+map-adjacent f (spec)  solved 8/8  perfect 7/8  median-cand 7954565  max-ms 7028
+                          seed 9 IMPOSTOR 136/200: (tabulate (- (len xs) 1) (lambda (i prev) (call f (at xs i) (at xs (+ i 1)))))
+Heap exhausted during garbage collection: 128 bytes available, 320 requested.
+     | Immobile Objects |
+ Gen layout symbol   code  Boxed   Cons    Raw   Code  SmMix  Mixed  LgRaw LgCode  LgMix Waste%       Alloc        Trig   Dirty GCs Mem-age
+  1      0      0      0  99379  21844      1      0      1      8   2002      0   6426    0.3  4235552480  2891620662  129661   1  1.5551
+  2      0      0      0  74194  13190      2      0      2      4   4834      0  14881    0.3  3500266736  1118684358   77204   1  0.2889
+  3    258    759   2264  68915  13676     40      3     12     19   1766      0   6092    0.5  2951966448     2000000    2167   0  0.0527
+  4      0      0      0      0      0      0      0      0      0      0      0      0    0.0           0     2000000       0   0  0.0000
+  5      0      0      0      0      0      0      0      0      0      0      0      0    0.0           0     2000000       0   0  0.0000
+  6    775  23418  19726    232    114      8      3     11     12      0      0      9    3.7    12280608     2000000      12   0  0.0000
+Tot   1033  24177  21990 242720  48824     51      6     26     43   8602      0  27408    0.3 10700065904 [99.7% of 10737418240 max]
+GC control variables:
+   *GC-INHIBIT* = true
+   *GC-PENDING* = true
+   *STOP-FOR-GC-PENDING* = false
+Collection trigger variables:
+   dynamic_space_size = 10737418240
+   bytes_allocated = 10700065904
+   auto_gc_trigger = 8773705648
+   bytes_consed_between_gcs = 536870912
+fatal error encountered in SBCL pid 139495 tid 139495:
+Heap exhausted, game over.
+
+   0: fp=0x7fdebb777580 pc=0xb800c46b20 TG::TRY
+   1: fp=0x7fdebb777650 pc=0xb800c4742f TG::ENUMERATE-SIZE
+   2: fp=0x7fdebb7776c8 pc=0xb800c47c7f TG::RUN
+   3: fp=0x7fdebb777720 pc=0xb800c4fae4 TG::SOLVE-COL
+   4: fp=0x7fdebb777780 pc=0xb800c504db TG::SOLVE-TABULATE
+   5: fp=0x7fdebb7777c8 pc=0xb800c531de TG::SOLVE-TASK
+   6: fp=0x7fdebb7777f8 pc=0xb800c52e67 TG::TIMED
+   7: fp=0x7fdebb777878 pc=0xb800c56078 TG::EXP-D-SEEDS
+   8: fp=0x7fdebb777898 pc=0xb800c6304b TG::MAIN
+   9: fp=0x7fdebb777968 pc=0xb8006d97c2 SB-INT::SIMPLE-EVAL-IN-LEXENV
+  10: fp=0x7fdebb777980 pc=0xb80002715e EVAL
+  11: fp=0x7fdebb777b90 pc=0xb8006dca7a SB-IMPL::PROCESS-EVAL/LOAD-OPTIONS
+  12: fp=0x7fdebb777dd8 pc=0xb8006de6bb SB-IMPL::TOPLEVEL-INIT
+  13: fp=0x7fdebb777e70 pc=0xb800b297e9 (FLET SB-UNIX::BODY :IN SB-IMPL::START-LISP)
+  14: fp=0x7fdebb777f30 pc=0xb800b295fa (FLET "WITHOUT-INTERRUPTS-BODY-3" :IN SB-IMPL::START-LISP)
+  15: fp=0x7fdebb777fc8 pc=0xb800b29442 SB-IMPL::%START-LISP

@@ -1,0 +1,62 @@
+
+=== D-seeds: per task over seeds (2 3 4 5 6 7 8 9): solved / held-out-perfect, median cand, max ms ===
+reverse                solved 8/8  perfect 8/8  median-cand 86420  max-ms 52
+shift-seq (spec)       solved 8/8  perfect 8/8  median-cand 9074  max-ms 8
+rotate-left k          solved 8/8  perfect 8/8  median-cand 214446  max-ms 132
+map-adjacent +         solved 8/8  perfect 8/8  median-cand 284661  max-ms 236
+map-adjacent -         solved 8/8  perfect 8/8  median-cand 699206  max-ms 404
+running-sum            solved 8/8  perfect 8/8  median-cand 4775  max-ms 4
+scan + init a (spec)   solved 8/8  perfect 8/8  median-cand 9268  max-ms 8
+scan 2*acc-x init a    solved 8/8  perfect 8/8  median-cand 297628  max-ms 252
+positions (spec)       solved 8/8  perfect 8/8  median-cand 3  max-ms 0
+positions-of v         solved 8/8  perfect 8/8  median-cand 8332  max-ms 4
+filter x>k             solved 8/8  perfect 8/8  median-cand 8058  max-ms 4
+take k                 solved 8/8  perfect 8/8  median-cand 267  max-ms 4
+zip-add                solved 8/8  perfect 8/8  median-cand 30050  max-ms 20
+map-adjacent f (spec)  solved 8/8  perfect 7/8  median-cand 7954565  max-ms 6248
+                          seed 9 IMPOSTOR 135/200: (tabulate (- (len xs) 1) (lambda (i prev) (if (= i (call f i 1)) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs (+ i 1))))))
+scan f init a (spec)   solved 8/8  perfect 8/8  median-cand 14192  max-ms 24
+
+with greedy nested splits
+=== D-seeds: per task over seeds (2 3 4 5 6 7 8 9): solved / held-out-perfect, median cand, max ms ===
+reverse                solved 8/8  perfect 8/8  median-cand 86420  max-ms 60
+shift-seq (spec)       solved 8/8  perfect 8/8  median-cand 9074  max-ms 8
+rotate-left k          solved 8/8  perfect 6/8  median-cand 213841  max-ms 136
+                          seed 3 IMPOSTOR 129/200: (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) (if (= 0 (mod i k)) (at xs (mod 1 k)) (at xs 0)))))
+                          seed 6 IMPOSTOR 113/200: (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) (if (< 0 (at xs 0)) (at xs (mod i k)) (at xs (- i 1))))))
+map-adjacent +         solved 8/8  perfect 8/8  median-cand 284661  max-ms 364
+map-adjacent -         solved 8/8  perfect 8/8  median-cand 699206  max-ms 508
+running-sum            solved 8/8  perfect 8/8  median-cand 4775  max-ms 4
+scan + init a (spec)   solved 8/8  perfect 8/8  median-cand 9268  max-ms 12
+scan 2*acc-x init a    solved 8/8  perfect 8/8  median-cand 297628  max-ms 268
+positions (spec)       solved 8/8  perfect 8/8  median-cand 3  max-ms 0
+positions-of v         solved 8/8  perfect 8/8  median-cand 8332  max-ms 4
+filter x>k             solved 8/8  perfect 8/8  median-cand 8058  max-ms 4
+take k                 solved 8/8  perfect 8/8  median-cand 267  max-ms 4
+zip-add                solved 8/8  perfect 8/8  median-cand 30050  max-ms 28
+map-adjacent f (spec)  solved 8/8  perfect 3/8  median-cand 3039685  max-ms 5312
+                          seed 2 IMPOSTOR 150/200: (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= i (call f i 1)) (* (at xs i) (at xs (+ i 1))) (if (< 1 (- (len xs) 1)) (- (at xs (+ i 1)) (at xs i)) 1))))
+                          seed 3 IMPOSTOR 155/200: (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= i (call f i 1)) (* (at xs i) (at xs (+ i 1))) (if (= 0 (call f (len xs) (len xs))) (- (at xs (+ i 1)) (at xs i)) (+ (len xs) (+ (len xs) (+ (len xs) 1)))))))
+                          seed 5 IMPOSTOR 138/200: (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= i (- (len xs) (call f (len xs) i))) (- (at xs (+ i 1)) (at xs i)) (if (< 0 (at xs 0)) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs (+ i 1)))))))
+                          seed 6 IMPOSTOR 152/200: (tabulate (- (len xs) 1) (lambda (i prev) (if (< 1 (- (call f (len xs) 0) 1)) (- (at xs (+ i 1)) (at xs i)) (if (= i (call f i 1)) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs 1))))))
+                          seed 9 IMPOSTOR 135/200: (tabulate (- (len xs) 1) (lambda (i prev) (if (= i (call f i 1)) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs (+ i 1))))))
+scan f init a (spec)   solved 8/8  perfect 8/8  median-cand 14192  max-ms 28
+
+with goal inverses ((+ 0 - t) (+ 1 - t) (- 0 + nil) (- 1 - nil))
+=== D-seeds: per task over seeds (2 3 4 5 6 7 8 9): solved / held-out-perfect, median cand, max ms ===
+reverse                solved 8/8  perfect 8/8  median-cand 86420  max-ms 56
+shift-seq (spec)       solved 8/8  perfect 8/8  median-cand 9074  max-ms 12
+rotate-left k          solved 8/8  perfect 8/8  median-cand 214446  max-ms 140
+map-adjacent +         solved 8/8  perfect 8/8  median-cand 4787  max-ms 4
+map-adjacent -         solved 8/8  perfect 8/8  median-cand 4785  max-ms 4
+running-sum            solved 8/8  perfect 8/8  median-cand 4775  max-ms 8
+scan + init a (spec)   solved 8/8  perfect 8/8  median-cand 9268  max-ms 16
+scan 2*acc-x init a    solved 8/8  perfect 8/8  median-cand 297628  max-ms 340
+positions (spec)       solved 8/8  perfect 8/8  median-cand 0  max-ms 0
+positions-of v         solved 8/8  perfect 8/8  median-cand 8332  max-ms 4
+filter x>k             solved 8/8  perfect 8/8  median-cand 8058  max-ms 4
+take k                 solved 8/8  perfect 8/8  median-cand 267  max-ms 0
+zip-add                solved 8/8  perfect 8/8  median-cand 350  max-ms 4
+map-adjacent f (spec)  solved 8/8  perfect 7/8  median-cand 7954565  max-ms 6464
+                          seed 9 IMPOSTOR 135/200: (tabulate (- (len xs) 1) (lambda (i prev) (if (= i (call f i 1)) (* (at xs i) (at xs (+ i 1))) (+ (at xs i) (at xs (+ i 1))))))
+scan f init a (spec)   solved 8/8  perfect 8/8  median-cand 14192  max-ms 36

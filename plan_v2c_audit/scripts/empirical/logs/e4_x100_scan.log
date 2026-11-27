@@ -1,0 +1,23 @@
+E4 target=SCAN max-budget=35000000 bound-add=0 max-depth=2 heuristic-budget=15000 wall-cap=300s
+  prefix COPY           solved=YES work=27291
+  prefix INC-ALL        solved=YES work=195020
+  prefix DBL-ALL        solved=YES work=63333
+  prefix SUM-ALL        solved=YES work=27868
+  prefix LEN-ALL        solved=YES work=42759
+  prefix PRD-ALL        solved=YES work=36804
+  prefix FOLDL          solved=YES work=209723
+  prefix FILTER         solved=YES work=120369
+  prefix MAP-ADJACENT   solved=no  work=350000
+  prefix POSITIONS      solved=no  work=350000
+TARGET SCAN: inputs=3 rows=9 operators=29 (+ - * / MOD < = IF IF = CONS TAIL LENGTH CONCAT AT IF = IF CODE-EVAL COPY INC-ALL DBL-ALL SUM-ALL LEN-ALL PRD-ALL MAP FOLDR FOLDL FILTER) literals=(0 1 2) eff-bound=154 bits
+  rung cap=      350000 work=      350000 claim=CUTOFF             cpu_s=     0.10 wall_s=     0.10 gc_s=   0.02 heap_MiB=   28.3 (:NODES 2 :PHASES (:SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 0)
+  rung cap=     1000000 work=     1000000 claim=CUTOFF             cpu_s=     0.23 wall_s=     0.22 gc_s=   0.02 heap_MiB=   42.7 (:NODES 2 :PHASES (:SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 0)
+  rung cap=     3000000 work=     3000000 claim=CUTOFF             cpu_s=     0.63 wall_s=     0.63 gc_s=   0.02 heap_MiB=   96.5 (:NODES 2 :PHASES (:SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 0)
+  rung cap=     3500000 work=     3500000 claim=CUTOFF             cpu_s=     0.72 wall_s=     0.72 gc_s=   0.02 heap_MiB=  107.1 (:NODES 2 :PHASES (:SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 0)
+  rung cap=    10000000 work=    10000000 claim=CUTOFF             cpu_s=     2.22 wall_s=     2.22 gc_s=   0.30 heap_MiB=  143.9 (:NODES 2 :PHASES (:SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 0)
+  rung cap=    30000000 work=    30000000 claim=CUTOFF             cpu_s=     6.88 wall_s=     6.88 gc_s=   1.14 heap_MiB=  338.5 (:NODES 2 :PHASES (:SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 0)
+  rung cap=    35000000 work=    35000000 claim=CUTOFF             cpu_s=     7.89 wall_s=     7.89 gc_s=   1.14 heap_MiB=  461.5 (:NODES 2 :PHASES (:SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 0)
+RESULT SCAN claim=CUTOFF work=35000000 cpu_s=7.89 wall_s=7.89
+  ledger=((:EXPANSION . 40536) (:CHILD-SEARCH . 33845734) (:PREPARATION . 53122) (:SCHEDULING . 1060608))
+  no program. final claim CUTOFF => cutoff: budget ran out before exhaustion
+PROCESS rc=0 total_wall_s=11.815213347

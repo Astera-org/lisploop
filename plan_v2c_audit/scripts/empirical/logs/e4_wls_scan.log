@@ -1,0 +1,19 @@
+E4 target=SCAN max-budget=350000 bound-add=0 max-depth=2 heuristic-budget=15000 wall-cap=120s regime=wls (active-grammar=NIL schemas=T)
+  prefix COPY           solved=YES work=17630
+  prefix INC-ALL        solved=YES work=33929
+  prefix DBL-ALL        solved=YES work=32113
+  prefix SUM-ALL        solved=YES work=26298
+  prefix LEN-ALL        solved=YES work=34444
+  prefix PRD-ALL        solved=YES work=28337
+  prefix FOLDL          solved=YES work=82539
+  prefix FILTER         solved=YES work=76871
+  prefix MAP-ADJACENT   solved=YES work=110559
+  prefix POSITIONS      solved=YES work=47136
+REFERENCE SCAN (battery, whitelist+schemas): 269 bits: (:IF (:= :X0 "()/NIL") "()/NIL" (:CONS (:CODE-EVAL :X2 :X1 (:AT :X0 0)) (:SCAN (:TAIL :X0) (:CODE-EVAL :X2 :X1 (:AT :X0 0)) :X2)))
+TARGET SCAN: inputs=3 rows=9 operators=6 (CONS TAIL AT = IF CODE-EVAL) literals=NIL eff-bound=130 bits
+  rung cap=      350000 work=      263277 claim=CANDIDATE          cpu_s=     0.05 wall_s=     0.05 gc_s=   0.00 live_MiB=   74.6 (:NODES 5 :PHASES (:DONE 1 :SEARCH 4) :MAX-DEPTH 2 :DEFERRED 0 :EXPANDABLE 0 :SEARCHING ((0 NIL :BOUND 130 :DONE-BITS 94 :HDR 56 :BODY-SIZE 39 :OPS 6 :INPUTS 3 :SYNTAX 233 :WORK 59911 :REJECTED 163) (2 :STATE-SCAN-INDUCTIVE :BOUND 130 :DONE-BITS 97 :HDR 50 :BODY-SIZE 48 :OPS 2 :INPUTS 3 :SYNTAX 6 :WORK 5954 :REJECTED 3) (3 :HEURISTIC-ADDITIVE :BOUND 130 :DONE-BITS 53 :HDR 50 :BODY-SIZE 4 :OPS 2 :INPUTS 3 :SYNTAX 2 :WORK 1789 :REJECTED 1) (4 :HEURISTIC-CONDITIONAL :BOUND 130 :DONE-BITS 91 :HDR 50 :BODY-SIZE 42 :OPS 2 :INPUTS 3 :SYNTAX 3 :WORK 1828 :REJECTED 2)))
+RESULT SCAN claim=CANDIDATE work=263277 cpu_s=0.05 wall_s=0.05
+  ledger=((:PARENT-VERIFICATION . 9266) (:COMPOSITION . 464) (:EXPANSION . 24522) (:CHILD-SEARCH . 87189) (:PREPARATION . 133855) (:SCHEDULING . 7981))
+  PROGRAM (269 bits): (:IF (:= :X0 "()/NIL") "()/NIL" (:CONS (:CODE-EVAL :X2 :X1 (:AT :X0 0)) (:SCAN (:TAIL :X0) (:CODE-EVAL :X2 :X1 (:AT :X0 0)) :X2)))
+  spec-verified=YES held-out=PASS
+PROCESS rc=0 total_wall_s=2.395677960

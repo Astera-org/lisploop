@@ -1,0 +1,18 @@
+AT_LAST = False
+
+========================================================================================
+EXP A2: DO QUOTIENTS SAVE RAM INSIDE LIFTED POSITION-SPACE TASKS (§6.7 OPEN QUESTION)?
+========================================================================================
+  map-adjacent (+) [4ops]  | Plain eval=  59970 RAM= 2247 | Prefilt eval=  11218 (skip= 48752) RAM= 2247 | EvalGain=  5.3x RAMGain= 1.0x | found=('+', ('at', 'xs', 'i'), ('at', 'xs', ('+', 'i', '1')))
+  map-adjacent (-) [4ops]  | Plain eval=  85362 RAM= 2247 | Prefilt eval=  11287 (skip= 74075) RAM= 2247 | EvalGain=  7.6x RAMGain= 1.0x | found=('-', ('at', 'xs', ('+', 'i', '1')), ('at', 'xs', 'i'))
+  reverse [3ops]           | Plain eval=    898 RAM=  213 | Prefilt eval=    898 (skip=     0) RAM=  213 | EvalGain=  1.0x RAMGain= 1.0x | found=('at', 'xs', ('-', 'len', ('+', 'i', '1')))
+  rotate-left [3ops]       | Plain eval=   2383 RAM=  572 | Prefilt eval=   2383 (skip=     0) RAM=  572 | EvalGain=  1.0x RAMGain= 1.0x | found=('at', 'xs', ('mod', ('+', 'i', 'k'), 'len'))
+AT_LAST = True
+
+========================================================================================
+EXP A2: DO QUOTIENTS SAVE RAM INSIDE LIFTED POSITION-SPACE TASKS (§6.7 OPEN QUESTION)?
+========================================================================================
+  map-adjacent (+) [4ops]  | Plain eval=  61793 RAM= 2247 | Prefilt eval=   9182 (skip= 52611) RAM= 2247 | EvalGain=  6.7x RAMGain= 1.0x | found=('+', ('at', 'xs', 'i'), ('at', 'xs', ('+', 'i', '1')))
+  map-adjacent (-) [4ops]  | Plain eval=  87463 RAM= 2247 | Prefilt eval=   9251 (skip= 78212) RAM= 2247 | EvalGain=  9.5x RAMGain= 1.0x | found=('-', ('at', 'xs', ('+', 'i', '1')), ('at', 'xs', 'i'))
+  reverse [3ops]           | Plain eval=   9005 RAM=  213 | Prefilt eval=    929 (skip=  8076) RAM=  213 | EvalGain=  9.7x RAMGain= 1.0x | found=('at', 'xs', ('-', 'len', ('+', 'i', '1')))
+  rotate-left [3ops]       | Plain eval=  30806 RAM=  572 | Prefilt eval=   2459 (skip= 28347) RAM=  572 | EvalGain= 12.5x RAMGain= 1.0x | found=('at', 'xs', ('mod', ('+', 'i', 'k'), 'len'))

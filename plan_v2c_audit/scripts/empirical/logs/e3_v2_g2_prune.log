@@ -1,0 +1,49 @@
+E3 kernel=/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/v2/ grammar=g2 mode=prune inputs=2 ops=3 (+ - *) literals=(0 1) rows=10 header=23 bits
+   bit costs: var=3 lit0=3 lit1=6 +-overhead=6 --overhead=6 *-overhead=6
+body syn_cum    syn_new    behav_cum    work_cum     w/syn    x_syn    x_work     x_behav    cpu_s     work/s    cand/s   
+     (prune mode adds: tried = retained + candidates dropped as duplicate behaviours; live_MiB without forced GC)
+   3          3          3            3          113     37.7    0.000      4.708      0.000      0.00   113000.     3000.
+       tried=3 tried/s=3000. column-cache-entries=3 dyn_MiB=142.
+   6          4          1            4          196     49.0    1.333      1.431      1.333      0.00   196000.     4000.
+       tried=4 tried/s=4000. column-cache-entries=4 dyn_MiB=142.
+  12         14         10           14         1202     85.9    3.500      4.387      3.500      0.00  1202000.    14000.
+       tried=31 tried/s=31000. column-cache-entries=31 dyn_MiB=142.
+  15         21          7           21         1787     85.1    1.500      1.419      1.500      0.00  1787000.    21000.
+       tried=49 tried/s=49000. column-cache-entries=49 dyn_MiB=142.
+  18         22          1           22         1967     89.4    1.048      1.056      1.048      0.00  1967000.    22000.
+       tried=52 tried/s=52000. column-cache-entries=52 dyn_MiB=142.
+  21         67         45           67         8727    130.3    3.045      4.236      3.045      0.00  8727000.    67000.
+       tried=232 tried/s=232000. column-cache-entries=232 dyn_MiB=143.
+  24         91         24           91        13748    151.1    1.358      1.556      1.358      0.00 10526799.    69678.
+       tried=418 tried/s=320061. column-cache-entries=418 dyn_MiB=143.
+  27         98          7           98        15485    158.0    1.077      1.116      1.077      0.00 10316456.    65290.
+       tried=478 tried/s=318454. column-cache-entries=478 dyn_MiB=143.
+  30        316        218          316        62707    198.4    3.224      4.011      3.224      0.00 13637886.    68726.
+       tried=1594 tried/s=346672. column-cache-entries=1594 dyn_MiB=145.
+  33        445        129          445       100676    226.2    1.408      1.601      1.408      0.01 13078202.    57807.
+       tried=2716 tried/s=352819. column-cache-entries=2716 dyn_MiB=148.
+  36        482         37          482       116405    241.5    1.083      1.154      1.083      0.01 12910936.    53461.
+       tried=3193 tried/s=354148. column-cache-entries=3193 dyn_MiB=149.
+  39       1578       1096         1578       439792    278.7    3.274      3.772      3.274      0.03 15789186.    56653.
+       tried=9901 tried/s=355461. column-cache-entries=9901 dyn_MiB=162.
+  42       2311        733         2311       724092    313.3    1.465      1.646      1.465      0.05 15334435.    48941.
+       tried=16864 tried/s=357137. column-cache-entries=16864 dyn_MiB=176.
+  45       2619        308         2619       854599    326.3    1.133      1.180      1.133      0.06 15274061.    46809.
+       tried=20002 tried/s=357491. column-cache-entries=20002 dyn_MiB=182.
+  48       8414       5795         8414      3039877    361.3    3.213      3.556      3.213      0.17 17541834.    48554.
+       tried=59545 tried/s=343609. column-cache-entries=59545 dyn_MiB=264.
+  51      12668       4254        12668      5117663    404.0    1.506      1.683      1.506      0.34 14884153.    36843.
+       tried=102733 tried/s=298787. column-cache-entries=102733 dyn_MiB=158.
+  54      14861       2193        14861      6228045    419.1    1.173      1.217      1.173      0.41 15179247.    36220.
+       tried=125239 tried/s=305238. column-cache-entries=125239 dyn_MiB=208.
+  57      46810      31949        46810     20868469    445.8    3.150      3.351      3.150      1.37 15224114.    34149.
+       tried=359353 tried/s=262158. column-cache-entries=359353 dyn_MiB=426.
+  60      73337      26527        73337     35950622    490.2    1.567      1.723      1.567      2.56 14023907.    28608.
+       tried=627298 tried/s=244701. column-cache-entries=627298 dyn_MiB=696.
+  63      88490      15153        88490     45000880    508.5    1.207      1.252      1.207      3.21 14030422.    27590.
+       tried=785860 tried/s=245016. column-cache-entries=785860 dyn_MiB=911.
+  66     269682     181192       269682    143350129    531.6    3.048      3.185      3.048     12.31 11643584.    21905.
+       tried=2188372 tried/s=177750. column-cache-entries=2188372 dyn_MiB=2360.
+STOP body=66 cpu_s=12.31 syntax=269682 work=143350129 live_MiB=2129.0
+  ledger=((:EQUALITY-CACHE . 1918690) (:CHECKING . 542454) (:EVALUATION . 43295699) (:CONSTRUCTION . 95399464) (:ENUMERATION . 2193822))
+PROCESS rc=0

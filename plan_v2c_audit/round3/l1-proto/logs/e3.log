@@ -1,0 +1,183 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATED-TRY
+;     (TG::PROBE-MATCH TG::LF TG::OP TG::C1 TG::C2 TG::C3)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::PROBE-MATCH
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROBE-MATCH
+;   caught 1 STYLE-WARNING condition
+=== E3. The guard split against the label filter.  strict@L = at size level L (the level after which plain finds
+its split: an ORACLE) only label-feasible candidates are evaluated, and the search stops after L.
+'guards exempt' = boolean-result candidates are never filtered.  look-ahead@L = bound L, classes that no operator
+can take to the target's labels are not stored, then the split is attempted on what is left. ===
+
+## shift-seq (spec): plain element term after level 5 on 40 rows (held-out 200/200):
+   (if (< i (- (len xs) k)) (at xs (+ i k)) 0)
+      guard (< i (- (len xs) k))                     size 5 bool  matches  0/40 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (at xs (+ i k))                          size 5 int   matches 30/40 rows | q3: pass; q3+pair: OUT (allowed on 30/40 rows); def: pass;
+      else  0                                        size 1 (a leaf, always present); matches 12/40 rows
+      plain bank: 2737 classes = 469 boolean + 1700 integer with an undefined row + 567 integer defined everywhere
+      level 5 has 6643 integer-result candidates; the q3 tables allow all 40 rows for 28 (0.42%), >= 30 rows (the near-miss's count) for 67 (1.01%), >= 10 rows (the else-branch's share) for 1728 (26.0%)
+      plain                              cand     9175  spared        0  look-ups         0  ms    20.36  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand     9175  spared        0  look-ups     26161  ms    26.83  held-out 200/200   SAME PROGRAM
+      strict@5 types only                cand     6971  spared     2204  look-ups         0  ms    24.51  held-out -         LOST (no program)
+      strict@5 q3                        cand      356  spared     8819  look-ups     24431  ms     3.07  held-out -         LOST (no program)
+      strict@5 q3, guards exempt         cand     2560  spared     6615  look-ups     24431  ms     7.71  held-out 200/200   SAME PROGRAM
+      strict@5 q3+pair, guards exempt    cand     2537  spared     6638  look-ups     20748  ms     9.16  held-out -         LOST (no program)
+      strict@5 def, guards exempt        cand     5216  spared     3959  look-ups    116443  ms    13.02  held-out 200/200   SAME PROGRAM
+      look-ahead@5 q3 + split            cand      250  spared     4240  look-ups     27212  ms     1.49  held-out -         LOST (no program)
+      look-ahead@5 q3 + split, guards exempt cand     1432  spared     3184  look-ups     27212  ms     4.14  held-out 200/200   SAME PROGRAM
+
+## running-sum: plain element term after level 5 on 51 rows (held-out 200/200):
+   (if (< 0 i) (+ prev (at xs i)) (at xs i))
+      guard (< 0 i)                                  size 3 bool  matches  0/51 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (+ prev (at xs i))                       size 5 int   matches 40/51 rows | q3: OUT (allowed on 40/51 rows); q3+pair: OUT (allowed on 40/51 rows); def: OUT (allowed on 40/51 rows);
+      else  (at xs i)                                size 3 int   matches 13/51 rows | q3: pass; q3+pair: pass; def: pass;
+      plain bank: 1322 classes = 211 boolean + 902 integer with an undefined row + 208 integer defined everywhere
+      level 5 has 3416 integer-result candidates; the q3 tables allow all 51 rows for 14 (0.41%), >= 40 rows (the near-miss's count) for 45 (1.32%), >= 11 rows (the else-branch's share) for 1124 (32.9%)
+      plain                              cand     4771  spared        0  look-ups         0  ms    12.54  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand     4771  spared        0  look-ups     16516  ms    16.04  held-out 200/200   SAME PROGRAM
+      strict@5 types only                cand     3642  spared     1129  look-ups         0  ms    10.36  held-out 200/200   SAME PROGRAM
+      strict@5 q3                        cand      240  spared     4531  look-ups     14878  ms     2.12  held-out -         LOST (no program)
+      strict@5 q3, guards exempt         cand     1369  spared     3402  look-ups     14878  ms     5.56  held-out -         LOST (no program)
+      strict@5 q3+pair, guards exempt    cand     1358  spared     3413  look-ups     12479  ms     5.39  held-out -         LOST (no program)
+      strict@5 def, guards exempt        cand     2482  spared     2289  look-ups     61579  ms     8.81  held-out -         LOST (no program)
+      look-ahead@5 q3 + split            cand      169  spared     1849  look-ups     17187  ms     1.12  held-out -         LOST (no program)
+      look-ahead@5 q3 + split, guards exempt cand      709  spared     1389  look-ups     17187  ms     3.10  held-out -         LOST (no program)
+
+## scan + init a (spec): plain element term after level 5 on 40 rows (held-out 200/200):
+   (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))
+      guard (< 0 i)                                  size 3 bool  matches  0/40 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (+ prev (at xs i))                       size 5 int   matches 29/40 rows | q3: OUT (allowed on 29/40 rows); q3+pair: OUT (allowed on 29/40 rows); def: OUT (allowed on 29/40 rows);
+      else  (+ a (at xs i))                          size 5 int   matches 12/40 rows | q3: OUT (allowed on 15/40 rows); q3+pair: OUT (allowed on 15/40 rows); def: pass;
+      plain bank: 2833 classes = 424 boolean + 1764 integer with an undefined row + 644 integer defined everywhere
+      level 5 has 6789 integer-result candidates; the q3 tables allow all 40 rows for 23 (0.34%), >= 29 rows (the near-miss's count) for 92 (1.36%), >= 11 rows (the else-branch's share) for 1513 (22.3%)
+      plain                              cand     9369  spared        0  look-ups         0  ms    20.50  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand     9369  spared        0  look-ups     27166  ms    26.42  held-out 200/200   SAME PROGRAM
+      strict@5 types only                cand     7117  spared     2252  look-ups         0  ms    16.46  held-out 200/200   SAME PROGRAM
+      strict@5 q3                        cand      351  spared     9018  look-ups     25435  ms     2.37  held-out -         LOST (no program)
+      strict@5 q3, guards exempt         cand     2603  spared     6766  look-ups     25435  ms     8.66  held-out -         LOST (no program)
+      strict@5 q3+pair, guards exempt    cand     2584  spared     6785  look-ups     21550  ms     8.39  held-out -         LOST (no program)
+      strict@5 def, guards exempt        cand     5386  spared     3983  look-ups    117687  ms    16.90  held-out -         LOST (no program)
+      look-ahead@5 q3 + split            cand      245  spared     4439  look-ups     28385  ms     1.44  held-out -         LOST (no program)
+      look-ahead@5 q3 + split, guards exempt cand     1475  spared     3335  look-ups     28385  ms     5.06  held-out -         LOST (no program)
+
+## scan 2*acc-x init a: plain element term after level 7 on 43 rows (held-out 200/200):
+   (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))
+      guard (< 0 i)                                  size 3 bool  matches  0/43 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (+ prev (- prev (at xs i)))              size 7 int   matches 32/43 rows | q3: OUT (allowed on 32/43 rows); q3+pair: OUT (allowed on 32/43 rows); def: OUT (allowed on 32/43 rows);
+      else  (+ a (- a (at xs i)))                    size 7 int   matches 11/43 rows | q3: OUT (allowed on 22/43 rows); q3+pair: OUT (allowed on 22/43 rows); def: pass;
+      plain bank: 78518 classes = 6254 boolean + 61303 integer with an undefined row + 10960 integer defined everywhere
+      level 7 has 221166 integer-result candidates; the q3 tables allow all 43 rows for 249 (0.11%), >= 32 rows (the near-miss's count) for 795 (0.36%), >= 11 rows (the else-branch's share) for 30679 (13.9%)
+      plain                              cand   304540  spared        0  look-ups         0  ms   648.63  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand   304540  spared        0  look-ups    589397  ms   801.28  held-out 200/200   SAME PROGRAM
+      strict@7 types only                cand   230726  spared    73814  look-ups         0  ms   534.78  held-out 200/200   SAME PROGRAM
+      strict@7 q3                        cand     9809  spared   294731  look-ups    560443  ms    76.95  held-out -         LOST (no program)
+      strict@7 q3, guards exempt         cand    83623  spared   220917  look-ups    560443  ms   225.73  held-out -         LOST (no program)
+      strict@7 q3+pair, guards exempt    cand    83423  spared   221117  look-ups    500688  ms   223.21  held-out -         LOST (no program)
+      strict@7 def, guards exempt        cand   134256  spared   170284  look-ups   2778832  ms   375.45  held-out -         LOST (no program)
+      look-ahead@7 q3 + split            cand     7187  spared   128185  look-ups    609798  ms    34.35  held-out -         LOST (no program)
+      look-ahead@7 q3 + split, guards exempt cand    42631  spared    96233  look-ups    609798  ms   110.09  held-out -         LOST (no program)
+
+## scan f init a (spec): plain element term after level 6 on 35 rows (held-out 200/200):
+   (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))
+      guard (< 0 i)                                  size 3 bool  matches  0/35 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (call f prev (at xs i))                  size 6 int   matches 26/35 rows | q3: OUT (allowed on 26/35 rows); q3+pair: OUT (allowed on 26/35 rows); def: OUT (allowed on 26/35 rows);
+      else  (call f a (at xs i))                     size 6 int   matches 16/35 rows | q3: OUT (allowed on 20/35 rows); q3+pair: OUT (allowed on 20/35 rows); def: pass;
+      plain bank: 5407 classes = 690 boolean + 3063 integer with an undefined row + 1652 integer defined everywhere
+      level 6 has 3671 integer-result candidates; the q3 tables allow all 35 rows for 8 (0.22%), >= 26 rows (the near-miss's count) for 18 (0.49%), >= 9 rows (the else-branch's share) for 1818 (49.5%)
+      plain                              cand    14186  spared        0  look-ups         0  ms    46.69  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand    14186  spared        0  look-ups     44579  ms    55.61  held-out 200/200   SAME PROGRAM
+      strict@6 types only                cand    13062  spared     1124  look-ups         0  ms    43.45  held-out 200/200   SAME PROGRAM
+      strict@6 q3                        cand     9399  spared     4787  look-ups     13752  ms    41.95  held-out -         LOST (no program)
+      strict@6 q3, guards exempt         cand    10523  spared     3663  look-ups     13752  ms    44.72  held-out -         LOST (no program)
+      strict@6 q3+pair, guards exempt    cand    10516  spared     3670  look-ups     11787  ms    42.40  held-out -         LOST (no program)
+      strict@6 def, guards exempt        cand    12439  spared     1747  look-ups     69387  ms    50.14  held-out -         LOST (no program)
+      look-ahead@6 q3 + split            cand      266  spared     3436  look-ups     26352  ms     1.76  held-out -         LOST (no program)
+      look-ahead@6 q3 + split, guards exempt cand     3470  spared     2860  look-ups     26352  ms     9.98  held-out -         LOST (no program)
+
+## spec scan: plain element term after level 6 on 9 rows (held-out 200/200):
+   (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))
+      guard (= i 0)                                  size 3 bool  matches  0/9 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (call f a (at xs i))                     size 6 int   matches  5/9 rows | q3: OUT (allowed on 5/9 rows); q3+pair: OUT (allowed on 5/9 rows); def: pass;
+      else  (call f prev (at xs i))                  size 6 int   matches  4/9 rows | q3: OUT (allowed on 4/9 rows); q3+pair: OUT (allowed on 4/9 rows); def: OUT (allowed on 4/9 rows);
+      plain bank: 2364 classes = 122 boolean + 1114 integer with an undefined row + 1126 integer defined everywhere
+      level 6 has 3102 integer-result candidates; the q3 tables allow all 9 rows for 21 (0.68%), >= 5 rows (the near-miss's count) for 136 (4.38%), >= 4 rows (the else-branch's share) for 276 (8.9%)
+      plain                              cand    11604  spared        0  look-ups         0  ms     9.97  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand    11604  spared        0  look-ups     19460  ms    12.10  held-out 200/200   SAME PROGRAM
+      strict@6 types only                cand    10830  spared      774  look-ups         0  ms     9.69  held-out 200/200   SAME PROGRAM
+      strict@6 q3                        cand     7749  spared     3855  look-ups      6696  ms     7.74  held-out -         LOST (no program)
+      strict@6 q3, guards exempt         cand     8523  spared     3081  look-ups      6696  ms     8.41  held-out -         LOST (no program)
+      strict@6 q3+pair, guards exempt    cand     8513  spared     3091  look-ups      6203  ms     8.31  held-out -         LOST (no program)
+      strict@6 def, guards exempt        cand    10152  spared     1452  look-ups     16302  ms    10.19  held-out -         LOST (no program)
+      look-ahead@6 q3 + split            cand      279  spared     2831  look-ups      9117  ms     0.82  held-out -         LOST (no program)
+      look-ahead@6 q3 + split, guards exempt cand     2735  spared     2351  look-ups      9117  ms     2.24  held-out -         LOST (no program)
+
+## spec shift-seq: plain element term after level 5 on 27 rows (held-out 200/200):
+   (if (< i (- (len xs) k)) (at xs (+ i k)) 0)
+      guard (< i (- (len xs) k))                     size 5 bool  matches  0/27 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (at xs (+ i k))                          size 5 int   matches 18/27 rows | q3: pass; q3+pair: OUT (allowed on 18/27 rows); def: pass;
+      else  0                                        size 1 (a leaf, always present); matches 9/27 rows
+      plain bank: 2319 classes = 383 boolean + 1402 integer with an undefined row + 533 integer defined everywhere
+      level 5 has 6351 integer-result candidates; the q3 tables allow all 27 rows for 47 (0.74%), >= 18 rows (the near-miss's count) for 111 (1.75%), >= 9 rows (the else-branch's share) for 1176 (18.5%)
+      plain                              cand     8781  spared        0  look-ups         0  ms    14.09  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand     8781  spared        0  look-ups     18889  ms    17.54  held-out 200/200   SAME PROGRAM
+      strict@5 types only                cand     6676  spared     2105  look-ups         0  ms    14.41  held-out -         LOST (no program)
+      strict@5 q3                        cand      372  spared     8409  look-ups     17675  ms     2.33  held-out -         LOST (no program)
+      strict@5 q3, guards exempt         cand     2477  spared     6304  look-ups     17675  ms     5.28  held-out 200/200   SAME PROGRAM
+      strict@5 q3+pair, guards exempt    cand     2453  spared     6328  look-ups     15223  ms     6.11  held-out -         LOST (no program)
+      strict@5 def, guards exempt        cand     4992  spared     3789  look-ups     73329  ms     9.54  held-out 200/200   SAME PROGRAM
+      look-ahead@5 q3 + split            cand      269  spared     4027  look-ups     18563  ms     1.23  held-out -         LOST (no program)
+      look-ahead@5 q3 + split, guards exempt cand     1397  spared     3019  look-ups     18563  ms     2.98  held-out 200/200   SAME PROGRAM
+
+## spec map-adjacent: plain element term after level 8 on 6 rows (held-out 29/200):
+   (if (= 1 (at xs 0)) (+ (len xs) (* i (call f (len xs) i))) (+ (len xs) (+ (len xs) (call f (len xs) 1))))
+      guard (= 1 (at xs 0))                          size 5 bool  matches  0/6 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (+ (len xs) (* i (call f (len xs) i)))   size 8 int   matches  4/6 rows | q3: OUT (allowed on 4/6 rows); q3+pair: OUT (allowed on 4/6 rows); def: pass;
+      else  (+ (len xs) (+ (len xs) (call f (len xs) 1))) size 8 int   matches  2/6 rows | q3: OUT (allowed on 2/6 rows); q3+pair: OUT (allowed on 2/6 rows); def: pass;
+      plain bank: 4444 classes = 113 boolean + 833 integer with an undefined row + 3496 integer defined everywhere
+      level 8 has 25555 integer-result candidates; the q3 tables allow all 6 rows for 285 (1.12%), >= 4 rows (the near-miss's count) for 1209 (4.73%), >= 2 rows (the else-branch's share) for 5761 (22.5%)
+      plain                              cand    55288  spared        0  look-ups         0  ms    23.83  held-out 29/200    SAME PROGRAM
+      first (order only)                 cand    55226  spared       62  look-ups     99518  ms    30.00  held-out 29/200    SAME PROGRAM
+      strict@8 types only                cand    47566  spared     7722  look-ups         0  ms    22.29  held-out 29/200    SAME PROGRAM
+      strict@8 q3                        cand    22234  spared    33054  look-ups     60626  ms    13.30  held-out -         LOST (no program)
+      strict@8 q3, guards exempt         cand    29956  spared    25332  look-ups     60626  ms    16.11  held-out -         LOST (no program)
+      strict@8 q3+pair, guards exempt    cand    29884  spared    25404  look-ups     57901  ms    15.80  held-out -         LOST (no program)
+      strict@8 def, guards exempt        cand    44877  spared    10411  look-ups    102834  ms    24.60  held-out 29/200    SAME PROGRAM
+      look-ahead@8 q3 + split            cand     3466  spared    27273  look-ups     67800  ms     4.24  held-out -         LOST (no program)
+      look-ahead@8 q3 + split, guards exempt cand    15132  spared    21001  look-ups     67800  ms     7.76  held-out -         LOST (no program)
+
+## spec last-or (scalar): plain element term after level 5 on 7 rows (held-out 200/200):
+   (if (< 0 (len xs)) (at xs (- (len xs) 1)) d)
+      guard (< 0 (len xs))                           size 3 bool  matches  0/7 rows | q3: TYPE-OUT; q3+pair: TYPE-OUT; def: TYPE-OUT;
+      near  (at xs (- (len xs) 1))                   size 5 int   matches  5/7 rows | q3: OUT (allowed on 5/7 rows); q3+pair: OUT (allowed on 5/7 rows); def: pass;
+      else  d                                        size 1 (a leaf, always present); matches 2/7 rows
+      plain bank: 311 classes = 37 boolean + 108 integer with an undefined row + 165 integer defined everywhere
+      level 5 has 1274 integer-result candidates; the q3 tables allow all 7 rows for 49 (3.85%), >= 5 rows (the near-miss's count) for 133 (10.44%), >= 2 rows (the else-branch's share) for 563 (44.2%)
+      plain                              cand     1832  spared        0  look-ups         0  ms     1.11  held-out 200/200   SAME PROGRAM
+      first (order only)                 cand     1832  spared        0  look-ups      5140  ms     1.48  held-out 200/200   SAME PROGRAM
+      strict@5 types only                cand     1414  spared      418  look-ups         0  ms     1.04  held-out 200/200   SAME PROGRAM
+      strict@5 q3                        cand      189  spared     1643  look-ups      4642  ms     0.42  held-out -         LOST (no program)
+      strict@5 q3, guards exempt         cand      607  spared     1225  look-ups      4642  ms     0.67  held-out -         LOST (no program)
+      strict@5 q3+pair, guards exempt    cand      593  spared     1239  look-ups      4259  ms     0.65  held-out -         LOST (no program)
+      strict@5 def, guards exempt        cand     1587  spared      245  look-ups      7448  ms     1.15  held-out 200/200   SAME PROGRAM
+      look-ahead@5 q3 + split            cand      149  spared     1316  look-ups      4916  ms     0.35  held-out -         LOST (no program)
+      look-ahead@5 q3 + split, guards exempt cand      527  spared      980  look-ups      4916  ms     0.56  held-out -         LOST (no program)
+
+[e3 finished in 43.4 s]

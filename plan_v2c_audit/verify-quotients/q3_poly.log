@@ -1,0 +1,37 @@
+# Q3: G1 = {+,-,*,neg} over x, y, 0, 1; 32 rows, x,y in [-9,9], seed 0
+abstract domains: F_2 on rows [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] (16 states), F_3 on rows [0, 1, 2, 3] (81 states), F_5 on rows [0, 1, 2] (125 states)
+closure + operation tables + forward DP for the three domains: 142.6 ms (once per row set)
+A2   (x+x)*(y+1)              size found  7 | plain:      2047 cands,     127 stored, 0.00s | colhom: found=True N_min=6 cum 15 (last pass 10), stored 8, lookups 191, search 0.00s + DP 0.024s | per-row: cum 367, stored 74
+A3   x*y + x - y              size found  7 | plain:       860 cands,     127 stored, 0.00s | colhom: found=True N_min=7 cum 20 (last pass 20), stored 15, lookups 429, search 0.00s + DP 0.024s | per-row: cum 554, stored 99
+A4   (x+y)*(x-y) + 1          size found  9 | plain:      6101 cands,     595 stored, 0.01s | colhom: found=True N_min=5 cum 487 (last pass 318), stored 62, lookups 16178, search 0.01s + DP 0.022s | per-row: cum 2700, stored 364
+A8   (x+y)^2 - x*y + 1        size found 11 | plain:     35601 cands,    3147 stored, 0.06s | colhom: found=True N_min=7 cum 695 (last pass 464), stored 119, lookups 56455, search 0.04s + DP 0.021s | per-row: cum 16980, stored 1997
+A11  (x*y + x + 1)*(y - x)    size found 11 | plain:     68023 cands,    3147 stored, 0.11s | colhom: found=True N_min=7 cum 2206 (last pass 1506), stored 333, lookups 133481, search 0.10s + DP 0.022s | per-row: cum 23569, stored 2713
+A12  2*(x^2 + y^2) - x*y      size found 13 | plain:    439253 cands,   17609 stored, 0.62s | colhom: found=True N_min=3 cum 13812 (last pass 8127), stored 1229, lookups 992619, search 0.78s + DP 0.018s | per-row: cum 105583, stored 11535
+
+== Table: candidates evaluated until the target is found, and classes stored below the last level ==
+     target                    sz      plain   stored |     colhom   (1 pass)  stored cand gain  RAM gain | plain ms  scan ms  join ms  lookups  w/ join |  per-row RAM gain
+A2   (x+x)*(y+1)                7       2047      127 |         15         10       8    136.5x     15.9x |      3.2     24.2     25.7      191      167 |    5.58x    1.72x
+A3   x*y + x - y                7        860      127 |         20         20      15     43.0x      8.5x |      1.3     24.1     24.2      429      179 |    1.55x    1.28x
+A4   (x+y)*(x-y) + 1            9       6101      595 |        487        318      62     12.5x      9.6x |      9.3     34.8     34.2    16178     9113 |    2.26x    1.63x
+A8   (x+y)^2 - x*y + 1         11      35601     3147 |        695        464     119     51.2x     26.4x |     57.1     64.4     51.4    56455    33735 |    2.10x    1.58x
+A11  (x*y + x + 1)*(y - x)     11      68023     3147 |       2206       1506     333     30.8x      9.5x |    113.0    127.1     79.7   133481    65988 |    2.89x    1.16x
+A12  2*(x^2 + y^2) - x*y       13     439253    17609 |      13812       8127    1229     31.8x     14.3x |    625.0    800.1    435.6   992619   502064 |    4.16x    1.53x
+
+== Variant: abstract filter BEFORE evaluation on the last level only (below it: evaluate, then discard) ==
+     target                        plain |        cum   (1 pass)  stored cand gain  (1 pass)
+A2   (x+x)*(y+1)                    2047 |        124        108       8     16.5x     19.0x
+A3   x*y + x - y                     860 |        149        149      15      5.8x      5.8x
+A4   (x+y)*(x-y) + 1                6101 |       3277       2090      62      1.9x      2.9x
+A8   (x+y)^2 - x*y + 1             35601 |      11374       8388     119      3.1x      4.2x
+A11  (x*y + x + 1)*(y - x)         68023 |      25397      16938     333      2.7x      4.0x
+A12  2*(x^2 + y^2) - x*y          439253 |     156666      97005    1229      2.8x      4.5x
+
+colhom = all iterative-deepening passes from N_min to the size found; (1 pass) = last pass alone;
+scan ms / join ms = search (best of 3) + backward DP for this target, testing every pair of abstract
+buckets / using the last-level join; lookups = abstract bucket-pair tests; the one-off cost of the
+domains (closure, tables, forward DP) is NOT included; per-row = candidate gain with the same primes
+applied to single rows (19 one-row domains).
+
+real	0m14.709s
+user	0m14.675s
+sys	0m0.032s

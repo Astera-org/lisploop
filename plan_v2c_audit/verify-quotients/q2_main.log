@@ -1,0 +1,268 @@
+# Q2 main  kind=iid M=2000 seed=0
+library: 61 operators
+   inc_all         L -> L
+   dbl_all         L -> L
+   abs_all         L -> L
+   neg_all         L -> L
+   dec_all         L -> L
+   sq_all          L -> L
+   half_all        L -> L
+   map_adj_add     L -> L
+   map_adj_sub     L -> L
+   map_adj_mul     L -> L
+   map_adj_min     L -> L
+   map_adj_max     L -> L
+   zip_add         L x L -> L
+   zip_sub         L x L -> L
+   zip_mul         L x L -> L
+   zip_min         L x L -> L
+   zip_max         L x L -> L
+   filter_pos      L -> L
+   filter_neg      L -> L
+   filter_even     L -> L
+   filter_odd      L -> L
+   sort            L -> L
+   sort_desc       L -> L
+   reverse         L -> L
+   shift1          L -> L
+   tail            L -> L
+   init            L -> L
+   take2           L -> L
+   take3           L -> L
+   drop2           L -> L
+   concat          L x L -> L
+   running_sum     L -> L
+   running_max     L -> L
+   running_min     L -> L
+   dedup_adj       L -> L
+   evens_idx       L -> L
+   odds_idx        L -> L
+   sum             L -> I
+   len             L -> I
+   head            L -> I
+   last            L -> I
+   min_el          L -> I
+   max_el          L -> I
+   count_pos       L -> I
+   count_even      L -> I
+   count_distinct  L -> I
+   inc             I -> I
+   dec             I -> I
+   dbl             I -> I
+   neg             I -> I
+   abs             I -> I
+   sq              I -> I
+   add             I x I -> I
+   sub             I x I -> I
+   mul             I x I -> I
+   min             I x I -> I
+   max             I x I -> I
+   cons            I x L -> L
+   add_k           I x L -> L
+   mul_k           I x L -> L
+   take_n          I x L -> L
+
+tables: 6 quotients x 61 operators, M=2000 probes/operator (iid pool)
+   quotients: ['sign', 'parity', 'order', 'caplen5', 'lenmod2', 'isempty']
+   abstract states per quotient (L+I): [7, 6, 5, 7, 3, 4]  table entries: 1736
+   build time, best of 5: probe pool 2.4 ms, operator evaluation on probes 28.0 ms, alpha + group-by 149.4 ms
+
+training tasks for Naive Bayes: 80 (operators held out: ('map_adj_sub', 'dbl_all'))
+   operators with zero training count: ['dbl_all', 'map_adj_sub', 'zip_add', 'mul', 'max']
+   operator training counts: {'reverse': 12, 'half_all': 12, 'dedup_adj': 12, 'sort': 10, 'init': 9, 'evens_idx': 9, 'shift1': 9, 'drop2': 9, 'map_adj_mul': 8, 'neg_all': 8, 'dec_all': 7, 'running_sum': 7, 'abs_all': 7, 'map_adj_min': 6, 'filter_pos': 6, 'take2': 6, 'map_adj_max': 6, 'take3': 6, 'sq_all': 6, 'running_min': 6, 'tail': 6, 'filter_odd': 5, 'dbl': 5, 'last': 5, 'sum': 5, 'odds_idx': 5, 'neg': 5, 'count_distinct': 5, 'filter_neg': 5, 'len': 5, 'count_even': 4, 'running_max': 4, 'count_pos': 4, 'sort_desc': 4, 'min_el': 4, 'filter_even': 4, 'max_el': 4, 'inc_all': 3, 'cons': 3, 'head': 3, 'dec': 3, 'concat': 3, 'sq': 2, 'inc': 2, 'mul_k': 2, 'zip_min': 2, 'map_adj_add': 2, 'add_k': 2, 'min': 2, 'abs': 1, 'zip_max': 1, 'take_n': 1, 'sub': 1, 'zip_mul': 1, 'zip_sub': 1, 'add': 1}
+
+test tasks:
+   T1   size 4  sum(map_adj_sub(sort(xs)))   [COLD: map_adj_sub]
+   T3   size 5  sum(zip_mul(xs, shift1(xs)))
+   T4   size 5  sum(filter_pos(zip_sub(xs, ys)))
+   T5   size 4  len(filter_even(map_adj_add(xs)))
+   T6   size 4  running_sum(reverse(inc_all(xs)))
+   T8   size 4  dbl_all(sort(abs_all(xs)))   [COLD: dbl_all]
+   T9   size 5  sort(dbl_all(filter_pos(map_adj_add(xs))))   [COLD: dbl_all]
+   T10  size 5  dbl_all(sort(abs_all(map_adj_sub(xs))))   [COLD: dbl_all,map_adj_sub]
+   M1   size 4  sq_all(reverse(shift1(xs)))
+   M2   size 5  map_adj_mul(map_adj_add(tail(neg_all(xs))))
+   M3   size 5  count_pos(map_adj_mul(dec_all(evens_idx(xs))))
+   M4   size 4  dec(dbl(min_el(xs)))
+   M5   size 5  take2(dec_all(filter_neg(drop2(xs))))
+   M6   size 5  count_pos(running_min(tail(take3(xs))))
+   M7   size 4  filter_odd(sort(map_adj_mul(xs)))
+   M8   size 4  dec_all(dec_all(filter_pos(xs)))
+   Ma1  size 5  map_adj_sub(running_min(zip_max(xs, ys)))   [COLD: map_adj_sub]
+   Ma2  size 5  map_adj_sub(inc_all(map_adj_max(reverse(xs))))   [COLD: map_adj_sub]
+   Md1  size 5  running_sum(filter_pos(half_all(dbl_all(xs))))   [COLD: dbl_all]
+   Md2  size 5  sort_desc(dec_all(map_adj_mul(dbl_all(xs))))   [COLD: dbl_all]
+
+sanity: unit-cost weighted search on T1 = 22356 candidates; plain (library order) = 22356
+total search time 66.7 s
+
+== Table A. Candidates evaluated until the reference behaviour is found ==
+plain_lib = plain OE, library operator order; plain_rnd = mean over random operator orders;
+NB-U1 = Naive Bayes order within each size level; NB-U2 = Naive Bayes costs (Probe-style);
+abs = tables + hard pruning, iterative deepening, ALL passes counted (library order in last level);
+abs1 = last pass only (size known); +op = soft operator order; +bkt = soft candidate order
+     task        sz        N* plain_lib plain_rnd     NB-U1     NB-U2      post       abs      abs1       +op      +bkt  gain_lib  gain_rnd     found
+      T1*         4         4     22356     15100     10484     20701     16778      1403      1251      1403      1362     15.9x     10.8x       yes
+       T3         5         5    429504    296870    103400     22996    132812     16611     15607     16613     16683     25.9x     17.9x       yes
+       T4         5         5    942517    645287    155445    925930    666893     55156     51579     57578     54949     16.4x     11.2x       yes
+       T5         4         3      1233       683       173       661      1275        95        89        55        53     22.4x     12.4x       yes
+       T6         4         4     18831     15313      6147      8217      5131       330       305       314       306     60.0x     48.8x       yes
+      T8*         4         4      2450     10797      2058    352317      2206       324       300       324       324      7.6x     33.3x       yes
+      T9*         5         5     47956    148017     30721  >3040983     56911     12070     11297     12070     12070      4.0x     12.3x       yes
+     T10*         5         5     49675    195559     42240  >3065900     48088      8000      7323      8000      8015      6.2x     24.4x       yes
+       M1         4         4      5192     10671      1802        96      2591       355       312       313       313     16.6x     34.1x       yes
+       M2         5         4      7772     11070      2252    268308      5917       741       704       744       744     10.4x     14.9x       yes
+       M3         5         4     26317     15068      1574     15082     23825      1664      1561      1387      1402     19.0x     10.9x       yes
+       M4         4         4     26013     10684      3034       917      6392       858       797       795       797     32.7x     13.4x       yes
+       M5         5         5     92918    215226    249266    223664     96505     17181     16273     17180     17180      5.4x     12.5x       yes
+       M6         5         5    519298    206476     40545      2033    317084     27867     26067     25873     25867     20.1x      8.0x       yes
+       M7         4         4     11951     10608      3686     35165      9249       722       690       722       722     16.6x     14.7x       yes
+       M8         4         4      4238     16129      6317     35824      3576       561       533       561       561      7.6x     28.7x       yes
+     Ma1*         5         5    297754    655216   1209459  >3082166    143705     15903     14784     16235     16235     18.3x     40.4x       yes
+     Ma2*         5         4      7249     16035     30427  >3053608      5028       648       609       679       675     10.7x     23.6x       yes
+     Md1*         5         3       835       683       426       114       497        23        21        22        22     38.0x     31.0x       yes
+     Md2*         5         5     90563    211545    211791  >3019447     60092      8269      7621      8268      8268     11.0x     25.6x       yes
+(* = contains a held-out operator)
+
+== Table B. Last size level only (where operator order matters) ==
+     task   level_n plain_lib plain_rnd     NB-U1   softord     abs_n   abs_lib    abs+op   abs+bkt    NBrank
+      T1*     29201     22356     15100     10484      1536      1558        56        56        15        16
+       T3    553374    429504    296870    103400     48366       533       119       121       191         8
+       T4   1208406    942517    645287    155445    173772     12777       220      2642        13         4
+       T5      1341      1233       683       173        49        64        48         8         6         5
+       T6     30273     18831     15313      6147      1421        35        29        13         5         8
+      T8*     30267      2450     10797      2058      1766        64         1         1         1         2
+      T9*    520648     47956    148017     30721     36466       197         1         1         1         1
+     T10*    555308     49675    195559     42240     37383      2677        24        24        39         2
+       M1     30009      5192     10671      1802      1502       109        44         2         2         1
+       M2     30537      7772     11070      2252      2252        60         3         6         6         2
+       M3     29185     26317     15068      1574      3268       669       303        26        41         1
+       M4     30565     26013     10684      3034      1417        85        64         1         3         4
+       M5    587356     92918    215226    249266     40802        49         2         1         1        17
+       M6    568220    519298    206476     40545     50569      5200      2004        10         4         1
+       M7     29287     11951     10608      3686      1700         8         1         1         1         4
+       M8     30651      4238     16129      6317      1466        10         2         2         2         8
+     Ma1*   1221852    297754    655216   1209459    282576       349         9       341       341        58
+     Ma2*     30863      7249     16035     30427      5341        69        11        42        38        58
+     Md1*      1341       835       683       426        54         2         2         1         1        13
+     Md2*    575578     90563    211545    211791     33235       716         5         4         4        15
+level_n = plain candidates through the complete last level; plain_lib/plain_rnd/NB-U1/softord are
+totals for plain OE under four operator orders (softord = the table-derived soft order, no pruning);
+abs_n = candidates admitted by the tables in the last level; abs_lib/abs+op/abs+bkt = position of
+the hit among them under library / soft-operator / soft-candidate order; NBrank = NB rank (of 61) of
+the best-ranked operator that produces the target at the last level.
+
+== Table C. Classes stored below the last level, table look-ups, wall time ==
+     task     plain      post       abs    abs_j1     ratio  ratio_j1   lookups   plain_s     abs_s
+      T1*       884       666       666       482      1.3x      1.8x     14590      0.03      0.03
+       T3     16153      6343      6343      1144      2.5x     14.1x     79408      0.57      0.19
+       T4     34065     23674     23674     11116      1.4x      3.1x    304674      1.27      0.73
+       T5        41        41        41        27      1.0x      1.5x      1370      0.00      0.00
+       T6       919       153       153        53      6.0x     17.3x      5368      0.03      0.01
+      T8*       918       170       170        61      5.4x     15.0x      7429      0.03      0.01
+      T9*     14936      5828      5828      1008      2.6x     14.8x    115773      0.51      0.23
+     T10*     16317      3937      3935      1594      4.1x     10.2x     90579      0.58      0.19
+       M1       909       152       152        81      6.0x     11.2x      6514      0.03      0.01
+       M2       929       414       414        95      2.2x      9.8x      9659      0.04      0.02
+       M3       887       785       785       418      1.1x      2.1x     15284      0.04      0.03
+       M4       928       351       351        63      2.6x     14.7x      6942      0.03      0.02
+       M5     17130      9392      9392       966      1.8x     17.7x    160441      0.60      0.33
+       M6     16632     10649     10649      4635      1.6x      3.6x    123337      0.57      0.30
+       M7       887       457       457        45      1.9x     19.7x     16703      0.03      0.03
+       M8       931       335       335        43      2.8x     21.7x      7468      0.04      0.02
+     Ma1*     34490      7932      7924      2121      4.4x     16.3x    186588      1.30      0.36
+     Ma2*       938       354       354        84      2.6x     11.2x     10142      0.04      0.02
+     Md1*        41        17        17         3      2.4x     13.7x       851      0.00      0.00
+     Md2*     16749      4129      4127      1242      4.1x     13.5x     85956      0.57      0.17
+abs_j1 = additionally dropping size N-1 classes that no unary operator can take to the target;
+plain_s is a COMPLETE last level, abs_s all passes with a complete last level (not time-to-hit).
+
+== Naive Bayes detail ==
+   T1    NB ranks of reference ops {'sum': 16, 'map_adj_sub': 58, 'sort': 41} ; U2 op costs {'sum': 6, 'map_adj_sub': 21, 'sort': 12} total cost 23 ; U1 backoff 10484 ; U2 backoff 43876
+   T3    NB ranks of reference ops {'sum': 8, 'zip_mul': 55, 'shift1': 20} ; U2 op costs {'sum': 4, 'zip_mul': 16, 'shift1': 6} total cost 23 ; U1 backoff 103400 ; U2 backoff 32931
+   T4    NB ranks of reference ops {'sum': 4, 'filter_pos': 56, 'zip_sub': 41} ; U2 op costs {'sum': 4, 'filter_pos': 16, 'zip_sub': 12} total cost 30 ; U1 backoff 155445 ; U2 backoff 987654
+   T5    NB ranks of reference ops {'len': 7, 'filter_even': 2, 'map_adj_add': 34} ; U2 op costs {'len': 4, 'filter_even': 3, 'map_adj_add': 10} total cost 15 ; U1 backoff 173 ; U2 backoff 672
+   T6    NB ranks of reference ops {'running_sum': 8, 'reverse': 5, 'inc_all': 21} ; U2 op costs {'running_sum': 5, 'reverse': 3, 'inc_all': 7} total cost 16 ; U1 backoff 6147 ; U2 backoff 5583
+   T8    NB ranks of reference ops {'dbl_all': 57, 'sort': 2, 'abs_all': 3} ; U2 op costs {'dbl_all': 15, 'sort': 3, 'abs_all': 4} total cost 23 ; U1 backoff 2058 ; U2 backoff 20112
+   T9    NB ranks of reference ops {'sort': 3, 'dbl_all': 53, 'filter_pos': 1, 'map_adj_add': 24} ; U2 op costs {'sort': 4, 'dbl_all': 17, 'filter_pos': 4, 'map_adj_add': 8} total cost 27 ; U1 backoff 30721 ; U2 backoff 1950113
+   T10   NB ranks of reference ops {'dbl_all': 54, 'sort': 2, 'abs_all': 6, 'map_adj_sub': 55} ; U2 op costs {'dbl_all': 14, 'sort': 4, 'abs_all': 4, 'map_adj_sub': 14} total cost 26 ; U1 backoff 42240 ; U2 backoff None
+   M1    NB ranks of reference ops {'sq_all': 1, 'reverse': 4, 'shift1': 3} ; U2 op costs {'sq_all': 2, 'reverse': 3, 'shift1': 3} total cost 9 ; U1 backoff 1802 ; U2 backoff 84
+   M2    NB ranks of reference ops {'map_adj_mul': 2, 'map_adj_add': 30, 'tail': 21, 'neg_all': 5} ; U2 op costs {'map_adj_mul': 3, 'map_adj_add': 11, 'tail': 8, 'neg_all': 3} total cost 23 ; U1 backoff 2252 ; U2 backoff 190211
+   M3    NB ranks of reference ops {'count_pos': 1, 'map_adj_mul': 39, 'dec_all': 26, 'evens_idx': 53} ; U2 op costs {'count_pos': 3, 'map_adj_mul': 11, 'dec_all': 9, 'evens_idx': 15} total cost 23 ; U1 backoff 1574 ; U2 backoff 16315
+   M4    NB ranks of reference ops {'dec': 17, 'dbl': 6, 'min_el': 4} ; U2 op costs {'dec': 6, 'dbl': 4, 'min_el': 4} total cost 15 ; U1 backoff 3034 ; U2 backoff 1040
+   M5    NB ranks of reference ops {'take2': 20, 'dec_all': 17, 'filter_neg': 9, 'drop2': 3} ; U2 op costs {'take2': 7, 'dec_all': 6, 'filter_neg': 5, 'drop2': 3} total cost 22 ; U1 backoff 249266 ; U2 backoff 243225
+   M6    NB ranks of reference ops {'count_pos': 1, 'running_min': 4, 'tail': 12, 'take3': 22} ; U2 op costs {'count_pos': 3, 'running_min': 3, 'tail': 5, 'take3': 7} total cost 18 ; U1 backoff 40545 ; U2 backoff 2105
+   M7    NB ranks of reference ops {'filter_odd': 27, 'sort': 4, 'map_adj_mul': 8} ; U2 op costs {'filter_odd': 10, 'sort': 3, 'map_adj_mul': 5} total cost 19 ; U1 backoff 3686 ; U2 backoff 37140
+   M8    NB ranks of reference ops {'dec_all': 8, 'filter_pos': 23} ; U2 op costs {'dec_all': 5, 'filter_pos': 8} total cost 19 ; U1 backoff 6317 ; U2 backoff 32557
+   Ma1   NB ranks of reference ops {'map_adj_sub': 58, 'running_min': 33, 'zip_max': 45} ; U2 op costs {'map_adj_sub': 21, 'running_min': 10, 'zip_max': 13} total cost 26 ; U1 backoff 588297 ; U2 backoff None
+   Ma2   NB ranks of reference ops {'map_adj_sub': 58, 'inc_all': 23, 'map_adj_max': 3, 'reverse': 6} ; U2 op costs {'map_adj_sub': 23, 'inc_all': 9, 'map_adj_max': 3, 'reverse': 4} total cost 28 ; U1 backoff 16323 ; U2 backoff 5430
+   Md1   NB ranks of reference ops {'running_sum': 13, 'filter_pos': 2, 'half_all': 20, 'dbl_all': 57} ; U2 op costs {'running_sum': 5, 'filter_pos': 3, 'half_all': 6, 'dbl_all': 20} total cost 9 ; U1 backoff 426 ; U2 backoff 101
+   Md2   NB ranks of reference ops {'sort_desc': 15, 'dec_all': 17, 'map_adj_mul': 14, 'dbl_all': 57} ; U2 op costs {'sort_desc': 6, 'dec_all': 6, 'map_adj_mul': 6, 'dbl_all': 19} total cost 27 ; U1 backoff 211791 ; U2 backoff None
+
+== Soundness ==
+tasks where (iii)/(iv) did not find the target at the size plain OE found it: 0 of 20
+   T3    found=True  table misses on the reference path: [('zip_mul', 'sign', '(1, 1)', '0', 7), ('zip_mul', 'order', '(2, 1)', '3', 7)]
+
+-- all tasks (20 tasks): geometric-mean gain [min..max]
+   plain_lib / abs (iii)             13.92x [3.97..57.06] n=20
+   plain_lib / abs+op (iv-a)         14.63x [3.97..59.97] n=20
+   plain_lib / abs+bkt (iv-b)        14.72x [3.97..61.54] n=20
+   plain_rnd / abs_rnd (order-free)  17.51x [7.04..48.33] n=20
+   plain_rnd / abs+op                18.81x [7.98..48.77] n=20
+   plain_lib / post-only             1.52x [0.84..4.07] n=20
+   plain_lib / NB-U1                 2.06x [0.24..16.72] n=20
+   plain_rnd / NB-U1                 2.65x [0.53..9.57] n=20
+   plain_lib / NB-U2 (uncapped only) 1.63x [0.01..255.43] n=15
+   plain_rnd / softorder (no prune)  6.06x [2.32..13.94] n=20
+   store: plain / abs                2.53x [1.00..6.01] n=20
+   store: plain / abs_j1             9.09x [1.52..21.65] n=20
+   NB-U2 capped (no answer within cap): 5
+
+-- cold-start tasks (contain a held-out operator) (8 tasks): geometric-mean gain [min..max]
+   plain_lib / abs (iii)             11.20x [3.97..36.30] n=8
+   plain_lib / abs+op (iv-a)         11.17x [3.97..37.95] n=8
+   plain_lib / abs+bkt (iv-b)        11.22x [3.97..37.95] n=8
+   plain_rnd / abs_rnd (order-free)  21.40x [7.04..40.77] n=8
+   plain_rnd / abs+op                23.11x [10.76..40.36] n=8
+   plain_lib / post-only             1.33x [0.84..2.07] n=8
+   plain_lib / NB-U1                 0.83x [0.24..2.13] n=8
+   plain_rnd / NB-U1                 1.72x [0.53..5.25] n=8
+   plain_lib / NB-U2 (uncapped only) 0.38x [0.01..7.32] n=3
+   plain_rnd / softorder (no prune)  5.39x [2.32..12.65] n=8
+   store: plain / abs                3.10x [1.33..5.40] n=8
+   store: plain / abs_j1             10.43x [1.83..16.26] n=8
+   NB-U2 capped (no answer within cap): 5
+
+-- warm tasks (12 tasks): geometric-mean gain [min..max]
+   plain_lib / abs (iii)             16.10x [5.41..57.06] n=12
+   plain_lib / abs+op (iv-a)         17.51x [5.41..59.97] n=12
+   plain_lib / abs+bkt (iv-b)        17.65x [5.41..61.54] n=12
+   plain_rnd / abs_rnd (order-free)  15.32x [7.48..48.33] n=12
+   plain_rnd / abs+op                16.40x [7.98..48.77] n=12
+   plain_lib / post-only             1.67x [0.96..4.07] n=12
+   plain_lib / NB-U1                 3.77x [0.37..16.72] n=12
+   plain_rnd / NB-U1                 3.53x [0.86..9.57] n=12
+   plain_lib / NB-U2 (uncapped only) 2.34x [0.03..255.43] n=12
+   plain_rnd / softorder (no prune)  6.54x [3.71..13.94] n=12
+   store: plain / abs                2.21x [1.00..6.01] n=12
+   store: plain / abs_j1             8.30x [1.52..21.65] n=12
+   NB-U2 capped (no answer within cap): 0
+
+-- cold operator at the root (4 tasks): geometric-mean gain [min..max]
+   plain_lib / abs (iii)             9.96x [6.21..18.72] n=4
+   plain_lib / abs+op (iv-a)         9.79x [6.21..18.34] n=4
+   plain_lib / abs+bkt (iv-b)        9.80x [6.20..18.34] n=4
+   plain_rnd / abs_rnd (order-free)  28.68x [22.14..40.77] n=4
+   plain_rnd / abs+op                29.68x [23.62..40.36] n=4
+   plain_lib / post-only             1.36x [1.03..2.07] n=4
+   plain_lib / NB-U1                 0.54x [0.24..1.19] n=4
+   plain_rnd / NB-U1                 1.62x [0.53..5.25] n=4
+   plain_lib / NB-U2 (uncapped only) 0.01x [0.01..0.01] n=1
+   plain_rnd / softorder (no prune)  3.86x [2.32..6.11] n=4
+   store: plain / abs                4.01x [2.65..5.40] n=4
+   store: plain / abs_j1             12.93x [10.24..16.26] n=4
+   NB-U2 capped (no answer within cap): 3
+
+real	1m7.816s
+user	1m6.126s
+sys	0m1.680s

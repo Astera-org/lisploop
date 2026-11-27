@@ -1,0 +1,96 @@
+application-overhead: +int=6 *int=6 -int=6 if-int=6 =int=9 <int=14 cons=11 tail=14 at-seq=17 =seq=12 if-seq=6
+leaf bits: var(2 inputs)=3 var(1 input)=2 lit0=3 lit1=6 lit2=7 lit7=10
+
+[growth] L1 int{+,*} lits{0,1} 2 inputs  operators=2 inputs=2  steps=9130 reached-size=35
+  bits=  3 new=       3 (target-typed        3) cumulative=        3
+  bits=  6 new=       1 (target-typed        1) cumulative=        4  x0.33 vs previous non-empty size
+  bits= 12 new=      18 (target-typed       18) cumulative=       22  x18.00 vs previous non-empty size
+  bits= 15 new=      12 (target-typed       12) cumulative=       34  x0.67 vs previous non-empty size
+  bits= 18 new=       2 (target-typed        2) cumulative=       36  x0.17 vs previous non-empty size
+  bits= 21 new=     216 (target-typed      216) cumulative=      252  x108.00 vs previous non-empty size
+  bits= 24 new=     216 (target-typed      216) cumulative=      468  x1.00 vs previous non-empty size
+  bits= 27 new=      72 (target-typed       72) cumulative=      540  x0.33 vs previous non-empty size
+  bits= 30 new=    3248 (target-typed     3248) cumulative=     3788  x45.11 vs previous non-empty size
+  bits= 33 new=    4320 (target-typed     4320) cumulative=     8108  x1.33 vs previous non-empty size
+
+[growth] L2 int{+,*,-,if,=,<} lits{0,1} 2 inputs  operators=6 inputs=2  steps=18501 reached-size=31
+  bits=  3 new=       5 (target-typed        3) cumulative=        5
+  bits=  6 new=       1 (target-typed        1) cumulative=        6  x0.20 vs previous non-empty size
+  bits= 12 new=      27 (target-typed       27) cumulative=       33  x27.00 vs previous non-empty size
+  bits= 15 new=      45 (target-typed       36) cumulative=       78  x1.67 vs previous non-empty size
+  bits= 18 new=      21 (target-typed       15) cumulative=       99  x0.47 vs previous non-empty size
+  bits= 20 new=       9 (target-typed        0) cumulative=      108  x0.43 vs previous non-empty size
+  bits= 21 new=     489 (target-typed      488) cumulative=      597  x54.33 vs previous non-empty size
+  bits= 23 new=       6 (target-typed        0) cumulative=      603  x0.01 vs previous non-empty size
+  bits= 24 new=    1296 (target-typed     1134) cumulative=     1899  x216.00 vs previous non-empty size
+  bits= 26 new=       1 (target-typed        0) cumulative=     1900  x0.00 vs previous non-empty size
+  bits= 27 new=    1377 (target-typed     1107) cumulative=     3277  x1377.00 vs previous non-empty size
+  bits= 29 new=     162 (target-typed        0) cumulative=     3439  x0.12 vs previous non-empty size
+  bits= 30 new=   11655 (target-typed    11493) cumulative=    15094  x71.94 vs previous non-empty size
+
+[growth] L3 seq{cons,tail,at,=,if,+,*} 1 seq input  operators=7 inputs=1  steps=5482 reached-size=35
+  bits=  2 new=       1 (target-typed        0) cumulative=        1
+  bits=  3 new=       4 (target-typed        1) cumulative=        5  x4.00 vs previous non-empty size
+  bits=  6 new=       1 (target-typed        1) cumulative=        6  x0.25 vs previous non-empty size
+  bits= 12 new=       2 (target-typed        2) cumulative=        8  x2.00 vs previous non-empty size
+  bits= 13 new=       2 (target-typed        0) cumulative=       10  x1.00 vs previous non-empty size
+  bits= 14 new=       4 (target-typed        0) cumulative=       14  x2.00 vs previous non-empty size
+  bits= 15 new=       6 (target-typed        4) cumulative=       20  x1.50 vs previous non-empty size
+  bits= 16 new=       3 (target-typed        0) cumulative=       23  x0.50 vs previous non-empty size
+  bits= 17 new=       4 (target-typed        0) cumulative=       27  x1.33 vs previous non-empty size
+  bits= 18 new=       3 (target-typed        2) cumulative=       30  x0.75 vs previous non-empty size
+  bits= 19 new=       1 (target-typed        0) cumulative=       31  x0.33 vs previous non-empty size
+  bits= 20 new=       1 (target-typed        0) cumulative=       32  x1.00 vs previous non-empty size
+  bits= 21 new=       8 (target-typed        8) cumulative=       40  x8.00 vs previous non-empty size
+  bits= 22 new=       1 (target-typed        1) cumulative=       41  x0.13 vs previous non-empty size
+  bits= 23 new=       1 (target-typed        1) cumulative=       42  x1.00 vs previous non-empty size
+  bits= 24 new=      32 (target-typed       24) cumulative=       74  x32.00 vs previous non-empty size
+  bits= 25 new=      27 (target-typed        1) cumulative=      101  x0.84 vs previous non-empty size
+  bits= 26 new=      28 (target-typed        1) cumulative=      129  x1.04 vs previous non-empty size
+  bits= 27 new=      52 (target-typed       24) cumulative=      181  x1.86 vs previous non-empty size
+  bits= 28 new=      46 (target-typed        0) cumulative=      227  x0.88 vs previous non-empty size
+  bits= 29 new=      32 (target-typed        0) cumulative=      259  x0.70 vs previous non-empty size
+  bits= 30 new=      67 (target-typed       48) cumulative=      326  x2.09 vs previous non-empty size
+  bits= 31 new=      32 (target-typed        6) cumulative=      358  x0.48 vs previous non-empty size
+  bits= 32 new=      18 (target-typed        6) cumulative=      376  x0.56 vs previous non-empty size
+  bits= 33 new=     168 (target-typed      162) cumulative=      544  x9.33 vs previous non-empty size
+  bits= 34 new=      32 (target-typed       16) cumulative=      576  x0.19 vs previous non-empty size
+
+[growth] L4 int{+,*} lits :all 2 inputs  operators=2 inputs=2  steps=298163 reached-size=29
+  bits=  3 new=       3 (target-typed        3) cumulative=        3
+  bits=  6 new=       2 (target-typed        2) cumulative=        5  x0.67 vs previous non-empty size
+  bits=  7 new=       4 (target-typed        4) cumulative=        9  x2.00 vs previous non-empty size
+  bits= 10 new=       8 (target-typed        8) cumulative=       17  x2.00 vs previous non-empty size
+  bits= 11 new=      16 (target-typed       16) cumulative=       33  x2.00 vs previous non-empty size
+  bits= 12 new=      50 (target-typed       50) cumulative=       83  x3.13 vs previous non-empty size
+  bits= 13 new=      64 (target-typed       64) cumulative=      147  x1.28 vs previous non-empty size
+  bits= 15 new=      24 (target-typed       24) cumulative=      171  x0.38 vs previous non-empty size
+  bits= 16 new=     176 (target-typed      176) cumulative=      347  x7.33 vs previous non-empty size
+  bits= 17 new=     256 (target-typed      256) cumulative=      603  x1.45 vs previous non-empty size
+  bits= 18 new=     520 (target-typed      520) cumulative=     1123  x2.03 vs previous non-empty size
+  bits= 19 new=    1152 (target-typed     1152) cumulative=     2275  x2.22 vs previous non-empty size
+  bits= 20 new=    2272 (target-typed     2272) cumulative=     4547  x1.97 vs previous non-empty size
+  bits= 21 new=    4696 (target-typed     4696) cumulative=     9243  x2.07 vs previous non-empty size
+  bits= 22 new=    9024 (target-typed     9024) cumulative=    18267  x1.92 vs previous non-empty size
+  bits= 23 new=   16640 (target-typed    16640) cumulative=    34907  x1.84 vs previous non-empty size
+  bits= 24 new=     944 (target-typed      944) cumulative=    35851  x0.06 vs previous non-empty size
+  bits= 25 new=    3424 (target-typed     3424) cumulative=    39275  x3.63 vs previous non-empty size
+  bits= 26 new=   36992 (target-typed    36992) cumulative=    76267  x10.80 vs previous non-empty size
+  bits= 27 new=   72480 (target-typed    72480) cumulative=   148747  x1.96 vs previous non-empty size
+  bits= 28 new=  148800 (target-typed   148800) cumulative=   297547  x2.05 vs previous non-empty size
+
+[redundancy] L1 on 6 rows slack=26: BOUNDED-EXHAUSTION at work 141501; completed-bound=49 (header 23)
+  retained syntax (all types)=468  target-typed evaluated=468  total on all rows=468  distinct behaviours=38  ratio=12.3
+  ledger=((:INDEXING . 11999) (:EVALUATION . 117102) (:SCHEDULING . 3276)
+          (:CONSTRUCTION . 8000) (:ENUMERATION . 1072) (:SETUP . 52))
+
+[redundancy] L1 on 6 rows slack=30: BOUNDED-EXHAUSTION at work 1412531; completed-bound=53 (header 23)
+  retained syntax (all types)=3788  target-typed evaluated=3788  total on all rows=3788  distinct behaviours=109  ratio=34.8
+  ledger=((:INDEXING . 102789) (:EVALUATION . 1192328) (:SCHEDULING . 26516)
+          (:CONSTRUCTION . 86264) (:ENUMERATION . 4582) (:SETUP . 52))
+
+[redundancy] L2 on 6 rows slack=24: BOUNDED-EXHAUSTION at work 522971; completed-bound=47 (header 23)
+  retained syntax (all types)=1899  target-typed evaluated=1704  total on all rows=1704  distinct behaviours=91  ratio=18.7
+  ledger=((:INDEXING . 40627) (:EVALUATION . 431914) (:SCHEDULING . 11928)
+          (:CONSTRUCTION . 34905) (:ENUMERATION . 3545) (:SETUP . 52))
+exit=0

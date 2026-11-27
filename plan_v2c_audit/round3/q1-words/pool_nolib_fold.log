@@ -1,0 +1,12 @@
+# config nolib_fold: probe seed 0, 800 probes per operator, value table 15819 lists; grammar uses 14 library operators + fold forms
+    size 2:       3 int terms generated,      0 new word partitions,      1 distinct list terms of size 1; 0.0 s
+    size 3:      24 int terms generated,      5 new word partitions,      0 distinct list terms of size 2; 0.0 s
+    size 4:     455 int terms generated,     81 new word partitions,      0 distinct list terms of size 3; 0.1 s
+    size 5:    4142 int terms generated,    262 new word partitions,      0 distinct list terms of size 4; 0.6 s
+single terms <= 5 nodes: 4624 generated, 348 word partitions (2..8 labels on the pool); 0.7 s
+singles scored: 270 kept, 78 dropped (more than 8 labels on the full table); 1.6 s wall on 15 processes
+pairs: 270 components (<= 5 nodes), 36315 pairs tried, 29222 new partitions with <= 8 labels; 1.1 s
+pairs scored: 27989 kept (<= 8 labels on the full table); 31.2 s wall on 15 processes
+int words: 284 single (<= 5 nodes) + 1783 pairs; 4.7 s
+total 39.3 s wall; times: {'enumerate_s': 0.7, 'score_singles_s': 1.6, 'pair_enum_s': 1.1, 'score_pairs_s': 31.2, 'int_side_s': 4.7, 'total_wall_s': 39.3}
+wrote pool_nolib_fold.pkl: 28259 list candidates, 2067 int candidates

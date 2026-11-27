@@ -1,0 +1,21 @@
+E4 target=SEQ-CORR max-budget=35000000 bound-add=0 max-depth=2 heuristic-budget=15000 wall-cap=300s
+  prefix COPY           solved=YES work=27291
+  prefix INC-ALL        solved=YES work=195020
+  prefix DBL-ALL        solved=YES work=63333
+  prefix SUM-ALL        solved=YES work=27868
+  prefix LEN-ALL        solved=YES work=42759
+  prefix PRD-ALL        solved=YES work=36804
+  prefix FOLDL          solved=YES work=209723
+  prefix FILTER         solved=YES work=120369
+  prefix MAP-ADJACENT   solved=no  work=350000
+  prefix POSITIONS      solved=no  work=350000
+  prefix SCAN           solved=no  work=350000
+  prefix SHIFT-SEQ      solved=no  work=350000
+TARGET SEQ-CORR: inputs=2 rows=7 operators=26 (+ - * / MOD < = IF IF = IF CONS TAIL LENGTH CONCAT AT COPY INC-ALL DBL-ALL SUM-ALL LEN-ALL PRD-ALL MAP FOLDR FOLDL FILTER) literals=(1 2 0) eff-bound=154 bits
+  rung cap=      350000 work=      350000 claim=CUTOFF             cpu_s=     0.08 wall_s=     0.08 gc_s=   0.00 heap_MiB=   46.8 (:NODES 4 :PHASES (:SEARCH 4) :MAX-DEPTH 2 :DEFERRED 0 :EXPANDABLE 0)
+  rung cap=     1000000 work=      663714 claim=CANDIDATE          cpu_s=     0.14 wall_s=     0.14 gc_s=   0.00 heap_MiB=   53.8 (:NODES 4 :PHASES (:SEARCH 4) :MAX-DEPTH 2 :DEFERRED 0 :EXPANDABLE 0)
+RESULT SEQ-CORR claim=CANDIDATE work=663714 cpu_s=0.14 wall_s=0.14
+  ledger=((:PARENT-VERIFICATION . 2116) (:COMPOSITION . 89) (:EXPANSION . 20371) (:CHILD-SEARCH . 505494) (:PREPARATION . 115530) (:SCHEDULING . 20114))
+  PROGRAM (191 bits): (:IF (:= :X0 "()/NIL") 0 (:IF (:= :X1 "()/NIL") 0 (:+ (:SEQ-CORR (:TAIL :X0) (:TAIL :X1)) (:* (:AT :X0 0) (:AT :X1 0)))))
+  spec-verified=YES held-out=PASS
+PROCESS rc=0 total_wall_s=4.354766288

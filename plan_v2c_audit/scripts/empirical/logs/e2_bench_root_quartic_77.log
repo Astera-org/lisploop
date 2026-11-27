@@ -1,0 +1,12 @@
+Encoding 7, tariff 10; SBCL 2.6.4.debian; seed=none; serial baseline, GF(5) +/* with two inputs.
+SEARCH workload=quartic bound=77 oracle-size=77 status=:COMPLETE dispatch=batch
+  wall_s=0.427999 cpu_s=0.428057 gc_cpu_s=0.019206
+  work=29382492 completed_bound=77 retained_syntax=106057 successes=10 rejections=106047
+  allocated_MiB=184.360 live_heap_increment_MiB=20.439 peak_process_RSS_MiB=168.438
+  best_bits=77 first_solution_work=26884474 model=(#:+ #:X0
+                                                   (#:* #:X1
+                                                    (#:* #:X1 (#:* #:X1 #:X1))))
+  ledger=((:CHECKING . 8528100) (:EVALUATION . 15059719) (:SCHEDULING . 341134)
+          (:CONSTRUCTION . 5346153) (:ENUMERATION . 107386))
+  caps: wall_s=40 (checked each 1000000 units), heap_MiB=768, work=10000000000
+  Timing excludes loading, fixture construction, and final measurement GC.

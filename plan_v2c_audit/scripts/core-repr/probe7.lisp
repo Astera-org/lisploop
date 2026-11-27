@@ -1,0 +1,36 @@
+;;; probe7.lisp — VM tariff/time scaling on list recursion and indexed access (v1).
+(load "/home/tlh24/lisploop/load.lisp")
+(in-package #:lisploop)
+(defun ms (start) (round (* 1000 (- (get-internal-real-time) start)) internal-time-units-per-second))
+(with-knowledge-library ((make-knowledge-library))
+  (let* ((seq (sequence-type :int))
+         (ins (list (cons 0 seq)))
+         (xs (var 0 seq)))
+    (define-function :sum ins :int
+      (lambda (self)
+        (term `(if (= ,xs ,(lit seq nil)) 0 (+ (at ,xs 0) (,self (tail ,xs)))) :int)))
+    (format t "~&-- recursive :sum over a list of n ints (interpreted VM; defined functions have no closure)~%")
+    (dolist (n '(25 50 100 200 400 800))
+      (let* ((data (loop for i below n collect (mod (* 7 i) 13)))
+             (start (get-internal-real-time))
+             (e (evaluate (app (op :sum) xs) ins (list data) :budget 100000000)))
+        (format t "   n=~4D status=~A work=~9D  work/n=~7,1F  work/n^2=~5,2F  host=~5D ms  tasks-peak~~n~%"
+                n (evaluation-status e) (evaluation-work e) (/ (evaluation-work e) n)
+                (/ (evaluation-work e) (* n n)) (ms start))))
+    (format t "~&-- closure path: straight-line (+ (at xs 0) (at xs 1)) on a list of n ints~%")
+    (dolist (n '(100 1000 10000))
+      (let* ((data (loop for i below n collect i))
+             (expr (term `(+ (at ,xs 0) (at ,xs 1))))
+             (e (evaluate expr ins (list data) :budget 100000000)))
+        (format t "   n=~5D work=~8D (two O(1) reads priced at O(n))~%" n (evaluation-work e))))
+    (format t "~&-- raw interpreter throughput: (spin) for 2,000,000 work units~%")
+    (define-function :count (list (cons 0 :int)) :int
+      (lambda (self) (term `(if (< ,(var 0 :int) 1) 0 (,self (- ,(var 0 :int) 1))) :int)))
+    (let* ((start (get-internal-real-time))
+           (e (evaluate (app (op :count) (lit :int 100000)) nil nil :budget 100000000)))
+      (format t "   (count 100000): status=~A work=~D host=~D ms => ~D work-units/s~%"
+              (evaluation-status e) (evaluation-work e) (ms start)
+              (round (* 1000 (evaluation-work e)) (max 1 (ms start)))))
+    (format t "   total-p of :count = ~A, of :sum = ~A~%"
+            (function-definition-total-p (find-function-definition :count))
+            (function-definition-total-p (find-function-definition :sum)))))

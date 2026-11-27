@@ -1,0 +1,15 @@
+E4 target=FOLDL max-budget=35000000 bound-add=0 max-depth=2 heuristic-budget=15000 wall-cap=120s regime=wlns (active-grammar=NIL schemas=NIL)
+  prefix COPY           solved=YES work=16748
+  prefix INC-ALL        solved=YES work=31445
+  prefix DBL-ALL        solved=YES work=29409
+  prefix SUM-ALL        solved=YES work=25978
+  prefix LEN-ALL        solved=YES work=34038
+  prefix PRD-ALL        solved=YES work=27984
+REFERENCE FOLDL (battery, whitelist+schemas): 187 bits: (:IF (:= :X0 "()/NIL") :X1 (:FOLDL (:TAIL :X0) (:CODE-EVAL :X2 :X1 (:AT :X0 0)) :X2))
+TARGET FOLDL: inputs=3 rows=9 operators=5 (TAIL AT = IF CODE-EVAL) literals=NIL eff-bound=130 bits
+  rung cap=      350000 work=      120163 claim=CANDIDATE          cpu_s=     0.02 wall_s=     0.02 gc_s=   0.00 live_MiB=   37.8 (:NODES 3 :PHASES (:SEARCH 3) :MAX-DEPTH 2 :DEFERRED 0 :EXPANDABLE 0 :SEARCHING ((0 NIL :BOUND 130 :DONE-BITS 95 :HDR 53 :BODY-SIZE 43 :OPS 5 :INPUTS 3 :SYNTAX 67 :WORK 25201 :REJECTED 45) (1 :HEURISTIC-CONDITIONAL :BOUND 130 :DONE-BITS 119 :HDR 69 :BODY-SIZE 51 :OPS 1 :INPUTS 5 :SYNTAX 14 :WORK 5940 :REJECTED 10) (2 :HEURISTIC-ADDITIVE :BOUND 130 :DONE-BITS 73 :HDR 69 :BODY-SIZE 5 :OPS 1 :INPUTS 5 :SYNTAX 5 :WORK 839 :REJECTED 2)))
+RESULT FOLDL claim=CANDIDATE work=120163 cpu_s=0.02 wall_s=0.02
+  ledger=((:PARENT-VERIFICATION . 2099) (:COMPOSITION . 70) (:EXPANSION . 29871) (:CHILD-SEARCH . 31980) (:PREPARATION . 52500) (:SCHEDULING . 3643))
+  PROGRAM (187 bits): (:IF (:= "()/NIL" :X0) :X1 (:CODE-EVAL :X2 (:FOLDL (:TAIL :X0) :X1 :X2) (:AT :X0 0)))
+  spec-verified=YES held-out=FAIL (IMPOSTOR)
+PROCESS rc=0 total_wall_s=3.116600549

@@ -1,0 +1,10 @@
+Encoding 7, tariff 10; SBCL 2.6.4.debian; seed=none; serial baseline, GF(5) +/* with two inputs.
+METER: identical integer multiplications, identical tariff, different VM quanta.
+  bits=32 work=1170 one_unit_wall_s=0.000023200 batched_wall_s=0.000000360
+    one_unit_cpu_s=0.000022757 batched_cpu_s=0.000000366 reps=5000/100000; result and ledgers agree.
+  bits=256 work=66578 one_unit_wall_s=0.001240000 batched_wall_s=0.000000400
+    one_unit_cpu_s=0.001238580 batched_cpu_s=0.000000430 reps=100/40000; result and ledgers agree.
+  bits=1024 work=1052690 one_unit_wall_s=0.021200000 batched_wall_s=0.000000800
+    one_unit_cpu_s=0.021064600 batched_cpu_s=0.000000882 reps=10/10000; result and ledgers agree.
+  bits=4096 work=16793618 one_unit_wall_s=0.320000000 batched_wall_s=0.000004000
+    one_unit_cpu_s=0.320466667 batched_cpu_s=0.000003923 reps=3/1000; result and ledgers agree.

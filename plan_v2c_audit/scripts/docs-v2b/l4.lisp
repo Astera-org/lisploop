@@ -1,0 +1,6 @@
+(load "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/docs-v2b/kcopy/load.lisp")
+(load "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/docs-v2b/kcopy/tests/support.lisp")
+(in-package #:lisploop)
+(load "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/docs-v2b/kcopy/tests/library.instr.lisp")
+(library-l4-continual-learning-curriculum-amortization)
+(format t "~&done~%")

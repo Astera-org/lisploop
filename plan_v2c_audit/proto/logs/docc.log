@@ -1,0 +1,53 @@
+
+=== D. LIFT BY CHANGE OF BASE (seed 1, 12 examples, max size 10, budget 15000000 cand, greedy-nested-split nil, occam t) ===
+grammar (+ - * mod max min at = < and not call)
+goal inverses nil
+task                   ok  cand       cells       ms      held-out  program
+reverse                yes      86434     4408134      56 200/200   (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+                          [B'=51 rows, 25636 classes; split-scan cells 332669]
+shift-seq (spec)       yes    9834897   393395880    5612 200/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+                          [split: chosen term matches 30 of 40 rows; best-matching class (guard or not) 30; B'=40 rows, 2330255 classes; split-scan cells 106286]
+rotate-left k          yes     217920     8716800     108 200/200   (tabulate (len xs) (lambda (i prev) (at xs (mod (+ i k) (len xs)))))
+                          [B'=40 rows, 67348 classes; split-scan cells 384926]
+map-adjacent +         yes     291481    11656468     240 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs i) (at xs (+ i 1)))))
+                          [B'=40 rows, 123344 classes; split-scan cells 5989096]
+map-adjacent -         yes     703183    28124548     428 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (- (at xs (+ i 1)) (at xs i))))
+                          [B'=40 rows, 226787 classes; split-scan cells 5958296]
+running-sum            yes    3171095   161725845    2052 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+                          [split: chosen term matches 40 of 51 rows; best-matching class (guard or not) 40; B'=51 rows, 789912 classes; split-scan cells 63725]
+scan + init a (spec)   yes   10579588   423183520    5960 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+                          [split: chosen term matches 29 of 40 rows; best-matching class (guard or not) 29; B'=40 rows, 2464750 classes; split-scan cells 108044]
+scan 2*acc-x init a    yes   10675341   459039663    6592 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+                          [split: chosen term matches 32 of 43 rows; best-matching class (guard or not) 32; B'=43 rows, 2533411 classes; split-scan cells 3789331]
+positions (spec)       yes          3         123       0 200/200   (tabulate (len xs) (lambda (i prev) (+ i k)))
+                          [B'=41 rows, 10 classes; split-scan cells 246]
+positions-of v         yes       8332      105552       4 200/200   (where xs (lambda (j x) (= x v)))
+                          [no shape term; where: B''=36 rows; split-scan cells 0]
+filter x>k             yes       7002       94588       0 200/200   (select xs (lambda (j x) (< k x)))
+                          [no shape term; select: B''=50 rows; split-scan cells 0]
+take k                 yes        267        8629       0 200/200   (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+                          [B'=37 rows, 87 classes; split-scan cells 222]
+zip-add                yes      30265      967480      20 200/200   (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at xs i) (at zs i))))
+                          [B'=32 rows, 13102 classes; split-scan cells 451940]
+map-adjacent f (spec)  yes    8458580   262214099    5024 200/200   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+                          [B'=31 rows, 2306343 classes; split-scan cells 53210260]
+scan f init a (spec)   yes   15000001   525000035    8328 200/200   (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+                          [split: chosen term matches 26 of 35 rows; best-matching class (guard or not) 26; B'=35 rows, 4414255 classes; split-scan cells 461991]
+
+=== D-seeds: per task over seeds (2 3 4 5 6 7 8 9): solved / held-out-perfect, median cand, max ms ===
+reverse                solved 8/8  perfect 8/8  median-cand 86420  max-ms 52
+shift-seq (spec)       solved 8/8  perfect 8/8  median-cand 9874555  max-ms 6888
+rotate-left k          solved 8/8  perfect 8/8  median-cand 214446  max-ms 132
+map-adjacent +         solved 8/8  perfect 8/8  median-cand 284661  max-ms 240
+map-adjacent -         solved 8/8  perfect 8/8  median-cand 699206  max-ms 400
+running-sum            solved 8/8  perfect 8/8  median-cand 3086153  max-ms 1852
+scan + init a (spec)   solved 8/8  perfect 8/8  median-cand 11454291  max-ms 8700
+scan 2*acc-x init a    solved 8/8  perfect 8/8  median-cand 10244793  max-ms 8256
+positions (spec)       solved 8/8  perfect 8/8  median-cand 3  max-ms 0
+positions-of v         solved 8/8  perfect 8/8  median-cand 8332  max-ms 4
+filter x>k             solved 8/8  perfect 8/8  median-cand 8058  max-ms 4
+take k                 solved 8/8  perfect 8/8  median-cand 267  max-ms 4
+zip-add                solved 8/8  perfect 8/8  median-cand 30050  max-ms 20
+map-adjacent f (spec)  solved 8/8  perfect 7/8  median-cand 7954565  max-ms 6236
+                          seed 9 IMPOSTOR 136/200: (tabulate (- (len xs) 1) (lambda (i prev) (call f (at xs i) (at xs (+ i 1)))))
+scan f init a (spec)   solved 8/8  perfect 8/8  median-cand 15000001  max-ms 10456

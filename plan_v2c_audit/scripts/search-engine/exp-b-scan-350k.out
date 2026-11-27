@@ -1,0 +1,22 @@
+SPEC scan bound=130 max-depth=2 heuristic-budget=15000 condense-budget=20000 max-work=350000 wall=60 schemas=NIL
+RESULT status=:WORK-CUTOFF work=350000 wall_s=0.04 work/s=7954546.
+  quantum=32 heap_MiB=160.0 best-bits=NIL best-run-work=NIL
+  best=NIL
+  ledger=((:CHILD-SEARCH . 272067) (:PREPARATION . 53122) (:EXPANSION . 14203)
+          (:SCHEDULING . 10608))
+  nodes=2 by-phase=((:PREPARE . 0) (:PREPARATION . 0) (:SEARCH . 1) (:DONE . 1)) expansions=((NIL
+                                                                                              . 0)
+                                                                                             (:PAYING
+                                                                                              . 0)
+                                                                                             (:DONE
+                                                                                              . 2)) deferred-total=0 pending=0
+  nogoods=0 reused-subproblems=0 messages=8 trace-entries=10608
+  claims=((:PREPARED . 2) (:STAGE-A . 2) (:EXPANDED . 2)
+          (:BOUNDED-EXHAUSTION . 1) (:CUTOFF . 1))
+  node   0 parent=NIL depth=0 phase=SEARCH   exp=DONE   bound=130  prio=158 rows=9 inputs=3
+      proposal=NIL
+      search: work=254360 completed-bound=96 header=56 rejected=581 results=0 enum-size=41 syntax=652
+  node   1 parent=0   depth=1 phase=DONE     exp=DONE   bound=130  prio=187 rows=9 inputs=5
+      proposal=(:HEURISTIC-CONDITIONAL (#:= (#:QUOTE NIL) #:X0) #:X0)
+      search: work=17707 completed-bound=130 header=75 rejected=30 results=0 enum-size=56 syntax=37
+exit=0

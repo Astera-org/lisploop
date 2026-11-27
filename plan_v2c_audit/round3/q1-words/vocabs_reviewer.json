@@ -1,0 +1,13 @@
+{
+ "reviewer [3] NMI-selected six, int side trivial": [
+  ["@rev:len_cap6", "None"], ["@rev:all_even", "None"], ["@rev:all_nonneg", "None"],
+  ["@rev:is_sorted", "None"], ["@rev:max_le_2", "None"], ["@rev:has_zero", "None"]],
+ "reviewer [3] NMI-selected six, int side sgn / mod 2 / sgn": [
+  ["@rev:len_cap6", "None"], ["@rev:all_even", "('mod', 'v', 2)"], ["@rev:all_nonneg", "('sgn', 'v')"],
+  ["@rev:is_sorted", "None"], ["@rev:max_le_2", "('<', 2, 'v')"], ["@rev:has_zero", "('sgn', ('abs', 'v'))"]],
+ "reviewer [2] six length variants, int side trivial": [
+  ["@rev:len_cap6", "None"], ["@rev:len_cap5", "None"], ["@rev:len_cap4", "None"],
+  ["@rev:len_mod3", "None"], ["@rev:len_cap3", "None"], ["@rev:len_mod2", "None"]],
+ "@hand6": [],
+ "@types": []
+}

@@ -1,0 +1,9 @@
+plain, 60 tasks: 594488 classes below N*, 345.5 MB python
+   sizes <= N*-2: 33146 classes, 20.7 MB; size N*-1: 561342 classes
+   plain with size N*-1 as hashes: 20.7 MB + 38.5 MB of hashes = 59.2 MB  (5.8x less than plain)
+   F-c  : 224.0 MB as run; with its size N-1 as hashes: 33146 full classes + 215781 hashes = 35.5 to 44.6 MB (7.7x to 9.7x less than plain; 1.3x to 1.7x less than plain-with-hashes)
+   FL-c : 79.5 MB as run; with its size N-1 as hashes: 33146 full classes + 50547 hashes = 24.2 to 35.0 MB (9.9x to 14.3x less than plain; 1.7x to 2.5x less than plain-with-hashes)
+
+real	0m30.412s
+user	0m53.556s
+sys	0m1.854s

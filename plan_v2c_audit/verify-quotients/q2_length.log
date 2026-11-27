@@ -1,0 +1,116 @@
+# Q2 length sweep: 40 tasks (unary chains over xs), 6 processes
+search time 27.3 s
+
+== 6 quotients, iid M=2000 ==
+task    reference                                                  N*  plain_lib  plain_rnd   abs_lib   abs_rnd gain_rnd    store   abs_st   st_j1    wall found
+L2_1    len(dec_all(xs))                                            2         34         23         3         4     6.6x        1        1       1    0.4x   yes
+L2_10   count_distinct(filter_odd(xs))                              3       1272        735       126        97     7.6x       41       39      30    0.4x   yes
+L2_2    sum(map_adj_mul(xs))                                        3       1018        656        44        52    12.6x       41       26      10    0.7x   yes
+L2_3    filter_even(map_adj_min(xs))                                3        491        654        32        32    20.4x       41       22       4    0.7x   yes
+L2_4    running_sum(running_sum(xs))                                3        848        727        28        28    26.4x       41       14       6    0.9x   yes
+L2_5    head(tail(xs))                                              3       1090        470        57        51     9.2x       41       29      12    0.8x   yes
+L2_6    min_el(tail(xs))                                            3       1153        672        58        49    13.8x       41       23       7    0.9x   yes
+L2_7    map_adj_mul(map_adj_max(xs))                                3        332        642        33        39    16.5x       41       22      11    0.7x   yes
+L2_8    head(dedup_adj(xs))                                         2         35         23         4         4     5.7x        1        1       1    0.4x   yes
+L2_9    shift1(sort_desc(xs))                                       3        653        651        24        26    25.3x       41       13       6    1.0x   yes
+L3_1    abs(head(odds_idx(xs)))                                     4      24361       8092      1281      1319     6.1x      915      713     200    1.1x   yes
+L3_10   inc(inc(sum(xs)))                                           4      29768      16647      1305      1182    14.1x      938      499     143    1.6x   yes
+L3_2    take3(sort_desc(filter_neg(xs)))                            4      13446       9958       625       616    16.2x      902      362      57    1.1x   yes
+L3_3    take3(drop2(abs_all(xs)))                                   4       3160      11329       656       659    17.2x      897      369      44    1.2x   yes
+L3_4    running_sum(tail(map_adj_mul(xs)))                          4      18151      15231       632       616    24.7x      878      323      61    1.4x   yes
+L3_5    inc_all(odds_idx(init(xs)))                                 4       2022      10640       764       766    13.9x      917      494      51    1.2x   yes
+L3_6    map_adj_min(map_adj_min(dec_all(xs)))                       4       4427      10303       657       662    15.6x      935      405      58    1.5x   yes
+L3_7    sq(last(drop2(xs)))                                         4      24251      10094      1540      1624     6.2x      885      769     482    0.9x   yes
+L3_8    sq_all(running_min(abs_all(xs)))                            3        863        663        28        26    25.9x       40       15       4    1.0x   yes
+L3_9    sort(drop2(abs_all(xs)))                                    4      12154      14430       722       731    19.7x      874      374     118    1.3x   yes
+L4_1    map_adj_max(dec_all(inc_all(dec_all(xs))))                  3        173        500        30        30    16.6x       40       21       5    0.7x   yes
+L4_10   dbl(count_distinct(drop2(dbl_all(xs))))                     4      29633      16203      2563      2013     8.0x      922      837     647    1.0x   yes
+L4_2    sort_desc(evens_idx(filter_pos(shift1(xs))))                5     275037     317823     16464     16281    19.5x    16932     8283    1313    2.0x   yes
+L4_3    filter_neg(tail(neg_all(map_adj_min(xs))))                  5      74475     211929     21421     21436     9.9x    16224    11709    1012    1.4x   yes
+L4_4    dbl(count_distinct(dec_all(sort(xs))))                      3       1274        690       127        90     7.7x       40       35      28    0.5x   yes
+L4_5    len(tail(dec_all(filter_neg(xs))))                          4      24071       8912      1444      1590     5.6x      926      875     471    1.2x   yes
+L4_6    drop2(tail(dbl_all(map_adj_sub(xs))))                       5      45972     109964     14659     14736     7.5x    15601     7523    1323    2.2x   yes
+L4_7    running_sum(filter_neg(shift1(evens_idx(xs))))              5     381035     304536     13453     13405    22.7x    17286     6862    1025    2.4x   yes
+L4_8    inc(dbl(dec(count_even(xs))))                               4      28917      16425      3506      2515     6.5x      901      716     539    1.2x   yes
+L4_9    count_even(half_all(dbl_all(drop2(xs))))                    3       1250        731        97        79     9.3x       41       41      23    0.6x   yes
+L5_1    filter_pos(filter_odd(map_adj_max(shift1(shift1(xs)))))     3        422        435        33        33    13.2x       40       29       3    0.6x   yes
+L5_10   dbl_all(map_adj_min(tail(drop2(inc_all(xs)))))              6     802709    2312299    241001    242310     9.5x   268798   119209   19958    4.0x   yes
+L5_2    max_el(running_sum(abs_all(filter_even(map_adj_min(xs)))))  5     424965     276704     27019     31408     8.8x    16172    10649    7667    2.2x   yes
+L5_3    head(half_all(tail(dedup_adj(take3(xs)))))                  4      24575      10354      1316      1218     8.5x      918      601     240    1.9x   yes
+L5_4    abs(sum(map_adj_max(running_min(drop2(xs)))))               6    8658953    4908013    811218    685483     7.2x   242127   199010  163003    2.1x   yes
+L5_5    init(inc_all(running_sum(filter_neg(running_sum(xs)))))     6     668753    2520389    131812    131839    19.1x   240565    62146   16334    5.7x   yes
+L5_6    dbl(count_even(map_adj_min(neg_all(sq_all(xs)))))           5     566877     307314     44058     37292     8.2x    16852    13058   10029    2.1x   yes
+L5_7    sq(max_el(take2(map_adj_max(shift1(xs)))))                  4      30174      16018      1644      1460    11.0x      916      670     246    1.6x   yes
+L5_8    reverse(map_adj_mul(dec_all(shift1(filter_even(xs)))))      6    2181950    2870930    172253    172476    16.6x   227543    81982   15664    4.0x   yes
+L5_9    filter_even(tail(shift1(shift1(half_all(xs)))))             6    3429572    4417597    103628    103840    42.5x   226892    49283   17255    6.4x   yes
+
+   by number of operators in the reference (geometric means over found tasks):
+   n_ops tasks  miss    plain_rnd   gain_lib   gain_rnd      store   store_j1       wall
+   n_ops=2    10     0          331      17.2x      12.6x       1.6x       3.4x       nanx
+   n_ops=3    10     0         8688      14.4x      14.5x       2.0x       9.4x       1.2x
+   n_ops=4    10     0        16332      12.6x      10.1x       1.5x       4.6x       1.6x
+   n_ops=5    10     0       272116      13.6x      12.4x       1.9x       5.7x       3.0x
+   N*=2     2     0           23       8.6x       6.1x       1.0x       1.0x       nanx
+   N*=3    13     0          625      19.0x      14.4x       1.7x       4.7x       nanx
+   N*=4    14     0        12107      15.2x      11.1x       1.7x       5.7x       1.3x
+   N*=5     6     0       240147      10.8x      11.6x       1.8x       7.3x       2.0x
+   N*=6     5     0      3250313      10.2x      15.6x       2.7x       8.9x       4.2x
+
+== 6 quotients, enriched M=20000 ==
+task    reference                                                  N*  plain_lib  plain_rnd   abs_lib   abs_rnd gain_rnd    store   abs_st   st_j1    wall found
+L2_1    len(dec_all(xs))                                            2         34         23         3         4     6.6x        1        1       1    0.4x   yes
+L2_10   count_distinct(filter_odd(xs))                              3       1272        735       126        93     7.9x       41       39      30    0.4x   yes
+L2_2    sum(map_adj_mul(xs))                                        3       1018        656        44        53    12.5x       41       26      10    0.7x   yes
+L2_3    filter_even(map_adj_min(xs))                                3        491        654        32        32    20.4x       41       22       4    0.6x   yes
+L2_4    running_sum(running_sum(xs))                                3        848        727        28        27    26.5x       41       14       6    0.9x   yes
+L2_5    head(tail(xs))                                              3       1090        470        57        51     9.2x       41       29      12    0.8x   yes
+L2_6    min_el(tail(xs))                                            3       1153        672        58        50    13.6x       41       23       7    0.9x   yes
+L2_7    map_adj_mul(map_adj_max(xs))                                3        332        642        33        39    16.6x       41       22      11    0.6x   yes
+L2_8    head(dedup_adj(xs))                                         2         35         23         4         4     5.7x        1        1       1    0.4x   yes
+L2_9    shift1(sort_desc(xs))                                       3        653        651        24        26    25.0x       41       13       6    1.0x   yes
+L3_1    abs(head(odds_idx(xs)))                                     4      24361       8092      1281      1313     6.2x      915      713     200    1.1x   yes
+L3_10   inc(inc(sum(xs)))                                           4      29768      16647      1305      1183    14.1x      938      499     143    1.7x   yes
+L3_2    take3(sort_desc(filter_neg(xs)))                            4      13446       9958       625       617    16.1x      902      362      57    1.1x   yes
+L3_3    take3(drop2(abs_all(xs)))                                   4       3160      11329       656       660    17.2x      897      369      44    1.2x   yes
+L3_4    running_sum(tail(map_adj_mul(xs)))                          4      18151      15231       632       616    24.7x      878      323      61    1.4x   yes
+L3_5    inc_all(odds_idx(init(xs)))                                 4       2022      10640       764       766    13.9x      917      494      51    1.2x   yes
+L3_6    map_adj_min(map_adj_min(dec_all(xs)))                       4       4427      10303       657       661    15.6x      935      405      58    1.3x   yes
+L3_7    sq(last(drop2(xs)))                                         4      24251      10094      1540      1620     6.2x      885      769     482    0.9x   yes
+L3_8    sq_all(running_min(abs_all(xs)))                            3        863        663        28        25    26.0x       40       15       4    1.0x   yes
+L3_9    sort(drop2(abs_all(xs)))                                    4      12154      14430       722       733    19.7x      874      374     118    1.3x   yes
+L4_1    map_adj_max(dec_all(inc_all(dec_all(xs))))                  3        173        500        30        30    16.6x       40       21       5    0.7x   yes
+L4_10   dbl(count_distinct(drop2(dbl_all(xs))))                     4      29633      16203      2563      2041     7.9x      922      837     647    1.0x   yes
+L4_2    sort_desc(evens_idx(filter_pos(shift1(xs))))                5     275037     317823     16472     16350    19.4x    16932     8283    1313    2.0x   yes
+L4_3    filter_neg(tail(neg_all(map_adj_min(xs))))                  5      74475     211929     21426     21521     9.8x    16224    11709    1013    1.4x   yes
+L4_4    dbl(count_distinct(dec_all(sort(xs))))                      3       1274        690       127        88     7.8x       40       35      28    0.5x   yes
+L4_5    len(tail(dec_all(filter_neg(xs))))                          4      24071       8912      1444      1589     5.6x      926      875     471    1.2x   yes
+L4_6    drop2(tail(dbl_all(map_adj_sub(xs))))                       5      45972     109964     14665     14773     7.4x    15601     7523    1323    2.2x   yes
+L4_7    running_sum(filter_neg(shift1(evens_idx(xs))))              5     381035     304536     13457     13465    22.6x    17286     6862    1025    2.4x   yes
+L4_8    inc(dbl(dec(count_even(xs))))                               4      28917      16425      3506      2531     6.5x      901      716     539    1.2x   yes
+L4_9    count_even(half_all(dbl_all(drop2(xs))))                    3       1250        731        97        81     9.0x       41       41      23    0.6x   yes
+L5_1    filter_pos(filter_odd(map_adj_max(shift1(shift1(xs)))))     3        422        435        33        33    13.2x       40       29       3    0.3x   yes
+L5_10   dbl_all(map_adj_min(tail(drop2(inc_all(xs)))))              6     802709    2312299    241040    242481     9.5x   268798   119209   19958    3.7x   yes
+L5_2    max_el(running_sum(abs_all(filter_even(map_adj_min(xs)))))  5     424965     276704     27019     31523     8.8x    16172    10649    7667    2.1x   yes
+L5_3    head(half_all(tail(dedup_adj(take3(xs)))))                  4      24575      10354      1316      1189     8.7x      918      601     240    1.9x   yes
+L5_4    abs(sum(map_adj_max(running_min(drop2(xs)))))               6    8658953    4908013    811218    671372     7.3x   242127   199010  163003    2.4x   yes
+L5_5    init(inc_all(running_sum(filter_neg(running_sum(xs)))))     6     668753    2520389    131921    132381    19.0x   240565    62146   16334    5.0x   yes
+L5_6    dbl(count_even(map_adj_min(neg_all(sq_all(xs)))))           5     566877     307314     44058     37820     8.1x    16852    13058   10029    1.9x   yes
+L5_7    sq(max_el(take2(map_adj_max(shift1(xs)))))                  4      30174      16018      1644      1446    11.1x      916      670     246    1.5x   yes
+L5_8    reverse(map_adj_mul(dec_all(shift1(filter_even(xs)))))      6    2181950    2870930    172268    172416    16.7x   227543    81985   15666    4.4x   yes
+L5_9    filter_even(tail(shift1(shift1(half_all(xs)))))             6    3429572    4417597    103651    103858    42.5x   226892    49287   17255    5.8x   yes
+
+   by number of operators in the reference (geometric means over found tasks):
+   n_ops tasks  miss    plain_rnd   gain_lib   gain_rnd      store   store_j1       wall
+   n_ops=2    10     0          331      18.4x      12.6x       1.6x       3.4x       nanx
+   n_ops=3    10     0         8688      14.4x      14.5x       2.0x       9.4x       1.2x
+   n_ops=4    10     0        16332      12.4x      10.1x       1.5x       4.6x       1.5x
+   n_ops=5    10     0       272116      13.6x      12.4x       1.9x       5.7x       2.9x
+   N*=2     2     0           23      10.0x       6.1x       1.0x       1.0x       nanx
+   N*=3    13     0          625      19.5x      14.4x       1.7x       4.7x       nanx
+   N*=4    14     0        12107      15.0x      11.1x       1.7x       5.7x       1.3x
+   N*=5     6     0       240147      10.8x      11.5x       1.8x       7.3x       2.0x
+   N*=6     5     0      3250313      10.2x      15.7x       2.7x       8.9x       4.1x
+
+real	0m27.326s
+user	1m57.443s
+sys	0m0.769s

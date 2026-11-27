@@ -1,0 +1,30 @@
+A8 (true size 11, tables' lower bound 7)
+     N  evaluated     bank   new since last bound  of them cut at last bound
+     7        116        7                      7                          7   hit=False
+     8        224       10                      3                          3   hit=False
+     9        997       23                     13                         13   hit=False
+    10       2069       34                     11                         11   hit=False
+    11      15652      119                     85                         85   hit=True
+   classes per size 1..10, plain: [4, 3, 15, 9, 68, 28, 363, 105, 2118, 434]
+   classes per size 1..10, (c)  : [4, 3, 15, 6, 51, 1, 31, 0, 8, 0]
+   plain with the top stored size (10) as hashes: 2713 full classes instead of 3147 (1.16x)
+A12 (true size 13, tables' lower bound 3)
+     N  evaluated     bank   new since last bound  of them cut at last bound
+     3          4        0                      0                          0   hit=False
+     4          4        0                      0                          0   hit=False
+     5         44        4                      4                          4   hit=False
+     6        116        7                      3                          3   hit=False
+     7        484       15                      8                          8   hit=False
+     8       1122       27                     12                         12   hit=False
+     9       4691       67                     40                         40   hit=False
+    10       7369       80                     13                         13   hit=False
+    11      31600      243                    163                        163   hit=False
+    12      49453      308                     65                         65   hit=False
+    13     236398     1229                    921                        921   hit=True
+   classes per size 1..12, plain: [4, 3, 15, 9, 68, 28, 363, 105, 2118, 434, 12613, 1849]
+   classes per size 1..12, (c)  : [4, 3, 15, 9, 68, 28, 363, 34, 604, 4, 97, 0]
+   plain with the top stored size (12) as hashes: 15760 full classes instead of 17609 (1.12x)
+
+real	0m9.594s
+user	0m4.099s
+sys	0m0.020s

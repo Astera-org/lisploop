@@ -1,0 +1,70 @@
+# Glossary entries from §4, §5, §7.1, §7.3, §9, Appendices D and E
+
+Format: term | definition | section that defines it or first uses it in these files.
+
+- space | A finite set of rows that have no content of their own; the rows are the independent contexts in which terms are evaluated. | §5.2
+- row | One independent context of a space: one example, one position, one call, one instance or one event. | §5.2
+- column | One cell per row of a space; a cell holds a value, a status (error, out of fuel, pending), or a reference to a row of another space. | §5.2
+- map | A column whose cells are all references to rows of another space. | §5.2
+- endomap | A map from a space to itself, such as "previous position" or "the tail of this list". | §5.2
+- term | An operator applied to terms, or a leaf; stored once (hash-consed), and denotes a column when evaluated over a space. | §5.2
+- class | All the terms that denote the same column on a given space; it stores the column once, its smallest term, and an evidence grade. | §5.2
+- hash-consing | Storing each distinct term exactly once, so that equal terms are the same object. | §4.3, §5.2
+- pattern × rows | The factorization of an execution graph into the expression's shape (the pattern) and the contexts it ran in (the rows). | §5.1
+- re-index | Each row of a derived space reads the cell of its parent row. | §5.4
+- collect | Each row of a space gathers the cells of its child rows, as a sequence or through an aggregate. | §5.4
+- instance space | A space with one row per term to be anti-unified and one column per position; constant columns are the shared pattern. | §5.4
+- position space | A space with one row per position of a sequence, made by lifting over the sequence, with a map back. | §5.3, §5.4
+- call space | A space whose rows are the calls a recursive function makes; the recursive call is an endomap on it. | §5.4, §7.3
+- derivation space | A space with one row per problem posed, with columns for the parent problem, the move, the work spent and the outcome. | §5.7
+- anti-unification | Finding the most specific pattern that several expressions share: their common skeleton, with a hole wherever they differ. | §5.4
+- shared hole | One hole used wherever the same pair of differing sub-terms recurs, as in `(+ ?0 ?0)` for `(+ x x)` and `(+ y y)`. | §5.4
+- operator hole | A hole in the place of an operator, allowed when the two operators have the same type signature. | §5.4
+- dependency test | The check, by one group-by, that one column is a function of some others (rows that agree on the others agree on it). | §5.3
+- observed, tested, certified | The three evidence grades of a class: same column on this space; also on several fresh spaces with boundary values; exhaustive, derived from certified laws, or an axiom. | §5.5
+- probe space | A space whose rows the kernel makes up for itself in order to test terms, not taken from a task. | §5.5
+- guarded law | A class on a sub-space: two terms that agree on the rows where a Boolean column is true. | §5.5
+- requirement | A Boolean term over known columns and any number of holes, which must come out true on every row of a space. | §5.6
+- hole | An unknown part of a program inside a requirement; a frame is the one-hole case. | §5.6
+- pullback | Substitution of a decoder for a hole in a requirement, turning a requirement on a whole program into one on a missing part. | §5.6 (defined in §2.1)
+- splitting a requirement | What a program construct does to a requirement on it, such as one requirement per slot of a tuple. | §5.6, §7.2
+- intensional / extensional equality | Equality for all inputs, against equality on the rows of one concrete space; the store merges only on the second. | §5.8
+- witness (across spaces) | A concrete object, such as a map, a substitution or a pattern, that shows how two things in different spaces are related. | §5.9
+- probe evaluation | The outside review's name for checking an equality seen on one space by evaluating both sides on another. | §5.9
+- key term | A term that computes, for each row of one space, a key identifying a row of another, so that a hash join finds the map. | §5.9
+- refinement (colour refinement) | Repeatedly recolouring each row by its own cells and the colours of the rows it reaches through maps, until nothing changes. | §5.9
+- backtracking (map search) | Trying each pairing of rows that refinement cannot separate, refining again, and backing up on contradiction. | §5.9
+- selective function | A function, such as `filter`, that keeps some elements of its input and drops the rest. | §5.9, §7.3
+- keep-column | The Boolean column that says, for each input position, whether its element survives a selective function. | §7.3
+- quotient of values | A small term that takes a value to one of a few labels, such as its sign or parity. | §5.9 (defined in §6.2)
+- verb table | For one operator, the table of which output labels were seen to follow which input labels. | §5.5 (defined in §6.2)
+- the two resolutions | Asking a question of the values themselves (full) or of their labels (coarse). | §5.9 (defined in §6.2)
+- `tabulate` | Builds a sequence from a length and a function of position. | §5.3, §7.1
+- `where` | Returns the positions of a sequence that satisfy a predicate. | §7.1
+- `select` | The prototype's form that keeps the elements of a sequence at the positions where a predicate holds; its form for `filter`. | §5.4
+- `fold` | Reduces a sequence to one value by applying a step function to each element in turn, carrying an accumulator. | §7.1
+- `scan` | Like `fold`, but returns every intermediate value of the accumulator as a sequence. | §7.1
+- `gather` | `(gather C Z)` returns the elements of `C` at the positions listed in `Z`; it is `tabulate` over `at`. | §7.1, §9
+- `evolve` | The v2 code's scan with state. | §9
+- `(try e fallback)` | The proposed form that lets a program observe an error and fall back. | §7.1
+- Stages A to D | The four stages in which this plan is to be built; Stage A is the store core and Stage D works across spaces throughout. | §5.4, §5.9 (defined in §11.3)
+- Stage 0 and Stage 1 of the v2 plans | The first two stages of the earlier v2 plans: Stage 0 (index columns, one behaviour table, attribution by ablation, and six soundness fixes) and Stage 1 (the unfinished code in `v2/`, which added ten opcodes). | §9 (described in §2.9)
+- X1, X9 | Experiments of §11.2: X1 builds the store core and runs law discovery on it; X9 builds search across spaces. | §5.8, §5.9
+- reserve rule | The kernel's split of budget, three parts to a tentative attempt and one part to a plain fallback. | §5.9, §9
+- description-length-gated abstraction | The kernel's abstraction code, which accepts an abstraction only when it shortens the total description. | §5.9, §9
+- as code / as design / re-seat | Lifted nearly unchanged; mechanism kept and code re-derived; sound and tested but takes or returns frames today. | §9
+- fact-and-measure scheme | The part of the totality checker that judges a branch under the facts its condition establishes and requires every self-call to decrease on a measure of the parameters. | §9
+- least-fixed-point discipline | Recomputing the totality of every function together whenever one is defined, starting from the assumption that none is total. | §9
+- requirement simplification ("folding" in the code) | Rule-based simplification of requirement expressions, held to the contract "equivalent" or "merely necessary"; unrelated to `fold`. | §9
+- difference facts | Short facts of the form u − v ≤ k that let the totality analysis prove a variable index is in range. | §9
+- definedness guard | A guard derived from an operator's preconditions, saying where an expression is defined. | §9
+- replay guard for inverses | Replaying a candidate answer forward and comparing, inside the definedness guard of the term that computes it, so a conditional solver's guard needs no search. | §9
+- lift / split | Lift is one program over all fiber rows; split is a guard and a program for each region. | §9
+- symmetry refund | A rejected pricing rule that refunded −log₂|Sym| bits; it violates the Kraft inequality when the child is a program. | Appendix D, §9
+- superposition | Many features sharing the same neurons of a network. | §4.5
+- saturation (e-graph) | Applying laws as merges until no law adds a new equality. | §4.3
+- staging (lowering) | Collapsing a stack of interpreters into one program before it runs, by compiling the upper levels away. | §4.6
+- reentrancy | The owner's "freely shifting abstraction level when recognizing, transforming, simplifying, expanding a graph". | §4.6
+- closed under the recursive call | Said of examples that include the result of every recursive call the program makes. | §7.3
+- angelic execution | Assuming a recursive call can return anything, synthesizing, and then checking. | §7.3
+- shipped / replicated | Load-bearing in widely used systems; several independent working implementations. | Appendix E

@@ -1,0 +1,38 @@
+=== scan: cumulative candidates per level (review: 11,298 in total) ===
+  after level 2 (cover depth 1): 8 classes, 0 cand in this bank: none
+  after level 3 (cover depth 1): 104 classes, 294 cand in this bank: none
+  after level 4 (cover depth 1): 140 classes, 350 cand in this bank: none
+  after level 5 (cover depth 1): 1206 classes, 7728 cand in this bank: none
+  after level 6 (cover depth 1): 2364 classes, 11604 cand in this bank: SPLIT tsize 16 bank-size 16
+
+=== map-adjacent under other settings (review: size-19 impostor, 29/200, accepted at level 7) ===
+  (max-size 7)                       cand   22011 held-out 28/200 elem tsize 36 bank-size 30
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (mod (at xs i) (len xs))) (+ i (+ i (len xs))) (if (< (call f 1 1) (len xs)) (+ (len xs) (+ (len xs) 1)) (+ (len xs) (at xs 1))))))
+  (max-size 8)                       cand   55288 held-out 28/200 elem tsize 35 bank-size 30
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (< i (- (len xs) (call f 1 1))) (max (len xs) (+ 1 (at xs i))) (if (= i 1) (+ i (+ (len xs) (len xs))) (+ (len xs) (at xs 1))))))
+  (max-size 9)                       cand   55288 held-out 29/200 elem tsize 27 bank-size 22
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (at xs 0)) (+ (len xs) (* i (call f (len xs) i))) (+ (len xs) (+ (len xs) (call f (len xs) 1))))))
+  (max-size 10 greedy t)             cand   22011 held-out 28/200 elem tsize 36 bank-size 30
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (mod (at xs i) (len xs))) (+ i (+ i (len xs))) (if (< (call f 1 1) (len xs)) (+ (len xs) (+ (len xs) 1)) (+ (len xs) (at xs 1))))))
+  (max-size 10 limit 20000)          cand   20100 held-out 28/200 elem tsize 36 bank-size 30
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (mod (at xs i) (len xs))) (+ i (+ i (len xs))) (if (< (call f 1 1) (len xs)) (+ (len xs) (+ (len xs) 1)) (+ (len xs) (at xs 1))))))
+  (max-size 10 limit 22000)          cand   22100 held-out 28/200 elem tsize 36 bank-size 30
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (mod (at xs i) (len xs))) (+ i (+ i (len xs))) (if (< (call f 1 1) (len xs)) (+ (len xs) (+ (len xs) 1)) (+ (len xs) (at xs 1))))))
+  (max-size 10 limit 30000)          cand   30100 held-out 29/200 elem tsize 27 bank-size 22
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (at xs 0)) (+ (len xs) (* i (call f (len xs) i))) (+ (len xs) (+ (len xs) (call f (len xs) 1))))))
+  (max-size 10 limit 50000)          cand   50100 held-out 28/200 elem tsize 35 bank-size 30
+     (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (< i (- (len xs) (call f 1 1))) (max (len xs) (+ 1 (at xs i))) (if (= i 1) (+ i (+ (len xs) (len xs))) (+ (len xs) (at xs 1))))))
+
+=== held-out sets wider than the spec rows' parameter ranges (programs found on the spec rows, default policy) ===
+  shift-seq  with (k int -3 15): 174/200   (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+  positions  with (k int -20 50): 200/200   (tabulate (len xs) (lambda (i prev) (+ i k)))
+  scan       with (a int -50 50): 200/200   (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+  last-or    with (d int -50 50): 200/200   (fold d (lambda (acc x) x) xs)
+
+=== foldl spec rows, fold path with f offered to the step bank (the review: '(- acc x) (size 3) beats (call f acc x) (size 4)') ===
+foldl          fold + f leaf          rows  9  cand        18  ms      0  held-out 81/200    size(elem) 3
+   program: (fold a (lambda (acc x) (- acc x)) xs)
+   [63 fold programs tried, 12 step classes; split-scan cells 0]
+foldl          same, skipping (- acc x) rows  9  cand       147  ms      0  held-out 200/200   size(elem) 4
+   program: (fold a (lambda (acc x) (call f acc x)) xs)
+   [231 fold programs tried, 69 step classes; split-scan cells 0]

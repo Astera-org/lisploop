@@ -1,0 +1,25 @@
+=== *occam* = t on the sequence-output spec tasks (max size 10, budget 30M) ===
+copy           occam                  rows  4  cand       151  ms      0  held-out 200/200   size(elem) 3
+   program: (tabulate (len xs) (lambda (i prev) (at xs i)))
+   [B'=6 rows, 48 classes; split-scan cells 30]
+inc-all        occam                  rows  4  cand       408  ms      0  held-out 200/200   size(elem) 5
+   program: (tabulate (len xs) (lambda (i prev) (+ 1 (at xs i))))
+   [B'=6 rows, 165 classes; split-scan cells 1726]
+dbl-all        occam                  rows  4  cand      8607  ms      0  held-out 200/200   size(elem) 7
+   program: (tabulate (len xs) (lambda (i prev) (+ (at xs i) (at xs i))))
+   [B'=6 rows, 1632 classes; split-scan cells 16174]
+positions      occam                  rows 11  cand         3  ms      0  held-out 200/200   size(elem) 3
+   program: (tabulate (len xs) (lambda (i prev) (+ i k)))
+   [B'=10 rows, 10 classes; split-scan cells 60]
+scan           occam                  rows  9  cand   7257787  ms   1320  held-out 200/200   size(elem) 16
+   program: (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+   [split: chosen term matches 5 of 9 rows; best-matching class (guard or not) 5; B'=9 rows, 605620 classes; split-scan cells 57228]
+shift-seq      occam                  rows 13  cand   7238105  ms   2880  held-out 200/200   size(elem) 13
+   program: (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+   [split: chosen term matches 18 of 27 rows; best-matching class (guard or not) 18; B'=27 rows, 1222159 classes; split-scan cells 61929]
+filter         occam                  rows  7  cand      1383  ms      0  held-out 200/200   size(elem) 3
+   program: (select xs (lambda (j x) (call1b p x)))
+   [no shape term; select: B''=9 rows; split-scan cells 0]
+map-adjacent   occam                  rows  8  cand    616232  ms     64  held-out 200/200   size(elem) 10
+   program: (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+   [split: chosen term matches 4 of 6 rows; best-matching class (guard or not) 4; B'=6 rows, 38082 classes; split-scan cells 64656]

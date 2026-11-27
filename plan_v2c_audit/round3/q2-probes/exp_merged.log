@@ -1,0 +1,40 @@
+# 36 configurations, tables 59 s
+
+== task set S300 (300 tasks); lost and AUD summed over table seeds [0, 1] ==
+quotients    rule               M guard         |  lost  lost%   AUD |    gain  store |  entries   pairs   cnt=1 labels
+merged3      iid             1000 none          |   100 16.67%   338 |  25.07x  5.46x |     3121    5422    2084 [38]
+merged3      iid             1000 min_count(10) |    26  4.33%   174 |  10.97x  3.71x |      841    2370     474 [38]
+merged3      iid             3000 none          |    42  7.00%   175 |  23.14x  5.19x |     4175    8058    2932 [38]
+merged3      iid             3000 min_count(10) |    23  3.83%   111 |  16.87x  4.70x |     1646    4744     954 [38]
+merged3      iid            10000 none          |    18  3.00%    77 |  21.80x  4.98x |     5683   12487    4249 [38]
+merged3      iid            10000 min_count(10) |     9  1.50%    60 |  20.11x  5.03x |     2477    7836    1378 [38]
+
+merged3      bank2+strat2    1000 none          |    68 11.33%   342 |  22.15x  5.02x |     7883    9981    6188 [38]
+merged3      bank2+strat2    1000 min_count(10) |    38  6.33%   311 |  11.63x  4.25x |     1384    3158     320 [38]
+merged3      bank2+strat2    3000 none          |    27  4.50%   143 |  21.58x  4.93x |     8468   15315    6382 [38]
+merged3      bank2+strat2    3000 min_count(10) |     7  1.17%    98 |  11.65x  4.14x |     2042    4404     218 [38]
+merged3      bank2+strat2   10000 none          |    10  1.67%    65 |  21.44x  4.94x |     8657   23240    7640 [38]
+merged3      bank2+strat2   10000 min_count(10) |     6  1.00%    60 |  14.71x  4.10x |     6254   17040    5047 [38]
+
+merged3      hand            1000 none          |    84 14.00%   309 |  23.97x  5.32x |     3714    6492    2606 [38]
+merged3      hand            1000 min_count(10) |    24  4.00%   168 |  12.32x  3.95x |     1076    2942     555 [38]
+merged3      hand            3000 none          |    34  5.67%   133 |  21.83x  4.99x |     4966   10214    3952 [38]
+merged3      hand            3000 min_count(10) |    11  1.83%    70 |  17.44x  4.77x |     1894    5540    1078 [38]
+merged3      hand           10000 none          |    10  1.67%    48 |  21.39x  4.97x |     6696   16706    6113 [38]
+merged3      hand           10000 min_count(10) |     6  1.00%    32 |  20.47x  5.00x |     2992   10330    2208 [38]
+
+  NOTE merged3|iid|1000|1|none: lost with a clean reference path: ['S45']
+  NOTE merged3|iid|3000|0|none: lost with a clean reference path: ['S45']
+  NOTE merged3|iid|3000|1|none: lost with a clean reference path: ['S45', 'S59']
+  NOTE merged3|iid|3000|1|min_count(10): lost with a clean reference path: ['S189']
+  NOTE merged3|iid|10000|1|none: lost with a clean reference path: ['S45']
+  NOTE merged3|iid|10000|1|min_count(10): lost with a clean reference path: ['S45']
+  NOTE merged3|bank2+strat2|1000|1|none: lost with a clean reference path: ['S245']
+  NOTE merged3|bank2+strat2|1000|1|min_count(10): lost with a clean reference path: ['S245']
+  NOTE merged3|hand|1000|1|none: lost with a clean reference path: ['S45']
+
+total wall 977 s
+
+real	16m17.352s
+user	96m56.695s
+sys	0m5.165s

@@ -1,0 +1,77 @@
+1:========================================================================
+2:=== Stage 0 Audit (v2): E0b-1a Constructor Fold Gate ===
+3:========================================================================
+36:========================================================================
+37:=== Stage 0 Audit (v2): E0b-1b Descriptor Prototype Gate ===
+38:========================================================================
+52:========================================================================
+53:=== Stage 0 Audit (v2): E0b-2 Bootstrap Distractor & Schema Survival ===
+54:========================================================================
+56:Regime WHITELIST+SCHEMAS: solved 16/16, held-out sound 16/16
+57:  COPY             solved=YES sound=YES work=   17630
+58:  INC-ALL          solved=YES sound=YES work=   33929
+59:  DBL-ALL          solved=YES sound=YES work=   32113
+60:  SUM-ALL          solved=YES sound=YES work=   26298
+61:  LEN-ALL          solved=YES sound=YES work=   34444
+62:  PRD-ALL          solved=YES sound=YES work=   28337
+63:  FOLDL            solved=YES sound=YES work=   82539
+64:  FILTER           solved=YES sound=YES work=   76871
+65:  MAP-ADJACENT     solved=YES sound=YES work=  110559
+66:  POSITIONS        solved=YES sound=YES work=   47136
+67:  SCAN             solved=YES sound=YES work=  264818
+68:  SHIFT-SEQ        solved=YES sound=YES work=  100600
+69:  SEQ-CORR         solved=YES sound=YES work=   88666
+70:  BEST-SHIFT       solved=YES sound=YES work=  199199
+71:  ARGMAX-CORR      solved=YES sound=YES work=   99180
+72:  LAST-OR          solved=YES sound=YES work=   32798
+74:Regime WHITELIST-NO-SCHEMAS: solved 10/16, held-out sound 9/16
+75:  COPY             solved=YES sound=YES work=   16748
+76:  INC-ALL          solved=YES sound=YES work=   31445
+77:  DBL-ALL          solved=YES sound=YES work=   29409
+78:  SUM-ALL          solved=YES sound=YES work=   25978
+79:  LEN-ALL          solved=YES sound=YES work=   34038
+80:  PRD-ALL          solved=YES sound=YES work=   27984
+81:  FOLDL            solved=YES sound=IMPOSTOR! work=  121367 impostor=(:APP
+158:  FILTER           solved=YES sound=YES work=   76203
+159:  MAP-ADJACENT     solved=no  sound=-   work=  350000
+160:  POSITIONS        solved=no  sound=-   work=  350000
+161:  SCAN             solved=no  sound=-   work=  350000
+162:  SHIFT-SEQ        solved=no  sound=-   work=  350000
+163:  SEQ-CORR         solved=YES sound=YES work=   88066
+164:  BEST-SHIFT       solved=no  sound=-   work=  350000
+165:  ARGMAX-CORR      solved=no  sound=-   work=   51952
+166:  LAST-OR          solved=YES sound=YES work=   51078
+168:Regime ACTIVE-GRAMMAR+SCHEMAS: solved 10/16, held-out sound 9/16
+169:  COPY             solved=YES sound=YES work=   29645
+170:  INC-ALL          solved=YES sound=YES work=  196724
+171:  DBL-ALL          solved=YES sound=YES work=   65100
+172:  SUM-ALL          solved=YES sound=YES work=   28222
+173:  LEN-ALL          solved=YES sound=YES work=   43772
+174:  PRD-ALL          solved=YES sound=YES work=   37158
+175:  FOLDL            solved=YES sound=IMPOSTOR! work=  213355 impostor=(:APP
+239:  FILTER           solved=YES sound=YES work=  122687
+240:  MAP-ADJACENT     solved=no  sound=-   work=  350000
+241:  POSITIONS        solved=YES sound=YES work=   92569
+242:  SCAN             solved=no  sound=-   work=  350000
+243:  SHIFT-SEQ        solved=no  sound=-   work=  350000
+244:  SEQ-CORR         solved=no  sound=-   work=  350000
+245:  BEST-SHIFT       solved=no  sound=-   work=  350000
+246:  ARGMAX-CORR      solved=no  sound=-   work=  350000
+247:  LAST-OR          solved=YES sound=YES work=  152465
+249:Regime ACTIVE-GRAMMAR-NO-SCHEMAS: solved 9/16, held-out sound 8/16
+250:  COPY             solved=YES sound=YES work=   27291
+251:  INC-ALL          solved=YES sound=YES work=  195020
+252:  DBL-ALL          solved=YES sound=YES work=   63333
+253:  SUM-ALL          solved=YES sound=YES work=   27868
+254:  LEN-ALL          solved=YES sound=YES work=   42759
+255:  PRD-ALL          solved=YES sound=YES work=   36804
+256:  FOLDL            solved=YES sound=IMPOSTOR! work=  209723 impostor=(:APP
+320:  FILTER           solved=YES sound=YES work=  120369
+321:  MAP-ADJACENT     solved=no  sound=-   work=  350000
+322:  POSITIONS        solved=no  sound=-   work=  350000
+323:  SCAN             solved=no  sound=-   work=  350000
+324:  SHIFT-SEQ        solved=no  sound=-   work=  350000
+325:  SEQ-CORR         solved=no  sound=-   work=  350000
+326:  BEST-SHIFT       solved=no  sound=-   work=  350000
+327:  ARGMAX-CORR      solved=no  sound=-   work=  350000
+328:  LAST-OR          solved=YES sound=YES work=  162170

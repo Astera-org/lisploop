@@ -1,0 +1,20 @@
+=== E0b-2 rerun at budget=350000000 (wall 277.7 s) ===
+Regime ACTIVE-GRAMMAR-NO-SCHEMAS: solved 12/16, held-out sound 10/16
+  COPY             solved=YES sound=YES       work=     27291
+  INC-ALL          solved=YES sound=YES       work=    195020
+  DBL-ALL          solved=YES sound=YES       work=     63333
+  SUM-ALL          solved=YES sound=YES       work=     27868
+  LEN-ALL          solved=YES sound=YES       work=     42759
+  PRD-ALL          solved=YES sound=YES       work=     36804
+  FOLDL            solved=YES sound=IMPOSTOR! work=    209723
+  FILTER           solved=YES sound=YES       work=    120369
+  MAP-ADJACENT     solved=no  sound=-         work= 350000000
+  POSITIONS        solved=YES sound=YES       work=   1251494
+  SCAN             solved=no  sound=-         work= 350000000
+  SHIFT-SEQ        solved=no  sound=-         work= 350000000
+  SEQ-CORR         solved=YES sound=YES       work=    665013
+  BEST-SHIFT       solved=no  sound=-         work= 350000000
+  ARGMAX-CORR      solved=YES sound=IMPOSTOR! work=  35667327
+  LAST-OR          solved=YES sound=YES       work=    162287
+real	4m40.678s
+exit=0

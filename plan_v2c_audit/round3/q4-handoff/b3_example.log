@@ -1,0 +1,58 @@
+Example 1 (review B.3): is the wrong first step closer than the right one, and do labels fix it?
+
+--- the review's single row: 1 row(s); y = dbl_all(sort(abs_all(xs)))
+    xs = (3, -1, 4, 2)   y = (2, 4, 6, 8)
+    L1(abs_all(xs), y) = 12   L1(running_max(xs), y) = 8   (review: 12 and 8 on its one row)
+    DL(y | abs_all(xs)) = 27 bits   DL(y | running_max(xs)) = 26 bits
+    size-2 list classes: 27, L1 defined for 14
+      abs_all(xs)  [on the path]     L1 rank  3 of 14   DL rank  8 of 27   label bound h = 1  -> KEPT by labels at n* = 4
+      running_max(xs) [off the path] L1 rank  2 of 14   DL rank  4 of 27   label bound h = 1  -> KEPT by labels at n* = 4
+      labels rule out 0 of the 27 size-2 list classes at n* = 4
+      five closest by L1: running_sum(xs) (3), running_max(xs) (8), inc_all(xs) (12), abs_all(xs) (12), sort(xs) (12)
+      unary chains g(f(running_max(xs))) that equal y: 0  (so the labels keep a class that cannot be completed)
+
+--- 8 random rows, seed 1: 8 row(s); y = dbl_all(sort(abs_all(xs)))
+    L1(abs_all(xs), y) = 218   L1(running_max(xs), y) = 224   (review: 12 and 8 on its one row)
+    DL(y | abs_all(xs)) = 290 bits   DL(y | running_max(xs)) = 279 bits
+    size-2 list classes: 31, L1 defined for 14
+      abs_all(xs)  [on the path]     L1 rank  1 of 14   DL rank  2 of 31   label bound h = 1  -> KEPT by labels at n* = 4
+      running_max(xs) [off the path] L1 rank  2 of 14   DL rank  1 of 31   label bound h = 1  -> KEPT by labels at n* = 4
+      labels rule out 0 of the 31 size-2 list classes at n* = 4
+      five closest by L1: abs_all(xs) (218), running_max(xs) (224), inc_all(xs) (340), neg_all(xs) (348), sort(xs) (348)
+      unary chains g(f(running_max(xs))) that equal y: 0  (so the labels keep a class that cannot be completed)
+
+--- 8 random rows, seed 2: 8 row(s); y = dbl_all(sort(abs_all(xs)))
+    L1(abs_all(xs), y) = 191   L1(running_max(xs), y) = 250   (review: 12 and 8 on its one row)
+    DL(y | abs_all(xs)) = 265 bits   DL(y | running_max(xs)) = 274 bits
+    size-2 list classes: 31, L1 defined for 14
+      abs_all(xs)  [on the path]     L1 rank  1 of 14   DL rank  2 of 31   label bound h = 1  -> KEPT by labels at n* = 4
+      running_max(xs) [off the path] L1 rank  2 of 14   DL rank  3 of 31   label bound h = 1  -> KEPT by labels at n* = 4
+      labels rule out 0 of the 31 size-2 list classes at n* = 4
+      five closest by L1: abs_all(xs) (191), running_max(xs) (250), inc_all(xs) (283), sort(xs) (297), reverse(xs) (301)
+      unary chains g(f(running_max(xs))) that equal y: 0  (so the labels keep a class that cannot be completed)
+
+--- 8 random rows, seed 3: 8 row(s); y = dbl_all(sort(abs_all(xs)))
+    L1(abs_all(xs), y) = 240   L1(running_max(xs), y) = 213   (review: 12 and 8 on its one row)
+    DL(y | abs_all(xs)) = 316 bits   DL(y | running_max(xs)) = 304 bits
+    size-2 list classes: 30, L1 defined for 14
+      abs_all(xs)  [on the path]     L1 rank  2 of 14   DL rank  3 of 30   label bound h = 1  -> KEPT by labels at n* = 4
+      running_max(xs) [off the path] L1 rank  1 of 14   DL rank  1 of 30   label bound h = 1  -> KEPT by labels at n* = 4
+      labels rule out 0 of the 30 size-2 list classes at n* = 4
+      five closest by L1: running_max(xs) (213), abs_all(xs) (240), running_sum(xs) (366), inc_all(xs) (383), sort(xs) (392)
+      unary chains g(f(running_max(xs))) that equal y: 0  (so the labels keep a class that cannot be completed)
+
+--- Example 2: target T = 2*x*x + 1; candidates A = 2*x*x (near miss) and B = 2*y*y
+    8 random rows, x, y in -9..9
+      parity (x mod 2)         rows where the labels of A and B differ:  0 of 8;   labels of (A+1) match T: True;  labels of (B+1) match T: True
+      sign                     rows where the labels of A and B differ:  0 of 8;   labels of (A+1) match T: True;  labels of (B+1) match T: True
+      non-negative (2 labels)  rows where the labels of A and B differ:  0 of 8;   labels of (A+1) match T: True;  labels of (B+1) match T: True
+      x mod 3                  rows where the labels of A and B differ:  5 of 8;   labels of (A+1) match T: True;  labels of (B+1) match T: False
+      x mod 5                  rows where the labels of A and B differ:  6 of 8;   labels of (A+1) match T: True;  labels of (B+1) match T: False
+      residual T - A: [1] -> constant, 32 bits row by row;   T - B: 8 distinct values, 102 bits
+    grid x, y in -4..4 (81 rows)
+      parity (x mod 2)         rows where the labels of A and B differ:  0 of 81;   labels of (A+1) match T: True;  labels of (B+1) match T: True
+      sign                     rows where the labels of A and B differ: 16 of 81;   labels of (A+1) match T: True;  labels of (B+1) match T: True
+      non-negative (2 labels)  rows where the labels of A and B differ:  0 of 81;   labels of (A+1) match T: True;  labels of (B+1) match T: True
+      x mod 3                  rows where the labels of A and B differ: 36 of 81;   labels of (A+1) match T: True;  labels of (B+1) match T: False
+      x mod 5                  rows where the labels of A and B differ: 48 of 81;   labels of (A+1) match T: True;  labels of (B+1) match T: False
+      residual T - A: [1] -> constant, 324 bits row by row;   T - B: 21 distinct values, 646 bits

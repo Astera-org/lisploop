@@ -1,0 +1,165 @@
+=== M2. ANALOGY AS A VERIFIED MAP BETWEEN TWO OPERATORS' TABLES ===
+
+--- M2.1 [spec] f in classes of {neg + *} over x 0 1 2, size<=4; op1, op2 in (+ - * max min); grid a,b in -6..6 (169 rows) ---
+f bank: 93 candidates, 23 classes on x=-36..36, 14 non-constant; bank 0.09 ms; all triple tests 1.32 ms (34 hold);
+  the same with the pre-filter columns and first-counterexample positions also computed: 29.30 ms
+triples tested 350 (14 f x 25 operator pairs); hold on the grid 34, of which 5 trivial (identity, op1=op2);
+listed 29; false on 1000 fresh rows in -1000..1000: 0
+found (f, op1 -> op2):
+  (neg x)                +->+, -->-, max->min, min->max
+  (+ x x)                +->+, -->-, max->max, min->min
+  (+ x 1)                max->max, min->min
+  (+ x 2)                max->max, min->min
+  (* x x)                *->*
+  (neg (+ x x))          +->+, -->-, max->min, min->max
+  (neg (+ x 1))          max->min, min->max
+  (neg (+ x 2))          max->min, min->max
+  (+ x (neg 1))          max->max, min->min
+  (+ x (neg 2))          max->max, min->min
+  (+ 1 (neg x))          max->min, min->max
+  (+ 2 (neg x))          max->min, min->max
+operator law flags from the tables (commutative idempotent associative): + (y n y)  - (n n n)  * (y n y)  max (y y y)  min (y y y)
+pre-filters (failing triples: 316; true non-trivial: 29):
+  filter                                                     tests    skips fail skips TRUE  
+  F1 op-level: op1 has comm/idem/assoc that op2 lacks              15  112 ( 35%)        0
+  F2 (f,op1): op2's comm/idem pulled back along f                 140  108 ( 34%)        0
+  F3 (f,op2): op1's comm/idem must hold on image(f)               140  112 ( 35%)        0
+  F2 or F3                                                        280  220 ( 70%)        0
+  F1 or F2 or F3                                                  295  220 ( 70%)        0
+  early exit instead: rows read until the first counterexample (seeded random row order), failing triples:
+    mean 1.05, median 1, max 3;  rejected within 1 row 96%, 2 rows 99%, 4 rows 100%, 8 rows 100%
+    cells: full test of every triple 59150; with early exit 6078 (true triples still read all 169 rows)
+  accepted when tested on only the first k rows of that order (false = fails on the fresh rows):
+    k=1: 43 (14 false); k=2: 31 (2 false); k=3: 29 (0 false); k=4: 29 (0 false); k=6: 29 (0 false); k=8: 29 (0 false); k=12: 29 (0 false); k=16: 29 (0 false);
+
+--- M2.2 f in {len sum max min first last}: f(append(xs,ys)) = op2(f(xs), f(ys)), op2 in (+ max min); 64 rows of non-empty sequences ---
+triples tested 18; found 4: len: append->+, sum: append->+, max: append->max, min: append->min; false on 1000 fresh rows (values to +-1000, lengths 1..12): 0; 1.09 ms
+law flags (commutative idempotent associative): append (n n y); + (y n y)  max (y y y)  min (y y y)
+pre-filters over 14 failing triples: F1 (op-level flags) skips 0, wrongly skips 0 true;
+  F2 (op2's comm/idem pulled back: f(xs++ys)=f(ys++xs), f(xs++xs)=f(xs); 12 tests) skips 10 (71%), wrongly skips 0 true
+  failing triples F2 does not skip: max/+, max/min, min/+, min/max
+  early exit: first counterexample at row (1-based), failing triples: mean 2.14, max 11
+
+--- M2.1 [added: richer f bank] f in classes of {neg + * max min} over x 0 1 2, size<=5; op1, op2 in (+ - * max min); grid a,b in -6..6 (169 rows) ---
+f bank: 625 candidates, 110 classes on x=-36..36, 98 non-constant; bank 0.50 ms; all triple tests 9.44 ms (185 hold);
+  the same with the pre-filter columns and first-counterexample positions also computed: 207.74 ms
+triples tested 2450 (98 f x 25 operator pairs); hold on the grid 185, of which 5 trivial (identity, op1=op2);
+listed 180; false on 1000 fresh rows in -1000..1000: 0
+found (f, op1 -> op2):
+  (neg x)                +->+, -->-, max->min, min->max
+  (+ x x)                +->+, -->-, max->max, min->min
+  (+ x 1)                max->max, min->min
+  (+ x 2)                max->max, min->min
+  (* x x)                *->*
+  (max x 0)              max->max, min->min
+  (max x 1)              max->max, min->min
+  (max x 2)              max->max, min->min
+  (min x 0)              max->max, min->min
+  (min x 1)              max->max, min->min
+  (min x 2)              max->max, min->min
+  (neg (+ x x))          +->+, -->-, max->min, min->max
+  (neg (+ x 1))          max->min, min->max
+  (neg (+ x 2))          max->min, min->max
+  (neg (max x 0))        max->min, min->max
+  (neg (max x 1))        max->min, min->max
+  (neg (max x 2))        max->min, min->max
+  (neg (min x 0))        max->min, min->max
+  (neg (min x 1))        max->min, min->max
+  (neg (min x 2))        max->min, min->max
+  (+ x (neg 1))          max->max, min->min
+  (+ x (neg 2))          max->max, min->min
+  (+ 1 (neg x))          max->min, min->max
+  (+ 2 (neg x))          max->min, min->max
+  (max x (neg x))        *->*
+  (max x (neg 1))        max->max, min->min
+  (max x (neg 2))        max->max, min->min
+  (max 1 (neg x))        max->min, min->max
+  (max 2 (neg x))        max->min, min->max
+  (min x (neg 1))        max->max, min->min
+  (min x (neg 2))        max->max, min->min
+  (min 1 (neg x))        max->min, min->max
+  (min 2 (neg x))        max->min, min->max
+  (+ x (+ x x))          +->+, -->-, max->max, min->min
+  (+ x (+ x 1))          max->max, min->min
+  (+ x (+ x 2))          max->max, min->min
+  (+ x (+ 1 2))          max->max, min->min
+  (+ x (+ 2 2))          max->max, min->min
+  (+ x (max x 0))        max->max, min->min
+  (+ x (max x 1))        max->max, min->min
+  (+ x (max x 2))        max->max, min->min
+  (+ x (min x 0))        max->max, min->min
+  (+ x (min x 1))        max->max, min->min
+  (+ x (min x 2))        max->max, min->min
+  (+ 1 (max x 0))        max->max, min->min
+  (+ 1 (max x 1))        max->max, min->min
+  (+ 1 (max x 2))        max->max, min->min
+  (+ 1 (min x 0))        max->max, min->min
+  (+ 1 (min x 1))        max->max, min->min
+  (+ 1 (min x 2))        max->max, min->min
+  (+ 2 (max x 0))        max->max, min->min
+  (+ 2 (max x 1))        max->max, min->min
+  (+ 2 (max x 2))        max->max, min->min
+  (+ 2 (min x 0))        max->max, min->min
+  (+ 2 (min x 1))        max->max, min->min
+  (+ 2 (min x 2))        max->max, min->min
+  (* x (+ 2 2))          +->+, -->-, max->max, min->min
+  (* x (* x x))          *->*, max->max, min->min
+  (* x (max x 0))        max->max, min->min
+  (* x (max x 1))        max->max, min->min
+  (* x (max x 2))        max->max, min->min
+  (* x (min x 0))        max->min, min->max
+  (* 2 (+ x 2))          max->max, min->min
+  (* 2 (max x 0))        max->max, min->min
+  (* 2 (max x 1))        max->max, min->min
+  (* 2 (max x 2))        max->max, min->min
+  (* 2 (min x 0))        max->max, min->min
+  (* 2 (min x 1))        max->max, min->min
+  (* 2 (min x 2))        max->max, min->min
+  (max x (+ 1 2))        max->max, min->min
+  (max x (+ 2 2))        max->max, min->min
+  (max 0 (+ x 1))        max->max, min->min
+  (max 0 (+ x 2))        max->max, min->min
+  (max 0 (min x 1))      max->max, min->*, min->min
+  (max 0 (min x 2))      max->max, min->min
+  (max 1 (+ x x))        max->max, min->min
+  (max 1 (+ x 2))        max->max, min->min
+  (max 1 (min x 2))      max->max, min->min
+  (min x (+ 1 2))        max->max, min->min
+  (min x (+ 2 2))        max->max, min->min
+  (min 0 (+ x 1))        max->max, min->min
+  (min 0 (+ x 2))        max->max, min->min
+  (min 1 (+ x x))        max->max, min->min
+  (min 1 (+ x 2))        max->max, min->min
+  (min 1 (* x x))        *->*, *->min
+operator law flags from the tables (commutative idempotent associative): + (y n y)  - (n n n)  * (y n y)  max (y y y)  min (y y y)
+pre-filters (failing triples: 2265; true non-trivial: 180):
+  filter                                                     tests    skips fail skips TRUE  
+  F1 op-level: op1 has comm/idem/assoc that op2 lacks              15  783 ( 35%)        1
+  F2 (f,op1): op2's comm/idem pulled back along f                 980  754 ( 33%)        0
+  F3 (f,op2): op1's comm/idem must hold on image(f)               980  780 ( 34%)        0
+  F2 or F3                                                       1960 1534 ( 68%)        0
+  F1 or F2 or F3                                                 1975 1537 ( 68%)        1
+  F1 WRONGLY skips the true triple (max 0 (min x 1)): min->*
+  early exit instead: rows read until the first counterexample (seeded random row order), failing triples:
+    mean 1.26, median 1, max 16;  rejected within 1 row 82%, 2 rows 96%, 4 rows 99%, 8 rows 100%
+    cells: full test of every triple 414050; with early exit 34126 (true triples still read all 169 rows)
+  accepted when tested on only the first k rows of that order (false = fails on the fresh rows):
+    k=1: 581 (395 false); k=2: 263 (77 false); k=3: 216 (35 false); k=4: 194 (13 false); k=6: 188 (7 false); k=8: 186 (5 false); k=12: 183 (3 false); k=16: 180 (0 false);
+
+--- M2.1 [added: same grammar, size<=6] f in classes of {neg + *} over x 0 1 2, size<=6; op1, op2 in (+ - * max min); grid a,b in -6..6 (169 rows) ---
+f bank: 465 candidates, 73 classes on x=-36..36, 58 non-constant; bank 0.37 ms; all triple tests 5.30 ms (95 hold);
+  the same with the pre-filter columns and first-counterexample positions also computed: 117.04 ms
+triples tested 1450 (58 f x 25 operator pairs); hold on the grid 95, of which 5 trivial (identity, op1=op2);
+listed 90; false on 1000 fresh rows in -1000..1000: 0
+pre-filters (failing triples: 1355; true non-trivial: 90):
+  filter                                                     tests    skips fail skips TRUE  
+  F1 op-level: op1 has comm/idem/assoc that op2 lacks              15  464 ( 34%)        0
+  F2 (f,op1): op2's comm/idem pulled back along f                 580  440 ( 32%)        0
+  F3 (f,op2): op1's comm/idem must hold on image(f)               580  464 ( 34%)        0
+  F2 or F3                                                       1160  904 ( 67%)        0
+  F1 or F2 or F3                                                 1175  904 ( 67%)        0
+  early exit instead: rows read until the first counterexample (seeded random row order), failing triples:
+    mean 1.07, median 1, max 3;  rejected within 1 row 94%, 2 rows 99%, 4 rows 100%, 8 rows 100%
+    cells: full test of every triple 245050; with early exit 17504 (true triples still read all 169 rows)
+  accepted when tested on only the first k rows of that order (false = fails on the fresh rows):
+    k=1: 172 (82 false); k=2: 102 (12 false); k=3: 90 (0 false); k=4: 90 (0 false); k=6: 90 (0 false); k=8: 90 (0 false); k=12: 90 (0 false); k=16: 90 (0 false);

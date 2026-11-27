@@ -1,0 +1,21 @@
+output dir = /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/
+[bootstrap] Saved ALGEBRA              -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/algebra.sexp (12 entries, 0 specs)
+## BUILD-ALGEBRA-BATTERY wall=0.01s
+[bootstrap] Saved ARITHMETIC           -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/arithmetic.sexp (8 entries, 8 specs)
+## BUILD-ARITHMETIC-BATTERY wall=0.04s
+[bootstrap] Saved CONSTRUCTORS         -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/constructors.sexp (6 entries, 3 specs)
+## BUILD-CONSTRUCTORS-BATTERY wall=0.01s
+[bootstrap] Saved FUNCTORS             -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/functors.sexp (10 entries, 6 specs)
+## BUILD-FUNCTORS-BATTERY wall=0.02s
+[bootstrap] Saved DESCRIPTORS          -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/descriptors.sexp (8 entries, 0 specs)
+[bootstrap] Saved SEQUENCES            -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/sequences.sexp (9 entries, 6 specs)
+## BUILD-SEQUENCES-AND-DESCRIPTORS-BATTERIES wall=0.15s
+[bootstrap] Saved SCANS                -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/scans.sexp (2 entries, 2 specs)
+## BUILD-SCANS-BATTERY wall=0.06s
+[bootstrap] Saved SEQUENCE-SHIFT       -> /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/laws-library/library-out/sequence-shift.sexp (6 entries, 6 specs)
+## BUILD-SEQUENCE-SHIFT-BATTERY wall=0.08s
+## TOTAL wall=0.37s
+
+real	0m2.674s
+user	0m2.636s
+sys	0m0.036s

@@ -1,0 +1,212 @@
+=== M1. SIGNATURES AND INTER-TASK MIXING (31 tasks, 12 examples/task, size<=10, budget 12000000 cand) ===
+replicate s = one example set per task, task i generated with seed 1000*s+i; replicates (1 2 3 4 5)
+
+--- task pool, replicate 1: full 12-operator grammar (+ - * mod max min at = < and not call) ---
+#  task                   intent form   status   cand      ms     held-out ops(body)      program
+ 0 reverse                tab    tab    ok           86452     44 200/200  (at - +)       (tabulate (len xs) (lambda (i prev) (at xs (- (len xs) (+ i 1)))))
+ 1 shift-seq (spec)       tabg   tabg   ok            9169      4 200/200  (< - at +)     (tabulate (len xs) (lambda (i prev) (if (< i (- (len xs) k)) (at xs (+ i k)) 0)))
+ 2 rotate-left k          tab    tab    ok          218927     88 200/200  (at mod +)     (tabulate (len xs) (lambda (i prev) (at xs (mod (+ i k) (len xs)))))
+ 3 map-adjacent +         tab    tab    ok          276712    148 200/200  (at +)         (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs i) (at xs (+ i 1)))))
+ 4 map-adjacent -         tab    tab    ok          685732    300 200/200  (- + at)       (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (- (at xs (+ i 1)) (at xs i))))
+ 5 running-sum            rec    rec    ok            4775      4 200/200  (< + at)       (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (at xs i))))
+ 6 scan + init a (spec)   rec    rec    ok            9161      4 200/200  (< + at)       (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (at xs i)) (+ a (at xs i)))))
+ 7 scan 2*acc-x init a    rec    rec    ok          286780    168 200/200  (< + - at)     (tabulate (len xs) (lambda (i prev) (if (< 0 i) (+ prev (- prev (at xs i))) (+ a (- a (at xs i))))))
+ 8 positions (spec)       tab    tab    ok               3      0 200/200  (+)            (tabulate (len xs) (lambda (i prev) (+ i k)))
+ 9 positions-of v         where  where  ok            8172      0 200/200  (=)            (where xs (lambda (j x) (= x v)))
+10 filter x>k             sel    sel    ok            7226      0 200/200  (<)            (select xs (lambda (j x) (< k x)))
+11 take k                 tab    tab    ok             267      0 200/200  (at)           (tabulate (min (len xs) k) (lambda (i prev) (at xs i)))
+12 zip-add                tab    tab    ok           28243     12 200/200  (+ at)         (tabulate (min (len xs) (len zs)) (lambda (i prev) (+ (at xs i) (at zs i))))
+13 map-adjacent f (spec)  tab    tab    ok         7927021   4152 200/200  (call + at)    (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+14 scan f init a (spec)   rec    rec    ok           14018     16 200/200  (< call at)    (tabulate (len xs) (lambda (i prev) (if (< 0 i) (call f prev (at xs i)) (call f a (at xs i)))))
+15 shift-right k          tabg   tabg   ok            8878      8 200/200  (not < at -)   (tabulate (len xs) (lambda (i prev) (if (not (< i k)) (at xs (- i k)) 0)))
+16 prepend k              tabg   tabg   ok            9771     12 200/200  (< at -)       (tabulate (+ (len xs) 1) (lambda (i prev) (if (< 0 i) (at xs (- i 1)) k)))
+17 append k               tabg   tabg   ok             298      0 200/200  (< at)         (tabulate (+ (len xs) 1) (lambda (i prev) (if (< i (len xs)) (at xs i) k)))
+18 running-max            rec    rec    ok            4767      4 200/200  (< max at)     (tabulate (len xs) (lambda (i prev) (if (< 0 i) (max prev (at xs i)) (at xs i))))
+19 remove v               sel    sel    ok            8401      4 200/200  (not =)        (select xs (lambda (j x) (not (= x v))))
+20 keep positive          sel    sel    ok             957      0 200/200  (<)            (select xs (lambda (j x) (< 0 x)))
+21 keep x<=k              sel    sel    IMPOSTOR      8240      0 140/200  (<)            (select xs (lambda (j x) (< x k)))
+22 positions x>k          where  where  ok            7930      4 200/200  (<)            (where xs (lambda (j x) (< k x)))
+23 positions of negatives where  where  ok            1365      0 200/200  (<)            (where xs (lambda (j x) (< x 0)))
+24 positions of even x    where  where  ok           92260     52 200/200  (= mod +)      (where xs (lambda (j x) (= 0 (mod x (+ 1 1)))))
+25 sum                    fold   fold   ok           53541     20 200/200  (+)            (fold 0 (lambda (acc x) (+ acc x)) xs)
+26 alternating sum        fold   fold   ok           58685     24 200/200  (-)            (foldr 0 (lambda (acc x) (- x acc)) xs)
+27 horner base 2          fold   fold   ok           69995     24 200/200  (+)            (fold 0 (lambda (acc x) (+ acc (+ acc x))) xs)
+28 product                fold   fold   ok           54407     20 200/200  (*)            (fold 1 (lambda (acc x) (* acc x)) xs)
+29 sum of squares         fold   fold   ok           65738     20 200/200  (+ *)          (fold 0 (lambda (acc x) (+ acc (* x x))) xs)
+30 max with floor 0       fold   scalar IMPOSTOR     67174     16 40/200   (not < - * at +) (if (not (< 1 (- (len xs) 1))) (* (len xs) (* (len xs) (- (* (len xs) (len xs)) (len xs)))) (at xs (+ 1 (+ 1 (+ 1 1)))))
+forms: tab 8, tabg 4, rec 5, sel 4, where 4, fold 5, scalar 1;  first-route candidates wasted on select/where/fold tasks: 343723 of 10075065 total
+
+other replicates (full grammar): held-out-correct, and every task whose form or status differs from replicate 1
+  replicate 1: 29/31 correct, 10075065 cand in total
+      keep x<=k: sel IMPOSTOR 140/200 (select xs (lambda (j x) (< x k)))
+      max with floor 0: scalar IMPOSTOR 40/200 (if (not (< 1 (- (len xs) 1))) (* (len xs) (* (len xs) (- (* (len xs) (len xs)) (len xs)))) (at xs (+ 1 (+ 1 (+ 1 1)))))
+  replicate 2: 30/31 correct, 10654855 cand in total
+      max with floor 0: scalar IMPOSTOR 59/200 (if (not (< 1 (- (len xs) (+ 1 1)))) (max 0 (at xs (- (len xs) 1))) (if (not (= 1 (mod (at xs 0) (len xs)))) (max (at xs 0) (at xs 1)) (+ (len xs) (mod (+ (len xs) (len xs)) (at xs 0)))))
+  replicate 3: 31/31 correct, 10309366 cand in total
+      max with floor 0: fold ok 200/200 (fold 0 (lambda (acc x) (max acc x)) xs)
+  replicate 4: 30/31 correct, 10162280 cand in total
+      max with floor 0: scalar IMPOSTOR 79/200 (if (not (< 1 (len xs))) (+ (len xs) (+ (len xs) (+ (len xs) (len xs)))) (if (= 0 (mod (max (len xs) (at xs 0)) (len xs))) (max 0 (at xs (- (len xs) (+ 1 1)))) (at xs 0)))
+  replicate 5: 31/31 correct, 10542446 cand in total
+      max with floor 0: fold ok 200/200 (fold 0 (lambda (acc x) (max acc x)) xs)
+
+tasks tried and EXCLUDED from the pool (full grammar returns an impostor); seed 1, then with only their intended operators:
+  keep a<x<b         full: IMPOSTOR 468586 cand 77/200 (select xs (lambda (j x) (= x (mod (max j x) b))))
+                       {at and <}: IMPOSTOR 17455 cand 79/200 (select xs (lambda (j x) (and (< j x) (< x b))))
+  max with floor k   full: IMPOSTOR 721129 cand 32/200 (if (= 0 (mod (- k 1) (max (len xs) 1))) (+ k (* (len xs) (mod k (max (len xs) k)))) (if (< 1 (at xs k)) (+ k (+ k (max 1 (at xs 1)))) (+ k k)))
+                       {at max}: ok 840 cand 200/200 (fold k (lambda (acc x) (max acc x)) xs)
+
+--- (a) signatures: one shared space = 64 generic probe rows + 31 x 12 task rows ---
+rep  pool  bool-cls tautology  pool     active   cand       cells      ms    
+   1 P3         454          8      446       77        648     282528      4
+   1 P5        7498         27     7471      856      33624   14660064    140
+   1 P3f        678          8      670       92        968     422048      8
+   2 P3         453          8      445       85        648     282528      4
+   2 P5        7407         20     7387      995      33624   14660064    136
+   2 P3f        676          8      668       98        968     422048      4
+   3 P3         451          8      443       92        648     282528      4
+   3 P5        7415         23     7392     1147      33624   14660064    140
+   3 P3f        675          8      667      117        968     422048      8
+   4 P3         453          8      445       78        648     282528      4
+   4 P5        7423         22     7401     1081      33624   14660064    140
+   4 P3f        677          8      669       93        968     422048      4
+   5 P3         454          8      446       84        648     282528      4
+   5 P5        7433         22     7411     1056      33624   14660064    144
+   5 P3f        677          8      669       98        968     422048      4
+(bool-cls = Boolean classes enumerated; tautology = no :f on the probe rows, dropped; pool = the rest; active = holds for >=1 task)
+
+signature sizes, replicate 1, and mean over replicates:
+#  task                   form   |P3|  |P5|  |P3f| P3 mean P5 mean  nearest 3 by P3 (Jaccard, form)
+ 0 reverse                tab        8   148    10     9.6    89.2  rotate-left k 0.50 tab; running-max 0.46 rec; map-adjacent f 0.33 tab
+ 1 shift-seq (spec)       tabg       4    95     4     4.2    78.8  map-adjacent - 0.29 tab; scan f init a  0.25 rec; scan + init a  0.25 rec
+ 2 rotate-left k          tab        4    66     4     5.6    70.4  reverse 0.50 tab; scan f init a  0.25 rec; scan + init a  0.25 rec
+ 3 map-adjacent +         tab        7   215     9     6.4   145.8  filter x>k 0.27 sel; map-adjacent f 0.25 tab; positions (spe 0.24 tab
+ 4 map-adjacent -         tab        5    77     6     6.6    93.8  shift-seq (spe 0.29 tabg; remove v 0.23 sel; positions x>k 0.19 where
+ 5 running-sum            rec        4    55     5     4.0    82.4  scan f init a  0.25 rec; scan + init a  0.25 rec; product 0.25 fold
+ 6 scan + init a (spec)   rec        1    37     1     5.0    97.2  scan f init a  1.00 rec; scan 2*acc-x i 0.33 rec; running-sum 0.25 rec
+ 7 scan 2*acc-x init a    rec        3    29     3     6.0    71.2  scan f init a  0.33 rec; scan + init a  0.33 rec; horner base 2 0.25 fold
+ 8 positions (spec)       tab       19   312    21    12.4   191.8  running-max 0.30 rec; map-adjacent + 0.24 tab; positions x>k 0.22 where
+ 9 positions-of v         where     14   104    14    13.0   126.0  positions of e 0.38 where; positions x>k 0.27 where; positions of n 0.22 where
+10 filter x>k             sel       12   280    12    13.0   281.0  keep positive 0.31 sel; map-adjacent + 0.27 tab; running-max 0.21 rec
+11 take k                 tab        3    77     4     4.4   122.0  keep x<=k 0.29 sel; shift-right k 0.12 tabg; positions x>k 0.06 where
+12 zip-add                tab        2    58     3    19.6   340.4  map-adjacent + 0.13 tab; map-adjacent f 0.11 tab; remove v 0.08 sel
+13 map-adjacent f (spec)  tab        8   124     9     5.4    70.4  reverse 0.33 tab; running-max 0.27 rec; map-adjacent + 0.25 tab
+14 scan f init a (spec)   rec        1    57     1     1.4    35.0  scan + init a  1.00 rec; scan 2*acc-x i 0.33 rec; running-sum 0.25 rec
+15 shift-right k          tabg      16   228    16     5.8   103.6  remove v 0.35 sel; positions x>k 0.30 where; shift-seq (spe 0.25 tabg
+16 prepend k              tabg       5    93     6    10.8   160.6  append k 0.50 tabg; map-adjacent f 0.18 tab; keep positive 0.17 sel
+17 append k               tabg       4    53     5     4.8    82.8  prepend k 0.50 tabg; running-sum 0.14 rec; map-adjacent - 0.13 tab
+18 running-max            rec       11   167    13     8.2   110.8  reverse 0.46 tab; positions (spe 0.30 tab; map-adjacent f 0.27 tab
+19 remove v               sel       11   140    12     6.8   140.0  shift-right k 0.35 tabg; shift-seq (spe 0.25 tabg; map-adjacent - 0.23 tab
+20 keep positive          sel        9   255     9    10.0   244.6  filter x>k 0.31 sel; running-max 0.25 rec; reverse 0.21 tab
+21 keep x<=k              sel        6    82     6     8.2   145.8  take k 0.29 tab; rotate-left k 0.11 tab; shift-right k 0.10 tabg
+22 positions x>k          where     14   277    14    12.2   228.6  positions of n 0.43 where; positions of e 0.38 where; shift-right k 0.30 tabg
+23 positions of negatives where     19   293    19    15.2   219.6  positions x>k 0.43 where; positions of e 0.29 where; positions-of v 0.22 where
+24 positions of even x    where      8   159     8    13.2   168.0  positions-of v 0.38 where; positions x>k 0.38 where; positions of n 0.29 where
+25 sum                    fold       2    16     2     3.2    23.6  product 0.50 fold; running-sum 0.20 rec; keep positive 0.10 sel
+26 alternating sum        fold       5    17     6     1.2     7.6  horner base 2 0.40 fold; shift-right k 0.24 tabg; map-adjacent f 0.18 tab
+27 horner base 2          fold       2    11     2     1.0     7.4  alternating su 0.40 fold; scan 2*acc-x i 0.25 rec; positions x>k 0.14 where
+28 product                fold       1     3     1     0.8     3.8  sum 0.50 fold; running-sum 0.25 rec; keep positive 0.11 sel
+29 sum of squares         fold       2    39     4     3.8    39.4  max with floor 0.50 scalar; scan f init a  0.00 rec; alternating su 0.00 fold
+30 max with floor 0       scalar     1    12     1     1.4    16.2  sum of squares 0.50 fold; scan f init a  0.00 rec; alternating su 0.00 fold
+
+P3 signatures in full, replicate 1 (a property is printed as the representative term of its class):
+ 0 reverse                (= (len s1) (len out)) (= (sum s1) (sum out)) (= (min s1) (min out)) (= (max s1) (max out)) (< 0 (max s1)) (< 0 (max out)) (< 1 (max s1)) (< 1 (max out))
+ 1 shift-seq (spec)       (= (len s1) (len out)) (< (min out) 1) (< (min out) (len s1)) (< (min out) (len out))
+ 2 rotate-left k          (= (len s1) (len out)) (= (sum s1) (sum out)) (= (min s1) (min out)) (= (max s1) (max out))
+ 3 map-adjacent +         (< 0 (max out)) (< 1 (max out)) (< (len s1) (max out)) (< (min s1) (first out)) (< (min s1) (last out)) (< (min s1) (max out)) (< (len out) (max out))
+ 4 map-adjacent -         (< (last out) (len s1)) (< (last out) (max s1)) (< (min out) (len s1)) (< (min out) (max s1)) (< (min out) (len out))
+ 5 running-sum            (= (len s1) (len out)) (= (sum s1) (last out)) (< 0 (len s1)) (< 0 (len out))
+ 6 scan + init a (spec)   (= (len s1) (len out))
+ 7 scan 2*acc-x init a    (= (len s1) (len out)) (< (min s1) (len s1)) (< (min s1) (len out))
+ 8 positions (spec)       (= (len s1) (len out)) (= n1 (first out)) (= n1 (min out)) (= (first out) (min out)) (= (last out) (max out)) (< 0 (last out)) (< 0 (max out)) (< 1 (last out)) (< 1 (max out)) (< (min s1) 1) (< (min s1) (len s1)) (< (min s1) n1) (< (min s1) (len out)) (< (min s1) (first out)) (< (min s1) (last out)) (< (min s1) (sum out)) (< (min s1) (min out)) (< (min s1) (max out)) (< (max s1) (sum out))
+ 9 positions-of v         (= (first out) (last out)) (= (first out) (sum out)) (= (first out) (min out)) (= (first out) (max out)) (= (last out) (sum out)) (= (last out) (min out)) (= (last out) (max out)) (= (sum out) (min out)) (= (sum out) (max out)) (= (min out) (max out)) (< (first out) (len s1)) (< (last out) (len s1)) (< (min out) (len s1)) (< (max out) (len s1))
+10 filter x>k             (= (max s1) (max out)) (< 0 (len s1)) (< 0 (first out)) (< 0 (last out)) (< 0 (max out)) (< 1 (max out)) (< (len s1) (max out)) (< n1 (first out)) (< n1 (last out)) (< n1 (min out)) (< n1 (max out)) (< (len out) (max out))
+11 take k                 (< 0 n1) (< (min s1) n1) (< (min out) n1)
+12 zip-add                (< (min s1) (max s2)) (< (min s1) (max out))
+13 map-adjacent f (spec)  (< 0 (max s1)) (< 0 (max out)) (< 1 (max s1)) (< 1 (max out)) (< (min s1) (max out)) (< (min out) (max s1)) (< (min out) (sum out)) (< (min out) (max out))
+14 scan f init a (spec)   (= (len s1) (len out))
+15 shift-right k          (= (len s1) (len out)) (< 0 (max s1)) (< 1 (max s1)) (< (min s1) (len s1)) (< (min s1) (sum s1)) (< (min s1) (max s1)) (< (min s1) n1) (< (min s1) (len out)) (< (first out) (len s1)) (< (first out) (max s1)) (< (first out) (len out)) (< (min out) 1) (< (min out) (len s1)) (< (min out) (max s1)) (< (min out) n1) (< (min out) (len out))
+16 prepend k              (= n1 (first out)) (< 0 (max s1)) (< 0 (len out)) (< (len s1) (len out)) (< (min out) (max s1))
+17 append k               (= n1 (last out)) (< 0 (len out)) (< (len s1) (len out)) (< (min out) (max s1))
+18 running-max            (= (len s1) (len out)) (= (max s1) (last out)) (= (max s1) (max out)) (= (first out) (min out)) (= (last out) (max out)) (< 0 (max s1)) (< 0 (last out)) (< 0 (max out)) (< 1 (max s1)) (< 1 (last out)) (< 1 (max out))
+19 remove v               (< (min s1) (max out)) (< (first out) (len s1)) (< (first out) (max s1)) (< (first out) (len out)) (< (first out) (max out)) (< (min out) 0) (< (min out) 1) (< (min out) (len s1)) (< (min out) (max s1)) (< (min out) (len out)) (< (min out) (max out))
+20 keep positive          (= (max s1) (max out)) (< 0 (len s1)) (< 0 (max s1)) (< 0 (len out)) (< 0 (first out)) (< 0 (last out)) (< 0 (sum out)) (< 0 (min out)) (< 0 (max out))
+21 keep x<=k              (= (min s1) (min out)) (< (min s1) n1) (< (first out) n1) (< (last out) n1) (< (min out) n1) (< (max out) n1)
+22 positions x>k          (= (first out) (min out)) (= (last out) (max out)) (< (min s1) 1) (< (min s1) (len s1)) (< (min s1) n1) (< (min s1) (len out)) (< (first out) (len s1)) (< (first out) (sum s1)) (< (first out) (max s1)) (< (last out) (len s1)) (< (min out) (len s1)) (< (min out) (sum s1)) (< (min out) (max s1)) (< (max out) (len s1))
+23 positions of negatives (= (first out) (min out)) (= (last out) (max out)) (< 0 (max s1)) (< 1 (max s1)) (< (min s1) (first out)) (< (min s1) (last out)) (< (min s1) (min out)) (< (min s1) (max out)) (< (len out) (max s1)) (< (first out) (len s1)) (< (first out) (sum s1)) (< (first out) (max s1)) (< (last out) (len s1)) (< (last out) (sum s1)) (< (min out) (len s1)) (< (min out) (sum s1)) (< (min out) (max s1)) (< (max out) (len s1)) (< (max out) (sum s1))
+24 positions of even x    (= (first out) (min out)) (= (last out) (max out)) (< 0 (last out)) (< 0 (max out)) (< (first out) (len s1)) (< (last out) (len s1)) (< (min out) (len s1)) (< (max out) (len s1))
+25 sum                    (= (sum s1) outv) (< 0 (len s1))
+26 alternating sum        (< 0 (max s1)) (< 1 (max s1)) (< (min s1) 1) (< (min s1) (len s1)) (< (min s1) (max s1))
+27 horner base 2          (< (min s1) 1) (< (min s1) (len s1))
+28 product                (< 0 (len s1))
+29 sum of squares         (< (min s1) outv) (< (max s1) outv)
+30 max with floor 0       (< (min s1) outv)
+
+P5 signatures, replicate 1: equalities only (first 12 per task):
+ 0 reverse                [4] (= (len s1) (len out)) (= (sum s1) (sum out)) (= (min s1) (min out)) (= (max s1) (max out))
+ 1 shift-seq (spec)       [1] (= (len s1) (len out))
+ 2 rotate-left k          [4] (= (len s1) (len out)) (= (sum s1) (sum out)) (= (min s1) (min out)) (= (max s1) (max out))
+ 3 map-adjacent +         [0] 
+ 4 map-adjacent -         [0] 
+ 5 running-sum            [2] (= (len s1) (len out)) (= (sum s1) (last out))
+ 6 scan + init a (spec)   [2] (= (len s1) (len out)) (= (sum s1) (- (last out) n1))
+ 7 scan 2*acc-x init a    [1] (= (len s1) (len out))
+ 8 positions (spec)       [5] (= (len s1) (len out)) (= n1 (first out)) (= n1 (min out)) (= (first out) (min out)) (= (last out) (max out))
+ 9 positions-of v         [10] (= (first out) (last out)) (= (first out) (sum out)) (= (first out) (min out)) (= (first out) (max out)) (= (last out) (sum out)) (= (last out) (min out)) (= (last out) (max out)) (= (sum out) (min out)) (= (sum out) (max out)) (= (min out) (max out))
+10 filter x>k             [1] (= (max s1) (max out))
+11 take k                 [0] 
+12 zip-add                [0] 
+13 map-adjacent f (spec)  [0] 
+14 scan f init a (spec)   [1] (= (len s1) (len out))
+15 shift-right k          [1] (= (len s1) (len out))
+16 prepend k              [4] (= n1 (first out)) (= 1 (- (len out) (len s1))) (= (sum s1) (- (sum out) n1)) (= (sum s1) (- (sum out) (first out)))
+17 append k               [4] (= n1 (last out)) (= 1 (- (len out) (len s1))) (= (sum s1) (- (sum out) n1)) (= (sum s1) (- (sum out) (last out)))
+18 running-max            [5] (= (len s1) (len out)) (= (max s1) (last out)) (= (max s1) (max out)) (= (first out) (min out)) (= (last out) (max out))
+19 remove v               [0] 
+20 keep positive          [1] (= (max s1) (max out))
+21 keep x<=k              [1] (= (min s1) (min out))
+22 positions x>k          [2] (= (first out) (min out)) (= (last out) (max out))
+23 positions of negatives [6] (= (first out) (min out)) (= (last out) (max out)) (= (first out) (- (sum out) (last out))) (= (first out) (- (sum out) (max out))) (= (last out) (- (sum out) (min out))) (= (sum out) (+ (min out) (max out)))
+24 positions of even x    [2] (= (first out) (min out)) (= (last out) (max out))
+25 sum                    [1] (= (sum s1) outv)
+26 alternating sum        [0] 
+27 horner base 2          [0] 
+28 product                [0] 
+29 sum of squares         [0] 
+30 max with floor 0       [0] 
+
+--- (b) leave-one-out retrieval, 31 tasks, mean over replicates (1 2 3 4 5) ---
+                                 | same program form           | >= half of solution's ops   | NN3 covers  | NN-hit (form) per replicate
+signature                        | NN-hit chance rank1  chance | NN-hit chance rank1  chance | NN3   rand3 |
+P3  {= <}, size 3                |  0.515  0.149   3.57   6.12 |  0.576  0.433   3.05   3.55 |  0.55  0.49 | 0.66 0.42 0.50 0.44 0.55
+P5  {+ - = <}, size<=5           |  0.549  0.149   2.90   6.12 |  0.575  0.433   2.77   3.55 |  0.54  0.49 | 0.47 0.57 0.55 0.60 0.56
+P3f = P3 + first/last of inputs  |  0.522  0.149   3.50   6.12 |  0.568  0.433   3.07   3.55 |  0.57  0.49 | 0.64 0.44 0.48 0.49 0.57
+P3 minus input-only properties   |  0.500  0.149   3.74   6.12 |  0.559  0.433   3.05   3.55 |  0.49  0.49 | 0.60 0.43 0.45 0.53 0.49
+P5 minus input-only properties   |  0.529  0.149   3.15   6.12 |  0.608  0.433   2.93   3.55 |  0.50  0.49 | 0.44 0.51 0.56 0.54 0.59
+P5 equalities only               |  0.456  0.149   3.66   6.12 |  0.560  0.433   2.96   3.55 |  0.39  0.49 | 0.48 0.46 0.40 0.48 0.47
+type only (which leaves exist)   |  0.313  0.149   4.01   6.12 |  0.484  0.433   2.91   3.55 |  0.41  0.49 | 0.29 0.29 0.35 0.29 0.35
+(NN-hit = share of tasks whose nearest neighbour is relevant; rank1 = mean rank of the first relevant task; chance = the same
+ for a random order; ties get their expected value.  'ops' excludes AT.  NN3 covers = the 3 nearest neighbours' operators contain
+ every operator of the task's own solution; rand3 = exact expectation of that for 3 random other tasks.)
+
+NN same-form hit by the form of the held-out task (pooled over replicates):
+  form   n    P3     P5     P5-io  type-only chance
+  tab     8.0   0.40   0.40   0.45      0.30   0.23
+  tabg    4.0   0.40   0.30   0.40      0.21   0.10
+  rec     5.0   0.45   0.40   0.44      0.14   0.13
+  sel     4.0   0.35   0.65   0.65      0.11   0.10
+  where   4.0   0.97   0.85   0.85      0.10   0.10
+  fold    5.4   0.60   0.80   0.50      0.89   0.15
+
+for comparison, replicate 0 = seed 1 for EVERY task (the prototype's own example sets; tasks with the same input
+spec then share their inputs).  31/31 correct.  Candidates of the prototype's 15 tasks: 86434 9175 217920 291481 703183 4771 9369 304540 3 8332 7002 267 30265 8458580 14186
+P3  {= <}, size 3                |  0.572  0.153   2.69   6.00 |  0.472  0.411   3.54   3.99 |  0.42  0.47 |
+P5  {+ - = <}, size<=5           |  0.871  0.153   1.90   6.00 |  0.591  0.411   2.42   3.99 |  0.55  0.47 |
+P3f = P3 + first/last of inputs  |  0.561  0.153   2.65   6.00 |  0.467  0.411   3.41   3.99 |  0.42  0.47 |
+P3 minus input-only properties   |  0.572  0.153   2.84   6.00 |  0.456  0.411   3.78   3.99 |  0.42  0.47 |
+P5 minus input-only properties   |  0.758  0.153   2.37   6.00 |  0.571  0.411   2.92   3.99 |  0.52  0.47 |
+P5 equalities only               |  0.500  0.153   3.35   6.00 |  0.517  0.411   3.44   3.99 |  0.39  0.47 |
+type only (which leaves exist)   |  0.346  0.153   3.94   6.00 |  0.462  0.411   3.08   3.99 |  0.35  0.47 |
+
+[(a)+(b) took 47.8 s including all full-grammar solves]
+
+[total 47.8 s]

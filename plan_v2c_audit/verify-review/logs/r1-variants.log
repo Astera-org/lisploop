@@ -1,0 +1,30 @@
+=== input-order sensitivity (default policy; max size 10; 30M) ===
+scan (xs a f)                occam nil cand     11604 ms     0 held-out 200/200 elem tsize 16 bank-size 16
+   (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+scan (xs f a)                occam nil cand     11604 ms     4 held-out 200/200 elem tsize 16 bank-size 16
+   (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+scan (a xs f)                occam nil cand     11604 ms     4 held-out 200/200 elem tsize 16 bank-size 16
+   (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+scan (a f xs)                occam nil cand     11604 ms     4 held-out 200/200 elem tsize 16 bank-size 16
+   (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+scan (f xs a)                occam nil cand     11604 ms     0 held-out 200/200 elem tsize 16 bank-size 16
+   (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+scan (f a xs)                occam nil cand     11604 ms     4 held-out 200/200 elem tsize 16 bank-size 16
+   (tabulate (len xs) (lambda (i prev) (if (= i 0) (call f a (at xs i)) (call f prev (at xs i)))))
+map-adjacent (xs f)          occam nil cand     55288 ms     8 held-out 29/200 elem tsize 27 bank-size 22
+   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (at xs 0)) (+ (len xs) (* i (call f (len xs) i))) (+ (len xs) (+ (len xs) (call f (len xs) 1))))))
+map-adjacent (xs f)          occam t   cand    616232 ms    64 held-out 200/200 elem tsize 10 bank-size 10
+   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+map-adjacent (f xs)          occam nil cand     55288 ms     8 held-out 28/200 elem tsize 27 bank-size 22
+   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (if (= 1 (at xs 0)) (+ (len xs) (* i (call f (len xs) i))) (+ (len xs) (+ (len xs) (call f (len xs) 1))))))
+map-adjacent (f xs)          occam t   cand    616232 ms    64 held-out 200/200 elem tsize 10 bank-size 10
+   (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (call f (at xs (+ i 1)) (at xs i))))
+
+=== map-adjacent: level at which the split is accepted ===
+  cover after level 2 (depth 1, 7 classes, 0 cand so far): none
+  cover after level 3 (depth 1, 41 classes, 205 cand so far): none
+  cover after level 4 (depth 1, 57 classes, 236 cand so far): none
+  cover after level 5 (depth 1, 209 classes, 2504 cand so far): none
+  cover after level 6 (depth 1, 516 classes, 4092 cand so far): none
+  cover after level 7 (depth 1, 1468 classes, 21912 cand so far): none
+  cover after level 8 (depth 1, 4444 classes, 55189 cand so far): SPLIT tsize 27 bank-size 22 (if (= 1 (at xs 0)) (+ (len xs) (* i (call f (len xs) i))) (+ (len xs) (+ (len xs) (call f (len xs) 1))))

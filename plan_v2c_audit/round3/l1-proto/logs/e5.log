@@ -1,0 +1,129 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATED-TRY
+;     (TG::PROBE-MATCH TG::LF TG::OP TG::C1 TG::C2 TG::C3)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::PROBE-MATCH
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROBE-MATCH
+;   caught 1 STYLE-WARNING condition
+=== E5. Look-ahead: decline to STORE a class that no operator can take to the target's labels. ===
+
+--- (a) single-class tasks.  la-oracle: the bound is the answer's level, handed over.  la-deepen: bound 2,3,..
+with a restart from the leaves for each bound, every pass counted; classes = those of the last pass. ---
+task                     mode                   cand      classes   declined  look-ups   ms        held-out same
+reverse                  plain                      86434     25639         0          0    176.62 200/200  yes 
+reverse                  first q3                    4996      1470         0     177156     34.44 200/200  yes 
+reverse                  la-oracle@7 types          85043     25297         0          0    162.87 200/200  yes 
+reverse                  la-oracle@7 def            15489      2697      1672     695334     37.96 200/200  yes 
+reverse                  la-oracle@7 q3              3605       270      1672     175171     14.70 200/200  yes 
+reverse                  la-deepen q3                3933       270      1724     203031     16.71 200/200  yes 
+rotate-left k            plain                     217920     67352         0          0    354.71 200/200  yes 
+rotate-left k            first q3                    9778      3164         0     474215     54.36 200/200  yes 
+rotate-left k            la-oracle@7 types         215196     66595         0          0    344.68 200/200  yes 
+rotate-left k            la-oracle@7 def            49953     10587      3158    1936149    103.25 200/200  yes 
+rotate-left k            la-oracle@7 q3              7052       750      3158     449771     27.31 200/200  yes 
+rotate-left k            la-deepen q3                7529       750      3229     491232     30.28 200/200  yes 
+map-adjacent +           plain                     291481    123369         0          0    734.70 200/200  yes 
+map-adjacent +           first q3                  115673     30181         0     302733    522.04 200/200  yes 
+map-adjacent +           la-oracle@9 types         259970    118801         0          0    448.36 200/200  yes 
+map-adjacent +           la-oracle@9 def            97403      8987     44881    1332558    215.49 200/200  yes 
+map-adjacent +           la-oracle@9 q3             84162      3393     44881    1004977    241.86 200/200  yes 
+map-adjacent +           la-deepen q3               91603      3393     46557    1309281    264.55 200/200  yes 
+map-adjacent -           plain                     703183    226812         0          0   1344.15 200/200  yes 
+map-adjacent -           first q3                  115445     30245         0     753654    536.90 200/200  yes 
+map-adjacent -           la-oracle@9 types         671656    222037         0          0   1085.69 200/200  yes 
+map-adjacent -           la-oracle@9 def           129005     15154     44643    2770951    281.33 200/200  yes 
+map-adjacent -           la-oracle@9 q3             83918      3389     44643    1230178    257.42 200/200  yes 
+map-adjacent -           la-deepen q3               91359      3389     46317    1533254    279.47 200/200  yes 
+take k                   plain                        267       110         0          0      0.49 200/200  yes 
+take k                   first q3                       2        13         0       1383      0.17 200/200  yes 
+take k                   la-oracle@3 types            267       117         0          0      0.51 200/200  yes 
+take k                   la-oracle@3 def              201        81         0       6253      0.49 200/200  yes 
+take k                   la-oracle@3 q3                 2        20         0       1383      0.17 200/200  yes 
+take k                   la-deepen q3                   2        20         0       1383      0.23 200/200  yes 
+zip-add                  plain                      30265     13124         0          0     61.51 200/200  yes 
+zip-add                  first q3                    9367      2930         0      44149     41.24 200/200  yes 
+zip-add                  la-oracle@7 types          27714     12594         0          0     40.22 200/200  yes 
+zip-add                  la-oracle@7 def            11577      2587      3136     251222     22.51 200/200  yes 
+zip-add                  la-oracle@7 q3              6816       693      3136     141309     18.93 200/200  yes 
+zip-add                  la-deepen q3                7338       693      3205     179562     20.93 200/200  yes 
+map-adjacent f (spec)    plain                    8458580   2306369         0          0  14566.60 200/200  yes 
+map-adjacent f (spec)    first q3                 3108993    717984         0    9647651   8515.46 200/200  yes 
+map-adjacent f (spec)    la-oracle@10 types       4239268   1617288         0          0   6775.49 200/200  yes 
+map-adjacent f (spec)    la-oracle@10 def          715261    188722     61715   19843785   1404.89 200/200  yes 
+map-adjacent f (spec)    la-oracle@10 q3           188896     34919     61715    8082452    656.24 200/200  yes 
+map-adjacent f (spec)    la-deepen q3              285795     34919    108758   11165142    966.16 200/200  yes 
+
+--- (b) guarded tasks under size-ordered split acceptance (*occam*, budget 15M): the held split gives the bound B,
+no oracle.  first = order within a level, and at B only the label-feasible are evaluated; +la = also decline to
+store classes that cannot reach the target by B; lfprobe / probe = test first (labels+exact / exact only), and at B
+nothing but the test. ---
+
+task                     mode         cand      | done cand<=dn  cand>dn   cls<=dn  cls>dn   | spar-lab  spar-typ  look-ups   lk/gat p-cells   lab-cells work       | ms       held-out same
+shift-seq (spec)         plain          9834897 |   10   9834897         0  2330255        0 |         0         0          0 -              0         0  393395880 | 16393.27 200/200      
+shift-seq (spec)         first          9649002 |   10   9649002         0  2229544        0 |         0    185895   11971112 1.66           0 267545580  665476772 | 20524.58 200/200  yes 
+shift-seq (spec)         first+la        217271 |   10    217271         0    66227        0 |         0     16600    9204378 1340.77         0   7947540   25842758 |   695.37 200/200  yes 
+shift-seq (spec)         first+la types    217271 |   10    217271         0    66227        0 |         0     16600          0 0.00           0         0    8690840 |   394.38 200/200  yes 
+shift-seq (spec)         lfprobe        9649002 |   10   9649002         0  2229544        0 |   7215285   2615526   11971112 1.66        5670 267545580  665482442 | 20152.41 200/200  yes 
+shift-seq (spec)         probe          9649002 |   10   9649002         0  2229544        0 |         0         0          0 -        7257360         0  393217440 | 16523.61 200/200  yes 
+running-sum              plain          3171095 |   10   3171095         0   789912        0 |         0         0          0 -              0         0  161725845 |  6234.28 200/200      
+running-sum              first          3106687 |   10   3106687         0   754017        0 |         0     64408    3617649 1.56           0 115364898  277423584 |  7914.40 200/200  yes 
+running-sum              first+la         87576 |   10     87576         0    26485        0 |         0      3258    4467339 1251.01         0   4052502   12986217 |   338.52 200/200  yes 
+running-sum              first+la types     87576 |   10     87576         0    26485        0 |         0      3258          0 0.00           0         0    4466376 |   180.70 200/200  yes 
+running-sum              lfprobe        3106687 |   10   3106687         0   754017        0 |   2325217    844848    3617649 1.56        1384 115364898  277424968 |  7757.55 200/200  yes 
+running-sum              probe          3106687 |   10   3106687         0   754017        0 |         0         0          0 -        2338711         0  160779748 |  6330.91 200/200  yes 
+scan + init a (spec)     plain         10579588 |   10  10579588         0  2464750        0 |         0         0          0 -              0         0  423183520 | 17341.89 200/200      
+scan + init a (spec)     first         10416241 |   10  10416241         0  2380834        0 |         0    163347   13342034 1.71           0 285700380  715692054 | 22024.98 200/200  yes 
+scan + init a (spec)     first+la        229820 |   10    229820         0    71267        0 |         0     14800    9499222 1354.90         0   8552340   27244362 |   747.18 200/200  yes 
+scan + init a (spec)     first+la types    229820 |   10    229820         0    71267        0 |         0     14800          0 0.00           0         0    9192800 |   414.52 200/200  yes 
+scan + init a (spec)     lfprobe       10416241 |   10  10416241         0  2380834        0 |   7795682   2779600   13342034 1.71        6351 285700380  715698405 | 21506.15 200/200  yes 
+scan + init a (spec)     probe         10416241 |   10  10416241         0  2380834        0 |         0         0          0 -        7860289         0  424509929 | 17634.89 200/200  yes 
+scan 2*acc-x init a      plain         10675341 |   10  10675341         0  2533411        0 |         0         0          0 -              0         0  459039663 | 18989.51 200/200      
+scan 2*acc-x init a      first         10539806 |   10  10539806         0  2457006        0 |         0    135535   15017706 1.90           0 316954083  785183447 | 24496.37 200/200  yes 
+scan 2*acc-x init a      first+la        304540 |   10    304540         0    78518        0 |         0     17384     589397 2.58           0  10129131   23813748 |   824.14 200/200  yes 
+scan 2*acc-x init a      first+la types    304540 |   10    304540         0    78518        0 |         0     17384          0 0.00           0         0   13095220 |   689.44 200/200  yes 
+scan 2*acc-x init a      lfprobe       10539806 |   10  10539806         0  2457006        0 |   7898529   2772838   15017706 1.90        3974 316954083  785187421 | 24165.20 200/200  yes 
+scan 2*acc-x init a      probe         10539806 |   10  10539806         0  2457006        0 |         0         0          0 -        7956340         0  461167998 | 19504.11 200/200  yes 
+scan f init a (spec)     plain         15000001 |    9  10924842   4075159  2502898  1911357 |         0         0          0 -              0         0  525000035 | 23250.56 200/200      
+scan f init a (spec)     first         10931341 |   10  10931341         0  2505934        0 |  12943015   3955363   44659763 2.11           0 263123391  690380089 | 21735.04 200/200  yes 
+scan f init a (spec)     first+la        482937 |   10    482937         0   106389        0 |   6781450   1856412   35319783 5.20           0  25556061   77778639 |  2117.61 200/200  yes 
+   classes evaluated but not stored (look-ahead): 136999
+scan f init a (spec)     first+la types  13425952 |   10  13425952         0  5235775        0 |         0   3882132          0 0.00           0         0  469908320 | 25585.15 200/200  yes 
+scan f init a (spec)     lfprobe       10924842 |   10  10924842         0  2502898        0 |  21147274   6671375   44659763 2.11       15214 262804611  689849058 | 21309.80 200/200  yes 
+scan f init a (spec)     probe         10924842 |   10  10924842         0  2502898        0 |         0         0          0 -       21367154         0  403736624 | 17536.69 200/200  yes 
+spec scan                plain          7257787 |   10   7257787         0   605620        0 |         0         0          0 -              0         0   65320083 |  3741.06 200/200      
+spec scan                first          2871399 |   10   2871399         0   206079        0 |   3368523   1017865    9809216 1.77           0   5564322   41216129 |  1915.28 200/200  yes 
+spec scan                first+la        257442 |   10    257442         0    27983        0 |   2535520    742536    6554900 2.57           0   1662255   10534133 |   392.02 200/200  yes 
+   classes evaluated but not stored (look-ahead): 33575
+spec scan                first+la types   3625965 |   10   3625965         0   468420        0 |         0   1016400          0 0.00           0         0   32633685 |  2345.77 200/200  yes 
+spec scan                lfprobe        2861201 |   10   2861201         0   205605        0 |   5517882   1722651    9809216 1.77       17262   5551524   41128811 |  1748.21 200/200  yes 
+spec scan                probe          2861201 |   10   2861201         0   205605        0 |         0         0          0 -        5580730         0   31331539 |  1651.83 200/200  yes 
+spec shift-seq           plain          7238105 |   10   7238105         0  1222159        0 |         0         0          0 -              0         0  195428835 |  8029.70 200/200      
+spec shift-seq           first          7166045 |   10   7166045         0  1197473        0 |         0     72060    7857366 1.46           0  96995589  298336170 |  9707.35 200/200  yes 
+spec shift-seq           first+la        188661 |   10    188661         0    46899        0 |         0     11390    4220505 642.10         0   3799095   13113447 |   386.54 200/200  yes 
+spec shift-seq           first+la types    188661 |   10    188661         0    46899        0 |         0     11390          0 0.00           0         0    5093847 |   232.22 200/200  yes 
+spec shift-seq           lfprobe        7166045 |   10   7166045         0  1197473        0 |   5356905   1874264    7857366 1.46       13223  96995589  298349393 |  9441.22 200/200  yes 
+spec shift-seq           probe          7166045 |   10   7166045         0  1197473        0 |         0         0          0 -        5443442         0  198926657 |  8280.81 200/200  yes 
+SUMMARY first vs plain, 7 tasks (plain cand >= 1): cand 63756814 -> 54680521 (total 1.17x, geo-mean 1.21x); work 2223093861 -> 3473708245 (total 0.64x, geo-mean 0.71x); ms 93980.3 -> 108318.0 (total 0.87x, geo-mean 0.94x); classes held 14360391 -> 11730916 (1.22x); look-ups 106274846; programs changed 0; lost 0; false rejects 0
+SUMMARY first+la vs plain, 7 tasks (plain cand >= 1): cand 63756814 -> 1768247 (total 36.06x, geo-mean 36.65x); work 2223093861 -> 191313304 (total 11.62x, geo-mean 11.98x); ms 93980.3 -> 5501.4 (total 17.08x, geo-mean 17.51x); classes held 14360391 -> 423797 (33.89x); look-ups 69855524; programs changed 0; lost 0; false rejects 0
+SUMMARY first+la types vs plain, 7 tasks (plain cand >= 1): cand 63756814 -> 18079785 (total 3.53x, geo-mean 15.62x); work 2223093861 -> 543081088 (total 4.09x, geo-mean 15.62x); ms 93980.3 -> 29842.2 (total 3.15x, geo-mean 13.53x); classes held 14360391 -> 5993620 (2.40x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY lfprobe vs plain, 7 tasks (plain cand >= 1): cand 63756814 -> 54663824 (total 1.17x, geo-mean 1.21x); work 2223093861 -> 3473120498 (total 0.64x, geo-mean 0.71x); ms 93980.3 -> 106080.6 (total 0.89x, geo-mean 0.97x); classes held 14360391 -> 11727406 (1.22x); look-ups 106274846; programs changed 0; lost 0; false rejects 0
+SUMMARY probe vs plain, 7 tasks (plain cand >= 1): cand 63756814 -> 54663824 (total 1.17x, geo-mean 1.21x); work 2223093861 -> 2073669935 (total 1.07x, geo-mean 1.15x); ms 93980.3 -> 87462.9 (total 1.07x, geo-mean 1.15x); classes held 14360391 -> 11727406 (1.22x); look-ups 0; programs changed 0; lost 0; false rejects 0
+
+[e5 finished in 905.6 s]

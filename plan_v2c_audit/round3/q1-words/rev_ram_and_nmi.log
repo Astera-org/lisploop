@@ -1,0 +1,13 @@
+VERIFY PART 1: CHECK-BEFORE-SEEN MONOTONICITY THEOREM ON G1 (TRUE RAM = len(seen) == len(bank)!)
+  A4 (sz9): (x+y)*(x-y)+1      | Plain seen=  490, bank=  490 | CheckBeforeSeen found=True seen=  52, bank=  52 | TRUE RAM Gain=  9.4x
+  A8 (sz11): (x+y)^2-xy+1      | Plain seen= 2713, bank= 2713 | CheckBeforeSeen found=True seen= 120, bank= 120 | TRUE RAM Gain= 22.6x
+  A12 (sz13): 2(x^2+y^2)-xy    | Plain seen=15760, bank=15760 | CheckBeforeSeen found=True seen= 687, bank= 687 | TRUE RAM Gain= 22.9x
+
+VERIFY PART 2: EXP B REDUNDANCY ABLATION WITH FINAL-LAYER PRE-FILTERING (§8.8)
+  [0] Plain OE (no words)                      | solved=8/8 | Evals= 55531 | TRUE RAM(seen)= 8265
+  [2] No redundancy (6 length variants!)       | solved=8/8 | Evals= 19805 | TRUE RAM(seen)= 4207
+  [3] 5-line pairwise NMI < 0.65 (diverse!)    | solved=8/8 | Evals= 12221 | TRUE RAM(seen)= 3892
+
+real	0m1.450s
+user	0m1.437s
+sys	0m0.012s

@@ -1,0 +1,194 @@
+==============================================================================================================
+OFFSET / SCALE near-miss tasks: 96 (seed 21); answer sizes {4: 42, 5: 51, 3: 3}; target types {'L': 71, 'I': 25}; wall 77 s
+  family add  n=64
+    A  plain, constant op in grammar (62 ops)                  geo-mean     65003  median    172126  not found  0 of 64
+    B  labels, constant op in grammar                          geo-mean      3331  median      6387  not found  0 of 64
+    C  plain 61 ops + residual check on stored classes         geo-mean      2552  median      5138  not found  0 of 64   residual checks (median)   1620
+    D  labels 61 ops + residual check on SURVIVING classes     geo-mean      1604  median      2647  not found  0 of 64   residual checks (median)   1429
+    D2 labels 61 ops + residual check on every evaluated       geo-mean       903  median       881  not found  0 of 64   residual checks (median)    798
+    E  labels 62 ops + residual check on surviving classes     geo-mean      1684  median      2846  not found  0 of 64   residual checks (median)   1536
+      gain residual on plain search:            A / C         25.47x  (n=64)
+      gain labels alone:                        A / B         19.51x  (n=64)
+      gain residual on top of labels:           B / E          1.98x  (n=64)
+      gain review order vs residual only:       C / D          1.59x  (n=64)
+      gain residual sees everything vs survivors: D / D2       1.78x  (n=64)
+  family mul  n=32
+    A  plain, constant op in grammar (62 ops)                  geo-mean     39773  median     16112  not found  0 of 32
+    B  labels, constant op in grammar                          geo-mean      2129  median      1200  not found  0 of 32
+    C  plain 61 ops + residual check on stored classes         geo-mean       977  median      1164  not found  0 of 32   residual checks (median)    603
+    D  labels 61 ops + residual check on SURVIVING classes     geo-mean       599  median       931  not found  0 of 32   residual checks (median)    442
+    D2 labels 61 ops + residual check on every evaluated       geo-mean       214  median       476  not found  0 of 32   residual checks (median)    112
+    E  labels 62 ops + residual check on surviving classes     geo-mean       619  median       931  not found  0 of 32   residual checks (median)    468
+      gain residual on plain search:            A / C         40.71x  (n=32)
+      gain labels alone:                        A / B         18.68x  (n=32)
+      gain residual on top of labels:           B / E          3.44x  (n=32)
+      gain review order vs residual only:       C / D          1.63x  (n=32)
+      gain residual sees everything vs survivors: D / D2       2.80x  (n=32)
+  family all  n=96
+    A  plain, constant op in grammar (62 ops)                  geo-mean     55184  median    146322  not found  0 of 96
+    B  labels, constant op in grammar                          geo-mean      2870  median      4544  not found  0 of 96
+    C  plain 61 ops + residual check on stored classes         geo-mean      1853  median      2440  not found  0 of 96   residual checks (median)    852
+    D  labels 61 ops + residual check on SURVIVING classes     geo-mean      1155  median      2282  not found  0 of 96   residual checks (median)   1090
+    D2 labels 61 ops + residual check on every evaluated       geo-mean       559  median       764  not found  0 of 96   residual checks (median)    544
+    E  labels 62 ops + residual check on surviving classes     geo-mean      1207  median      2446  not found  0 of 96   residual checks (median)   1124
+      gain residual on plain search:            A / C         29.78x  (n=96)
+      gain labels alone:                        A / B         19.23x  (n=96)
+      gain residual on top of labels:           B / E          2.38x  (n=96)
+      gain review order vs residual only:       C / D          1.60x  (n=96)
+      gain residual sees everything vs survivors: D / D2       2.07x  (n=96)
+      counting each residual check as one candidate: A / (C + checks) = 19.15x
+  label bound h of the near miss U to the target (61-operator tables): {0: 25, 1: 71}
+  arm D fired in pass (0 = never; U has size n*-1): {-1: 4, -2: 1, 0: 15, 1: 76}
+  arm C: the class that fired was the planted U in 80 of 96 (else an equivalent or smaller near miss)
+  arm E ended by: {'residual': 96}
+  RANK of the near miss U among the classes of its size and type (complete plain bank):
+    family add (n=64, pool median 3194 classes; all three residual labels constant for U in 50; pool share all-constant 0.47%)
+      L1 (undefined last)                              rank 1 in  40 of 64   median rank   1.0   mean rank    30.7   worst 950
+      DL alone                                         rank 1 in  29 of 64   median rank   2.5   mean rank    29.9   worst 725
+      regularity count, then DL                        rank 1 in  56 of 64   median rank   1.0   mean rank     1.2   worst 6
+      all-regular first, then DL                       rank 1 in  52 of 64   median rank   1.0   mean rank     2.8   worst 82
+      R constant / scale / bank class first, then DL   rank 1 in  54 of 64   median rank   1.0   mean rank     1.3   worst 6
+      regularity moved U up in 35, down in 0, nowhere in 29
+    family mul (n=32, pool median 698 classes; all three residual labels constant for U in 3; pool share all-constant 1.01%)
+      L1 (undefined last)                              rank 1 in   7 of 32   median rank  11.5   mean rank   193.5   worst 2439
+      DL alone                                         rank 1 in   0 of 32   median rank 157.0   mean rank  1078.4   worst 5462
+      regularity count, then DL                        rank 1 in   4 of 32   median rank  16.5   mean rank   507.4   worst 5470
+      all-regular first, then DL                       rank 1 in   2 of 32   median rank 163.5   mean rank  1075.0   worst 5462
+      R constant / scale / bank class first, then DL   rank 1 in  27 of 32   median rank   1.0   mean rank     1.4   worst 8
+      regularity moved U up in 19, down in 5, nowhere in 8
+
+==============================================================================================================
+OFFSET / SCALE near-miss tasks: 96 (seed 22); answer sizes {5: 45, 4: 44, 3: 7}; target types {'L': 66, 'I': 30}; wall 74 s
+  family add  n=64
+    A  plain, constant op in grammar (62 ops)                  geo-mean     42544  median     62901  not found  0 of 64
+    B  labels, constant op in grammar                          geo-mean      2412  median      2809  not found  0 of 64
+    C  plain 61 ops + residual check on stored classes         geo-mean      1399  median      1268  not found  0 of 64   residual checks (median)    483
+    D  labels 61 ops + residual check on SURVIVING classes     geo-mean       868  median      1252  not found  0 of 64   residual checks (median)    363
+    D2 labels 61 ops + residual check on every evaluated       geo-mean       485  median       702  not found  0 of 64   residual checks (median)    370
+    E  labels 62 ops + residual check on surviving classes     geo-mean       902  median      1252  not found  0 of 64   residual checks (median)    384
+      gain residual on plain search:            A / C         30.42x  (n=64)
+      gain labels alone:                        A / B         17.64x  (n=64)
+      gain residual on top of labels:           B / E          2.68x  (n=64)
+      gain review order vs residual only:       C / D          1.61x  (n=64)
+      gain residual sees everything vs survivors: D / D2       1.79x  (n=64)
+  family mul  n=32
+    A  plain, constant op in grammar (62 ops)                  geo-mean     34217  median     13773  not found  0 of 32
+    B  labels, constant op in grammar                          geo-mean      1902  median      1000  not found  0 of 32
+    C  plain 61 ops + residual check on stored classes         geo-mean       712  median       902  not found  0 of 32   residual checks (median)    358
+    D  labels 61 ops + residual check on SURVIVING classes     geo-mean       496  median       526  not found  0 of 32   residual checks (median)    170
+    D2 labels 61 ops + residual check on every evaluated       geo-mean       208  median       304  not found  0 of 32   residual checks (median)    144
+    E  labels 62 ops + residual check on surviving classes     geo-mean       517  median       551  not found  0 of 32   residual checks (median)    182
+      gain residual on plain search:            A / C         48.05x  (n=32)
+      gain labels alone:                        A / B         17.99x  (n=32)
+      gain residual on top of labels:           B / E          3.68x  (n=32)
+      gain review order vs residual only:       C / D          1.44x  (n=32)
+      gain residual sees everything vs survivors: D / D2       2.38x  (n=32)
+  family all  n=96
+    A  plain, constant op in grammar (62 ops)                  geo-mean     39565  median     16272  not found  0 of 96
+    B  labels, constant op in grammar                          geo-mean      2228  median      2193  not found  0 of 96
+    C  plain 61 ops + residual check on stored classes         geo-mean      1117  median      1122  not found  0 of 96   residual checks (median)    394
+    D  labels 61 ops + residual check on SURVIVING classes     geo-mean       720  median       879  not found  0 of 96   residual checks (median)    232
+    D2 labels 61 ops + residual check on every evaluated       geo-mean       366  median       614  not found  0 of 96   residual checks (median)    276
+    E  labels 62 ops + residual check on surviving classes     geo-mean       749  median       895  not found  0 of 96   residual checks (median)    239
+      gain residual on plain search:            A / C         35.42x  (n=96)
+      gain labels alone:                        A / B         17.76x  (n=96)
+      gain residual on top of labels:           B / E          2.98x  (n=96)
+      gain review order vs residual only:       C / D          1.55x  (n=96)
+      gain residual sees everything vs survivors: D / D2       1.97x  (n=96)
+      counting each residual check as one candidate: A / (C + checks) = 23.25x
+  label bound h of the near miss U to the target (61-operator tables): {0: 27, 1: 69}
+  arm D fired in pass (0 = never; U has size n*-1): {-1: 6, 0: 23, 1: 67}
+  arm C: the class that fired was the planted U in 80 of 96 (else an equivalent or smaller near miss)
+  arm E ended by: {'residual': 96}
+  RANK of the near miss U among the classes of its size and type (complete plain bank):
+    family add (n=64, pool median 1693 classes; all three residual labels constant for U in 50; pool share all-constant 1.18%)
+      L1 (undefined last)                              rank 1 in  38 of 64   median rank   1.0   mean rank    27.1   worst 534
+      DL alone                                         rank 1 in  22 of 64   median rank   3.0   mean rank    33.6   worst 712
+      regularity count, then DL                        rank 1 in  56 of 64   median rank   1.0   mean rank     1.2   worst 4
+      all-regular first, then DL                       rank 1 in  49 of 64   median rank   1.0   mean rank     2.8   worst 40
+      R constant / scale / bank class first, then DL   rank 1 in  55 of 64   median rank   1.0   mean rank     1.4   worst 14
+      regularity moved U up in 40, down in 0, nowhere in 24
+    family mul (n=32, pool median 694 classes; all three residual labels constant for U in 1; pool share all-constant 0.73%)
+      L1 (undefined last)                              rank 1 in   9 of 32   median rank  31.5   mean rank   263.7   worst 2637
+      DL alone                                         rank 1 in   0 of 32   median rank 127.0   mean rank   878.5   worst 5769
+      regularity count, then DL                        rank 1 in   3 of 32   median rank  12.5   mean rank   397.9   worst 5900
+      all-regular first, then DL                       rank 1 in   0 of 32   median rank 137.5   mean rank   881.2   worst 5772
+      R constant / scale / bank class first, then DL   rank 1 in  29 of 32   median rank   1.0   mean rank     1.1   worst 3
+      regularity moved U up in 20, down in 9, nowhere in 3
+
+==============================================================================================================
+CONDITIONAL near-miss tasks: 60 (seed 31): answer (if g U V), |U| = |V| = 3 nodes, g = pred(reduction(xs)); planted size 10; wall 5 s
+  target types {'L': 49, 'I': 11};  plain search finds the target as an unconditional program of size <= 4 in 0
+  split proposal (agreement masks + guard bank) found a fitting split in 60 of 60; at bank level {3: 60}
+    planted U, V and guard all present in the bank at level 3: 60 of 60
+    cost: candidates evaluated in the bank, median 1341;  classes examined (one mask each), median 715;  guard terms evaluated, median 948
+    the first (smallest) split is right on 64 fresh rows in 46 of 60;  total size median 10 (planted 10)
+    fitting triples per task: median 2;  of the smallest-size ones, share right on fresh rows: 48%
+      target type L: first split right on fresh rows 38 of 49;  found at level 2 (before the planted branches exist) in 0
+      target type I: first split right on fresh rows 8 of 11;  found at level 2 (before the planted branches exist) in 0
+  WITHOUT the proposal: (if g U V) enumerated as an operator, from the same classes (sizes <= 3) and guards
+    triples: geo-mean 4.39e+07;  after the row-wise label test (labels of Y = labels of U or of V on every row): 2.12e+03 (20652x fewer);
+    pairs (U, V): all 3.19e+05;  label test keeps 15.4;  exact agreement masks keep 3.23
+    (a size-ordered enumeration reaches size 10 only after every smaller size; see b12_report.log for the measured size of levels 4 and 5)
+  stage 2 before stage 3: label bound h of the planted branches to the target (61-operator tables)
+    {0: 1, 1: 70, 2: 49}   (a branch of size 3 survives the label filter of pass N only if 3 + h <= N)
+    review order (label-filtered passes until both branches are stored, pass {4: 19, 5: 41}): 60 of 60 tasks reach it within pass 6, both branches stored in 60;
+      candidates geo-mean 1345, against 1333 for the plain bank to size 3 (1.0x more)
+  RANK of the planted branches among classes of their size and type:
+      L1 (undefined last)                      rank 1 in  93 of 120   median rank   1.0   mean rank    9.0  (pool median 682)
+      DL alone                                 rank 1 in  59 of 120   median rank   2.0   mean rank   13.2  (pool median 682)
+      regularity count, then DL                rank 1 in  42 of 120   median rank   3.0   mean rank   31.8  (pool median 682)
+      all-regular first, then DL               rank 1 in  56 of 120   median rank   2.0   mean rank   13.4  (pool median 682)
+      regularity moved a branch up in 0, down in 34, nowhere in 86
+
+==============================================================================================================
+CONDITIONAL near-miss tasks: 60 (seed 32): answer (if g U V), |U| = |V| = 3 nodes, g = pred(reduction(xs)); planted size 10; wall 5 s
+  target types {'L': 39, 'I': 21};  plain search finds the target as an unconditional program of size <= 4 in 0
+  split proposal (agreement masks + guard bank) found a fitting split in 60 of 60; at bank level {3: 60}
+    planted U, V and guard all present in the bank at level 3: 60 of 60
+    cost: candidates evaluated in the bank, median 1341;  classes examined (one mask each), median 693;  guard terms evaluated, median 948
+    the first (smallest) split is right on 64 fresh rows in 36 of 60;  total size median 10 (planted 10)
+    fitting triples per task: median 2;  of the smallest-size ones, share right on fresh rows: 49%
+      target type L: first split right on fresh rows 22 of 39;  found at level 2 (before the planted branches exist) in 0
+      target type I: first split right on fresh rows 14 of 21;  found at level 2 (before the planted branches exist) in 0
+  WITHOUT the proposal: (if g U V) enumerated as an operator, from the same classes (sizes <= 3) and guards
+    triples: geo-mean 2.93e+07;  after the row-wise label test (labels of Y = labels of U or of V on every row): 3.03e+03 (9654x fewer);
+    pairs (U, V): all 2.1e+05;  label test keeps 21.7;  exact agreement masks keep 3.37
+    (a size-ordered enumeration reaches size 10 only after every smaller size; see b12_report.log for the measured size of levels 4 and 5)
+  stage 2 before stage 3: label bound h of the planted branches to the target (61-operator tables)
+    {1: 78, 2: 42}   (a branch of size 3 survives the label filter of pass N only if 3 + h <= N)
+    review order (label-filtered passes until both branches are stored, pass {5: 35, 4: 25}): 60 of 60 tasks reach it within pass 6, both branches stored in 60;
+      candidates geo-mean 1321, against 1329 for the plain bank to size 3 (1.0x more)
+  RANK of the planted branches among classes of their size and type:
+      L1 (undefined last)                      rank 1 in  86 of 120   median rank   1.0   mean rank   14.9  (pool median 660)
+      DL alone                                 rank 1 in  61 of 120   median rank   1.0   mean rank    7.0  (pool median 660)
+      regularity count, then DL                rank 1 in  37 of 120   median rank   5.5   mean rank   44.1  (pool median 660)
+      all-regular first, then DL               rank 1 in  52 of 120   median rank   2.0   mean rank    7.1  (pool median 660)
+      regularity moved a branch up in 0, down in 45, nowhere in 75
+
+==============================================================================================================
+ORDINARY tasks (b12_s11.json, 119 tasks, no near miss planted): what the stage-3 proposals do there; wall 7 s
+  offset / scale proposal fired on a class smaller than the answer in 38 of 119 tasks (roots: {'dbl': 6, 'dbl_all': 5, 'dec': 4, 'neg': 2, 'dec_all': 2, 'neg_all': 2})
+    residual checks per task (one per stored class of the target type): median 723
+    the fired program (U plus or times the constant) is right on 64 fresh rows in 34 of 38;  its size minus n*: {-1: 1, 0: 2, 1: 35}
+    on those 38 tasks: candidates until the proposal fires, geo-mean 1848;  plain search 35435 (19.2x);  label-filtered search 2937 (1.59x)
+    over all 119 tasks, plain search with the proposal against plain search without: 2.57x (checks not counted), 2.25x (each check counted as a candidate)
+  a fitting split (if g U V) exists among the classes below n* in 40 of 119 tasks
+    target type L: 18 of 63 tasks have one;  the smallest is right on 64 fresh rows in 0 of 18;  its size minus n*: median 6.0, min 5
+      fitting triples per task: median 44, max 45491;  smallest-size splits right on fresh rows: 0 of 284
+    target type I: 22 of 56 tasks have one;  the smallest is right on 64 fresh rows in 1 of 22;  its size minus n*: median 5.0, min 3
+      fitting triples per task: median 77, max 20894;  smallest-size splits right on fresh rows: 3 of 94
+
+==============================================================================================================
+ORDINARY tasks (b12_s12.json, 115 tasks, no near miss planted): what the stage-3 proposals do there; wall 8 s
+  offset / scale proposal fired on a class smaller than the answer in 32 of 115 tasks (roots: {'neg': 5, 'dec': 4, 'dbl': 3, 'map_adj_min': 3, 'dbl_all': 3, 'neg_all': 3})
+    residual checks per task (one per stored class of the target type): median 724
+    the fired program (U plus or times the constant) is right on 64 fresh rows in 30 of 32;  its size minus n*: {0: 4, 1: 28}
+    on those 32 tasks: candidates until the proposal fires, geo-mean 1625;  plain search 35436 (21.8x);  label-filtered search 2354 (1.45x)
+    over all 115 tasks, plain search with the proposal against plain search without: 2.36x (checks not counted), 2.10x (each check counted as a candidate)
+  a fitting split (if g U V) exists among the classes below n* in 24 of 115 tasks
+    target type L: 10 of 68 tasks have one;  the smallest is right on 64 fresh rows in 0 of 10;  its size minus n*: median 6.5, min 3
+      fitting triples per task: median 249, max 8772;  smallest-size splits right on fresh rows: 0 of 142
+    target type I: 14 of 47 tasks have one;  the smallest is right on 64 fresh rows in 1 of 14;  its size minus n*: median 5.0, min 3
+      fitting triples per task: median 81, max 23919;  smallest-size splits right on fresh rows: 2 of 98
+

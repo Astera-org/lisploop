@@ -1,0 +1,30 @@
+**Language with people** comes last and attaches to the same tables: a human label is aligned to a word by co-occurrence counts
+ That is the one approach with evidence on small data
+ In its published form it raised solve rates in one domain from 42
+6% to 82
+0%, with gains persisting when no language was given at test time **[L, one research lineage]**
+ That system sits on a neural search component, and with human rather than synthetic descriptions its best result in that domain fell from 98
+2% to 58
+6%
+
+
+**Precedent
+** Guiding synthesis by running candidates on abstract values is established, and the review's citations for it were checked against the papers **[L]**
+ One system, Simba, solved 519 of 544 bit-vector problems against 456 and 409 for two leading enumerative solvers, though on the conditional problems of the same suite one of those two wins
+ Another, Blaze, reports a 90-fold speed-up over a deployed synthesizer in one domain
+ In all of them the abstract meaning of each operator is written by hand, with one exception
+ That exception, Atlas, learns its predicates from four training problems per domain, fits each operator's abstract behaviour from random samples, and then checks the fit against operator axioms supplied by hand
+ It reports 8
+3× and 9
+2× over hand-written abstractions on its own benchmarks, and 2
+1× and 3
+1× on its predecessor's
+ A 2024 paper still describes this kind of pruning as one that "requires manually designed, domain-specific abstract domains and semantics"
+
+
+**What has none
+** No published synthesizer was found that reads an operator's table off its own samples by grouping, with no solved tasks and no hand-written semantics; and none that chooses its abstractions by the dependency score
+ Both were measured for this plan, in Python (§8
+7)
+ What has no precedent at all is the compounding: a vocabulary that a system chooses for itself and that goes on improving its own search as its library grows
+

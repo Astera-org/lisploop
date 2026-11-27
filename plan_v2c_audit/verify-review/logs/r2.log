@@ -1,0 +1,82 @@
+=== R2: monoidal pushforward; aggregates (+ * max min count); d-ops (+ - * mod max min at = < and not call) ===
+ref-check copy            4 rows, 0 mismatches
+ref-check inc-all         4 rows, 0 mismatches
+ref-check dbl-all         4 rows, 0 mismatches
+ref-check sum-all         4 rows, 0 mismatches
+ref-check len-all         4 rows, 0 mismatches
+ref-check prd-all         4 rows, 0 mismatches
+ref-check positions      11 rows, 0 mismatches
+ref-check scan            9 rows, 0 mismatches
+ref-check shift-seq      13 rows, 0 mismatches
+ref-check filter          7 rows, 0 mismatches
+ref-check map-adjacent    8 rows, 0 mismatches
+ref-check foldl           9 rows, 0 mismatches
+ref-check last-or         7 rows, 0 mismatches
+ref-check seq-corr        7 rows, 0 mismatches
+ref-check best-shift      9 rows, 0 mismatches
+ref-check argmax-corr     3 rows, 0 mismatches
+
+--- seq-corr from its 7 kernel spec rows ---
+seq-corr       granted (min (len xs) (len ys)) rows  7  cand     20713  ms      8  held-out 200/200   size(elem) 7
+   program: (fold-space (min (len xs) (len ys)) + (lambda (i) (* (at xs i) (at ys i))))
+   [granted shape; B'=7 rows, 4189 classes, 16541 pushforward tests; split-scan cells 0]
+seq-corr       enumerated shape       rows  7  cand   3050322  ms    708  held-out 200/200   size(elem) 7
+   program: (fold-space (min (len xs) (len ys)) + (lambda (i) (* (at xs i) (at ys i))))
+   [13 shapes (size<=3), 13 position banks, 287264 classes in all, 1101318 pushforward tests; split-scan cells 0]
+
+--- sum-all / len-all / prd-all / last-or from their kernel spec rows ---
+sum-all        granted (len xs)       rows  4  cand        97  ms      0  held-out 200/200   size(elem) 3
+   program: (fold-space (len xs) + (lambda (i) (at xs i)))
+   [granted shape; B'=6 rows, 29 classes, 109 pushforward tests; split-scan cells 0]
+sum-all        enumerated shape       rows  4  cand       133  ms      0  held-out 200/200   size(elem) 3
+   program: (fold-space (len xs) + (lambda (i) (at xs i)))
+   [5 shapes (size<=3), 1 position banks, 29 classes in all, 109 pushforward tests; split-scan cells 0]
+len-all        granted (len xs)       rows  4  cand         0  ms      0  held-out 200/200   size(elem) 1
+   program: (fold-space (len xs) + (lambda (i) 1))
+   [granted shape; B'=6 rows, 5 classes, 13 pushforward tests; split-scan cells 0]
+len-all        enumerated shape       rows  4  cand        36  ms      0  held-out 200/200   size(elem) 1
+   program: (fold-space (len xs) + (lambda (i) 1))
+   [5 shapes (size<=3), 1 position banks, 5 classes in all, 13 pushforward tests; split-scan cells 0]
+prd-all        granted (len xs)       rows  4  cand        97  ms      0  held-out 200/200   size(elem) 3
+   program: (fold-space (len xs) * (lambda (i) (at xs i)))
+   [granted shape; B'=6 rows, 29 classes, 110 pushforward tests; split-scan cells 0]
+prd-all        enumerated shape       rows  4  cand       133  ms      0  held-out 200/200   size(elem) 3
+   program: (fold-space (len xs) * (lambda (i) (at xs i)))
+   [5 shapes (size<=3), 1 position banks, 29 classes in all, 110 pushforward tests; split-scan cells 0]
+last-or        granted (len xs)       rows  7  cand    922903  ms    212  held-out -         size(elem) -
+   program: nil
+   [granted shape; B'=9 rows, 100344 classes, 396503 pushforward tests; split-scan cells 0]
+last-or        enumerated shape       rows  7  cand   3506865  ms   2312  held-out -         size(elem) -
+   program: nil
+   [11 shapes (size<=3), 11 position banks, 558911 classes in all, 2117400 pushforward tests; split-scan cells 0]
+
+--- the probe's own three fold tasks on its own 12 random examples (seed 1), where its fold path gets 3/3 ---
+sum            granted (len xs)       rows 12  cand        97  ms      0  held-out 200/200   size(elem) 3
+   program: (fold-space (len xs) + (lambda (i) (at xs i)))
+   [granted shape; B'=51 rows, 30 classes, 113 pushforward tests; split-scan cells 0]
+sum            enumerated shape       rows 12  cand       133  ms      0  held-out 200/200   size(elem) 3
+   program: (fold-space (len xs) + (lambda (i) (at xs i)))
+   [5 shapes (size<=3), 1 position banks, 30 classes in all, 113 pushforward tests; split-scan cells 0]
+alternating sum granted (len xs)       rows 12  cand    431369  ms    452  held-out -         size(elem) -
+   program: nil
+   [granted shape; B'=51 rows, 88258 classes, 321126 pushforward tests; split-scan cells 0]
+alternating sum enumerated shape       rows 12  cand    534710  ms    588  held-out -         size(elem) -
+   program: nil
+   [5 shapes (size<=3), 5 position banks, 108582 classes in all, 393748 pushforward tests; split-scan cells 0]
+horner base 2  granted (len xs)       rows 12  cand    431369  ms    468  held-out -         size(elem) -
+   program: nil
+   [granted shape; B'=51 rows, 88258 classes, 321126 pushforward tests; split-scan cells 0]
+horner base 2  enumerated shape       rows 12  cand    534710  ms    588  held-out -         size(elem) -
+   program: nil
+   [5 shapes (size<=3), 5 position banks, 108582 classes in all, 393748 pushforward tests; split-scan cells 0]
+
+--- what it cannot do: foldl (spec rows), argmax-corr (spec rows) ---
+foldl          granted (len xs)       rows  9  cand    719361  ms    156  held-out -         size(elem) -
+   program: nil
+   [granted shape; B'=9 rows, 64531 classes, 255038 pushforward tests; split-scan cells 0]
+foldl          enumerated shape       rows  9  cand    175493  ms    184  held-out 38/200    size(elem) 9
+   program: (fold-space a count (lambda (i) (not (< (* i i) (* (len xs) a)))))
+   [11 shapes (size<=3), 11 position banks, 28814 classes in all, 103732 pushforward tests; split-scan cells 0]
+argmax-corr    enumerated shape       rows  3  cand      1926  ms      4  held-out 49/200    size(elem) 6
+   program: (fold-space (len xs) max (lambda (i) (mod i (- (len xs) i))))
+   [10 shapes (size<=3), 10 position banks, 602 classes in all, 2261 pushforward tests; split-scan cells 0]

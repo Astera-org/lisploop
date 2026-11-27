@@ -1,0 +1,35 @@
+=== M3. ROW CORRESPONDENCE WITHOUT A KEY: colour refinement + individualization, from group-by and re-index ===
+H = G with node rows and edge rows randomly permuted (unless stated).  classes1 / unique1 / rnd1 = colour classes, nodes with a
+unique colour, and rounds after the FIRST refinement; indiv = individualizations tried; backtr = those undone; rounds = all refinement rounds.
+
+case                                   n      m      result          classes1 unique1 rnd1  indiv   backtr   rounds   ms        
+sparse random, m=3n (out-deg 3)           100    300 isomorphic          100     100     3       0        0        3        0.2  verified; = the hidden permutation
+sparse random, m=3n (out-deg 3)          1000   3000 isomorphic          999     998     4       1        0        5        3.1  verified; differs from the hidden permutation on 2 nodes (an automorphism)
+sparse random, m=1.5n (deg in+out 3)      100    150 isomorphic           96      95     4       4        0        8        0.3  verified; differs from the hidden permutation on 4 nodes (an automorphism)
+sparse random, m=1.5n (deg in+out 3)     1000   1500 isomorphic          941     934     5      59        0       64       21.8  verified; differs from the hidden permutation on 57 nodes (an automorphism)
+random recursive tree                     100     99 isomorphic           84      73     7      14        0       23        0.8  verified; differs from the hidden permutation on 18 nodes (an automorphism)
+random recursive tree                    1000    999 isomorphic          801     638     8     171        0      207       50.1  verified; differs from the hidden permutation on 191 nodes (an automorphism)
+grid 30x30, arcs both ways                900   3480 isomorphic          120       0    15       2        0      116       57.9  verified; differs from the hidden permutation on 900 nodes (an automorphism)
+grid 30x30, arcs right/down only          900   1740 isomorphic          465      30    16       1        0       73       20.0  verified; differs from the hidden permutation on 870 nodes (an automorphism)
+one directed cycle                        200    200 isomorphic            1       0     1       1        0      101        4.1  verified; differs from the hidden permutation on 200 nodes (an automorphism)
+one cycle, arcs both ways                 200    400 isomorphic            1       0     1       2        0      200       12.3  verified; differs from the hidden permutation on 198 nodes (an automorphism)
+
+non-isomorphic pairs (must be rejected):
+2 cycles of 25 vs 1 cycle of 50            50     50 not-isomorphic        1       0     1      50       50      651        6.8  
+2 cycles of 50 vs 1 cycle of 100          100    100 not-isomorphic        1       0     1     100      100     2501       47.8  
+2 cycles of 100 vs 1 cycle of 200         200    200 not-isomorphic        1       0     1     200      200    10001      358.6  
+2 cycles of 200 vs 1 cycle of 400         400    400 not-isomorphic        1       0     1     400      400    40001     2775.8  
+same, arcs both ways (n=200)              200    400 not-isomorphic        1       0     1     200      200    10001      539.7  
+
+ADDED: where backtracking grows
+3-regular random (3 permutations)         100    300 isomorphic            1       0     1      20       19       27        1.3  verified; = the hidden permutation
+3-regular random (3 permutations)         300    900 isomorphic            1       0     1      25       24       55        6.5  verified; = the hidden permutation
+isomorphic: C3+C3+C6 (regular, mixed)      12     12 isomorphic            1       0     1       7        4       16        0.1  verified; differs from the hidden permutation on 12 nodes (an automorphism)
+isomorphic: 2 x C6                         12     12 isomorphic            1       0     1       2        0        8        0.0  verified; differs from the hidden permutation on 12 nodes (an automorphism)
+isomorphic: 3 x C6                         18     18 isomorphic            1       0     1       3        0       12        0.1  verified; differs from the hidden permutation on 18 nodes (an automorphism)
+isomorphic: 4 x C6                         24     24 isomorphic            1       0     1       4        0       16        0.2  verified; differs from the hidden permutation on 24 nodes (an automorphism)
+isomorphic: 5 x C6                         30     30 isomorphic            1       0     1       5        0       20        0.2  verified; differs from the hidden permutation on 30 nodes (an automorphism)
+NON-iso: 2 x C6 vs 1 x C6 + 2 x C3         12     12 not-isomorphic        1       0     1      48       48      109        0.4  
+NON-iso: 3 x C6 vs 2 x C6 + 2 x C3         18     18 not-isomorphic        1       0     1     594      594     1357        6.2  
+NON-iso: 4 x C6 vs 3 x C6 + 2 x C3         24     24 not-isomorphic        1       0     1   10716    10716    24493      130.8  
+NON-iso: 5 x C6 vs 4 x C6 + 2 x C3         30     30 not-isomorphic        1       0     1  257214   257214   587917     3757.8  

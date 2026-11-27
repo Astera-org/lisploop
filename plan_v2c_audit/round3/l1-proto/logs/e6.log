@@ -1,0 +1,69 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATED-TRY
+;     (TG::PROBE-MATCH TG::LF TG::OP TG::C1 TG::C2 TG::C3)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::PROBE-MATCH
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROBE-MATCH
+;   caught 1 STYLE-WARNING condition
+=== E6. Seeds 2..9 of the prototype's example generator, 15 tasks each: plain / first / lfprobe / probe / audit. ===
+Lines are printed only where a program differs from plain's, is lost, or the audit finds a false reject.
+SUMMARY seed 2: first vs plain, 15 tasks (plain cand >= 1): cand 9594465 -> 3643993 (total 2.63x, geo-mean 3.07x); work 371616063 -> 254227554 (total 1.46x, geo-mean 1.03x); ms 19529.6 -> 11776.5 (total 1.66x, geo-mean 1.39x); classes held 2618270 -> 858985 (3.05x); look-ups 12096393; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 2: probe vs plain, 15 tasks (plain cand >= 1): cand 9594465 -> 3641764 (total 2.63x, geo-mean 3.08x); work 371616063 -> 148981082 (total 2.49x, geo-mean 2.39x); ms 19529.6 -> 10312.9 (total 1.89x, geo-mean 1.69x); classes held 2618270 -> 857921 (3.05x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 3: first vs plain, 15 tasks (plain cand >= 1): cand 9017710 -> 3406985 (total 2.65x, geo-mean 3.08x); work 195789610 -> 129836902 (total 1.51x, geo-mean 1.03x); ms 10804.7 -> 6442.9 (total 1.68x, geo-mean 1.40x); classes held 2102461 -> 664678 (3.16x); look-ups 9752841; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 3: probe vs plain, 15 tasks (plain cand >= 1): cand 9017710 -> 3404694 (total 2.65x, geo-mean 3.08x); work 195789610 -> 81189939 (total 2.41x, geo-mean 2.36x); ms 10804.7 -> 5371.9 (total 2.01x, geo-mean 1.65x); classes held 2102461 -> 663645 (3.17x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 4: first vs plain, 15 tasks (plain cand >= 1): cand 9316827 -> 3562441 (total 2.62x, geo-mean 3.06x); work 265551619 -> 182142598 (total 1.46x, geo-mean 1.01x); ms 14342.8 -> 8526.9 (total 1.68x, geo-mean 1.38x); classes held 2322818 -> 765088 (3.04x); look-ups 10944649; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 4: probe vs plain, 15 tasks (plain cand >= 1): cand 9316827 -> 3559883 (total 2.62x, geo-mean 3.06x); work 265551619 -> 111075177 (total 2.39x, geo-mean 2.23x); ms 14342.8 -> 7409.3 (total 1.94x, geo-mean 1.61x); classes held 2322818 -> 764038 (3.04x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 5: first vs plain, 15 tasks (plain cand >= 1): cand 9988124 -> 3699423 (total 2.70x, geo-mean 3.09x); work 282406798 -> 189484933 (total 1.49x, geo-mean 1.02x); ms 15831.5 -> 9124.5 (total 1.74x, geo-mean 1.37x); classes held 2691882 -> 842649 (3.19x); look-ups 11995765; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 5: probe vs plain, 15 tasks (plain cand >= 1): cand 9988124 -> 3696772 (total 2.70x, geo-mean 3.09x); work 282406798 -> 112856892 (total 2.50x, geo-mean 2.32x); ms 15831.5 -> 7774.9 (total 2.04x, geo-mean 1.66x); classes held 2691882 -> 841346 (3.20x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 6: first vs plain, 15 tasks (plain cand >= 1): cand 9523531 -> 3582018 (total 2.66x, geo-mean 3.08x); work 302099623 -> 199886307 (total 1.51x, geo-mean 1.03x); ms 15623.0 -> 9050.0 (total 1.73x, geo-mean 1.40x); classes held 2424162 -> 779165 (3.11x); look-ups 11559592; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 6: probe vs plain, 15 tasks (plain cand >= 1): cand 9523531 -> 3579597 (total 2.66x, geo-mean 3.08x); work 302099623 -> 120843724 (total 2.50x, geo-mean 2.34x); ms 15623.0 -> 7808.0 (total 2.00x, geo-mean 1.67x); classes held 2424162 -> 778026 (3.12x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 7: first vs plain, 15 tasks (plain cand >= 1): cand 10084513 -> 3704410 (total 2.72x, geo-mean 3.09x); work 287781727 -> 191672237 (total 1.50x, geo-mean 1.02x); ms 16290.7 -> 9728.1 (total 1.67x, geo-mean 1.37x); classes held 2767909 -> 843853 (3.28x); look-ups 11931929; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 7: probe vs plain, 15 tasks (plain cand >= 1): cand 10084513 -> 3701808 (total 2.72x, geo-mean 3.09x); work 287781727 -> 114228686 (total 2.52x, geo-mean 2.35x); ms 16290.7 -> 8156.8 (total 2.00x, geo-mean 1.66x); classes held 2767909 -> 842610 (3.28x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 8: first vs plain, 15 tasks (plain cand >= 1): cand 10256545 -> 3761429 (total 2.73x, geo-mean 3.09x); work 390056392 -> 258871222 (total 1.51x, geo-mean 1.04x); ms 21192.8 -> 12180.3 (total 1.74x, geo-mean 1.40x); classes held 2952387 -> 907627 (3.25x); look-ups 12439842; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 8: probe vs plain, 15 tasks (plain cand >= 1): cand 10256545 -> 3758842 (total 2.73x, geo-mean 3.09x); work 390056392 -> 150794272 (total 2.59x, geo-mean 2.42x); ms 21192.8 -> 10637.5 (total 1.99x, geo-mean 1.67x); classes held 2952387 -> 906280 (3.26x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 9: first vs plain, 15 tasks (plain cand >= 1): cand 4595407 -> 3563568 (total 1.29x, geo-mean 2.88x); work 170950959 -> 228686662 (total 0.75x, geo-mean 0.97x); ms 9211.6 -> 9257.7 (total 1.00x, geo-mean 1.32x); classes held 1179131 -> 811247 (1.45x); look-ups 5561719; programs changed 0; lost 0; false rejects 0
+SUMMARY seed 9: probe vs plain, 15 tasks (plain cand >= 1): cand 4595407 -> 3563354 (total 1.29x, geo-mean 2.89x); work 170950959 -> 135770630 (total 1.26x, geo-mean 2.20x); ms 9211.6 -> 7818.5 (total 1.18x, geo-mean 1.55x); classes held 1179131 -> 811119 (1.45x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY ALL SEEDS: first vs plain, 120 tasks (plain cand >= 1): cand 72377122 -> 28924267 (total 2.50x, geo-mean 3.05x); work 2266252791 -> 1634808415 (total 1.39x, geo-mean 1.02x); ms 122826.8 -> 76087.0 (total 1.61x, geo-mean 1.38x); classes held 19059020 -> 6473292 (2.94x); look-ups 86282730; programs changed 0; lost 0; false rejects 0
+SUMMARY ALL SEEDS: lfprobe vs plain, 120 tasks (plain cand >= 1): cand 72377122 -> 28906714 (total 2.50x, geo-mean 3.06x); work 2266252791 -> 1634917637 (total 1.39x, geo-mean 1.01x); ms 122826.8 -> 75150.1 (total 1.63x, geo-mean 1.40x); classes held 19059020 -> 6464985 (2.95x); look-ups 87665759; programs changed 0; lost 0; false rejects 0
+SUMMARY ALL SEEDS: probe vs plain, 120 tasks (plain cand >= 1): cand 72377122 -> 28906714 (total 2.50x, geo-mean 3.06x); work 2266252791 -> 975740402 (total 2.32x, geo-mean 2.32x); ms 122826.8 -> 65289.9 (total 1.88x, geo-mean 1.65x); classes held 19059020 -> 6464985 (2.95x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY ALL SEEDS: first vs plain, 56 tasks (plain cand >= 20000): cand 71950964 -> 28504264 (total 2.52x, geo-mean 4.60x); work 2252312039 -> 1606732713 (total 1.40x, geo-mean 2.17x); ms 121885.8 -> 74930.6 (total 1.63x, geo-mean 2.19x); classes held 18938120 -> 6354853 (2.98x); look-ups 84957957; programs changed 0; lost 0; false rejects 0
+SUMMARY ALL SEEDS: lfprobe vs plain, 56 tasks (plain cand >= 20000): cand 71950964 -> 28486756 (total 2.53x, geo-mean 4.62x); work 2252312039 -> 1606843692 (total 1.40x, geo-mean 2.17x); ms 121885.8 -> 73998.1 (total 1.65x, geo-mean 2.23x); classes held 18938120 -> 6346566 (2.98x); look-ups 86340986; programs changed 0; lost 0; false rejects 0
+SUMMARY ALL SEEDS: probe vs plain, 56 tasks (plain cand >= 20000): cand 71950964 -> 28486756 (total 2.53x, geo-mean 4.62x); work 2252312039 -> 961629390 (total 2.34x, geo-mean 3.88x); ms 121885.8 -> 64328.7 (total 1.89x, geo-mean 2.52x); classes held 18938120 -> 6346566 (2.98x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY ALL SEEDS: audit vs plain, 120 tasks (plain cand >= 1): cand 72377122 -> 72377122 (total 1.00x, geo-mean 1.00x); work 2266252791 -> 4174743098 (total 0.54x, geo-mean 0.44x); ms 122826.8 -> 155794.1 (total 0.79x, geo-mean 0.76x); classes held 19059020 -> 19059020 (1.00x); look-ups 87665759; programs changed 0; lost 0; false rejects 0
+
+per task over the 8 seeds: geo-mean gain in candidates fully evaluated (first, probe), in work (first, lfprobe, probe),
+in CPU time (first, lfprobe, probe); held-out perfect: plain / first / probe
+reverse                  cand  17.32x  17.44x | work   6.64x   6.68x  12.62x | cpu  5.15x  5.45x  6.09x | 8/8 8/8 8/8
+shift-seq (spec)         cand   1.00x   1.00x | work   0.51x   0.51x   0.98x | cpu  0.79x  0.79x  0.96x | 8/8 8/8 8/8
+rotate-left k            cand  22.33x  22.77x | work   6.98x   7.10x  14.20x | cpu  6.58x  6.72x  7.51x | 8/8 8/8 8/8
+map-adjacent +           cand   2.49x   2.49x | work   1.37x   1.36x   2.34x | cpu  1.40x  1.42x  1.58x | 8/8 8/8 8/8
+map-adjacent -           cand   6.07x   6.07x | work   3.13x   3.11x   5.20x | cpu  2.56x  2.58x  2.89x | 8/8 8/8 8/8
+running-sum              cand   1.00x   1.00x | work   0.53x   0.53x   0.98x | cpu  0.83x  0.84x  0.99x | 8/8 8/8 8/8
+scan + init a (spec)     cand   1.00x   1.00x | work   0.50x   0.50x   0.98x | cpu  0.76x  0.78x  0.95x | 8/8 8/8 8/8
+scan 2*acc-x init a      cand   1.00x   1.00x | work   0.55x   0.55x   0.98x | cpu  0.80x  0.81x  0.97x | 8/8 8/8 8/8
+positions (spec)         cand   3.00x   3.00x | work   0.08x   0.08x   1.46x | cpu  0.79x  0.78x  1.02x | 8/8 8/8 8/8
+positions-of v           cand   1.03x   1.03x | work   0.61x   0.61x   0.99x | cpu  0.77x  0.81x  0.97x | 8/8 8/8 8/8
+filter x>k               cand   1.04x   1.04x | work   0.65x   0.65x   1.03x | cpu  0.81x  0.86x  1.01x | 8/8 8/8 8/8
+take k                   cand 133.50x 133.50x | work   2.91x   2.86x  16.84x | cpu  2.47x  2.42x  3.03x | 8/8 8/8 8/8
+zip-add                  cand   3.18x   3.18x | work   1.54x   1.51x   2.83x | cpu  1.56x  1.56x  1.72x | 8/8 8/8 8/8
+map-adjacent f (spec)    cand   2.35x   2.35x | work   1.35x   1.35x   2.21x | cpu  1.58x  1.60x  1.84x | 7/8 7/8 7/8
+scan f init a (spec)     cand   1.00x   1.00x | work   0.44x   0.44x   0.98x | cpu  0.84x  0.83x  0.99x | 8/8 8/8 8/8
+
+[e6 finished in 1182.8 s]

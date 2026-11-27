@@ -1,0 +1,77 @@
+# Applying the final check (`factcheck3-final.md`) to plan v2c
+
+One line for each patch, by the number of the finding in `factcheck3-final.md`. Findings 20 and the clean list of section F asked for no change. Of the terms in section D, those that are ordinary uses of a common word (candidate, residual, correction, split, fallback, quotient as a verb) were left as they are. Finding 24's other point, the word "signature" in the comparison with type systems, was left as intended.
+
+- finding 1: applied in 06.4.md
+- finding 1: applied in 07.2.md
+- finding 1: applied in 08.8.md
+- finding 1: applied in 11.1.md
+- finding 1: applied in 10.0.md; risk 14 of §10, which the report did not list but which states the same result
+- finding 1, 10: applied in 08.7.md
+- finding 10: applied in 08.7.md
+- finding 2: applied in 07.2.md
+- finding 2: applied in 11.1.md
+- finding 3: applied in 00-front.md
+- finding 3: applied in 06.2.md
+- finding 3: applied in measurements-words.md; the same definition in the record
+- finding 3: applied in 08.7.md
+- finding 4: applied in 07.2.md
+- finding 5: applied in 07.2.md
+- finding 6, 7: applied in 08.7.md; one sentence in §8.7 makes the citations of finding 7 good, instead of a change to each of them
+- finding 6: applied in AF.0.md
+- finding 7: applied in 08.7.md; the range is now stated in §8.7 itself
+- finding 7: applied in 06.5.md
+- finding 7: applied in 06.5.md
+- finding 7: applied in 06.5.md
+- finding 7: applied in 07.2.md
+- finding 7: applied in AF.0.md
+- finding 7: applied in measurements-words.md; two items added to the record
+- finding 7: applied in measurements-words.md; one item added to the record
+- finding 8: applied in 06.5.md
+- finding 8: applied in 06.5.md
+- finding 9: applied in 06.5.md
+- finding 9: applied in measurements-words.md
+- finding 11: applied in 07.6.md
+- finding 11: applied in 07.6.md
+- finding 11: applied in 11.1.md
+- finding 12: applied in 01.4.md
+- finding 12: applied in 07.2.md
+- finding 13: applied in 07.2.md
+- finding 13: applied in 10.0.md
+- finding 14: applied in 11.2.md
+- finding 14: applied in 07.4.md
+- finding 15: applied in 05.9.md
+- finding 16: applied in 07.5.md
+- finding 17: applied in 06.2.md
+- finding 18: applied in 08.7.md
+- finding 19: applied in 11.1.md
+- finding 21: applied in 06.4.md
+- finding 21: applied in 06.4.md
+- finding 21: applied in 07.6.md
+- finding 21: applied in 07.4.md
+- finding 21: applied in 07.4.md
+- finding 21: applied in 02.6.md
+- finding 22: applied in 05.4.md
+- finding 22: applied in AD.0.md
+- finding 23: applied in 08.8.md
+- finding 23: applied in 11.3.md
+- finding 23: applied in 08.8.md
+- finding 23: applied in 05.5.md
+- finding 24: applied in 10.0.md
+- finding 25: applied in AF.0.md
+- finding 25: applied in AD.0.md
+- finding D: applied in 07.2.md; "stages" is kept for Stages A to D
+- finding D: applied in 01.6.md, 10.0.md; "round" is kept for the rounds of a search
+- finding D: applied in 07.6.md
+- finding D: applied in 08.6.md; "bank" is kept for the bank of classes
+- finding D: applied in 08.6.md
+- finding D: applied in 05.8.md; "space" is kept for a space of rows
+- finding D: applied in AE.0.md
+- finding D: applied in 06.5.md
+- finding D: applied in 06.7.md; "label" is kept for the values of a word
+- finding D: applied in 08.4.md; "gain" is kept for the ratio of candidates
+- finding D: applied in 11.2.md
+- finding D: applied in 08.7.md; "held" is kept for a held answer
+- finding D: applied in 08.7.md
+- finding D: applied in 11.1.md
+- finding D: applied in measurements-words.md; the record, every occurrence

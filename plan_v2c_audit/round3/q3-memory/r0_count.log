@@ -1,0 +1,4 @@
+library size 61
+signatures {(('seq',), 'seq'): 41, (('seq', 'seq'), 'seq'): 6, (('seq',), 'int'): 9, (('int', 'int'), 'int'): 5}
+operators PART 2 searches over (unary seq -> seq only): 41
+['reverse', 'sort', 'sort_desc', 'tail', 'init', 'inc_all', 'dec_all', 'dbl_all', 'tri_all', 'neg_all', 'abs_all', 'sq_all', 'halve_all', 'mod2_all', 'mod3_all', 'clamp0_all', 'filter_pos', 'filter_neg', 'filter_nz', 'filter_even', 'filter_odd', 'map_adj_add', 'map_adj_sub', 'map_adj_mul', 'map_adj_max', 'map_adj_min', 'running_sum', 'running_max', 'running_min', 'shift1', 'shift2', 'rshift1', 'rotate1', 'rrotate1', 'evens_idx', 'odds_idx', 'take2', 'drop2', 'dedup_adj', 'positions', 'dup_seq']

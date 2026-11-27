@@ -1,0 +1,24 @@
+=== R3a. guard for inverting c = a*b for a, all (b,c) in [-20,20]^2 = 1681 pairs ===
+floor    division: pairs 1681 | exactly-one-a 304, no a 1376, many a 1 | guard false-positives 0, false-negatives 0, wrong witness on guard-true 0
+                   uniqueness guard alone (not (= b 0)): false-positives 1336, false-negatives 0
+truncate division: pairs 1681 | exactly-one-a 304, no a 1376, many a 1 | guard false-positives 0, false-negatives 0, wrong witness on guard-true 0
+                   uniqueness guard alone (not (= b 0)): false-positives 1336, false-negatives 0
+probe EV of (and (not (= b 0)) (= (* (div c b) b) c)): :t 304, :f 1336, :err 41; disagreements of (value = :t) with exactly-one-a: 0
+  (the 41 :err cells are the b = 0 column: the probe's AND is strict, so (div c 0) = :err poisons it;
+   the guard is exact as written only if :err is read as false, or AND short-circuits)
+
+=== R3b. div(a,b) = c solved for b, all (a,c) in [-20,20]^2; b searched in [-3000,3000] minus 0 ===
+floor: 10/4 = 2, 10/5 = 2
+  (a,c) pairs on the image (some b exists): 457; of these with exactly one b: 248 (54.3%)
+  reviewer's guard |a| < c(c+1) against #b:  guard-true: none 1223, one 200, many 0 | guard-false: none 1, one 48, many 209
+truncate: 10/4 = 2, 10/5 = 2
+  (a,c) pairs on the image (some b exists): 433; of these with exactly one b: 260 (60.0%)
+  reviewer's guard |a| < c(c+1) against #b:  guard-true: none 1241, one 182, many 0 | guard-false: none 7, one 78, many 173
+
+--- :spec/solve-/-1 rows (bootstrap/build-batteries.lisp:234-235): inputs (a c) -> b ---
+  a= 12 c= 4 spec b=3     exact multiple (b*c = a): yes  preimages truncate (kernel /): (3)   floor: (3)
+  a= 15 c= 3 spec b=5     exact multiple (b*c = a): yes  preimages truncate (kernel /): (4 5)   floor: (4 5)
+  a=-12 c= 3 spec b=-4    exact multiple (b*c = a): yes  preimages truncate (kernel /): (-4)   floor: (-4)
+  a=  0 c= 4 spec b=none  exact multiple (b*c = a): -    preimages truncate (kernel /): nil   floor: nil
+  a= 12 c= 0 spec b=none  exact multiple (b*c = a): -    preimages truncate (kernel /): 376 solutions in [-200,200]   floor: 188 solutions in [-200,200]
+  a=  0 c= 0 spec b=none  exact multiple (b*c = a): -    preimages truncate (kernel /): 400 solutions in [-200,200]   floor: 400 solutions in [-200,200]

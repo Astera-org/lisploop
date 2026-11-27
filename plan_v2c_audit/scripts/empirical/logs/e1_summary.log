@@ -1,0 +1,7 @@
+E1 root_kernel rc=1 wall_s=10.086534657
+E1 root_milestones rc=0 wall_s=27.712985012
+E1 v2_kernel rc=0 wall_s=21.539295510
+E1 v2_milestones rc=0 wall_s=26.413481242
+E1 root_bootstrap rc=0 wall_s=2.986644662
+E1 v2_bootstrap rc=0 wall_s=3.131055804
+E1b root_kernel_after_bootstrap rc=0 wall_s=9.892760272

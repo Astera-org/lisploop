@@ -1,0 +1,73 @@
+
+Part 2.  Real searches, stream replayed in order (task sets ['S300', 'EDGE-R', 'EDGE-W'], one after another)
+  700 tasks; 42 configurations present in every set
+  answers lost over the stream, summed over table seeds (task-searches = 700 x seeds)
+  (assumes a task found by the static tables is still found after feedback: adding output labels only loosens the filter, unless a label new to the whole domain is added; such additions are counted in the last column and should be 0)
+  rule                M  seeds |   static  fallback-only  every solution  domgrew
+  bank2             300      2 |       20             16              11        0
+  bank2            1000      2 |        0              0               0        0
+  bank2            3000      2 |        0              0               0        0
+  bank2+strat2      300      2 |        5              4               2        0
+  bank2+strat2     1000      2 |        0              0               0        0
+  bank2+strat2     3000      2 |        0              0               0        0
+  hand              300      2 |       19             15              10        0
+  hand             1000      2 |        4              4               1        0
+  hand             3000      2 |        1              1               0        0
+  iid               300      2 |       30             24              13        0
+  iid              1000      2 |       10              9               4        0
+  iid              3000      2 |        5              5               2        0
+  oelog3            300      2 |       12              9               9        0
+  oelog3           1000      2 |        1              1               1        0
+  oelog3           3000      2 |        0              0               0        0
+  push2             300      2 |       19             18              13        0
+  push2            1000      2 |        5              4               3        0
+  push2            3000      2 |        0              0               0        0
+  strat2            300      2 |       15             14               8        0
+  strat2           1000      2 |        6              5               2        0
+  strat2           3000      2 |        2              2               0        0
+
+Part 3.  Guards (real searches).  min_count(k): an input key is unseen unless probed >= k times; guard(30,1): also every output seen more than once
+
+  task set S300 (300 tasks), summed over 2 table seeds
+  rule                M guard          |  entries  lost   AUD     gain
+  iid               300 none           |     1713     9    60   17.13x
+  iid               300 min_count(10)  |     1335     5    43   16.87x
+  iid               300 min_count(30)  |      983     2    28   13.91x
+  iid               300 guard(30,1)    |      951     0    20   12.54x
+  iid              1000 none           |     1724     3    25   17.01x
+  iid              1000 min_count(10)  |     1624     2    16   16.98x
+  iid              1000 min_count(30)  |     1348     2    16   16.66x
+  iid              1000 guard(30,1)    |     1324     2    15   16.63x
+  bank2+strat2      300 none           |     1724     2    25   16.99x
+  bank2+strat2      300 min_count(10)  |     1357     2    24   13.79x
+  bank2+strat2      300 min_count(30)  |      998     2    15   12.97x
+  bank2+strat2      300 guard(30,1)    |      971     2    15   12.92x
+  bank2+strat2     1000 none           |     1736     0     1   16.98x
+  bank2+strat2     1000 min_count(10)  |     1528     0     1   13.80x
+  bank2+strat2     1000 min_count(30)  |     1369     0     1   13.78x
+  bank2+strat2     1000 guard(30,1)    |     1340     0     1   13.77x
+
+  task set EDGE-R (200 tasks), summed over 2 table seeds
+  rule                M guard          |  entries  lost   AUD     gain
+  iid               300 none           |     1713    11    55   17.81x
+  iid               300 min_count(10)  |     1335     6    39   17.53x
+  iid               300 min_count(30)  |      983     2    25   14.18x
+  iid               300 guard(30,1)    |      951     2    21   12.67x
+  iid              1000 none           |     1724     1    27   17.77x
+  iid              1000 min_count(10)  |     1624     1    21   17.69x
+  iid              1000 min_count(30)  |     1348     0    17   17.37x
+  iid              1000 guard(30,1)    |     1324     0    17   17.34x
+  bank2+strat2      300 none           |     1724     3    15   17.74x
+  bank2+strat2      300 min_count(10)  |     1357     3    14   14.13x
+  bank2+strat2      300 min_count(30)  |      998     2    11   13.23x
+  bank2+strat2      300 guard(30,1)    |      971     2     8   13.19x
+  bank2+strat2     1000 none           |     1736     0     1   17.76x
+  bank2+strat2     1000 min_count(10)  |     1528     0     1   14.16x
+  bank2+strat2     1000 min_count(30)  |     1369     0     1   14.14x
+  bank2+strat2     1000 guard(30,1)    |     1340     0     1   14.13x
+
+total wall 1069 s
+
+real	17m48.631s
+user	144m19.637s
+sys	0m6.046s

@@ -1,0 +1,85 @@
+--- #1 page 2 type=Highlight rect=(369.8,67.4,465.0,80.0) created=D:20261120141238-08'00' mod=D:20261120141238-08'00' author=tlh24
+    contents: 'attributed C-sets'
+    highlighted text: '(attributed C-sets);'
+--- #2 page 2 type=FreeText rect=(10.6,239.7,74.1,266.6) created=D:20261120141300-08'00' mod=D:20261120141307-08'00' author=tlh24
+    contents: 'how, though? '
+    text on adjacent lines (y 240-267): 'flat versus nested: keep the topology nested and exact, keep the geometry flat and local to each how, though? space, and compare across spaces only through verified maps (sections 6.5, 6.6, 7.5). 7. Bootstrapping is the weakest point, and a new datastructure does not fix it alone.'
+--- #3 page 2 type=Highlight rect=(76.9,233.9,563.9,260.4) created=D:20261120141335-08'00' mod=D:20261120141335-08'00' author=tlh24
+    contents: 'versus nested: keep the topology nested and exact, keep the geometry flat and local to each space, and compare across spaces only through verified maps'
+    highlighted text: 'versus nested: keep the topology nested and exact, keep the geometry flat and local to each / space, and compare across spaces only through verified maps'
+--- #4 page 8 type=Highlight rect=(76.9,606.0,507.7,617.8) created=D:20261120142520-08'00' mod=D:20261120142520-08'00' author=tlh24
+    contents: 'Reuse has lost to matching cost in every small measured case on record:'
+    highlighted text: 'Reuse has lost to matching cost in every small measured case on record:'
+--- #5 page 9 type=Ink rect=(31.8,252.8,56.9,314.2) created=D:20261120142641-08'00' mod=D:20261120142641-08'00' author=tlh24
+    contents: ''
+    text on adjacent lines (y 253-314): 'a first-element-pair solver instead. The entry is nonetheless a good template for how such things should enter: a solver whose witness is an algorithm, paired with a decoder, so that the pair gives both a metric and a pullback (plan 8, section 3.1). What is missing is exactly what you named: something that decides when.'
+--- #6 page 9 type=Ink rect=(31.4,250.9,56.9,314.9) created=D:20261120142648-08'00' mod=D:20261120142648-08'00' author=tlh24
+    contents: ''
+    text on adjacent lines (y 251-315): 'a first-element-pair solver instead. The entry is nonetheless a good template for how such things should enter: a solver whose witness is an algorithm, paired with a decoder, so that the pair gives both a metric and a pullback (plan 8, section 3.1). What is missing is exactly what you named: something that decides when.'
+--- #7 page 10 type=Highlight rect=(118.4,652.3,387.5,664.2) created=D:20261120142924-08'00' mod=D:20261120142924-08'00' author=tlh24
+    contents: 'Distributivity has no shape there and cannot enter.'
+    highlighted text: 'Distributivity has no shape there and cannot enter.'
+--- #8 page 15 type=Highlight rect=(76.9,549.8,563.9,575.7) created=D:20261120143718-08'00' mod=D:20261120143718-08'00' author=tlh24
+    contents: 'Nothing persists across branches or jobs.'
+    highlighted text: 'Nothing persists across / branches or jobs.'
+--- #9 page 15 type=FreeText rect=(180.4,562.6,390.2,591.7) created=D:20261120143733-08'00' mod=D:20261120143735-08'00' author=tlh24
+    contents: "yeah that's a big problem. "
+    text on adjacent lines (y 563-592): "job; nogoods match identical keys; congruence is confined to one lift. Nothing persists across yeah that's a big problem. branches or jobs. • Latent and coupled state is deferred in every plan (probe 7 of plan 8, section 5.4 of plan :fix-seq). 9, It is the same problem as a left fold: a chain of unknowns linked by one unknown"
+--- #10 page 17 type=Highlight rect=(107.1,53.4,194.3,65.3) created=D:20261121152430-08'00' mod=D:20261121152430-08'00' author=tlh24
+    contents: 'Lifting e-graphs'
+    highlighted text: 'Lifting e-graphs'
+--- #11 page 18 type=Highlight rect=(48.1,687.4,486.6,699.3) created=D:20261120150151-08'00' mod=D:20261120150151-08'00' author=tlh24
+    contents: 'in superposition compresses only quadratically where storage compresses exponentially'
+    highlighted text: 'in superposition compresses only quadratically where storage compresses exponentially.'
+--- #12 page 18 type=FreeText rect=(5.5,728.8,88.2,783.2) created=D:20261120150219-08'00' mod=D:20261120150229-08'00' author=tlh24
+    contents: 'what is the evidence for this?  Or proof? '
+    text on adjacent lines (y 729-783): 'nesting depth and needs a discrete clean-up memory after every unbinding. Regions closed under what is the evidence for this? Or proof? 18'
+--- #13 page 18 type=Ink rect=(13.5,683.8,58.4,735.7) created=D:20261120150303-08'00' mod=D:20261120150303-08'00' author=tlh24
+    contents: ''
+    text on adjacent lines (y 684-736): 'They also have measured limits, and the limits are exactly the things a nested store is for. Computing in superposition compresses only quadratically where storage compresses exponentially. One attention layer cannot compose functions over large domains. Compressed binding accumulates noise with nesting depth and needs a discrete clean-up memory after every unbinding. Regions closed under what is the evidence for this?'
+--- #14 page 19 type=Highlight rect=(268.6,701.4,516.3,714.1) created=D:20261120150600-08'00' mod=D:20261120150600-08'00' author=tlh24
+    contents: 'The successful engines unify monotone systems.'
+    highlighted text: 'The successful engines unify monotone systems.'
+--- #15 page 19 type=FreeText rect=(285.6,727.9,525.6,756.9) created=D:20261120150619-08'00' mod=D:20261120150624-08'00' author=tlh24
+    contents: 'what does this mean?  Which successful engines? '
+    text on adjacent lines (y 728-757): 'reserve schedules, tentative narrowing and deletion are not monotone, and the literature keeps what does this mean? Which successful engines? them outside the store.'
+--- #16 page 20 type=FreeText rect=(184.4,167.5,267.7,182.0) created=D:20261120150701-08'00' mod=D:20261120150705-08'00' author=tlh24
+    contents: 'yes.  obviously. '
+    text on adjacent lines (y 167-182): 'BUSTLE, the theorem-prover learners) keeps truth in an exact engine and lets geometry only yes. obviously. rank or propose. • The flat alternative is live. CompressARC (2025) solves a fifth of ARC-AGI-1 with description'
+--- #17 page 20 type=Highlight rect=(225.2,183.3,308.8,195.1) created=D:20261120150728-08'00' mod=D:20261120150728-08'00' author=tlh24
+    contents: 'CompressARC'
+    highlighted text: 'live. CompressARC'
+--- #18 page 26 type=Highlight rect=(48.1,424.8,566.0,450.7) created=D:20261121154107-08'00' mod=D:20261121154107-08'00' author=tlh24
+    contents: 'finegrained procedural access to interpreter state was hard to use'
+    highlighted text: 'fine- / grained procedural access to interpreter state was hard to use;'
+--- #19 page 27 type=Highlight rect=(98.7,660.0,218.2,671.9) created=D:20261121154520-08'00' mod=D:20261121154520-08'00' author=tlh24
+    contents: 'work drift is tolerable'
+    highlighted text: 'work drift is tolerable;'
+--- #20 page 27 type=FreeText rect=(6.4,721.1,138.0,786.8) created=D:20261121162225-08'00' mod=D:20261121162237-08'00' author=tlh24
+    contents: 'yes.  and new (local) metrics may be admissible, even if they are not desireable. '
+    text on adjacent lines (y 721-787): 'yes. and new (local) metrics may be admissible, even if they are not desireable. 27'
+--- #21 page 28 type=Highlight rect=(76.9,247.1,564.1,273.8) created=D:20261120152032-08'00' mod=D:20261120152032-08'00' author=tlh24
+    contents: 'Each level needs a schema designed so that small changes are likely to be meaningful, and that design is not done here'
+    highlighted text: 'Each level needs a schema designed so that small changes / are likely to be meaningful, and that design is not done here.'
+--- #22 page 28 type=FreeText rect=(213.0,362.5,311.7,391.6) created=D:20261121132532-08'00' mod=D:20261121132534-08'00' author=tlh24
+    contents: 'Yes, I know. '
+    text on adjacent lines (y 362-392): 'approximable within a constant. Root-priced, staged, anytime search remains necessary; the Yes, I know. store does not replace it. 4. Enumeration modulo behaviour changes a claim. Composing only class representatives turns “bounded exhaustion” into “bounded exhaustion modulo behaviour on these rows”.'
+--- #23 page 28 type=FreeText rect=(351.7,632.9,540.6,706.5) created=D:20261121132803-08'00' mod=D:20261121132804-08'00' author=tlh24
+    contents: 'complexity score(s) are better than line counts - less gameable'
+    text on adjacent lines (y 633-707): 'commitments, gates stated against measured baselines, and a line count that must fall at every complexity score(s) are better than line migration step. counts - less gameable Unification does not produce learning. What is additionally needed is that the kernel 9. chooses experiments (asks for the row that separates two candidates), records attribution, and can condition rules on edge labels. Experiments E4 and E5 address these; the store only makes Yes! them expressible. 10. The flat alternative may simply win where sample efficiency is not required. This project’s'
+--- #24 page 28 type=FreeText rect=(174.9,694.9,209.0,714.9) created=D:20261121132825-08'00' mod=D:20261121132831-08'00' author=tlh24
+    contents: 'Yes! '
+    text on adjacent lines (y 695-715): 'can condition rules on edge labels. Experiments E4 and E5 address these; the store only makes Yes! them expressible. 10. The flat alternative may simply win where sample efficiency is not required. This project’s'
+--- #25 page 28 type=FreeText rect=(213.4,732.8,603.8,783.6) created=D:20261121133045-08'00' mod=D:20261121133052-08'00' author=tlh24
+    contents: 'Yes, also - brute-force search works whenever the size of the search space is small enough and the speed of each evaluation is short enough. \nThis is how recent work in energy-based omdels were able to solve hard combinatorial problems. See, for example, https://arxiv.org/abs/2611.17309v1\nA good reason for the homiconic, scheduled lowering / compiling formulation. '
+    text on adjacent lines (y 733-784): 'bet is that it is required. Yes, also - brute-force search works whenever the size of the search space is small enough and the speed of each evaluation is short enough. This is how recent work in energy-based omdels were able to solve hard combinatorial problems. See, for example, https://arxiv.org/abs/2611.17309v1 28 A good reason for the homiconic, scheduled lowering / compiling formulation.'
+--- #26 page 28 type=Highlight rect=(76.8,536.5,563.9,563.1) created=D:20261121154545-08'00' mod=D:20261121154545-08'00' author=tlh24
+    contents: 'any link between sheaf-style obstruction and clause learning'
+    highlighted text: 'any link between sheaf-style obstruction and clause / learning.'
+--- #27 page 28 type=FreeText rect=(356.8,549.5,510.5,566.3) created=D:20261121154555-08'00' mod=D:20261121154559-08'00' author=tlh24
+    contents: 'what exactly does this mean? '
+    text on adjacent lines (y 549-566): 'function from a flat execution graph; and any link between sheaf-style obstruction and clause what exactly does this mean? learning. New means unproven. 8. Second-system risk. The kernel grew 41% across three plans that each set out to shrink'
+--- #28 page 28 type=Highlight rect=(76.9,666.4,185.2,678.2) created=D:20261121154612-08'00' mod=D:20261121154612-08'00' author=tlh24
+    contents: 'chooses experiments'
+    highlighted text: 'chooses experiments'
+TOTAL 28

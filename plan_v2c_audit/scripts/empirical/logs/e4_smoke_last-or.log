@@ -1,0 +1,39 @@
+E4 target=LAST-OR max-budget=350000 bound-add=0 max-depth=2 heuristic-budget=15000 wall-cap=100000s
+  prefix COPY           solved=YES work=27291
+  prefix INC-ALL        solved=YES work=195020
+  prefix DBL-ALL        solved=YES work=63333
+  prefix SUM-ALL        solved=YES work=27868
+  prefix LEN-ALL        solved=YES work=42759
+  prefix PRD-ALL        solved=YES work=36804
+  prefix FOLDL          solved=YES work=209723
+  prefix FILTER         solved=YES work=120369
+  prefix MAP-ADJACENT   solved=no  work=350000
+  prefix POSITIONS      solved=no  work=350000
+  prefix SCAN           solved=no  work=350000
+  prefix SHIFT-SEQ      solved=no  work=350000
+  prefix SEQ-CORR       solved=no  work=350000
+  prefix BEST-SHIFT     solved=no  work=350000
+  prefix ARGMAX-CORR    solved=no  work=350000
+TARGET LAST-OR: inputs=2 rows=7 operators=26 (+ - * / MOD < = IF IF = IF CONS TAIL LENGTH CONCAT AT COPY INC-ALL DBL-ALL SUM-ALL LEN-ALL PRD-ALL MAP FOLDR FOLDL FILTER) literals=(0
+                                                                                                                                                                                   1
+                                                                                                                                                                                   2) eff-bound=154 bits
+  rung cap=      350000 work=      160849 claim=CANDIDATE          cpu_s=     0.03 wall_s=     0.03 gc_s=   0.00 heap_MiB=   73.8 (:NODES
+                                                                                                                                   4
+                                                                                                                                   :PHASES
+                                                                                                                                   (:SEARCH
+                                                                                                                                    4)
+                                                                                                                                   :MAX-DEPTH
+                                                                                                                                   2
+                                                                                                                                   :DEFERRED
+                                                                                                                                   0
+                                                                                                                                   :EXPANDABLE
+                                                                                                                                   0)
+RESULT LAST-OR claim=CANDIDATE work=160849 cpu_s=0.03 wall_s=0.03
+  ledger=((:PARENT-VERIFICATION . 2083) (:COMPOSITION . 87)
+          (:EXPANSION . 32620) (:CHILD-SEARCH . 35173) (:PREPARATION . 86011)
+          (:SCHEDULING . 4875))
+  PROGRAM (166 bits): (:IF (:= :X0 "()/NIL") :X1
+                       (:IF (:= :X1 (:LAST-OR (:TAIL :X0) :X1)) (:AT :X0 0)
+                        (:LAST-OR (:TAIL :X0) :X1)))
+  spec-verified=YES held-out=PASS
+PROCESS rc=0 total_wall_s=4.787446252

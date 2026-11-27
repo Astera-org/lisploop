@@ -1,0 +1,31 @@
+# table-building cost: 61 operators; times in ms, best of 5
+quotients                          pool            M      pool   op eval  group-by     total  entries  count=1
+6 hand-listed                      iid           200       0.3       2.7      15.3      18.2     1671      181
+6 hand-listed                      iid           500       0.6       7.2      37.3      45.1     1725       99
+6 hand-listed                      iid          2000       2.4      27.9     149.8     180.2     1736       46
+6 hand-listed                      iid         20000      24.8     317.7    1487.8    1830.3     1736        9
+6 hand-listed                      enriched      200       0.5       2.6      15.2      18.2     1719      135
+6 hand-listed                      enriched      500       1.1       6.9      37.4      45.4     1736       80
+6 hand-listed                      enriched     2000       4.3      27.7     148.8     180.8     1736       34
+6 hand-listed                      enriched    20000      43.5     308.5    1489.5    1841.5     1736        1
+1 merged sign*parity*order         iid           200       0.3       2.8      11.2      14.3     1862     1409
+1 merged sign*parity*order         iid           500       0.6       7.2      26.3      34.1     2458     1799
+1 merged sign*parity*order         iid          2000       2.5      28.8     102.7     134.0     3868     2701
+1 merged sign*parity*order         iid         20000      24.3     310.0    1037.6    1372.0     6608     5140
+1 merged sign*parity*order         enriched      200       0.5       2.8      10.9      14.1     2044     1446
+1 merged sign*parity*order         enriched      500       1.1       7.2      26.0      34.4     2828     1984
+1 merged sign*parity*order         enriched     2000       4.3      27.3     100.4     132.0     4588     3295
+1 merged sign*parity*order         enriched    20000      43.2     299.1    1023.8    1366.1     7464     6494
+merged3 + caplen5/lenmod2/isempty  iid           200       0.3       2.8      17.3      20.3     2600     1455
+merged3 + caplen5/lenmod2/isempty  iid           500       0.6       7.2      41.7      49.6     3220     1808
+merged3 + caplen5/lenmod2/isempty  iid          2000       2.4      28.1     163.9     194.4     4634     2704
+merged3 + caplen5/lenmod2/isempty  iid         20000      24.1     318.3    1641.5    1983.9     7374     5140
+merged3 + caplen5/lenmod2/isempty  enriched      200       0.5       2.8      17.0      20.3     2800     1482
+merged3 + caplen5/lenmod2/isempty  enriched      500       1.1       7.4      41.3      49.8     3594     1989
+merged3 + caplen5/lenmod2/isempty  enriched     2000       4.3      27.3     163.8     195.4     5354     3296
+merged3 + caplen5/lenmod2/isempty  enriched    20000      42.6     304.4    1628.4    1975.4     8230     6494
+
+pool = drawing the probe values; op eval = evaluating the 61 operators on their probes (the "existing probe
+table" the review assumes is already there); group-by = evaluating every quotient on arguments and results and
+grouping; count=1 = (argument tuple, result) pairs seen exactly once (a sign that more are unseen).
+per-task backward distance tables (6 quotients, successor graph rebuilt each time): mean 0.8 ms, max 0.9 ms

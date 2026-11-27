@@ -1,0 +1,93 @@
+E5 kernel=/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/v2/
+
+--- A. default settings (:body-bound 16, operators + - * /), every operator x position ---
+(GF 5)   solve + for arg 0: (:WORK 703758 :OBS-WORK 603898 :CPU 0.055203d0 :RECORDS 203 :BUCKETS 35 :ROWS 50 :WITNESS (:- :X1 :X0) :GUARD T)
+(GF 5)   solve + for arg 1: (:WORK 703758 :OBS-WORK 603898 :CPU 0.060359d0 :RECORDS 203 :BUCKETS 35 :ROWS 50 :WITNESS (:- :X1 :X0) :GUARD T)
+(GF 5)   solve - for arg 0: (:WORK 703755 :OBS-WORK 603898 :CPU 0.06038d0 :RECORDS 203 :BUCKETS 35 :ROWS 50 :WITNESS (:+ :X0 :X1) :GUARD T)
+(GF 5)   solve - for arg 1: (:WORK 703758 :OBS-WORK 603898 :CPU 0.058981d0 :RECORDS 203 :BUCKETS 35 :ROWS 50 :WITNESS (:- :X0 :X1) :GUARD T)
+(GF 5)   solve * for arg 0: (:WORK 703516 :OBS-WORK 603674 :CPU 0.049601d0 :RECORDS 203 :BUCKETS 35 :ROWS 50 :WITNESS (:/ :X1 :X0) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) T "NIL"))
+(GF 5)   solve * for arg 1: (:WORK 703516 :OBS-WORK 603674 :CPU 0.077147d0 :RECORDS 203 :BUCKETS 35 :ROWS 50 :WITNESS (:/ :X1 :X0) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) T "NIL"))
+(GF 5)   solve / for arg 0: (:WORK 645521 :OBS-WORK 544269 :CPU 0.058064d0 :RECORDS 203 :BUCKETS 35 :ROWS 45 :WITNESS (:* :X0 :X1) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) T "NIL"))
+(GF 5)   solve / for arg 1: (:WORK 648325 :OBS-WORK 544045 :CPU 0.05226d0 :RECORDS 203 :BUCKETS 35 :ROWS 45 :WITNESS (:/ :X0 :X1) :GUARD (:IF (:IF (:= :X1 0) "NIL" T) (:IF (:IF (:= (:/ :X0 :X1) 0) "NIL" T) T "NIL") "NIL"))
+(GF 5)   TOTAL work=5515907 cpu_s=0.472
+(GF 7)   solve + for arg 0: (:WORK 2262427 :OBS-WORK 1969578 :CPU 0.129425d0 :RECORDS 333 :BUCKETS 49 :ROWS 98 :WITNESS (:- :X1 :X0) :GUARD T)
+(GF 7)   solve + for arg 1: (:WORK 2262427 :OBS-WORK 1969578 :CPU 0.130649d0 :RECORDS 333 :BUCKETS 49 :ROWS 98 :WITNESS (:- :X1 :X0) :GUARD T)
+(GF 7)   solve - for arg 0: (:WORK 2262421 :OBS-WORK 1969578 :CPU 0.138043d0 :RECORDS 333 :BUCKETS 49 :ROWS 98 :WITNESS (:+ :X0 :X1) :GUARD T)
+(GF 7)   solve - for arg 1: (:WORK 2262422 :OBS-WORK 1969578 :CPU 0.130691d0 :RECORDS 333 :BUCKETS 49 :ROWS 98 :WITNESS (:- :X0 :X1) :GUARD T)
+(GF 7)   solve * for arg 0: (:WORK 2261905 :OBS-WORK 1969146 :CPU 0.116336d0 :RECORDS 333 :BUCKETS 49 :ROWS 98 :WITNESS (:/ :X1 :X0) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) T "NIL"))
+(GF 7)   solve * for arg 1: (:WORK 2261905 :OBS-WORK 1969146 :CPU 0.127484d0 :RECORDS 333 :BUCKETS 49 :ROWS 98 :WITNESS (:/ :X1 :X0) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) T "NIL"))
+(GF 7)   solve / for arg 0: (:WORK 2120865 :OBS-WORK 1829951 :CPU 0.133546d0 :RECORDS 333 :BUCKETS 49 :ROWS 91 :WITNESS (:* :X0 :X1) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) T "NIL"))
+(GF 7)   solve / for arg 1: (:WORK 2125553 :OBS-WORK 1829519 :CPU 0.124998d0 :RECORDS 333 :BUCKETS 49 :ROWS 91 :WITNESS (:/ :X0 :X1) :GUARD (:IF (:IF (:= :X1 0) "NIL" T) (:IF (:IF (:= (:/ :X0 :X1) 0) "NIL" T) T "NIL") "NIL"))
+(GF 7)   TOTAL work=17819925 cpu_s=1.031
+INT      solve + for arg 0: (:WORK 697677 :OBS-WORK 567259 :CPU 0.141987d0 :RECORDS 89 :BUCKETS 23 :ROWS 162 :WITNESS (:- :X1 :X0) :GUARD T)
+INT      solve + for arg 1: (:WORK 697677 :OBS-WORK 567259 :CPU 0.129515d0 :RECORDS 89 :BUCKETS 23 :ROWS 162 :WITNESS (:- :X1 :X0) :GUARD T)
+INT      solve - for arg 0: (:WORK 697648 :OBS-WORK 567259 :CPU 0.130814d0 :RECORDS 89 :BUCKETS 23 :ROWS 162 :WITNESS (:+ :X0 :X1) :GUARD T)
+INT      solve - for arg 1: (:WORK 697685 :OBS-WORK 567259 :CPU 0.141455d0 :RECORDS 89 :BUCKETS 23 :ROWS 162 :WITNESS (:- :X0 :X1) :GUARD T)
+INT      solve * for arg 0: (:WORK 705821 :OBS-WORK 575467 :CPU 0.08431d0 :RECORDS 89 :BUCKETS 23 :ROWS 162 :WITNESS (:/ :X1 :X0) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) (:= :X1 (:* (:/ :X1 :X0) :X0)) "NIL"))
+INT      solve * for arg 1: (:WORK 705821 :OBS-WORK 575467 :CPU 0.086871d0 :RECORDS 89 :BUCKETS 23 :ROWS 162 :WITNESS (:/ :X1 :X0) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) (:= :X1 (:* :X0 (:/ :X1 :X0))) "NIL"))
+INT      solve / for arg 0: (:WORK 656186 :OBS-WORK 525829 :CPU 0.118391d0 :RECORDS 89 :BUCKETS 23 :ROWS 153 :WITNESS (:* :X0 :X1) :GUARD (:IF (:IF (:= :X0 0) "NIL" T) T "NIL"))
+INT      solve / for arg 1: (:WORK 653520 :OBS-WORK 524105 :CPU 0.081951d0 :RECORDS 89 :BUCKETS 23 :ROWS 153 :WITNESS (:/ :X0 :X1) :GUARD (:IF (:IF (:= :X1 0) "NIL" T) (:IF (:IF (:= (:/ :X0 :X1) 0) "NIL" T) (:= :X1 (:/ :X0 (:/ :X0 :X1))) "NIL") "NIL"))
+INT      TOTAL work=5512035 cpu_s=0.915
+
+--- B. raising the term-size bound: solve `k - x = c` (:- position 1) and `x / k = c` (:/ position 0) ---
+(GF 7)   -/1 body-bound=12 work=      145753 obs-work=      115134 x=  0.00 records=      25 behaviours=     17 cpu_s=   0.061 witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=14 work=      865815 obs-work=      740380 x=  5.94 records=     137 behaviours=     49 cpu_s=   0.088 witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=16 work=     2262422 obs-work=     1969578 x=  2.61 records=     333 behaviours=     49 cpu_s=   0.128 witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=18 work=     2262524 obs-work=     1969680 x=  1.00 records=     333 behaviours=     49 cpu_s=   0.180 witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=20 work=     2262642 obs-work=     1969798 x=  1.00 records=     333 behaviours=     49 cpu_s=   0.133 witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=22 work=     4104441 obs-work=     3591364 x=  1.81 records=     589 behaviours=     86 cpu_s=   0.222 witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=24 work=    25322450 obs-work=    22473130 x=  6.17 records=    3277 behaviours=    237 cpu_s=   0.990 witness=(:- :X0 :X1)
+(GF 7)   -/1 body-bound=26 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.394 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   -/1 body-bound=28 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.686 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   -/1 body-bound=30 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.720 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   -/1 body-bound=32 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.788 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   -/1 body-bound=34 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.652 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   -/1 body-bound=36 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.751 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   //0 body-bound=12 work=      140308 obs-work=      107051 x=  0.00 records=      25 behaviours=     17 cpu_s=   0.109 witness=(:* :X0 :X1)
+(GF 7)   //0 body-bound=14 work=      814904 obs-work=      688169 x=  5.81 records=     137 behaviours=     49 cpu_s=   0.090 witness=(:* :X0 :X1)
+(GF 7)   //0 body-bound=16 work=     2120865 obs-work=     1829951 x=  2.60 records=     333 behaviours=     49 cpu_s=   0.136 witness=(:* :X0 :X1)
+(GF 7)   //0 body-bound=18 work=     2120967 obs-work=     1830053 x=  1.00 records=     333 behaviours=     49 cpu_s=   0.133 witness=(:* :X0 :X1)
+(GF 7)   //0 body-bound=20 work=     2121085 obs-work=     1830171 x=  1.00 records=     333 behaviours=     49 cpu_s=   0.147 witness=(:* :X0 :X1)
+(GF 7)   //0 body-bound=22 work=     3848197 obs-work=     3339417 x=  1.81 records=     589 behaviours=     86 cpu_s=   0.208 witness=(:* :X0 :X1)
+(GF 7)   //0 body-bound=24 work=    23716389 obs-work=    20901391 x=  6.16 records=    3277 behaviours=    237 cpu_s=   1.102 witness=(:* :X0 :X1)
+(GF 7)   //0 body-bound=26 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.101 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   //0 body-bound=28 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.701 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   //0 body-bound=30 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.572 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   //0 body-bound=32 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.622 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   //0 body-bound=34 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.757 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+(GF 7)   //0 body-bound=36 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   1.573 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      -/1 body-bound=12 work=      314870 obs-work=      247867 x=  0.00 records=      41 behaviours=     15 cpu_s=   0.111 witness=(:- :X0 :X1)
+INT      -/1 body-bound=14 work=      314942 obs-work=      247939 x=  1.00 records=      41 behaviours=     15 cpu_s=   0.230 witness=(:- :X0 :X1)
+INT      -/1 body-bound=16 work=      697685 obs-work=      567259 x=  2.22 records=      89 behaviours=     23 cpu_s=   0.149 witness=(:- :X0 :X1)
+INT      -/1 body-bound=18 work=      831909 obs-work=      680047 x=  1.19 records=     105 behaviours=     25 cpu_s=   0.158 witness=(:- :X0 :X1)
+INT      -/1 body-bound=20 work=      832029 obs-work=      680167 x=  1.00 records=     105 behaviours=     25 cpu_s=   0.163 witness=(:- :X0 :X1)
+INT      -/1 body-bound=22 work=     8910206 obs-work=     7645915 x= 10.71 records=     969 behaviours=     70 cpu_s=   0.744 witness=(:- :X0 :X1)
+INT      -/1 body-bound=24 work=    25879209 obs-work=    22349515 x=  2.90 records=    2697 behaviours=    102 cpu_s=   1.958 witness=(:- :X0 :X1)
+INT      -/1 body-bound=26 work=    25879377 obs-work=    22349683 x=  1.00 records=    2697 behaviours=    102 cpu_s=   1.821 witness=(:- :X0 :X1)
+INT      -/1 body-bound=28 work=    37729529 obs-work=    32664587 x=  1.46 records=    3849 behaviours=    114 cpu_s=   2.508 witness=(:- :X0 :X1)
+INT      -/1 body-bound=30 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.242 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      -/1 body-bound=32 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.290 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      -/1 body-bound=34 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.356 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      -/1 body-bound=36 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.301 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      //0 body-bound=12 work=      297898 obs-work=      228945 x=  0.00 records=      41 behaviours=     15 cpu_s=   0.097 witness=(:* :X0 :X1)
+INT      //0 body-bound=14 work=      297970 obs-work=      229017 x=  1.00 records=      41 behaviours=     15 cpu_s=   0.097 witness=(:* :X0 :X1)
+INT      //0 body-bound=16 work=      656186 obs-work=      525829 x=  2.20 records=      89 behaviours=     23 cpu_s=   0.147 witness=(:* :X0 :X1)
+INT      //0 body-bound=18 work=      782673 obs-work=      631553 x=  1.19 records=     105 behaviours=     25 cpu_s=   0.124 witness=(:* :X0 :X1)
+INT      //0 body-bound=20 work=      782793 obs-work=      631673 x=  1.00 records=     105 behaviours=     25 cpu_s=   0.123 witness=(:* :X0 :X1)
+INT      //0 body-bound=22 work=     8280650 obs-work=     7050245 x= 10.58 records=     969 behaviours=     70 cpu_s=   0.810 witness=(:* :X0 :X1)
+INT      //0 body-bound=24 work=    24110918 obs-work=    20683857 x=  2.91 records=    2697 behaviours=    102 cpu_s=   2.017 witness=(:* :X0 :X1)
+INT      //0 body-bound=26 work=    24111086 obs-work=    20684025 x=  1.00 records=    2697 behaviours=    102 cpu_s=   1.885 witness=(:* :X0 :X1)
+INT      //0 body-bound=28 work=    35219094 obs-work=    30304017 x=  1.46 records=    3849 behaviours=    114 cpu_s=   2.532 witness=(:* :X0 :X1)
+INT      //0 body-bound=30 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.513 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      //0 body-bound=32 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.560 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      //0 body-bound=34 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.487 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+INT      //0 body-bound=36 work=NIL obs-work=NIL x=  0.00 records=NIL behaviours=NIL cpu_s=   3.459 witness="Observation cutoff; resume the ordinary observation job before using its outcomes"
+
+--- C. one notch on the operator set at the default bound and at 24: + - * / plus MOD (:int only) ---
+:int -/1 body-bound=16 ops=(:+ :- :* :/) work=697685 records=89 behaviours=23 cpu_s=0.128 witness=(:- :X0 :X1)
+:int -/1 body-bound=16 ops=(:+ :- :* :/ :MOD) work=697701 records=89 behaviours=23 cpu_s=0.129 witness=(:- :X0 :X1)
+:int -/1 body-bound=20 ops=(:+ :- :* :/) work=832029 records=105 behaviours=25 cpu_s=0.150 witness=(:- :X0 :X1)
+:int -/1 body-bound=20 ops=(:+ :- :* :/ :MOD) work=895003 records=114 behaviours=25 cpu_s=0.141 witness=(:- :X0 :X1)
+:int -/1 body-bound=24 ops=(:+ :- :* :/) work=25879209 records=2697 behaviours=102 cpu_s=1.885 witness=(:- :X0 :X1)
+:int -/1 body-bound=24 ops=(:+ :- :* :/ :MOD) work=26033756 records=2718 behaviours=102 cpu_s=1.811 witness=(:- :X0 :X1)
+PROCESS rc=0

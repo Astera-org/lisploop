@@ -1,0 +1,5 @@
+ 20:34:06 up 1 day, 11:39,  1 user,  load average: 1.47, 2.28, 4.03
+E1c root_kernel rc=0 wall_s=7.835804082 :: 222 tests, 938737 checks passed in 5.524 s.
+E1c root_milestones rc=0 wall_s=15.255362757 :: 40 tests, 186771 checks passed in 13.052 s.
+E1c v2_kernel rc=0 wall_s=8.245869846 :: 228 tests, 938281 checks passed in 5.668 s.
+E1c v2_milestones rc=0 wall_s=15.104367098 :: 40 tests, 186771 checks passed in 12.732 s.

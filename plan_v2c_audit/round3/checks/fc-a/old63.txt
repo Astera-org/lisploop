@@ -1,0 +1,18 @@
+Start from the counting identity in plan 2: H(X) = H(f(X)) + E log|fiber|. Running `f` forward destroys the bits that say which member of the fiber you started from. Running it backward means supplying them.
+
+Five rules follow. The first four are standard coding theory, confirmed by the literature review; the previous plans stated the first three but gave no procedure for using them.
+
+1. **A verified bijection transfers code lengths for free.** If two spaces or two value types are related by a map with a checked inverse, a residual costs the same on either side.
+2. **A many-to-one map owes the fiber.** Pricing on the coarse side costs an extra log₂|fiber| bits per row to name the member, or the bits of a term that predicts it.
+3. **A new latent column is paid for adaptively.** Cluster labels, chosen indices, and the like are coded cell by cell, each using the counts of the cells before it. This is a valid code because a decoder can rebuild the same counts. It is also what makes count-based or nearest-neighbour predictors safe to use for pricing.
+4. **The graph gives the coding order.** Code the columns in dependency order. A column that a term derives from earlier columns costs only the term. A column no term derives is *free* and costs its code. The total is the description length.
+
+5. **An exact cell is not free.** If a cell that matches its prediction costs zero bits while every other cell pays a full prefix code, the lengths sum to more than a prefix code allows. In a column priced row by row, every cell's code must include the zero, so an exact cell costs at least one bit; one more bit per column can then say that the whole column is exact. The kernel avoids the per-cell violation in its main pricing path only because it lists exception rows with their indices, and what it leaves unpaid there is one bit per model. A store that prices a residual column row by row would not avoid it (§8.6).
+
+Rule 4 is the precise sense in which topology and geometry interlock: **the graph is the factorization of the description, and the geometry is the code on each factor.** A move is good when it turns an expensive free column into a term plus a cheaper free column.
+
+**Is there something better than pricing in the ambient space?** You asked this directly. The theory says no induced space can price a residual below its ambient cost, except through rule 1 or by paying rule 2. What an induced space can do is make the residual smaller or more regular, so the same ambient code is shorter; and counts can replace a fixed code with an adaptive one. So ambient pricing is not what made residuals clunky. Three implementation facts did (§2.7):
+
+- eight unrelated representations of a residual, where the store has one: a residual is a column;
+- a metric that cannot depend on the row, where a column's code can depend on any earlier column;
+- adding program bits sized at the root to residual bits sized in a child space. The fix is to move the child's residual back along the map and price each root row once.

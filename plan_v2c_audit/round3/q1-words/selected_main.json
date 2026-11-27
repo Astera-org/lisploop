@@ -1,0 +1,1682 @@
+{
+ "main|pairs|K=1": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8930516524229444,
+   "cross": 0.6908016954446192,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  }
+ ],
+ "main|pairs|K=3": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8930516524229444,
+   "cross": 0.6908016954446192,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (< (head xs) 0))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7695651917534095,
+   "cross": 0.7173129535934016,
+   "size": 8,
+   "card": 7,
+   "rank": 646
+  },
+  {
+   "lterm": "(pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7528644369984434,
+   "cross": 0.7541803479994099,
+   "size": 9,
+   "card": 7,
+   "rank": 1034
+  }
+ ],
+ "main|pairs|K=6": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8930516524229444,
+   "cross": 0.6908016954446192,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (< (head xs) 0))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7695651917534095,
+   "cross": 0.7173129535934016,
+   "size": 8,
+   "card": 7,
+   "rank": 646
+  },
+  {
+   "lterm": "(pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7528644369984434,
+   "cross": 0.7541803479994099,
+   "size": 9,
+   "card": 7,
+   "rank": 1034
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_even (evens_idx (take2 xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7524370048008411,
+   "cross": 0.7199119240787158,
+   "size": 8,
+   "card": 7,
+   "rank": 1049
+  },
+  {
+   "lterm": "(pair (len (odds_idx (evens_idx xs))) (mod 2 (count_pos xs)))",
+   "iterm": "(sgn (mod 1 (dec v)))",
+   "score": 0.7233804036961728,
+   "cross": 0.4591057686898626,
+   "size": 9,
+   "card": 8,
+   "rank": 2187
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_pos (tail (take2 xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7226773996869968,
+   "cross": 0.6931352712544429,
+   "size": 8,
+   "card": 6,
+   "rank": 2219
+  }
+ ],
+ "main|pairs|K=10": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8930516524229444,
+   "cross": 0.6908016954446192,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (< (head xs) 0))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7695651917534095,
+   "cross": 0.7173129535934016,
+   "size": 8,
+   "card": 7,
+   "rank": 646
+  },
+  {
+   "lterm": "(pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7528644369984434,
+   "cross": 0.7541803479994099,
+   "size": 9,
+   "card": 7,
+   "rank": 1034
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_even (evens_idx (take2 xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7524370048008411,
+   "cross": 0.7199119240787158,
+   "size": 8,
+   "card": 7,
+   "rank": 1049
+  },
+  {
+   "lterm": "(pair (len (odds_idx (evens_idx xs))) (mod 2 (count_pos xs)))",
+   "iterm": "(sgn (mod 1 (dec v)))",
+   "score": 0.7233804036961728,
+   "cross": 0.4591057686898626,
+   "size": 9,
+   "card": 8,
+   "rank": 2187
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_pos (tail (take2 xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7226773996869968,
+   "cross": 0.6931352712544429,
+   "size": 8,
+   "card": 6,
+   "rank": 2219
+  },
+  {
+   "lterm": "(pair (< 5 (max_el xs)) (len (take2 (map_adj_add xs))))",
+   "iterm": "(< v (sq v))",
+   "score": 0.7208521127264582,
+   "cross": 0.4793680858680048,
+   "size": 9,
+   "card": 6,
+   "rank": 2317
+  },
+  {
+   "lterm": "(pair (count_even (take2 (drop2 xs))) (len (take3 (map_adj_add xs))))",
+   "iterm": "(< v (sq v))",
+   "score": 0.72018693285125,
+   "cross": 0.44839110352009914,
+   "size": 9,
+   "card": 7,
+   "rank": 2347
+  },
+  {
+   "lterm": "(pair (< (sum xs) 0) (len (take2 (odds_idx xs))))",
+   "iterm": "(pair (< 1 v) (< v 0))",
+   "score": 0.7195116715428607,
+   "cross": 0.576088876825688,
+   "size": 9,
+   "card": 6,
+   "rank": 2393
+  },
+  {
+   "lterm": "(pair (count_pos (take2 (drop2 xs))) (len (take3 (map_adj_add xs))))",
+   "iterm": "(< v (sq v))",
+   "score": 0.717411145372502,
+   "cross": 0.4572669816923154,
+   "size": 9,
+   "card": 7,
+   "rank": 2501
+  }
+ ],
+ "main|nopairs|K=1": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  }
+ ],
+ "main|nopairs|K=3": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6784058410547374,
+   "cross": 0.15978664274573404,
+   "size": 5,
+   "card": 3,
+   "rank": 831
+  },
+  {
+   "lterm": "(sgn (min_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6703175603958847,
+   "cross": 0.6607431791147066,
+   "size": 5,
+   "card": 3,
+   "rank": 916
+  }
+ ],
+ "main|nopairs|K=6": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6784058410547374,
+   "cross": 0.15978664274573404,
+   "size": 5,
+   "card": 3,
+   "rank": 831
+  },
+  {
+   "lterm": "(sgn (min_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6703175603958847,
+   "cross": 0.6607431791147066,
+   "size": 5,
+   "card": 3,
+   "rank": 916
+  },
+  {
+   "lterm": "(sgn (head (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6702604716080047,
+   "cross": 0.6715264597084303,
+   "size": 5,
+   "card": 3,
+   "rank": 918
+  },
+  {
+   "lterm": "(sgn (max_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6636070779471008,
+   "cross": 0.7138770058436931,
+   "size": 5,
+   "card": 3,
+   "rank": 975
+  },
+  {
+   "lterm": "(len (drop2 (odds_idx (map_adj_add xs))))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6607635470414333,
+   "cross": 0.18823373535228416,
+   "size": 5,
+   "card": 6,
+   "rank": 1000
+  }
+ ],
+ "main|nopairs|K=10": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6784058410547374,
+   "cross": 0.15978664274573404,
+   "size": 5,
+   "card": 3,
+   "rank": 831
+  },
+  {
+   "lterm": "(sgn (min_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6703175603958847,
+   "cross": 0.6607431791147066,
+   "size": 5,
+   "card": 3,
+   "rank": 916
+  },
+  {
+   "lterm": "(sgn (head (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6702604716080047,
+   "cross": 0.6715264597084303,
+   "size": 5,
+   "card": 3,
+   "rank": 918
+  },
+  {
+   "lterm": "(sgn (max_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6636070779471008,
+   "cross": 0.7138770058436931,
+   "size": 5,
+   "card": 3,
+   "rank": 975
+  },
+  {
+   "lterm": "(len (drop2 (odds_idx (map_adj_add xs))))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6607635470414333,
+   "cross": 0.18823373535228416,
+   "size": 5,
+   "card": 6,
+   "rank": 1000
+  },
+  {
+   "lterm": "(min 5 (sum (abs_all xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6554925446918852,
+   "cross": 0.6663241483553821,
+   "size": 5,
+   "card": 6,
+   "rank": 1039
+  },
+  {
+   "lterm": "(count_distinct (map_adj_mul (map_adj_sub (sort xs))))",
+   "iterm": "(mod 1 (abs (dec v)))",
+   "score": 0.6545973655534936,
+   "cross": 0.3726608879909379,
+   "size": 5,
+   "card": 8,
+   "rank": 1046
+  },
+  {
+   "lterm": "(count_distinct (map_adj_max (map_adj_min (abs_all xs))))",
+   "iterm": "(mod 1 (abs (dec v)))",
+   "score": 0.6393332731837118,
+   "cross": 0.3736286890089349,
+   "size": 5,
+   "card": 8,
+   "rank": 1222
+  },
+  {
+   "lterm": "(count_pos (running_min (take3 (abs_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6381966109038185,
+   "cross": 0.566131025379675,
+   "size": 5,
+   "card": 4,
+   "rank": 1233
+  }
+ ],
+ "main|pairs|K=6|nmi=0.50": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8930516524229444,
+   "cross": 0.6908016954446192,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take2 xs)) (sgn (head xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7271276478557929,
+   "cross": 0.7673447811191523,
+   "size": 7,
+   "card": 7,
+   "rank": 2004
+  },
+  {
+   "lterm": "(pair (len (evens_idx (take3 xs))) (mod (head xs) 3))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6875020180983454,
+   "cross": 0.6930395902815665,
+   "size": 9,
+   "card": 7,
+   "rank": 4337
+  },
+  {
+   "lterm": "(pair (len (take3 (filter_neg xs))) (mod 1 (count_pos xs)))",
+   "iterm": "(pair (< 1 v) (< v 0))",
+   "score": 0.6852150554019731,
+   "cross": 0.5610024147975566,
+   "size": 9,
+   "card": 8,
+   "rank": 4526
+  },
+  {
+   "lterm": "(pair (count_even (take2 (inc_all xs))) (len (evens_idx (take3 xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6843830349624159,
+   "cross": 0.7152302974481941,
+   "size": 9,
+   "card": 7,
+   "rank": 4591
+  },
+  {
+   "lterm": "(pair (len (map_adj_add (take2 xs))) (mod (head xs) 4))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6721921608611228,
+   "cross": 0.5830184892816619,
+   "size": 9,
+   "card": 8,
+   "rank": 5735
+  }
+ ],
+ "main|nopairs|K=6|nmi=0.50": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(sgn (head (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6702604716080047,
+   "cross": 0.6715264597084303,
+   "size": 5,
+   "card": 3,
+   "rank": 918
+  },
+  {
+   "lterm": "(min_el (abs_all (cons 2 xs)))",
+   "iterm": "(= 1 (abs v))",
+   "score": 0.6159184583008243,
+   "cross": 0.1572262181878845,
+   "size": 5,
+   "card": 3,
+   "rank": 1545
+  },
+  {
+   "lterm": "(sgn (sum (map_adj_add (sort xs))))",
+   "iterm": "(pair (< 1 v) (< v 0))",
+   "score": 0.6009930561315385,
+   "cross": 0.42611597609733914,
+   "size": 5,
+   "card": 3,
+   "rank": 1737
+  },
+  {
+   "lterm": "(count_distinct (running_min (map_adj_sub (running_max xs))))",
+   "iterm": "(< v (sq v))",
+   "score": 0.5968072009990845,
+   "cross": 0.4069554141394105,
+   "size": 5,
+   "card": 6,
+   "rank": 1792
+  },
+  {
+   "lterm": "(sgn (min_el (inc_all xs)))",
+   "iterm": "(sgn (mul v (inc v)))",
+   "score": 0.5956742876272432,
+   "cross": 0.5019395068313002,
+   "size": 4,
+   "card": 3,
+   "rank": 1804
+  }
+ ],
+ "main|pairs|K=6|nmi=0.80": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8930516524229444,
+   "cross": 0.6908016954446192,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take3 (map_adj_add xs))) (sgn (min_el (abs_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7951002467357217,
+   "cross": 0.7512368052975241,
+   "size": 9,
+   "card": 8,
+   "rank": 246
+  },
+  {
+   "lterm": "(pair (len (take_n 4 xs)) (mod 2 (count_pos xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7925363163282108,
+   "cross": 0.6920618401187275,
+   "size": 9,
+   "card": 7,
+   "rank": 271
+  },
+  {
+   "lterm": "(pair (count_pos (init (take2 xs))) (len (take_n 4 xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.786606145903708,
+   "cross": 0.7047137488601094,
+   "size": 9,
+   "card": 8,
+   "rank": 354
+  },
+  {
+   "lterm": "(pair (count_distinct (take2 (map_adj_mul xs))) (mod (len xs) 3))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7841848082342734,
+   "cross": 0.6866946347618268,
+   "size": 9,
+   "card": 8,
+   "rank": 376
+  },
+  {
+   "lterm": "(pair (len (take_n 4 xs)) (mod 2 (count_even xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7830317535141044,
+   "cross": 0.6886136100803295,
+   "size": 9,
+   "card": 7,
+   "rank": 392
+  }
+ ],
+ "main|nopairs|K=6|nmi=0.80": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(mod (len xs) 5)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7803023665266884,
+   "cross": 0.32012241803230335,
+   "size": 4,
+   "card": 5,
+   "rank": 26
+  },
+  {
+   "lterm": "(len (odds_idx (evens_idx xs)))",
+   "iterm": "(mod 1 (abs (dec v)))",
+   "score": 0.7727679116228666,
+   "cross": 0.3575710882188155,
+   "size": 4,
+   "card": 5,
+   "rank": 40
+  },
+  {
+   "lterm": "(len (odds_idx (odds_idx xs)))",
+   "iterm": "(pair (< 3 v) (< v 0))",
+   "score": 0.7623699182469807,
+   "cross": 0.3118982527364744,
+   "size": 4,
+   "card": 5,
+   "rank": 68
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 4)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7551583771244712,
+   "cross": 0.2435099864094522,
+   "size": 5,
+   "card": 4,
+   "rank": 97
+  },
+  {
+   "lterm": "(len (drop2 (odds_idx xs)))",
+   "iterm": "(pair (< 5 v) (< 1 (neg v)))",
+   "score": 0.7389097338881891,
+   "cross": 0.27272313175569046,
+   "size": 4,
+   "card": 7,
+   "rank": 211
+  }
+ ],
+ "main|pairs|K=6|card=2": [
+  {
+   "lterm": "(len (map_adj_add (take2 xs)))",
+   "iterm": "(< v (sq v))",
+   "score": 0.7595106929309335,
+   "cross": 0.39967486237783995,
+   "size": 4,
+   "card": 2,
+   "rank": 1
+  },
+  {
+   "lterm": "(len (drop2 (take3 xs)))",
+   "iterm": "(mod 1 (abs (dec v)))",
+   "score": 0.7455380352277406,
+   "cross": 0.3388503495195152,
+   "size": 4,
+   "card": 2,
+   "rank": 2
+  },
+  {
+   "lterm": "(sgn (len xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.732677662878037,
+   "cross": 0.6415378949247624,
+   "size": 3,
+   "card": 2,
+   "rank": 3
+  },
+  {
+   "lterm": "(< 3 (len xs))",
+   "iterm": "(= v (mod v 4))",
+   "score": 0.7191239394377306,
+   "cross": 0.29695535655924005,
+   "size": 4,
+   "card": 2,
+   "rank": 5
+  },
+  {
+   "lterm": "(< 4 (len xs))",
+   "iterm": "(= v (mod v 5))",
+   "score": 0.7041731000099226,
+   "cross": 0.2744228204275783,
+   "size": 4,
+   "card": 2,
+   "rank": 11
+  },
+  {
+   "lterm": "(< 5 (len xs))",
+   "iterm": "(< 5 v)",
+   "score": 0.6985842400825203,
+   "cross": 0.2524178957722256,
+   "size": 4,
+   "card": 2,
+   "rank": 15
+  }
+ ],
+ "main|pairs|K=6|card=4": [
+  {
+   "lterm": "(pair (< 4 (len xs)) (len (take2 (map_adj_add xs))))",
+   "iterm": "(< v (sq v))",
+   "score": 0.8371693976972481,
+   "cross": 0.4388123802662358,
+   "size": 9,
+   "card": 4,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take2 xs)) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7985613263010157,
+   "cross": 0.6637053373048897,
+   "size": 8,
+   "card": 4,
+   "rank": 21
+  },
+  {
+   "lterm": "(pair (sgn (len xs)) (< 5 (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7911567219863245,
+   "cross": 0.6669216616282978,
+   "size": 8,
+   "card": 3,
+   "rank": 25
+  },
+  {
+   "lterm": "(pair (sgn (len xs)) (mod (len xs) 3))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7738674688354752,
+   "cross": 0.6466875060508772,
+   "size": 8,
+   "card": 4,
+   "rank": 47
+  },
+  {
+   "lterm": "(pair (< 3 (count_pos xs)) (len (take2 (drop2 xs))))",
+   "iterm": "(< 3 v)",
+   "score": 0.7309011697354821,
+   "cross": 0.42104611794539254,
+   "size": 9,
+   "card": 4,
+   "rank": 196
+  },
+  {
+   "lterm": "(pair (len (evens_idx (take3 xs))) (mod 2 (count_pos xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7290653400110599,
+   "cross": 0.685391572461693,
+   "size": 9,
+   "card": 4,
+   "rank": 202
+  }
+ ],
+ "main|pairs|K=6|card=6": [
+  {
+   "lterm": "(len (take_n 5 (map_adj_add xs)))",
+   "iterm": "(< v (sq v))",
+   "score": 0.8743100920517335,
+   "cross": 0.4423967252862126,
+   "size": 5,
+   "card": 6,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (sgn (len xs)) (mod (len xs) 3))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7738674688354752,
+   "cross": 0.6466875060508772,
+   "size": 8,
+   "card": 4,
+   "rank": 222
+  },
+  {
+   "lterm": "(pair (len (take2 (odds_idx xs))) (sgn (min_el (abs_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7689466023291286,
+   "cross": 0.7472073125810711,
+   "size": 9,
+   "card": 6,
+   "rank": 264
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (mod 2 (count_pos xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7679201755690593,
+   "cross": 0.6876173206167807,
+   "size": 8,
+   "card": 5,
+   "rank": 281
+  },
+  {
+   "lterm": "(mod (len xs) 4)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7516185475392316,
+   "cross": 0.20727373866862372,
+   "size": 4,
+   "card": 4,
+   "rank": 442
+  },
+  {
+   "lterm": "(pair (< (head xs) 0) (len (take2 (map_adj_add xs))))",
+   "iterm": "(pair (< 1 v) (< v 0))",
+   "score": 0.7444534374773116,
+   "cross": 0.5489108567747566,
+   "size": 9,
+   "card": 6,
+   "rank": 545
+  }
+ ],
+ "main|nopairs|K=6|card=4": [
+  {
+   "lterm": "(len (take3 xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8332797748458942,
+   "cross": 0.6763634373457349,
+   "size": 3,
+   "card": 4,
+   "rank": 1
+  },
+  {
+   "lterm": "(len (take3 (drop2 xs)))",
+   "iterm": "(mod 1 (abs (dec v)))",
+   "score": 0.8076249255001939,
+   "cross": 0.37341612355030335,
+   "size": 4,
+   "card": 4,
+   "rank": 5
+  },
+  {
+   "lterm": "(len (take3 (drop2 (drop2 xs))))",
+   "iterm": "(pair (< 4 v) (< v 0))",
+   "score": 0.7576219984916258,
+   "cross": 0.30599920128013836,
+   "size": 5,
+   "card": 4,
+   "rank": 30
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 4)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7551583771244712,
+   "cross": 0.2435099864094522,
+   "size": 5,
+   "card": 4,
+   "rank": 34
+  },
+  {
+   "lterm": "(mod (len (odds_idx xs)) 4)",
+   "iterm": "(pair (< 3 v) (< v (sq v)))",
+   "score": 0.7262542523741473,
+   "cross": 0.2507317219356842,
+   "size": 5,
+   "card": 4,
+   "rank": 83
+  },
+  {
+   "lterm": "(mod (len xs) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7177213178344458,
+   "cross": 0.20252038427820973,
+   "size": 4,
+   "card": 3,
+   "rank": 111
+  }
+ ],
+ "main|pairs|K=6|vac=0": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8930516524229444,
+   "cross": 0.6908016954446192,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (< (head xs) 0))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7695651917534095,
+   "cross": 0.7173129535934016,
+   "size": 8,
+   "card": 7,
+   "rank": 646
+  },
+  {
+   "lterm": "(pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7528644369984434,
+   "cross": 0.7541803479994099,
+   "size": 9,
+   "card": 7,
+   "rank": 1035
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_even (evens_idx (take2 xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7524370048008411,
+   "cross": 0.7199119240787158,
+   "size": 8,
+   "card": 7,
+   "rank": 1050
+  },
+  {
+   "lterm": "(pair (len (odds_idx (evens_idx xs))) (mod 2 (count_pos xs)))",
+   "iterm": "(sgn (mod 1 (dec v)))",
+   "score": 0.7233804036961728,
+   "cross": 0.4591057686898626,
+   "size": 9,
+   "card": 8,
+   "rank": 2189
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_pos (tail (take2 xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7226773996869968,
+   "cross": 0.6931352712544429,
+   "size": 8,
+   "card": 6,
+   "rank": 2221
+  }
+ ],
+ "main|nopairs|K=6|vac=0": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6784058410547374,
+   "cross": 0.15978664274573404,
+   "size": 5,
+   "card": 3,
+   "rank": 831
+  },
+  {
+   "lterm": "(len (drop2 (odds_idx (map_adj_add xs))))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6723483501153645,
+   "cross": 0.23586014634249086,
+   "size": 5,
+   "card": 6,
+   "rank": 897
+  },
+  {
+   "lterm": "(sgn (min_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6703175603958847,
+   "cross": 0.6607431791147066,
+   "size": 5,
+   "card": 3,
+   "rank": 917
+  },
+  {
+   "lterm": "(sgn (head (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6702604716080047,
+   "cross": 0.6715264597084303,
+   "size": 5,
+   "card": 3,
+   "rank": 919
+  },
+  {
+   "lterm": "(sgn (max_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6636070779471008,
+   "cross": 0.7138770058436931,
+   "size": 5,
+   "card": 3,
+   "rank": 976
+  }
+ ],
+ "main|pairs|K=6|pair=lumpmi": [
+  {
+   "lterm": "(pair (len (take3 (odds_idx xs))) (mod (len xs) 2))",
+   "iterm": "(pair (min 4 (abs v)) (sgn (sub 5 v)))",
+   "score": 0.8930516524229444,
+   "cross": 0.5488224595683479,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (< (head xs) 0))",
+   "iterm": "(pair (sgn v) (sgn (dec (dec v))))",
+   "score": 0.7695651917534095,
+   "cross": 0.53335776375864,
+   "size": 8,
+   "card": 7,
+   "rank": 646
+  },
+  {
+   "lterm": "(pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs))))",
+   "iterm": "(pair (sgn (abs v)) (sgn (dec (dec v))))",
+   "score": 0.7528644369984434,
+   "cross": 0.40882414371929104,
+   "size": 9,
+   "card": 7,
+   "rank": 1034
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_even (evens_idx (take2 xs))))",
+   "iterm": "(pair (= 2 v) (sgn (dec (abs v))))",
+   "score": 0.7524370048008411,
+   "cross": 0.4269465887263877,
+   "size": 8,
+   "card": 7,
+   "rank": 1049
+  },
+  {
+   "lterm": "(pair (len (odds_idx (evens_idx xs))) (mod 2 (count_pos xs)))",
+   "iterm": "(pair (< 5 (dec v)) (sgn (mod 2 v)))",
+   "score": 0.7233804036961728,
+   "cross": 0.3918335802543381,
+   "size": 9,
+   "card": 8,
+   "rank": 2187
+  },
+  {
+   "lterm": "(pair (len (take3 xs)) (count_pos (tail (take2 xs))))",
+   "iterm": "(pair (sgn (abs v)) (sgn (dec (dec v))))",
+   "score": 0.7226773996869968,
+   "cross": 0.41575659904872697,
+   "size": 8,
+   "card": 6,
+   "rank": 2219
+  }
+ ],
+ "main|nopairs|K=6|pair=lumpmi": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(pair (min 4 (abs v)) (sgn (sub 5 v)))",
+   "score": 0.8846618305212791,
+   "cross": 0.5462652674563504,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 3)",
+   "iterm": "(mod (max 1 v) 3)",
+   "score": 0.6784058410547374,
+   "cross": 0.18241567282092847,
+   "size": 5,
+   "card": 3,
+   "rank": 831
+  },
+  {
+   "lterm": "(sgn (min_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn v)",
+   "score": 0.6703175603958847,
+   "cross": 0.2727750178937514,
+   "size": 5,
+   "card": 3,
+   "rank": 916
+  },
+  {
+   "lterm": "(sgn (head (inc_all (dbl_all xs))))",
+   "iterm": "(sgn v)",
+   "score": 0.6702604716080047,
+   "cross": 0.32225765767935827,
+   "size": 5,
+   "card": 3,
+   "rank": 918
+  },
+  {
+   "lterm": "(sgn (max_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn v)",
+   "score": 0.6636070779471008,
+   "cross": 0.317763093594817,
+   "size": 5,
+   "card": 3,
+   "rank": 975
+  },
+  {
+   "lterm": "(len (drop2 (odds_idx (map_adj_add xs))))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6607635470414333,
+   "cross": 0.10374956434317387,
+   "size": 5,
+   "card": 6,
+   "rank": 1000
+  }
+ ],
+ "main|nopairs|K=10|pair=lumpmi": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(pair (min 4 (abs v)) (sgn (sub 5 v)))",
+   "score": 0.8846618305212791,
+   "cross": 0.5462652674563504,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 3)",
+   "iterm": "(mod (max 1 v) 3)",
+   "score": 0.6784058410547374,
+   "cross": 0.18241567282092847,
+   "size": 5,
+   "card": 3,
+   "rank": 831
+  },
+  {
+   "lterm": "(sgn (min_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn v)",
+   "score": 0.6703175603958847,
+   "cross": 0.2727750178937514,
+   "size": 5,
+   "card": 3,
+   "rank": 916
+  },
+  {
+   "lterm": "(sgn (head (inc_all (dbl_all xs))))",
+   "iterm": "(sgn v)",
+   "score": 0.6702604716080047,
+   "cross": 0.32225765767935827,
+   "size": 5,
+   "card": 3,
+   "rank": 918
+  },
+  {
+   "lterm": "(sgn (max_el (inc_all (dbl_all xs))))",
+   "iterm": "(sgn v)",
+   "score": 0.6636070779471008,
+   "cross": 0.317763093594817,
+   "size": 5,
+   "card": 3,
+   "rank": 975
+  },
+  {
+   "lterm": "(len (drop2 (odds_idx (map_adj_add xs))))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6607635470414333,
+   "cross": 0.10374956434317387,
+   "size": 5,
+   "card": 6,
+   "rank": 1000
+  },
+  {
+   "lterm": "(min 5 (sum (abs_all xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6554925446918852,
+   "cross": 0.24777366221054242,
+   "size": 5,
+   "card": 6,
+   "rank": 1039
+  },
+  {
+   "lterm": "(count_distinct (map_adj_mul (map_adj_sub (sort xs))))",
+   "iterm": "(pair (sgn (mod 2 v)) (sgn (sub 4 v)))",
+   "score": 0.6545973655534936,
+   "cross": 0.2701896747248605,
+   "size": 5,
+   "card": 8,
+   "rank": 1046
+  },
+  {
+   "lterm": "(count_distinct (map_adj_max (map_adj_min (abs_all xs))))",
+   "iterm": "(pair (< 4 v) (sgn (mod 2 v)))",
+   "score": 0.6393332731837118,
+   "cross": 0.2535418209739248,
+   "size": 5,
+   "card": 8,
+   "rank": 1222
+  },
+  {
+   "lterm": "(count_pos (running_min (take3 (abs_all xs))))",
+   "iterm": "(pair (= 2 v) (sgn (dec (abs v))))",
+   "score": 0.6381966109038185,
+   "cross": 0.21386851592138761,
+   "size": 5,
+   "card": 4,
+   "rank": 1233
+  }
+ ],
+ "main|singles<=3|K=6": [
+  {
+   "lterm": "(len (take3 xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8332797748458942,
+   "cross": 0.6763634373457349,
+   "size": 3,
+   "card": 4,
+   "rank": 1
+  },
+  {
+   "lterm": "(sgn (head xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6169901006554409,
+   "cross": 0.564502348303479,
+   "size": 3,
+   "card": 3,
+   "rank": 6
+  },
+  {
+   "lterm": "(sgn (max_el xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6004878242711802,
+   "cross": 0.6928646092204919,
+   "size": 3,
+   "card": 3,
+   "rank": 7
+  },
+  {
+   "lterm": "(sgn (min_el xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5831493284617306,
+   "cross": 0.608986116692175,
+   "size": 3,
+   "card": 3,
+   "rank": 8
+  },
+  {
+   "lterm": "(sgn (sum xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5245138607144475,
+   "cross": 0.5754706437924274,
+   "size": 3,
+   "card": 3,
+   "rank": 10
+  },
+  {
+   "lterm": "(sgn (count_even xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5241425196571651,
+   "cross": 0.3976524984278943,
+   "size": 3,
+   "card": 2,
+   "rank": 11
+  }
+ ],
+ "main|singles<=4|K=6": [
+  {
+   "lterm": "(len (take_n 5 xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.869356252413329,
+   "cross": 0.6853124153584903,
+   "size": 4,
+   "card": 6,
+   "rank": 1
+  },
+  {
+   "lterm": "(len (odds_idx (drop2 xs)))",
+   "iterm": "(pair (< 3 v) (< v 0))",
+   "score": 0.7911816099053365,
+   "cross": 0.3284825063615311,
+   "size": 4,
+   "card": 8,
+   "rank": 14
+  },
+  {
+   "lterm": "(mod (len xs) 5)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7803023665266884,
+   "cross": 0.32012241803230335,
+   "size": 4,
+   "card": 5,
+   "rank": 16
+  },
+  {
+   "lterm": "(mod (len xs) 4)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7516185475392316,
+   "cross": 0.20727373866862372,
+   "size": 4,
+   "card": 4,
+   "rank": 22
+  },
+  {
+   "lterm": "(mod (len xs) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7177213178344458,
+   "cross": 0.20252038427820973,
+   "size": 4,
+   "card": 3,
+   "rank": 54
+  },
+  {
+   "lterm": "(sgn (head (init xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6273065784713592,
+   "cross": 0.37255209164021685,
+   "size": 4,
+   "card": 3,
+   "rank": 101
+  }
+ ],
+ "main|singles<=4+pairs<=7|K=6": [
+  {
+   "lterm": "(len (take_n 5 xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.869356252413329,
+   "cross": 0.6853124153584903,
+   "size": 4,
+   "card": 6,
+   "rank": 1
+  },
+  {
+   "lterm": "(len (odds_idx (drop2 xs)))",
+   "iterm": "(pair (< 3 v) (< v 0))",
+   "score": 0.7911816099053365,
+   "cross": 0.3284825063615311,
+   "size": 4,
+   "card": 8,
+   "rank": 14
+  },
+  {
+   "lterm": "(mod (len xs) 5)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7803023665266884,
+   "cross": 0.32012241803230335,
+   "size": 4,
+   "card": 5,
+   "rank": 16
+  },
+  {
+   "lterm": "(mod (len xs) 4)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7516185475392316,
+   "cross": 0.20727373866862372,
+   "size": 4,
+   "card": 4,
+   "rank": 24
+  },
+  {
+   "lterm": "(pair (len (take2 xs)) (sgn (head xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7271276478557929,
+   "cross": 0.7673447811191523,
+   "size": 7,
+   "card": 7,
+   "rank": 49
+  },
+  {
+   "lterm": "(mod (len xs) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7177213178344458,
+   "cross": 0.20252038427820973,
+   "size": 4,
+   "card": 3,
+   "rank": 60
+  }
+ ],
+ "main|pairs<=7|K=6": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (len (take2 xs)) (sgn (head xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7271276478557929,
+   "cross": 0.7673447811191523,
+   "size": 7,
+   "card": 7,
+   "rank": 324
+  },
+  {
+   "lterm": "(pair (len (take2 xs)) (sgn (sum xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6795214963729439,
+   "cross": 0.7628211039748235,
+   "size": 7,
+   "card": 7,
+   "rank": 830
+  },
+  {
+   "lterm": "(mod (len (map_adj_add xs)) 3)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6784058410547374,
+   "cross": 0.15978664274573404,
+   "size": 5,
+   "card": 3,
+   "rank": 843
+  },
+  {
+   "lterm": "(pair (count_even (take2 xs)) (len (take2 xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6755725798089218,
+   "cross": 0.7134928263372434,
+   "size": 7,
+   "card": 6,
+   "rank": 875
+  },
+  {
+   "lterm": "(len (drop2 (odds_idx (map_adj_add xs))))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6607635470414333,
+   "cross": 0.18823373535228416,
+   "size": 5,
+   "card": 6,
+   "rank": 1016
+  }
+ ],
+ "nolib|pairs|K=6": [
+  {
+   "lterm": "(pair (min 5 (len xs)) (mod (len xs) 3))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8895843995209913,
+   "cross": 0.691950557964017,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (< (head xs) 0) (min 3 (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7695651917534095,
+   "cross": 0.7173129535934016,
+   "size": 9,
+   "card": 7,
+   "rank": 77
+  },
+  {
+   "lterm": "(pair (min 3 (len xs)) (mod (head xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7524370048008411,
+   "cross": 0.7199119240787158,
+   "size": 9,
+   "card": 7,
+   "rank": 95
+  },
+  {
+   "lterm": "(pair (< 5 (len xs)) (= 5 (head xs)))",
+   "iterm": "(pair (< 5 v) (< 1 (neg v)))",
+   "score": 0.7175512458358606,
+   "cross": 0.2644998597666185,
+   "size": 9,
+   "card": 4,
+   "rank": 159
+  },
+  {
+   "lterm": "(pair (< 0 (head xs)) (mod (len xs) 4))",
+   "iterm": "(< 0 v)",
+   "score": 0.7107423039230157,
+   "cross": 0.3913583533258433,
+   "size": 9,
+   "card": 8,
+   "rank": 177
+  },
+  {
+   "lterm": "(pair (< 0 (last xs)) (min 3 (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7094758131458451,
+   "cross": 0.7205927387048977,
+   "size": 9,
+   "card": 7,
+   "rank": 181
+  }
+ ],
+ "nolib|nopairs|K=6": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(< 5 (dec (len xs)))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6627329527278194,
+   "cross": 0.18823373535228416,
+   "size": 5,
+   "card": 2,
+   "rank": 27
+  },
+  {
+   "lterm": "(sgn (head xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6169901006554409,
+   "cross": 0.564502348303479,
+   "size": 3,
+   "card": 3,
+   "rank": 30
+  },
+  {
+   "lterm": "(min 5 (abs (head xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5770721315560305,
+   "cross": 0.5514023230842257,
+   "size": 5,
+   "card": 6,
+   "rank": 34
+  },
+  {
+   "lterm": "(mod (head xs) 4)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5734317518241805,
+   "cross": 0.25689441574791794,
+   "size": 4,
+   "card": 4,
+   "rank": 36
+  },
+  {
+   "lterm": "(mod (head xs) 5)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5734221430307538,
+   "cross": 0.35277721386592714,
+   "size": 4,
+   "card": 5,
+   "rank": 37
+  }
+ ],
+ "nolib_fold|pairs|K=6": [
+  {
+   "lterm": "(pair (min 5 (len xs)) (mod (len xs) 3))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8895843995209913,
+   "cross": 0.691950557964017,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (< (head xs) 0) (min 3 (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7695651917534095,
+   "cross": 0.7173129535934016,
+   "size": 9,
+   "card": 7,
+   "rank": 112
+  },
+  {
+   "lterm": "(pair (min 3 (len xs)) (mod (head xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7524370048008411,
+   "cross": 0.7199119240787158,
+   "size": 9,
+   "card": 7,
+   "rank": 154
+  },
+  {
+   "lterm": "(pair (all x xs) (sgn (sub 5 (len xs))))",
+   "iterm": "(pair (< 4 v) (< v 0))",
+   "score": 0.7449887549865793,
+   "cross": 0.30762789161290977,
+   "size": 9,
+   "card": 6,
+   "rank": 175
+  },
+  {
+   "lterm": "(pair (all x xs) (sgn (dec (len xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.733767315529408,
+   "cross": 0.7422439086134046,
+   "size": 8,
+   "card": 5,
+   "rank": 204
+  },
+  {
+   "lterm": "(pair (all (inc x) xs) (sgn (dec (len xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7288667677230916,
+   "cross": 0.6663943712410393,
+   "size": 9,
+   "card": 5,
+   "rank": 219
+  }
+ ],
+ "nolib_fold|nopairs|K=6": [
+  {
+   "lterm": "(min 5 (dec (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8846618305212791,
+   "cross": 0.6878508744499794,
+   "size": 5,
+   "card": 7,
+   "rank": 1
+  },
+  {
+   "lterm": "(< 5 (dec (len xs)))",
+   "iterm": "(pair (< 1 (neg v)) (< 5 (dec v)))",
+   "score": 0.6627329527278194,
+   "cross": 0.18823373535228416,
+   "size": 5,
+   "card": 2,
+   "rank": 44
+  },
+  {
+   "lterm": "(sgn (head xs))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6169901006554409,
+   "cross": 0.564502348303479,
+   "size": 3,
+   "card": 3,
+   "rank": 52
+  },
+  {
+   "lterm": "(mod (count x xs) 5)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.6081936232019025,
+   "cross": 0.3133103824677644,
+   "size": 5,
+   "card": 5,
+   "rank": 56
+  },
+  {
+   "lterm": "(min 5 (abs (head xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5770721315560305,
+   "cross": 0.5514023230842257,
+   "size": 5,
+   "card": 6,
+   "rank": 66
+  },
+  {
+   "lterm": "(mod (head xs) 4)",
+   "iterm": "(sgn (abs v))",
+   "score": 0.5734317518241805,
+   "cross": 0.25689441574791794,
+   "size": 4,
+   "card": 4,
+   "rank": 68
+  }
+ ],
+ "nolib_fold|pairs|K=10": [
+  {
+   "lterm": "(pair (min 5 (len xs)) (mod (len xs) 3))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.8895843995209913,
+   "cross": 0.691950557964017,
+   "size": 9,
+   "card": 8,
+   "rank": 1
+  },
+  {
+   "lterm": "(pair (< (head xs) 0) (min 3 (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7695651917534095,
+   "cross": 0.7173129535934016,
+   "size": 9,
+   "card": 7,
+   "rank": 112
+  },
+  {
+   "lterm": "(pair (min 3 (len xs)) (mod (head xs) 2))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7524370048008411,
+   "cross": 0.7199119240787158,
+   "size": 9,
+   "card": 7,
+   "rank": 154
+  },
+  {
+   "lterm": "(pair (all x xs) (sgn (sub 5 (len xs))))",
+   "iterm": "(pair (< 4 v) (< v 0))",
+   "score": 0.7449887549865793,
+   "cross": 0.30762789161290977,
+   "size": 9,
+   "card": 6,
+   "rank": 175
+  },
+  {
+   "lterm": "(pair (all x xs) (sgn (dec (len xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.733767315529408,
+   "cross": 0.7422439086134046,
+   "size": 8,
+   "card": 5,
+   "rank": 204
+  },
+  {
+   "lterm": "(pair (all (inc x) xs) (sgn (dec (len xs))))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7288667677230916,
+   "cross": 0.6663943712410393,
+   "size": 9,
+   "card": 5,
+   "rank": 219
+  },
+  {
+   "lterm": "(pair (< 4 (len xs)) (all (inc x) xs))",
+   "iterm": "(pair (< 4 v) (sgn (abs (inc v))))",
+   "score": 0.7107656033531523,
+   "cross": 0.3343506213064271,
+   "size": 9,
+   "card": 4,
+   "rank": 277
+  },
+  {
+   "lterm": "(pair (< 0 (head xs)) (mod (len xs) 4))",
+   "iterm": "(< 0 v)",
+   "score": 0.7107423039230157,
+   "cross": 0.3913583533258433,
+   "size": 9,
+   "card": 8,
+   "rank": 278
+  },
+  {
+   "lterm": "(pair (< 0 (last xs)) (min 3 (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7094758131458451,
+   "cross": 0.7205927387048977,
+   "size": 9,
+   "card": 7,
+   "rank": 284
+  },
+  {
+   "lterm": "(pair (sgn (head xs)) (< 5 (len xs)))",
+   "iterm": "(sgn (abs v))",
+   "score": 0.7041032446215933,
+   "cross": 0.649282803161921,
+   "size": 8,
+   "card": 6,
+   "rank": 307
+  }
+ ]
+}

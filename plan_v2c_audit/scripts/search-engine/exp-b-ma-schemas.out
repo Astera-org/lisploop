@@ -1,0 +1,26 @@
+SPEC map-adjacent bound=130 max-depth=2 heuristic-budget=15000 condense-budget=20000 max-work=350000 wall=60 schemas=T
+RESULT status=:SOLVED work=109012 wall_s=0.05 work/s=2271131.
+  quantum=32 heap_MiB=160.5 best-bits=260 best-run-work=2210
+  best=(:APP (:OP :IF (:SEQ :INT)) (:APP (:OP := (:SEQ :INT)) (:VAR 0 (:SEQ :INT)) (:LIT (:SEQ :INT) NIL)) (:LIT (:SEQ :INT) NIL) (:APP (:OP :IF (:SEQ :INT)) (:APP (:OP := (:SEQ :INT)) (:APP (:OP :TAIL :INT) (:VAR 0 (:SEQ :INT))) (:LIT (:SEQ :INT) NIL)) (:LIT (:SEQ :INT) NIL) (:APP (:OP :CONS :INT) (:APP (...
+  ledger=((:PREPARATION . 70888) (:CHILD-SEARCH . 22584) (:EXPANSION . 9353)
+          (:SCHEDULING . 3305) (:PARENT-VERIFICATION . 2773)
+          (:COMPOSITION . 109))
+  nodes=3 by-phase=((:PREPARE . 0) (:PREPARATION . 0) (:SEARCH . 3) (:DONE . 0)) expansions=((NIL
+                                                                                              . 1)
+                                                                                             (:PAYING
+                                                                                              . 0)
+                                                                                             (:DONE
+                                                                                              . 2)) deferred-total=0 pending=0
+  nogoods=0 reused-subproblems=0 messages=10 trace-entries=3305
+  claims=((:EXPANDED . 1) (:PREPARED . 3) (:STAGE-A . 3) (:CHILD-CANDIDATE . 1)
+          (:CANDIDATE . 2))
+  node   0 parent=NIL depth=0 phase=SEARCH   exp=DONE   bound=130  prio=136 rows=8 inputs=2
+      proposal=NIL
+      search: work=22539 completed-bound=76 header=48 rejected=90 results=0 enum-size=29 syntax=98
+  node   1 parent=0   depth=1 phase=SEARCH   exp=NIL    bound=130  prio=194 rows=8 inputs=4
+      proposal=(:HEURISTIC-CONDITIONAL (#:= #:X0 (#:QUOTE NIL)) (#:QUOTE NIL))
+      search: work=27 completed-bound=69 header=67 rejected=0 results=0 enum-size=3 syntax=0
+  node   2 parent=0   depth=1 phase=SEARCH   exp=DONE   bound=130  prio=260 rows=8 inputs=4
+      proposal=(:LOOKAHEAD-INDUCTIVE 0 (#:QUOTE NIL) (#:QUOTE NIL))
+      search: work=18 completed-bound=65 header=64 rejected=0 results=0 enum-size=2 syntax=0
+exit=0

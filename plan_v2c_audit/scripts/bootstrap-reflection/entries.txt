@@ -1,0 +1,129 @@
+
+## algebra  version=24 meta=(:BATTERY :ALGEBRA :PARAMETERS ((LISPLOOP::?N :INT))) fn-names=NIL n=12
+algebra | :INT/CANCEL-+-0 | :LAW | bits=36 gain=0 work=25 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=:INTEGER-RING-AXIOM | nodes=24 | ops=("+" "-" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/CANCEL-+-1 | :LAW | bits=36 gain=0 work=25 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=:INTEGER-RING-AXIOM | nodes=24 | ops=("+" "-" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/CANCEL---0 | :LAW | bits=36 gain=0 work=25 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=:INTEGER-RING-AXIOM | nodes=24 | ops=("+" "-" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/CANCEL---1 | :LAW | bits=36 gain=0 work=25 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=:INTEGER-RING-AXIOM | nodes=24 | ops=("-" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/ID-+-RIGHT | :LAW | bits=25 gain=0 work=370 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-0) | nodes=17 | ops=("+" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/ID-+-LEFT | :LAW | bits=25 gain=0 work=370 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-1) | nodes=17 | ops=("+" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/ID-*-RIGHT | :LAW | bits=28 gain=0 work=370 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-2) | nodes=17 | ops=("*" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/ID-*-LEFT | :LAW | bits=28 gain=0 work=370 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-3) | nodes=17 | ops=("*" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/COMM-+ | :LAW | bits=36 gain=0 work=2880 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-4) | nodes=24 | ops=("+" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/COMM-* | :LAW | bits=36 gain=0 work=2936 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-5) | nodes=24 | ops=("*" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/ASSOC-+ | :LAW | bits=60 gain=0 work=25834 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-9) | nodes=38 | ops=("+" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+algebra | :INT/ASSOC-* | :LAW | bits=60 gain=0 work=26740 | status=:CONJECTURE | cert=:SAMPLED | origin=(:INSTANTIATED-FROM :LAW-13) | nodes=38 | ops=("*" "=") | edges=((:FROM-BATTERY :ALGEBRA))
+
+## arithmetic  version=24 meta=(:BATTERY :ARITHMETIC :PARAMETERS ((LISPLOOP::?N :INT))) fn-names=NIL n=16
+arithmetic | :SOLVE-+-0 | :SOLVER | bits=15 gain=0 work=13 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=NIL | nodes=10 | ops=("-") | edges=((:INVERTS :+ 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-+-0) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SOLVE-+-1 | :SOLVER | bits=15 gain=0 work=13 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=NIL | nodes=10 | ops=("-") | edges=((:INVERTS :+ 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-+-1) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SOLVE---0 | :SOLVER | bits=15 gain=0 work=13 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=NIL | nodes=10 | ops=("+") | edges=((:INVERTS :- 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE---0) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SOLVE---1 | :SOLVER | bits=15 gain=0 work=13 | status=:CONJECTURE | cert=:TRUSTED-AXIOM | origin=NIL | nodes=10 | ops=("-") | edges=((:INVERTS :- 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE---1) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SOLVE-*-0 | :SOLVER | bits=39 gain=0 work=31 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=10 | ops=("/") | edges=((:INVERTS :* 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-*-0) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SOLVE-*-1 | :SOLVER | bits=39 gain=0 work=31 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=10 | ops=("/") | edges=((:INVERTS :* 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-*-1) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SOLVE-/-0 | :SOLVER | bits=39 gain=0 work=31 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=10 | ops=("*") | edges=((:INVERTS :/ 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-/-0) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SOLVE-/-1 | :SOLVER | bits=48 gain=0 work=37 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=10 | ops=("/") | edges=((:INVERTS :/ 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-/-1) (:FROM-BATTERY :ARITHMETIC))
+arithmetic | :SPEC/SOLVE-+-0 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-+-0))
+arithmetic | :SPEC/SOLVE-+-1 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-+-1))
+arithmetic | :SPEC/SOLVE---0 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE---0))
+arithmetic | :SPEC/SOLVE---1 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE---1))
+arithmetic | :SPEC/SOLVE-*-0 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-*-0))
+arithmetic | :SPEC/SOLVE-*-1 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-*-1))
+arithmetic | :SPEC/SOLVE-/-0 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-/-0))
+arithmetic | :SPEC/SOLVE-/-1 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-/-1))
+
+## constructors  version=15 meta=(:BATTERY :CONSTRUCTORS :PARAMETERS ((LISPLOOP::?A :INT))) fn-names=NIL n=9
+constructors | :SOLVE-CONS-0 | :SOLVER | bits=82 gain=0 work=47 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=12 | ops=("AT") | edges=((:INVERTS :CONS 0) (:INDUCED-FROM-SPEC :SPEC/SOLVE-CONS-0) (:FROM-BATTERY :CONSTRUCTORS))
+constructors | :SOLVE-CONS-1 | :SOLVER | bits=79 gain=0 work=45 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=8 | ops=("TAIL") | edges=((:INVERTS :CONS 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-CONS-1) (:FROM-BATTERY :CONSTRUCTORS))
+constructors | :SOLVE-CONS-01 | :SOLVER | bits=73 gain=0 work=49 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=27 | ops=("AT" "TAIL" "TUPLE") | edges=((:INVERTS :CONS (0 1)) (:INDUCED-FROM-SPEC :SPEC/SOLVE-CONS-01) (:FROM-BATTERY :CONSTRUCTORS))
+constructors | :CONS/HEAD | :LAW | bits=52 gain=0 work=526 | status=:CONJECTURE | cert=:SAMPLED | origin=:CONSTRUCTOR-DESTRUCTOR | nodes=26 | ops=("=" "AT" "CONS") | edges=((:FROM-BATTERY :CONSTRUCTORS))
+constructors | :CONS/TAIL | :LAW | bits=49 gain=0 work=498 | status=:CONJECTURE | cert=:SAMPLED | origin=:CONSTRUCTOR-DESTRUCTOR | nodes=24 | ops=("=" "CONS" "TAIL") | edges=((:FROM-BATTERY :CONSTRUCTORS))
+constructors | :CONS/NON-EMPTY | :LAW | bits=47 gain=0 work=494 | status=:CONJECTURE | cert=:SAMPLED | origin=:CONSTRUCTOR-DESTRUCTOR | nodes=25 | ops=("=" "CONS") | edges=((:FROM-BATTERY :CONSTRUCTORS))
+constructors | :SPEC/SOLVE-CONS-0 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-CONS-0))
+constructors | :SPEC/SOLVE-CONS-1 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-CONS-1))
+constructors | :SPEC/SOLVE-CONS-01 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-CONS-01))
+
+## functors  version=26 meta=(:BATTERY :FUNCTORS :PARAMETERS ((LISPLOOP::?A :INT))) fn-names=NIL n=16
+functors | :FUNCTOR/MAP-INVERSE-0 | :TRANSFORMER | bits=448 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=231 | ops=("CODE-BIND" "CODE-SUBST" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/MAP-INVERSE-1 | :TRANSFORMER | bits=445 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=231 | ops=("CODE-BIND" "CODE-SUBST" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/MAP-GUARD-0 | :TRANSFORMER | bits=783 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=386 | ops=("=" "CODE-BIND" "CODE-KIND" "CODE-MATCH" "CODE-SUBST" "CODE-TOTAL" "IF" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/MAP-GUARD-1 | :TRANSFORMER | bits=780 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=386 | ops=("=" "CODE-BIND" "CODE-KIND" "CODE-MATCH" "CODE-SUBST" "CODE-TOTAL" "IF" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/MAP-WITNESS-0 | :TRANSFORMER | bits=557 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=328 | ops=("CODE-APPLY" "CODE-BIND" "CODE-SUBST" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/MAP-WITNESS-1 | :TRANSFORMER | bits=554 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=328 | ops=("CODE-APPLY" "CODE-BIND" "CODE-SUBST" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/UNARY-MAP-WITNESS | :TRANSFORMER | bits=187 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=118 | ops=("CODE-APPLY" "CODE-SUBST" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/POINTWISE-SEQ-WITNESS | :TRANSFORMER | bits=476 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=276 | ops=("CODE-APPLY" "CODE-SUBST" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/POINTWISE-PARAM-WITNESS | :TRANSFORMER | bits=189 gain=0 work=50000 | status=:EMPIRICAL | cert=NIL | origin=:SYNTHESIZED | nodes=105 | ops=("AT" "CODE-SUBST" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :FUNCTOR/POINTWISE-PARAM-GUARD | :TRANSFORMER | bits=498 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=:BOOTSTRAP-FUNCTOR-TRANSFORMER | nodes=273 | ops=("<" "=" "AT" "CODE-SUBST" "IF" "LENGTH" "TUPLE") | edges=((:FROM-BATTERY :FUNCTORS))
+functors | :SPEC/FUNCTOR/MAP-INVERSE-0 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FUNCTOR/MAP-INVERSE-0))
+functors | :SPEC/FUNCTOR/MAP-GUARD-0 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FUNCTOR/MAP-GUARD-0))
+functors | :SPEC/FUNCTOR/MAP-INVERSE-1 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FUNCTOR/MAP-INVERSE-1))
+functors | :SPEC/FUNCTOR/MAP-GUARD-1 | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FUNCTOR/MAP-GUARD-1))
+functors | :SPEC/FUNCTOR/POINTWISE-PARAM-WITNESS | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FUNCTOR/POINTWISE-PARAM-WITNESS))
+functors | :SPEC/FUNCTOR/POINTWISE-PARAM-GUARD | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FUNCTOR/POINTWISE-PARAM-GUARD))
+
+## sequences  version=55 meta=(:BATTERY :SEQUENCES :PARAMETERS ((LISPLOOP::?A :INT))) fn-names=(:MAP :FOLDR :FOLDL :FILTER :MAP-ADJACENT :POSITIONS) n=15
+sequences | :MAP | :FUNCTION | bits=127 gain=0 work=64 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=77 | ops=("=" "AT" "CODE-EVAL" "CONS" "IF" "MAP" "TAIL") | edges=((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SEQUENCES))
+sequences | :FOLDR | :FUNCTION | bits=133 gain=0 work=70 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=84 | ops=("=" "AT" "CODE-EVAL" "FOLDR" "IF" "TAIL") | edges=((:DESCRIBED-BY :DESC/SCALAR-REDUCTION) (:FROM-BATTERY :SEQUENCES))
+sequences | :FOLDL | :FUNCTION | bits=133 gain=0 work=81333 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=84 | ops=("=" "AT" "CODE-EVAL" "FOLDL" "IF" "TAIL") | edges=((:DESCRIBED-BY :DESC/SCALAR-REDUCTION) (:FROM-BATTERY :SEQUENCES))
+sequences | :FILTER | :FUNCTION | bits=192 gain=0 work=75546 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=123 | ops=("=" "AT" "CODE-EVAL" "CONS" "FILTER" "IF" "TAIL") | edges=((:DESCRIBED-BY :DESC/LEN-LE) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/SUBSET-ELEMENTS) (:FROM-BATTERY :SEQUENCES))
+sequences | :MAP-ADJACENT | :FUNCTION | bits=213 gain=0 work=109012 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=125 | ops=("=" "AT" "CODE-EVAL" "CONS" "IF" "MAP-ADJACENT" "TAIL") | edges=((:DESCRIBED-BY :DESC/LEN-DEC-1) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:FROM-BATTERY :SEQUENCES))
+sequences | :POSITIONS | :FUNCTION | bits=88 gain=0 work=46196 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=57 | ops=("+" "=" "CONS" "IF" "POSITIONS" "TAIL") | edges=((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:FROM-BATTERY :SEQUENCES))
+sequences | :SOLVE-AT-1 | :SOLVER | bits=193 gain=0 work=100 | status=:CONJECTURE | cert=:SAMPLED | origin=NIL | nodes=112 | ops=("=" "AT" "CODE-SUBST" "FILTER" "POSITIONS" "TUPLE") | edges=((:INVERTS :AT 1) (:FROM-BATTERY :SEQUENCES))
+sequences | :COMPREHENSION/FILTER-MAP | :DECODER-TEMPLATE | bits=41 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=44 | ops=("FILTER" "MAP") | edges=((:FROM-BATTERY :SEQUENCES))
+sequences | :FOLDR=FOLDL/MONOID | :MOTIF | bits=61 gain=0 work=0 | status=:CONJECTURE | cert=NIL | origin=:THEORY-MOTIF | nodes=68 | ops=("=" "FOLDL" "FOLDR") | edges=((:RELATES :FOLDR :FOLDL) (:REQUIRES :ASSOCIATIVE :IDENTITY) (:FROM-BATTERY :SEQUENCES))
+sequences | :SPEC/MAP | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :MAP))
+sequences | :SPEC/FOLDR | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FOLDR))
+sequences | :SPEC/FOLDL | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FOLDL))
+sequences | :SPEC/FILTER | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :FILTER))
+sequences | :SPEC/MAP-ADJACENT | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :MAP-ADJACENT))
+sequences | :SPEC/POSITIONS | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :POSITIONS))
+
+## descriptors  version=16 meta=(:BATTERY :DESCRIPTORS :PARAMETERS ((LISPLOOP::?A :INT))) fn-names=NIL n=8
+descriptors | :DESC/SCALAR-REDUCTION | :DESCRIPTOR | bits=3 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=3 | ops=NIL | edges=((:FROM-BATTERY :DESCRIPTORS))
+descriptors | :DESC/SUBSET-ELEMENTS | :DESCRIPTOR | bits=231 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=125 | ops=("-" "<" "=" "AT" "IF" "LENGTH" "MEMBER") | edges=((:FROM-BATTERY :DESCRIPTORS))
+descriptors | :DESC/LEN-LE | :DESCRIPTOR | bits=66 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=29 | ops=("<" "IF" "LENGTH") | edges=((:FROM-BATTERY :DESCRIPTORS))
+descriptors | :DESC/LEN-DEC-1 | :DESCRIPTOR | bits=61 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=27 | ops=("-" "=" "LENGTH") | edges=((:FROM-BATTERY :DESCRIPTORS))
+descriptors | :DESC/LEN-EQ | :DESCRIPTOR | bits=49 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=20 | ops=("=" "LENGTH") | edges=((:FROM-BATTERY :DESCRIPTORS))
+descriptors | :DESC/OUTER-SHAPE-2D | :DESCRIPTOR | bits=3 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=3 | ops=NIL | edges=((:FROM-BATTERY :DESCRIPTORS))
+descriptors | :DESC/EMPTY->EMPTY | :DESCRIPTOR | bits=18 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=12 | ops=("=") | edges=((:FROM-BATTERY :DESCRIPTORS))
+descriptors | :DESC/POINTWISE-MAP | :DESCRIPTOR | bits=49 gain=0 work=0 | status=:EMPIRICAL | cert=NIL | origin=NIL | nodes=20 | ops=("=" "LENGTH") | edges=((:FROM-BATTERY :DESCRIPTORS))
+
+## scans  version=21 meta=(:BATTERY :SCANS) fn-names=(:SCAN :SCAN-PAIR) n=4
+scans | :SCAN | :FUNCTION | bits=211 gain=0 work=263277 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=122 | ops=("=" "AT" "CODE-EVAL" "CONS" "IF" "SCAN" "TAIL") | edges=((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SCANS))
+scans | :SCAN-PAIR | :FUNCTION | bits=251 gain=0 work=138 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=160 | ops=("=" "AT" "CODE-EVAL" "CONS" "IF" "SCAN-PAIR" "TAIL") | edges=((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:DESCRIBED-BY :DESC/POINTWISE-MAP) (:FROM-BATTERY :SCANS))
+scans | :SPEC/SCAN | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SCAN))
+scans | :SPEC/SCAN-PAIR | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SCAN-PAIR))
+
+## sequence-shift  version=27 meta=(:BATTERY :SEQUENCE-SHIFT) fn-names=(:SHIFT-SEQ :SEQ-CORR :BEST-SHIFT :ARGMAX-CORR :LAST-OR) n=12
+sequence-shift | :SHIFT-SEQ | :FUNCTION | bits=130 gain=0 work=99009 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=82 | ops=("-" "<" "=" "CONCAT" "CONS" "IF" "SHIFT-SEQ" "TAIL") | edges=((:DESCRIBED-BY :DESC/LEN-EQ) (:DESCRIBED-BY :DESC/EMPTY->EMPTY) (:FROM-BATTERY :SEQUENCE-SHIFT))
+sequence-shift | :SEQ-CORR | :FUNCTION | bits=160 gain=0 work=87499 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=97 | ops=("*" "+" "=" "AT" "IF" "SEQ-CORR" "TAIL") | edges=((:DESCRIBED-BY :DESC/EMPTY->ZERO) (:FROM-BATTERY :SEQUENCE-SHIFT))
+sequence-shift | :BEST-SHIFT | :FUNCTION | bits=255 gain=0 work=196019 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=163 | ops=("+" "<" "=" "AT" "BEST-SHIFT" "CODE-EVAL" "IF" "SEQ-CORR" "TAIL" "TUPLE") | edges=((:FROM-BATTERY :SEQUENCE-SHIFT))
+sequence-shift | :ARGMAX-CORR | :FUNCTION | bits=53 gain=0 work=36063 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=37 | ops=("AT" "BEST-SHIFT") | edges=((:FROM-BATTERY :SEQUENCE-SHIFT))
+sequence-shift | :LAST-OR | :FUNCTION | bits=123 gain=0 work=32013 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=72 | ops=("=" "AT" "IF" "LAST-OR" "TAIL") | edges=((:FROM-BATTERY :SEQUENCE-SHIFT))
+sequence-shift | :SOLVE-SHIFT-SEQ-BY-CORRELATION | :SOLVER | bits=74 gain=0 work=37 | status=:CONJECTURE | cert=NIL | origin=NIL | nodes=19 | ops=("ARGMAX-CORR") | edges=((:INVERTS :SHIFT-SEQ 1) (:INDUCED-FROM-SPEC :SPEC/SOLVE-SHIFT-SEQ-BY-CORRELATION) (:METRIC-DECODER :SHIFT-SEQ :SOLVE-SHIFT-SEQ-BY-CORRELATION 14) (:FROM-BATTERY :SEQUENCE-SHIFT))
+sequence-shift | :SPEC/SHIFT-SEQ | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SHIFT-SEQ))
+sequence-shift | :SPEC/SEQ-CORR | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SEQ-CORR))
+sequence-shift | :SPEC/BEST-SHIFT | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :BEST-SHIFT))
+sequence-shift | :SPEC/ARGMAX-CORR | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :ARGMAX-CORR))
+sequence-shift | :SPEC/LAST-OR | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :LAST-OR))
+sequence-shift | :SPEC/SOLVE-SHIFT-SEQ-BY-CORRELATION | :SPEC | bits=0 gain=0 work=0 | status=:VALIDATED | cert=NIL | origin=NIL | nodes=0 | ops=NIL | edges=((:SPECIFIES :SOLVE-SHIFT-SEQ-BY-CORRELATION))
+
+TOTAL 92
+("algebra" :LAW) 12
+("arithmetic" :SOLVER) 8
+("arithmetic" :SPEC) 8
+("constructors" :SOLVER) 3
+("constructors" :LAW) 3
+("constructors" :SPEC) 3
+("functors" :TRANSFORMER) 10
+("functors" :SPEC) 6
+("sequences" :FUNCTION) 6
+("sequences" :SOLVER) 1
+("sequences" :DECODER-TEMPLATE) 1
+("sequences" :MOTIF) 1
+("sequences" :SPEC) 6
+("descriptors" :DESCRIPTOR) 8
+("scans" :FUNCTION) 2
+("scans" :SPEC) 2
+("sequence-shift" :FUNCTION) 5
+("sequence-shift" :SOLVER) 1
+("sequence-shift" :SPEC) 6

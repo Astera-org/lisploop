@@ -1,0 +1,129 @@
+===== C. Milestone path: observe-arithmetic-relation + discover-arithmetic-solver =====
+(:GF 5) :+ pos=0: forward-guard=T
+   witness=(- x1 x0)
+   guard=T
+   candidates-enumerated=203 rows=50 discovery-ledger=99860 obs-ledger=603898 wall: relation=0.004s discover=0.056s validate=0.000s
+   witness-law=:VALIDATED (assignments 25 active 25) uniqueness-law=:VALIDATED certified=T
+(:GF 5) :+ pos=1: forward-guard=T
+   witness=(- x1 x0)
+   guard=T
+   candidates-enumerated=203 rows=50 discovery-ledger=99860 obs-ledger=603898 wall: relation=0.004s discover=0.052s validate=0.000s
+   witness-law=:VALIDATED (assignments 25 active 25) uniqueness-law=:VALIDATED certified=T
+(:GF 5) :* pos=0: forward-guard=T
+   witness=(/ x1 x0)
+   guard=(if (if (= x0 0) NIL T) T NIL)
+   candidates-enumerated=203 rows=50 discovery-ledger=99842 obs-ledger=603674 wall: relation=0.008s discover=0.044s validate=0.000s
+   witness-law=:VALIDATED (assignments 25 active 20) uniqueness-law=:VALIDATED certified=T
+(:GF 5) :* pos=1: forward-guard=T
+   witness=(/ x1 x0)
+   guard=(if (if (= x0 0) NIL T) T NIL)
+   candidates-enumerated=203 rows=50 discovery-ledger=99842 obs-ledger=603674 wall: relation=0.008s discover=0.052s validate=0.000s
+   witness-law=:VALIDATED (assignments 25 active 20) uniqueness-law=:VALIDATED certified=T
+(:GF 5) :/ pos=0: forward-guard=(if (= x1 0) NIL T)
+   witness=(* x0 x1)
+   guard=(if (if (= x0 0) NIL T) T NIL)
+   candidates-enumerated=203 rows=45 discovery-ledger=101252 obs-ledger=544269 wall: relation=0.004s discover=0.056s validate=0.000s
+   witness-law=:VALIDATED (assignments 25 active 20) uniqueness-law=:VALIDATED certified=T
+(:GF 5) :/ pos=1: forward-guard=(if (= x1 0) NIL T)
+   witness=(/ x0 x1)
+   guard=(if (if (= x1 0) NIL T) (if (if (= (/ x0 x1) 0) NIL T) T NIL) NIL)
+   candidates-enumerated=203 rows=45 discovery-ledger=104280 obs-ledger=544045 wall: relation=0.004s discover=0.048s validate=0.000s
+   witness-law=:VALIDATED (assignments 25 active 16) uniqueness-law=:VALIDATED certified=T
+(:GF 7) :+ pos=0: forward-guard=T
+   witness=(- x1 x0)
+   guard=T
+   candidates-enumerated=333 rows=98 discovery-ledger=292849 obs-ledger=1969578 wall: relation=0.008s discover=0.128s validate=0.004s
+   witness-law=:VALIDATED (assignments 49 active 49) uniqueness-law=:VALIDATED certified=T
+(:GF 7) :+ pos=1: forward-guard=T
+   witness=(- x1 x0)
+   guard=T
+   candidates-enumerated=333 rows=98 discovery-ledger=292849 obs-ledger=1969578 wall: relation=0.008s discover=0.124s validate=0.004s
+   witness-law=:VALIDATED (assignments 49 active 49) uniqueness-law=:VALIDATED certified=T
+(:GF 7) :* pos=0: forward-guard=T
+   witness=(/ x1 x0)
+   guard=(if (if (= x0 0) NIL T) T NIL)
+   candidates-enumerated=333 rows=98 discovery-ledger=292759 obs-ledger=1969146 wall: relation=0.008s discover=0.108s validate=0.004s
+   witness-law=:VALIDATED (assignments 49 active 42) uniqueness-law=:VALIDATED certified=T
+(:GF 7) :* pos=1: forward-guard=T
+   witness=(/ x1 x0)
+   guard=(if (if (= x0 0) NIL T) T NIL)
+   candidates-enumerated=333 rows=98 discovery-ledger=292759 obs-ledger=1969146 wall: relation=0.008s discover=0.108s validate=0.004s
+   witness-law=:VALIDATED (assignments 49 active 42) uniqueness-law=:VALIDATED certified=T
+(:GF 7) :/ pos=0: forward-guard=(if (= x1 0) NIL T)
+   witness=(* x0 x1)
+   guard=(if (if (= x0 0) NIL T) T NIL)
+   candidates-enumerated=333 rows=91 discovery-ledger=290914 obs-ledger=1829951 wall: relation=0.000s discover=0.140s validate=0.000s
+   witness-law=:VALIDATED (assignments 49 active 42) uniqueness-law=:VALIDATED certified=T
+(:GF 7) :/ pos=1: forward-guard=(if (= x1 0) NIL T)
+   witness=(/ x0 x1)
+   guard=(if (if (= x1 0) NIL T) (if (if (= (/ x0 x1) 0) NIL T) T NIL) NIL)
+   candidates-enumerated=333 rows=91 discovery-ledger=296034 obs-ledger=1829519 wall: relation=0.000s discover=0.144s validate=0.004s
+   witness-law=:VALIDATED (assignments 49 active 36) uniqueness-law=:VALIDATED certified=T
+:INT :+ pos=0: forward-guard=T
+   witness=(- x1 x0)
+   guard=T
+   candidates-enumerated=89 rows=162 discovery-ledger=130418 obs-ledger=567259 wall: relation=0.016s discover=0.116s validate=0.000s
+   witness-law=:CONJECTURE (assignments 101 active 101) uniqueness-law=:CONJECTURE certified=NIL
+:INT :+ pos=1: forward-guard=T
+   witness=(- x1 x0)
+   guard=T
+   candidates-enumerated=89 rows=162 discovery-ledger=130418 obs-ledger=567259 wall: relation=0.016s discover=0.116s validate=0.000s
+   witness-law=:CONJECTURE (assignments 101 active 101) uniqueness-law=:CONJECTURE certified=NIL
+:INT :* pos=0: forward-guard=T
+   witness=(/ x1 x0)
+   guard=(if (if (= x0 0) NIL T) (= x1 (* (/ x1 x0) x0)) NIL)
+   candidates-enumerated=89 rows=162 discovery-ledger=130354 obs-ledger=575467 wall: relation=0.016s discover=0.064s validate=0.000s
+   witness-law=:CONJECTURE (assignments 113 active 72) uniqueness-law=:CONJECTURE certified=NIL
+:INT :* pos=1: forward-guard=T
+   witness=(/ x1 x0)
+   guard=(if (if (= x0 0) NIL T) (= x1 (* x0 (/ x1 x0))) NIL)
+   candidates-enumerated=89 rows=162 discovery-ledger=130354 obs-ledger=575467 wall: relation=0.016s discover=0.068s validate=0.004s
+   witness-law=:CONJECTURE (assignments 113 active 72) uniqueness-law=:CONJECTURE certified=NIL
+:INT :/ pos=0: forward-guard=(if (= x1 0) NIL T)
+   witness=(* x0 x1)
+   guard=(if (if (= x0 0) NIL T) T NIL)
+   candidates-enumerated=89 rows=153 discovery-ledger=130357 obs-ledger=525829 wall: relation=0.000s discover=0.112s validate=0.000s
+   witness-law=:CONJECTURE (assignments 81 active 72) uniqueness-law=:REFUTED certified=NIL
+:INT :/ pos=1: forward-guard=(if (= x1 0) NIL T)
+   witness=(/ x0 x1)
+   guard=(if (if (= x1 0) NIL T) (if (if (= (/ x0 x1) 0) NIL T) (= x1 (/ x0 (/ x0 x1))) NIL) NIL)
+   candidates-enumerated=89 rows=153 discovery-ledger=129415 obs-ledger=524105 wall: relation=0.000s discover=0.064s validate=0.000s
+   witness-law=:CONJECTURE (assignments 81 active 32) uniqueness-law=:REFUTED certified=NIL
+===== D. Battery path: induce-conditional-solver from :spec rows (build-batteries.lisp:181-248) =====
+algebra battery loaded: 12 laws; rewrite library for :int = ("(- (+ x1 x0) x0) -> x1"
+                                                             "(- (+ x0 x1) x0) -> x1"
+                                                             "(+ x0 (- x1 x0)) -> x1"
+                                                             "(- x0 (- x0 x1)) -> x1")
+spec :+ pos 1 rows=3 -> witness=(- x1 x0) guard=T aux=NIL ledger=60132 wall=0.004s
+   cert-method=NIL obligations=NIL status=:CONJECTURE unique-p=NIL
+spec :* pos 1 rows=5 -> witness=(/ x1 x0) guard=(if (= x0 0) NIL T) aux=NIL ledger=93055 wall=0.008s
+   cert-method=NIL obligations=NIL status=:CONJECTURE unique-p=NIL
+spec :/ pos 1 rows=6 -> witness=(/ x0 x1) guard=(if (= (* x0 x1) 0) NIL T) aux=NIL ledger=93077 wall=0.008s
+   cert-method=NIL obligations=NIL status=:CONJECTURE unique-p=NIL
+induce-law-solvers: added=2 ledger=28333 wall=0.000s
+   :X-SOLVE-+-1: witness=(- x1 x0) cert=:TRUSTED-AXIOM (:UNIQUENESS) current(witness/uniq)=NIL/T
+   :X-SOLVE-*-1: witness=(/ x1 x0) cert=NIL NIL current(witness/uniq)=NIL/NIL
+   :X-SOLVE-/-1: witness=(/ x0 x1) cert=NIL NIL current(witness/uniq)=NIL/NIL
+   :SOLVER-0: witness=(+ x1 x0) cert=:DERIVED (:WITNESS) current(witness/uniq)=T/NIL
+   :SOLVER-1: witness=(- x0 x1) cert=:TRUSTED-AXIOM (:WITNESS :UNIQUENESS) current(witness/uniq)=T/T
+===== E. Scaling of exhaustive observational enumeration with the body bound =====
+(:GF 5) vars=2 ops=(:+ :*) slack=24: claim=:BOUNDED-EXHAUSTION exprs=74 complete=74 error=0 buckets=27 laws(spanning)=47 work=109503 wall=0.00s
+(:GF 5) vars=2 ops=(:+ :*) slack=34: claim=:BOUNDED-EXHAUSTION exprs=714 complete=714 error=0 buckets=95 laws(spanning)=619 work=1338817 wall=0.02s
+(:GF 5) vars=2 ops=(:+ :*) slack=44: claim=:BOUNDED-EXHAUSTION exprs=7882 complete=7882 error=0 buckets=338 laws(spanning)=7544 work=17876105 wall=0.22s
+(:GF 5) vars=2 ops=(:+ :*) slack=54: claim=:BOUNDED-EXHAUSTION exprs=93898 complete=93898 error=0 buckets=1258 laws(spanning)=92640 work=249604119 wall=3.12s
+(:GF 5) vars=3 ops=(:+ :*) slack=24: claim=:BOUNDED-EXHAUSTION exprs=237 complete=237 error=0 buckets=68 laws(spanning)=169 work=2067265 wall=0.03s
+(:GF 5) vars=3 ops=(:+ :*) slack=34: claim=:BOUNDED-EXHAUSTION exprs=3477 complete=3477 error=0 buckets=336 laws(spanning)=3141 work=37182909 wall=0.74s
+(:GF 5) vars=3 ops=(:+ :*) slack=44: claim=:BOUNDED-EXHAUSTION exprs=57909 complete=57909 error=0 buckets=1762 laws(spanning)=56147 work=732116975 wall=10.35s
+(:GF 5) vars=3 ops=(:+ :*) slack=54: claim=:CUTOFF exprs=212282 complete=212282 error=0 buckets=5286 laws(spanning)=206996 work=3000000000 wall=34.87s
+(:GF 5) vars=3 ops=(:+ :* :-) slack=24: claim=:BOUNDED-EXHAUSTION exprs=516 complete=516 error=0 buckets=150 laws(spanning)=366 work=4535672 wall=0.05s
+(:GF 5) vars=3 ops=(:+ :* :-) slack=34: claim=:BOUNDED-EXHAUSTION exprs=11451 complete=11451 error=0 buckets=1078 laws(spanning)=10373 work=123049948 wall=1.44s
+(:GF 5) vars=3 ops=(:+ :* :-) slack=44: claim=:CUTOFF exprs=236794 complete=236794 error=0 buckets=6890 laws(spanning)=229904 work=3000000000 wall=31.82s
+(:GF 5) vars=3 ops=(:+ :* :-) slack=54: claim=:CUTOFF exprs=236794 complete=236794 error=0 buckets=6890 laws(spanning)=229904 work=3000000000 wall=40.69s
+(:GF 7) vars=3 ops=(:+ :* :- :/) slack=24: claim=:BOUNDED-EXHAUSTION exprs=903 complete=516 error=387 buckets=150 laws(spanning)=366 work=12453130 wall=0.18s
+(:GF 7) vars=3 ops=(:+ :* :- :/) slack=34: claim=:BOUNDED-EXHAUSTION exprs=26823 complete=11451 error=15372 buckets=1102 laws(spanning)=10349 work=338655867 wall=5.28s
+(:GF 7) vars=3 ops=(:+ :* :- :/) slack=44: claim=:CUTOFF exprs=195893 complete=87236 error=108657 buckets=3338 laws(spanning)=83898 work=3000000000 wall=42.21s
+(:GF 7) vars=3 ops=(:+ :* :- :/) slack=54: claim=:CUTOFF exprs=195893 complete=87236 error=108657 buckets=3338 laws(spanning)=83898 work=3000000000 wall=37.87s
+
+real	3m33.589s
+user	3m30.601s
+sys	0m2.841s

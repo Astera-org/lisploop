@@ -1,0 +1,10 @@
+--- knowledge.lisp	2026-11-24 19:21:50.003984474 -0800
++++ v2/knowledge.lisp	2026-11-24 19:21:50.055927960 -0800
+@@ -116,6 +116,7 @@
+   (rewrite-libraries (make-hash-table :test #'equal))
+   (propagator-libraries (make-hash-table :test #'equal))
+   (compositional-index (make-hash-table :test #'eq))
++  (op-props (make-hash-table :test #'equal)) ; law-activated (:assoc :comm :id :cancel), empty at t=0
+   priority-predictor
+   (entry-counter 0 :type fixnum))
+ 

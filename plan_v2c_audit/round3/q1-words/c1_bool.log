@@ -1,0 +1,79 @@
+== 1. the review's CHECK 1, recomputed: score (and H(out|in) bits) per operator ==
+
+grid [-12, 12]^2
+  quotient        card | +                -                *                max           
+  x mod 3            3 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.58 (Hc 0.66)
+  x mod 3 == 0       2 | 0.55 (Hc 0.41)   0.55 (Hc 0.41)   1.00 (Hc 0.00)   0.51 (Hc 0.46)
+  x mod 5            5 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.66 (Hc 0.78)
+  x mod 5 == 0       2 | 0.28 (Hc 0.52)   0.28 (Hc 0.52)   1.00 (Hc 0.00)   0.56 (Hc 0.32)
+  sgn x              3 | 0.49 (Hc 0.61)   0.49 (Hc 0.61)   1.00 (Hc 0.00)   1.00 (Hc 0.00)
+  x < 0              2 | 0.50 (Hc 0.50)   0.50 (Hc 0.50)   0.80 (Hc 0.20)   1.00 (Hc 0.00)
+  x == 0             2 | 0.05 (Hc 0.23)   0.05 (Hc 0.23)   1.00 (Hc 0.00)   0.68 (Hc 0.08)
+  x mod 2            2 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.50 (Hc 0.50)
+  x mod 4            4 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.63 (Hc 0.74)
+  x mod 6            6 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.69 (Hc 0.81)
+
+grid [-10, 10]^2
+  quotient        card | +                -                *                max           
+  x mod 3            3 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.58 (Hc 0.66)
+  x mod 3 == 0       2 | 0.52 (Hc 0.44)   0.52 (Hc 0.44)   1.00 (Hc 0.00)   0.52 (Hc 0.44)
+  x mod 5            5 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.66 (Hc 0.78)
+  x mod 5 == 0       2 | 0.35 (Hc 0.47)   0.35 (Hc 0.47)   1.00 (Hc 0.00)   0.54 (Hc 0.36)
+  sgn x              3 | 0.49 (Hc 0.62)   0.49 (Hc 0.62)   1.00 (Hc 0.00)   1.00 (Hc 0.00)
+  x < 0              2 | 0.50 (Hc 0.50)   0.50 (Hc 0.50)   0.78 (Hc 0.22)   1.00 (Hc 0.00)
+  x == 0             2 | 0.06 (Hc 0.26)   0.06 (Hc 0.26)   1.00 (Hc 0.00)   0.67 (Hc 0.09)
+  x mod 2            2 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.50 (Hc 0.50)
+  x mod 4            4 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.63 (Hc 0.74)
+  x mod 6            6 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.68 (Hc 0.81)
+
+grid [-20, 20]^2
+  quotient        card | +                -                *                max           
+  x mod 3            3 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.58 (Hc 0.67)
+  x mod 3 == 0       2 | 0.49 (Hc 0.47)   0.49 (Hc 0.47)   1.00 (Hc 0.00)   0.52 (Hc 0.43)
+  x mod 5            5 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.66 (Hc 0.79)
+  x mod 5 == 0       2 | 0.32 (Hc 0.49)   0.32 (Hc 0.49)   1.00 (Hc 0.00)   0.55 (Hc 0.34)
+  sgn x              3 | 0.48 (Hc 0.59)   0.48 (Hc 0.59)   1.00 (Hc 0.00)   1.00 (Hc 0.00)
+  x < 0              2 | 0.50 (Hc 0.50)   0.50 (Hc 0.50)   0.86 (Hc 0.14)   1.00 (Hc 0.00)
+  x == 0             2 | 0.03 (Hc 0.16)   0.03 (Hc 0.16)   1.00 (Hc 0.00)   0.71 (Hc 0.05)
+  x mod 2            2 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.50 (Hc 0.50)
+  x mod 4            4 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.63 (Hc 0.75)
+  x mod 6            6 | 1.00 (Hc 0.00)   1.00 (Hc 0.00)   1.00 (Hc 0.00)   0.68 (Hc 0.82)
+
+== 2. every 2-block coarsening of each multi-valued quotient (grid [-12, 12]^2) ==
+   best Boolean = the split of the labels into two groups with the highest mean score
+  x mod 3  over {+,-}        full 1.00 | best Boolean {0} vs rest 0.55 | worst {1} 0.13 | 3 splits
+  x mod 3  over {+,-,*}      full 1.00 | best Boolean {0} vs rest 0.70 | worst {2} 0.22 | 3 splits
+  x mod 3  over {+,-,*,max}  full 0.90 | best Boolean {0} vs rest 0.66 | worst {2} 0.30 | 3 splits
+           per operator, best split over {+,-,*,max}: + 1.00->0.55  - 1.00->0.55  * 1.00->1.00  max 0.58->0.51
+  x mod 5  over {+,-}        full 1.00 | best Boolean {0} vs rest 0.28 | worst {1} 0.02 | 15 splits
+  x mod 5  over {+,-,*}      full 1.00 | best Boolean {0} vs rest 0.52 | worst {2} 0.03 | 15 splits
+  x mod 5  over {+,-,*,max}  full 0.92 | best Boolean {0} vs rest 0.53 | worst {3} 0.15 | 15 splits
+           per operator, best split over {+,-,*,max}: + 1.00->0.28  - 1.00->0.28  * 1.00->1.00  max 0.66->0.56
+  sgn x    over {+,-}        full 0.49 | best Boolean {-1} vs rest 0.50 | worst {0} 0.05 | 3 splits
+  sgn x    over {+,-,*}      full 0.66 | best Boolean {1} vs rest 0.61 | worst {0} 0.37 | 3 splits
+  sgn x    over {+,-,*,max}  full 0.75 | best Boolean {1} vs rest 0.71 | worst {0} 0.45 | 3 splits
+           per operator, best split over {+,-,*,max}: + 0.49->0.50  - 0.49->0.50  * 1.00->0.84  max 1.00->1.00
+  x mod 4  over {+,-}        full 1.00 | best Boolean {0,2} vs rest 1.00 | worst {1} 0.05 | 7 splits
+  x mod 4  over {+,-,*}      full 1.00 | best Boolean {0,2} vs rest 1.00 | worst {3} 0.16 | 7 splits
+  x mod 4  over {+,-,*,max}  full 0.91 | best Boolean {0,2} vs rest 0.88 | worst {3} 0.26 | 7 splits
+           per operator, best split over {+,-,*,max}: + 1.00->1.00  - 1.00->1.00  * 1.00->1.00  max 0.63->0.50
+  x mod 6  over {+,-}        full 1.00 | best Boolean {0,2,4} vs rest 1.00 | worst {2,4} 0.01 | 31 splits
+  x mod 6  over {+,-,*}      full 1.00 | best Boolean {0,2,4} vs rest 1.00 | worst {4,5} 0.05 | 31 splits
+  x mod 6  over {+,-,*,max}  full 0.92 | best Boolean {0,2,4} vs rest 0.88 | worst {1,2} 0.17 | 31 splits
+           per operator, best split over {+,-,*,max}: + 1.00->1.00  - 1.00->1.00  * 1.00->1.00  max 0.69->0.50
+
+== 3. which Booleans keep closure exactly (score 1.00) on which operators, grid [-12, 12]^2 ==
+  Boolean        | +       -       *       max  
+  x mod 2 == 0   | 1.00    1.00    1.00    0.50 
+  x mod 3 == 0   | 0.55    0.55    1.00    0.51 
+  x mod 4 == 0   | 0.41    0.41    0.74    0.53 
+  x mod 5 == 0   | 0.28    0.28    1.00    0.56 
+  x < 0          | 0.50    0.50    0.80    1.00 
+  x > 0          | 0.50    0.50    0.84    1.00 
+  x == 0         | 0.05    0.05    1.00    0.68 
+  x <= 0         | 0.50    0.50    0.84    1.00 
+  x == 1         | 0.00    0.00    0.45    0.70 
+
+real	0m0.183s
+user	0m0.179s
+sys	0m0.004s

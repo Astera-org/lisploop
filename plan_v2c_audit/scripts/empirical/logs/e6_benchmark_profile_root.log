@@ -1,0 +1,73 @@
+Encoding 7, tariff 10; SBCL 2.6.4.debian; seed=none; serial baseline, GF(5) +/* with two inputs.
+SEARCH workload=quadratic bound=70 oracle-size=70 status=:COMPLETE dispatch=batch
+  wall_s=0.044000 cpu_s=0.041140 gc_cpu_s=0.000000
+  work=2687984 completed_bound=70 retained_syntax=9889 successes=8 rejections=9881
+  allocated_MiB=19.118 live_heap_increment_MiB=2.820 peak_process_RSS_MiB=162.285
+  best_bits=70 first_solution_work=891811 model=(#:+ #:X0
+                                                 (#:* #:X1
+                                                  (#:+ #:X1 (#:QUOTE 2))))
+  ledger=((:CHECKING . 893800) (:EVALUATION . 1330554) (:SCHEDULING . 35760)
+          (:CONSTRUCTION . 417081) (:ENUMERATION . 10789))
+  caps: wall_s=60 (checked each 1000000 units), heap_MiB=768, work=10000000000
+  Timing excludes loading, fixture construction, and final measurement GC.
+
+Number of samples:   11
+Sample interval:     0.002 seconds
+Total sampling time: 0.022000002 seconds
+Graph cycles:        0
+Sampled threads:
+   #<THREAD tid=134236 "main thread" RUNNING {1200C60003}> (2704/1048576 bytes, 11 hash buckets)
+
+           Self        Total        Cumul
+  Nr  Count     %  Count     %  Count     %    Calls  Function
+------------------------------------------------------------------------
+   1      1   9.1      8  72.7      1   9.1        -  START-EVALUATION
+   2      1   9.1      7  63.6      2  18.2        -  SETTLED-EVALUATION
+   3      1   9.1      3  27.3      3  27.3        -  SYNTAX-WORK
+   4      1   9.1      2  18.2      4  36.4        -  SB-IMPL::GETHASH/WEAK
+   5      1   9.1      2  18.2      5  45.5        -  (LABELS SB-IMPL::EQUAL-NOT-INLINE :IN EQUAL)
+   6      1   9.1      1   9.1      6  54.5        -  SB-IMPL::PUTHASH/WEAK
+   7      1   9.1      1   9.1      7  63.6        -  GENERIC-=
+   8      1   9.1      1   9.1      8  72.7        -  SB-KERNEL:%COERCE-CALLABLE-TO-FUN
+   9      1   9.1      1   9.1      9  81.8        -  FIND-FUNCTION-DEFINITION
+  10      1   9.1      1   9.1     10  90.9        -  SB-THREAD:GRAB-MUTEX
+  11      1   9.1      1   9.1     11 100.0        -  +
+  12      0   0.0     11 100.0     11 100.0        -  RESUME-ROW-JOB
+  13      0   0.0     11 100.0     11 100.0        -  BENCHMARK-SEARCH
+  14      0   0.0     11 100.0     11 100.0        -  (LAMBDA NIL :IN "/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/benchmark.lisp")
+  15      0   0.0     11 100.0     11 100.0        -  EVAL
+  16      0   0.0     11 100.0     11 100.0        -  SB-INT:SIMPLE-EVAL-IN-LEXENV
+  17      0   0.0     11 100.0     11 100.0        -  SB-EXT:EVAL-TLF
+  18      0   0.0     11 100.0     11 100.0        -  (LABELS SB-FASL::EVAL-FORM :IN SB-INT:LOAD-AS-SOURCE)
+  19      0   0.0     11 100.0     11 100.0        -  (LAMBDA (SB-KERNEL:FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT:LOAD-AS-SOURCE)
+  20      0   0.0     11 100.0     11 100.0        -  SB-C::%DO-FORMS-FROM-INFO
+  21      0   0.0     11 100.0     11 100.0        -  SB-INT:LOAD-AS-SOURCE
+  22      0   0.0     11 100.0     11 100.0        -  (LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD)
+  23      0   0.0     11 100.0     11 100.0        -  SB-FASL::CALL-WITH-LOAD-BINDINGS
+  24      0   0.0     11 100.0     11 100.0        -  LOAD
+  25      0   0.0     11 100.0     11 100.0        -  (FLET SB-IMPL::LOAD-SCRIPT :IN SB-IMPL::PROCESS-SCRIPT)
+  26      0   0.0     11 100.0     11 100.0        -  (FLET SB-UNIX::BODY :IN SB-IMPL::PROCESS-SCRIPT)
+  27      0   0.0     11 100.0     11 100.0        -  (FLET "WITHOUT-INTERRUPTS-BODY-" :IN SB-IMPL::PROCESS-SCRIPT)
+  28      0   0.0     11 100.0     11 100.0        -  SB-IMPL::PROCESS-SCRIPT
+  29      0   0.0     11 100.0     11 100.0        -  SB-IMPL::TOPLEVEL-INIT
+  30      0   0.0     11 100.0     11 100.0        -  (FLET SB-UNIX::BODY :IN SB-IMPL::START-LISP)
+  31      0   0.0     11 100.0     11 100.0        -  (FLET "WITHOUT-INTERRUPTS-BODY-3" :IN SB-IMPL::START-LISP)
+  32      0   0.0     11 100.0     11 100.0        -  SB-IMPL::%START-LISP
+  33      0   0.0     11 100.0     11 100.0        -  foreign function call_into_lisp_
+  34      0   0.0      7  63.6     11 100.0        -  ROW-JOB-STEP
+  35      0   0.0      4  36.4     11 100.0        -  SEARCH-STEP
+  36      0   0.0      3  27.3     11 100.0        -  VALIDATION-WORK
+  37      0   0.0      2  18.2     11 100.0        -  APP
+  38      0   0.0      2  18.2     11 100.0        -  ENUMERATION-STEP
+  39      0   0.0      2  18.2     11 100.0        -  REDUCE
+  40      0   0.0      2  18.2     11 100.0        -  PRIMITIVE-COST
+  41      0   0.0      2  18.2     11 100.0        -  (LAMBDA (ARGS) :IN EXPRESSION-CLOSURE)
+  42      0   0.0      2  18.2     11 100.0        -  ENSURE-AST-META
+  43      0   0.0      1   9.1     11 100.0        -  ADVANCE-ACCOUNTED-EVALUATION
+  44      0   0.0      1   9.1     11 100.0        -  (LABELS CLOSURE :IN EXPRESSION-CLOSURE)
+  45      0   0.0      1   9.1     11 100.0        -  OPERATOR-STEP-TOTAL-P
+  46      0   0.0      1   9.1     11 100.0        -  COMPUTE-APP-META
+  47      0   0.0      1   9.1     11 100.0        -  (FLET "WITHOUT-INTERRUPTS-BODY-" :IN SB-THREAD::CALL-WITH-RECURSIVE-SYSTEM-LOCK)
+  48      0   0.0      1   9.1     11 100.0        -  SB-THREAD::CALL-WITH-RECURSIVE-SYSTEM-LOCK
+------------------------------------------------------------------------
+          0   0.0                                     elsewhere

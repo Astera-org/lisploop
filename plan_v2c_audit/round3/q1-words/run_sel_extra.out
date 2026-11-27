@@ -1,0 +1,208 @@
+== a remedy not in the review: the NMI cap also applied to the two components of a pair ==
+  main K=3 nmi<0.65 card<=8 vac=0.05 component-cap: 95732 eligible candidates, walked 3635; rank 2.4 s, greedy 0.7 s, pairing 6.5 s
+     1. 0.893  rank 1      card 8  (pair (len (take3 (odds_idx xs))) (mod (len xs) 2))            | int: (sgn (abs v))            (cross 0.69)
+     2. 0.713  rank 2723   card 5  (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))            (cross 0.74)
+     3. 0.697  rank 3635   card 8  (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) | int: (sgn (abs v))            (cross 0.74)
+  main K=6 nmi<0.65 card<=8 vac=0.05 component-cap: 95732 eligible candidates, walked 7740; rank 0.0 s, greedy 1.4 s, pairing 3.6 s
+     1. 0.893  rank 1      card 8  (pair (len (take3 (odds_idx xs))) (mod (len xs) 2))            | int: (sgn (abs v))            (cross 0.69)
+     2. 0.713  rank 2723   card 5  (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))            (cross 0.74)
+     3. 0.697  rank 3635   card 8  (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) | int: (sgn (abs v))            (cross 0.74)
+     4. 0.694  rank 3866   card 4  (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs))))   | int: (sgn (abs v))            (cross 0.74)
+     5. 0.672  rank 5791   card 6  (pair (sgn (head (dec_all xs))) (sgn (head (inc_all xs))))     | int: (sgn (abs v))            (cross 0.73)
+     6. 0.655  rank 7740   card 8  (count_distinct (map_adj_mul (map_adj_sub (sort xs))))         | int: (mod 1 (abs (dec v)))    (cross 0.37)
+  main K=10 nmi<0.65 card<=8 vac=0.05 component-cap: 95732 eligible candidates, walked 10338; rank 0.0 s, greedy 2.8 s, pairing 6.3 s
+     1. 0.893  rank 1      card 8  (pair (len (take3 (odds_idx xs))) (mod (len xs) 2))            | int: (sgn (abs v))            (cross 0.69)
+     2. 0.713  rank 2723   card 5  (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))            (cross 0.74)
+     3. 0.697  rank 3635   card 8  (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) | int: (sgn (abs v))            (cross 0.74)
+     4. 0.694  rank 3866   card 4  (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs))))   | int: (sgn (abs v))            (cross 0.74)
+     5. 0.672  rank 5791   card 6  (pair (sgn (head (dec_all xs))) (sgn (head (inc_all xs))))     | int: (sgn (abs v))            (cross 0.73)
+     6. 0.655  rank 7740   card 8  (count_distinct (map_adj_mul (map_adj_sub (sort xs))))         | int: (mod 1 (abs (dec v)))    (cross 0.37)
+     7. 0.639  rank 9833   card 8  (count_distinct (map_adj_max (map_adj_min (abs_all xs))))      | int: (mod 1 (abs (dec v)))    (cross 0.37)
+     8. 0.638  rank 10067  card 8  (pair (count_pos (take2 (map_adj_max xs))) (sgn (min_el (map_adj_max xs)))) | int: (pair (< 1 v) (< v 0))   (cross 0.44)
+     9. 0.637  rank 10293  card 7  (pair (count_distinct (running_max (take2 xs))) (sgn (head (map_adj_add xs)))) | int: (sgn (abs v))            (cross 0.69)
+    10. 0.636  rank 10338  card 7  (pair (mod (head xs) 4) (sgn (count_even (take2 xs))))         | int: (sgn (abs v))            (cross 0.71)
+  main K=6 nmi<0.50 card<=8 vac=0.05 component-cap: 95732 eligible candidates, walked 12629; rank 0.0 s, greedy 2.8 s, pairing 11.8 s
+     1. 0.893  rank 1      card 8  (pair (len (take3 (odds_idx xs))) (mod (len xs) 2))            | int: (sgn (abs v))            (cross 0.69)
+     2. 0.691  rank 4049   card 8  (pair (count_pos (running_max (take2 xs))) (sgn (min_el (take2 xs)))) | int: (sgn (abs v))            (cross 0.74)
+     3. 0.678  rank 5174   card 8  (pair (len (take3 (filter_neg xs))) (sgn (count_pos (dec_all xs)))) | int: (sgn (abs v))            (cross 0.70)
+     4. 0.663  rank 6666   card 6  (pair (count_even (running_sum (take2 xs))) (count_even (take2 (inc_all xs)))) | int: (sgn (abs v))            (cross 0.68)
+     5. 0.631  rank 11265  card 6  (pair (sgn (min_el (abs_all xs))) (sgn (sum (map_adj_add xs)))) | int: (sgn (abs v))            (cross 0.75)
+     6. 0.623  rank 12629  card 8  (pair (= 1 (count_even xs)) (len (take3 (filter_odd xs))))     | int: (sgn (abs v))            (cross 0.48)
+  main K=6 nmi<0.80 card<=8 vac=0.05 component-cap: 95732 eligible candidates, walked 2553; rank 0.0 s, greedy 0.7 s, pairing 10.8 s
+     1. 0.893  rank 1      card 8  (pair (len (take3 (odds_idx xs))) (mod (len xs) 2))            | int: (sgn (abs v))            (cross 0.69)
+     2. 0.753  rank 1034   card 7  (pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs)))) | int: (sgn (abs v))            (cross 0.75)
+     3. 0.729  rank 1925   card 7  (pair (count_distinct (take3 xs)) (count_distinct (take3 (init xs)))) | int: (sgn (abs v))            (cross 0.69)
+     4. 0.725  rank 2116   card 7  (min 5 (dec (count_distinct xs)))                              | int: (sgn (abs v))            (cross 0.69)
+     5. 0.724  rank 2170   card 6  (min 5 (count_distinct (drop2 xs)))                            | int: (mod 1 (abs (dec v)))    (cross 0.38)
+     6. 0.716  rank 2553   card 8  (count_distinct (map_adj_mul (evens_idx (sort xs))))           | int: (mod 1 (abs (dec v)))    (cross 0.37)
+  main K=6 nmi<0.65 card<=4 vac=0.05 component-cap: 25209 eligible candidates, walked 601; rank 1.1 s, greedy 0.2 s, pairing 8.8 s
+     1. 0.837  rank 1      card 4  (pair (< 4 (len xs)) (len (take2 (map_adj_add xs))))           | int: (< v (sq v))             (cross 0.44)
+     2. 0.791  rank 25     card 3  (pair (sgn (len xs)) (< 5 (len xs)))                           | int: (sgn (abs v))            (cross 0.67)
+     3. 0.755  rank 96     card 4  (mod (len (map_adj_add xs)) 4)                                 | int: (sgn (abs v))            (cross 0.24)
+     4. 0.736  rank 171    card 4  (pair (= 1 (len xs)) (mod (len xs) 3))                         | int: (pair (= 1 v) (sgn (abs v))) (cross 0.26)
+     5. 0.699  rank 419    card 4  (count_distinct (odds_idx (odds_idx (running_max xs))))        | int: (pair (< 3 v) (< v 0))   (cross 0.30)
+     6. 0.683  rank 601    card 4  (mod 5 (len (map_adj_add xs)))                                 | int: (pair (sgn (abs v)) (< 5 (dec v))) (cross 0.22)
+  nolib_fold K=6 nmi<0.65 card<=8 vac=0.05 component-cap: 2867 eligible candidates, walked 1250; rank 0.1 s, greedy 0.8 s, pairing 18.6 s
+     1. 0.890  rank 1      card 8  (pair (min 5 (len xs)) (mod (len xs) 3))                       | int: (sgn (abs v))            (cross 0.69)
+     2. 0.688  rank 403    card 5  (pair (sgn (head xs)) (all (min x 0) xs))                      | int: (sgn (abs v))            (cross 0.78)
+     3. 0.686  rank 416    card 4  (pair (all x xs) (< 5 (count x xs)))                           | int: (pair (< 5 v) (< 1 (neg v))) (cross 0.25)
+     4. 0.608  rank 1025   card 5  (mod (count x xs) 5)                                           | int: (sgn (abs v))            (cross 0.31)
+     5. 0.605  rank 1047   card 8  (pair (mod (head xs) 4) (sgn (abs (last xs))))                 | int: (sgn (abs v))            (cross 0.67)
+     6. 0.584  rank 1250   card 4  (pair (all (dec x) xs) (all (inc x) xs))                       | int: (pair (= 1 v) (= 1 (abs v))) (cross 0.21)
+  nolib K=6 nmi<0.65 card<=8 vac=0.05 component-cap: 1583 eligible candidates, walked 711; rank 0.0 s, greedy 0.4 s, pairing 19.1 s
+     1. 0.890  rank 1      card 8  (pair (min 5 (len xs)) (mod (len xs) 3))                       | int: (sgn (abs v))            (cross 0.69)
+     2. 0.648  rank 415    card 6  (pair (sgn (head xs)) (sgn (abs (last xs))))                   | int: (sgn (abs v))            (cross 0.77)
+     3. 0.600  rank 542    card 6  (pair (mod (head xs) 2) (mod (head xs) 3))                     | int: (sgn (abs v))            (cross 0.36)
+     4. 0.581  rank 606    card 6  (pair (= 5 (head xs)) (mod (head xs) 5))                       | int: (sgn (abs v))            (cross 0.43)
+     5. 0.577  rank 621    card 6  (min 5 (abs (head xs)))                                        | int: (sgn (abs v))            (cross 0.55)
+     6. 0.549  rank 711    card 3  (sgn (mod 2 (head xs)))                                        | int: (pair (sgn (abs v)) (< 2 (neg v))) (cross 0.28)
+
+== fold-form pools with pairs up to 11 nodes (two 5-node fold forms) ==
+  nolib_fold K=6 nmi<0.65 card<=8 vac=0.05: 28259 eligible candidates, walked 1149; rank 1.3 s, greedy 0.3 s, pairing 12.9 s
+     1. 0.900  rank 1      card 8  (pair (min 4 (len xs)) (mod 5 (dec (len xs))))                 | int: (sgn (abs v))            (cross 0.69)
+     2. 0.770  rank 460    card 7  (pair (< (head xs) 0) (min 3 (len xs)))                        | int: (sgn (abs v))            (cross 0.72)
+     3. 0.752  rank 720    card 7  (pair (min 3 (len xs)) (mod (head xs) 2))                      | int: (sgn (abs v))            (cross 0.72)
+     4. 0.742  rank 900    card 6  (pair (all (add x 5) xs) (sgn (dec (dec (len xs)))))           | int: (pair (< v (sq v)) (= 5 (neg v))) (cross 0.47)
+     5. 0.734  rank 1055   card 5  (pair (all x xs) (sgn (dec (len xs))))                         | int: (sgn (abs v))            (cross 0.74)
+     6. 0.729  rank 1149   card 5  (pair (all (inc x) xs) (sgn (dec (len xs))))                   | int: (sgn (abs v))            (cross 0.67)
+  nolib_fold K=10 nmi<0.65 card<=8 vac=0.05: 28259 eligible candidates, walked 1323; rank 0.0 s, greedy 0.2 s, pairing 7.3 s
+     1. 0.900  rank 1      card 8  (pair (min 4 (len xs)) (mod 5 (dec (len xs))))                 | int: (sgn (abs v))            (cross 0.69)
+     2. 0.770  rank 460    card 7  (pair (< (head xs) 0) (min 3 (len xs)))                        | int: (sgn (abs v))            (cross 0.72)
+     3. 0.752  rank 720    card 7  (pair (min 3 (len xs)) (mod (head xs) 2))                      | int: (sgn (abs v))            (cross 0.72)
+     4. 0.742  rank 900    card 6  (pair (all (add x 5) xs) (sgn (dec (dec (len xs)))))           | int: (pair (< v (sq v)) (= 5 (neg v))) (cross 0.47)
+     5. 0.734  rank 1055   card 5  (pair (all x xs) (sgn (dec (len xs))))                         | int: (sgn (abs v))            (cross 0.74)
+     6. 0.729  rank 1149   card 5  (pair (all (inc x) xs) (sgn (dec (len xs))))                   | int: (sgn (abs v))            (cross 0.67)
+     7. 0.727  rank 1183   card 7  (pair (min 3 (len xs)) (sgn (mod (head xs) 3)))                | int: (sgn (abs v))            (cross 0.70)
+     8. 0.725  rank 1268   card 5  (pair (sgn (dec (len xs))) (all (sub x 5) xs))                 | int: (sgn (abs v))            (cross 0.67)
+     9. 0.723  rank 1307   card 6  (pair (< (head xs) 0) (sgn (sub 5 (len xs))))                  | int: (pair (< 4 v) (< v 0))   (cross 0.44)
+    10. 0.722  rank 1323   card 7  (pair (min 3 (len xs)) (< 3 (abs (head xs))))                  | int: (sgn (abs v))            (cross 0.70)
+  nolib_fold K=6 nmi<0.65 card<=8 vac=0.05 component-cap: 28259 eligible candidates, walked 5657; rank 0.0 s, greedy 1.8 s, pairing 11.4 s
+     1. 0.900  rank 1      card 8  (pair (min 4 (len xs)) (mod 5 (dec (len xs))))                 | int: (sgn (abs v))            (cross 0.69)
+     2. 0.694  rank 2241   card 4  (pair (all (mod x 2) xs) (any (mod x 2) xs))                   | int: (sgn (abs v))            (cross 0.74)
+     3. 0.689  rank 2401   card 4  (pair (all (min x 0) xs) (any (min x 0) xs))                   | int: (sgn (abs v))            (cross 0.73)
+     4. 0.681  rank 2753   card 6  (pair (all x xs) (sgn (head xs)))                              | int: (sgn (abs v))            (cross 0.77)
+     5. 0.631  rank 5163   card 8  (pair (all (mod 1 x) xs) (mod (count x xs) 4))                 | int: (sgn (abs v))            (cross 0.37)
+     6. 0.623  rank 5657   card 6  (pair (mod (head xs) 3) (all (mod x 3) xs))                    | int: (sgn (abs v))            (cross 0.67)
+  Boolean version of main|pairs|K=6|compcap:
+     0.893 (8 labels) -> 0.760  (in (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) {(0,1) (0,0)})   | int kept: (sgn (abs v)) | int re-paired (Boolean): (< v (sq v)) (cross 0.40)
+     0.713 (5 labels) -> 0.738  (in (pair (count_pos (take2 (abs_all xs))) (sgn (min_el (abs_all xs)))) {(1,1) (0,0)})   | int kept: (sgn (abs v)) | int re-paired (Boolean): (< v (sq v)) (cross 0.40)
+     0.697 (8 labels) -> 0.733  (in (pair (len (take3 (filter_neg xs))) (sgn (count_pos (inc_all xs)))) {(0,0)})   | int kept: (sgn (abs v)) | int re-paired (Boolean): (sgn (abs v)) (cross 0.64)
+     0.694 (4 labels) -> 0.733  (in (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs)))) {(0,0)})   | int kept: (sgn (abs v)) | int re-paired (Boolean): (sgn (abs v)) (cross 0.64)
+     0.672 (6 labels) -> 0.733  (in (pair (sgn (head (dec_all xs))) (sgn (head (inc_all xs)))) {(0,0)})   | int kept: (sgn (abs v)) | int re-paired (Boolean): (sgn (abs v)) (cross 0.64)
+     0.655 (8 labels) -> 0.746  (in (count_distinct (map_adj_mul (map_adj_sub (sort xs)))) {0})   | int kept: (mod 1 (abs (dec v))) | int re-paired (Boolean): (mod 1 (abs (dec v))) (cross 0.34)
+
+== C1 extension, second definition of "best Boolean": the split maximising score x entropy ==
+  main|nopairs|K=6:
+     0.885 (7 labels) -> 0.719  (in (min 5 (dec (len xs))) {0 2 1 -1})
+     0.678 (3 labels) -> 0.534  (in (mod (len (map_adj_add xs)) 3) {1})
+     0.670 (3 labels) -> 0.546  (in (sgn (min_el (inc_all (dbl_all xs)))) {1 0})
+     0.670 (3 labels) -> 0.496  (in (sgn (head (inc_all (dbl_all xs)))) {-1 0})
+     0.664 (3 labels) -> 0.564  (in (sgn (max_el (inc_all (dbl_all xs)))) {-1 0})
+     0.661 (6 labels) -> 0.663  (in (len (drop2 (odds_idx (map_adj_add xs)))) {1 5 2 3 4})
+  main|pairs|K=6:
+     0.893 (8 labels) -> 0.719  (in (pair (len (take3 (odds_idx xs))) (mod (len xs) 2)) {(0,1) (1,1) (1,0) (0,0)})
+     0.770 (7 labels) -> 0.746  (in (pair (len (take3 xs)) (< (head xs) 0)) {(1,1) (2,0) (1,0) (0,0) (2,1)})
+     0.753 (7 labels) -> 0.714  (in (pair (count_pos (take3 (abs_all xs))) (sgn (min_el (abs_all xs)))) {(1,1) (2,1) (0,0)})
+     0.752 (7 labels) -> 0.746  (in (pair (len (take3 xs)) (count_even (evens_idx (take2 xs)))) {(1,0) (2,1) (1,1) (0,0) (2,0)})
+     0.723 (8 labels) -> 0.746  (in (pair (len (odds_idx (evens_idx xs))) (mod 2 (count_pos xs))) {(0,0)})
+     0.723 (6 labels) -> 0.746  (in (pair (len (take3 xs)) (count_pos (tail (take2 xs)))) {(1,0) (2,1) (0,0) (2,0)})
+     hand sign     0.687 (4 labels) -> 0.487 as Boolean (info), labels (1, 2, 0) vs the rest
+     hand parity   0.694 (4 labels) -> 0.538 as Boolean (info), labels (2, 1, 0) vs the rest
+     hand order    0.636 (4 labels) -> 0.690 as Boolean (info), labels (3,) vs the rest
+     hand caplen5  0.869 (6 labels) -> 0.719 as Boolean (info), labels (1, 3, 2, 0) vs the rest
+     hand lenmod2  0.641 (2 labels) -> 0.641 as Boolean (info), labels (1,) vs the rest
+     hand isempty  0.733 (2 labels) -> 0.733 as Boolean (info), labels (True,) vs the rest
+
+== the hand-listed list words against the main pool (95732 candidates, pairs <= 9 nodes) ==
+   score = mean dependency score over the 37 list-only operators, vacuity guard 0.05;
+   rank = 1 + number of pool candidates with a higher score;
+   nearest = pool candidate maximising I(hand; cand) / max(H(hand), H(cand)) on the probe pool
+   sign     score 0.687, would rank  4401 | same partition in pool: rank 4401, (pair (sgn (count_pos xs)) (sgn (count_pos (neg_all xs)))) | nearest (1.00): rank 4401, 0.687, (pair (sgn (count_pos xs)) (sgn (count_pos (neg_all xs))))
+   parity   score 0.694, would rank  3866 | same partition in pool: rank 3866, (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs)))) | nearest (1.00): rank 3866, 0.694, (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs))))
+   order    score 0.636, would rank 10312 | same partition in pool: none | nearest (0.96): rank 12530, 0.624, (pair (sgn (count_pos (map_adj_sub xs))) (sgn (min_el (map_adj_sub xs))))
+   caplen5  score 0.869, would rank     9 | same partition in pool: rank 9, (len (take_n 5 xs)) | nearest (1.00): rank 9, 0.869, (len (take_n 5 xs))
+   lenmod2  score 0.641, would rank  9645 | same partition in pool: rank 9645, (mod (len xs) 2) | nearest (1.00): rank 9645, 0.641, (mod (len xs) 2)
+   isempty  score 0.733, would rank  1751 | same partition in pool: rank 1751, (sgn (len xs)) | nearest (1.00): rank 1751, 0.733, (sgn (len xs))
+
+   share of each hand word's label information carried by the single best word of a vocabulary
+   (I(hand; word) / H(hand) on the probe pool; 1.00 = that word determines the hand word):
+   vocabulary                                   sign      parity    order     caplen5   lenmod2   isempty 
+   main|pairs|K=3|compcap                       0.92      0.60      0.74      1.00      1.00      1.00    
+   main|pairs|K=6|compcap                       0.92      1.00      0.74      1.00      1.00      1.00    
+   main|pairs|K=10|compcap                      0.92      1.00      0.74      1.00      1.00      1.00    
+
+== the hand-listed list words against the nolib_fold pool (28259 candidates, pairs <= 11 nodes) ==
+   score = mean dependency score over the 37 list-only operators, vacuity guard 0.05;
+   rank = 1 + number of pool candidates with a higher score;
+   nearest = pool candidate maximising I(hand; cand) / max(H(hand), H(cand)) on the probe pool
+   sign     score 0.687, would rank  2526 | same partition in pool: rank 2526, (pair (any (max x 0) xs) (any (min x 0) xs)) | nearest (1.00): rank 2526, 0.687, (pair (any (max x 0) xs) (any (min x 0) xs))
+   parity   score 0.694, would rank  2241 | same partition in pool: rank 2241, (pair (all (mod x 2) xs) (any (mod x 2) xs)) | nearest (1.00): rank 2241, 0.694, (pair (all (mod x 2) xs) (any (mod x 2) xs))
+   order    score 0.636, would rank  4853 | same partition in pool: none | nearest (0.69): rank 1273, 0.724, (pair (= (head xs) (last xs)) (sgn (dec (dec (len xs)))))
+   caplen5  score 0.869, would rank    16 | same partition in pool: rank 16, (min 5 (len xs)) | nearest (1.00): rank 16, 0.869, (min 5 (len xs))
+   lenmod2  score 0.641, would rank  4620 | same partition in pool: rank 4620, (mod (len xs) 2) | nearest (1.00): rank 4620, 0.641, (mod (len xs) 2)
+   isempty  score 0.733, would rank  1071 | same partition in pool: rank 1071, (sgn (len xs)) | nearest (1.00): rank 1071, 0.733, (sgn (len xs))
+
+   share of each hand word's label information carried by the single best word of a vocabulary
+   (I(hand; word) / H(hand) on the probe pool; 1.00 = that word determines the hand word):
+   vocabulary                                   sign      parity    order     caplen5   lenmod2   isempty 
+   nolib_fold|pairs|K=6|compcap                 0.67      0.60      0.74      1.00      0.77      1.00    
+   nolib_fold|pairs<=11|K=6                     0.65      0.73      0.74      1.00      0.76      1.00    
+   nolib_fold|pairs<=11|K=10                    0.65      0.73      0.74      1.00      0.76      1.00    
+   nolib_fold|pairs<=11|K=6|compcap             0.92      1.00      0.74      1.00      0.76      1.00    
+
+== where plain-word content properties sit in the main pool (95732 candidates, pairs <= 11 nodes) ==
+   any negative                     rank 32400 (score 0.546) as (sgn (count_pos (neg_all xs)))
+   any positive                     rank 30379 (score 0.552) as (sgn (count_pos xs))
+   any even                         rank 39490 (score 0.524) as (sgn (count_even xs))
+   any odd                          rank 33136 (score 0.543) as (sgn (count_even (inc_all xs)))
+   all non-negative                 rank 32400 (score 0.546) as (sgn (count_pos (neg_all xs)))
+   sign of min                      rank 21469 (score 0.583) as (sgn (min_el xs))
+   signs present (hand sign)        rank 4401 (score 0.687) as (pair (sgn (count_pos xs)) (sgn (count_pos (neg_all xs))))
+   parities present (hand parity)   rank 3866 (score 0.694) as (pair (sgn (count_even xs)) (sgn (count_even (inc_all xs))))
+   some ascent                      rank 49576 (score 0.493) as (sgn (count_pos (map_adj_sub xs)))
+   some descent                     rank 55356 (score 0.477) as (sgn (count_pos (map_adj_sub (neg_all xs))))
+   sorted ascending                 rank 55356 (score 0.477) as (sgn (count_pos (map_adj_sub (neg_all xs))))
+
+== where plain-word content properties sit in the nolib pool (1583 candidates, pairs <= 11 nodes) ==
+   any negative                     not in the pool
+   any positive                     not in the pool
+   any even                         not in the pool
+   any odd                          not in the pool
+   all non-negative                 not in the pool
+   sign of min                      not in the pool
+   signs present (hand sign)        not in the pool
+   parities present (hand parity)   not in the pool
+   some ascent                      not in the pool
+   some descent                     not in the pool
+   sorted ascending                 not in the pool
+
+== where plain-word content properties sit in the nolib_fold pool (28259 candidates, pairs <= 11 nodes) ==
+   any negative                     rank 11971 (score 0.546) as (any (min x 0) xs)
+   any positive                     rank 11369 (score 0.552) as (any (max x 0) xs)
+   any even                         rank 14140 (score 0.524) as (all (mod x 2) xs)
+   any odd                          rank 12207 (score 0.543) as (any (mod x 2) xs)
+   all non-negative                 rank 11971 (score 0.546) as (any (min x 0) xs)
+   sign of min                      not in the pool
+   signs present (hand sign)        rank 2526 (score 0.687) as (pair (any (max x 0) xs) (any (min x 0) xs))
+   parities present (hand parity)   rank 2241 (score 0.694) as (pair (all (mod x 2) xs) (any (mod x 2) xs))
+   some ascent                      not in the pool
+   some descent                     not in the pool
+   sorted ascending                 not in the pool
+
+selection timings (seconds; rank = scoring already done, just averaging and sorting):
+   main|pairs|K=3|compcap                   eligible  95732 walked   3635 rank 2.4 greedy 0.7 pairing 6.5
+   main|pairs|K=6|compcap                   eligible  95732 walked   7740 rank 0.0 greedy 1.4 pairing 3.6
+   main|pairs|K=10|compcap                  eligible  95732 walked  10338 rank 0.0 greedy 2.8 pairing 6.3
+   main|pairs|K=6|nmi=0.50|compcap          eligible  95732 walked  12629 rank 0.0 greedy 2.8 pairing 11.8
+   main|pairs|K=6|nmi=0.80|compcap          eligible  95732 walked   2553 rank 0.0 greedy 0.7 pairing 10.8
+   main|pairs|K=6|card=4|compcap            eligible  25209 walked    601 rank 1.1 greedy 0.2 pairing 8.8
+   nolib_fold|pairs|K=6|compcap             eligible   2867 walked   1250 rank 0.1 greedy 0.8 pairing 18.6
+   nolib|pairs|K=6|compcap                  eligible   1583 walked    711 rank 0.0 greedy 0.4 pairing 19.1
+   nolib_fold|pairs<=11|K=6                 eligible  28259 walked   1149 rank 1.3 greedy 0.3 pairing 12.9
+   nolib_fold|pairs<=11|K=10                eligible  28259 walked   1323 rank 0.0 greedy 0.2 pairing 7.3
+   nolib_fold|pairs<=11|K=6|compcap         eligible  28259 walked   5657 rank 0.0 greedy 1.8 pairing 11.4
+wrote vocabs_extra.json (15 vocabularies); 274 s
+
+real	4m35.210s
+user	2m4.792s
+sys	0m0.455s

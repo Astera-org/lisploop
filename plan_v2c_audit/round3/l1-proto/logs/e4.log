@@ -1,0 +1,125 @@
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATE
+;     (TG::LF-OP-DEAD-P TG::LF TG::OP TG::S)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::LF-OP-DEAD-P
+; 
+; compilation unit finished
+;   Undefined function:
+;     LF-OP-DEAD-P
+;   caught 1 STYLE-WARNING condition
+
+; file: /tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/round3/l1-proto/labels.lisp
+; in: DEFUN LF-GATED-TRY
+;     (TG::PROBE-MATCH TG::LF TG::OP TG::C1 TG::C2 TG::C3)
+; 
+; caught STYLE-WARNING:
+;   undefined function: TG::PROBE-MATCH
+; 
+; compilation unit finished
+;   Undefined function:
+;     PROBE-MATCH
+;   caught 1 STYLE-WARNING condition
+=== E4. Goal inversion on (inverses ((+ 0 - t) (+ 1 - t) (- 0 + nil) (- 1 - nil)), derived by the prototype's experiment C).
+plain/first here both run WITH inversion; 'no-inv' rows repeat E1 for reference. ===
+
+task                     mode         cand      | done cand<=dn  cand>dn   cls<=dn  cls>dn   | spar-lab  spar-typ  look-ups   lk/gat p-cells   lab-cells work       | ms       held-out same
+reverse                  plain            86434 |    6      4962     81472     1451    24185 |         0         0          0 -              0         0    4408134 |   182.07 200/200      
+reverse                  first             4996 |    6      4962        34     1451       16 |     81450         0     177156 2.08           0    224748     656700 |    43.66 200/200  yes 
+reverse                  lfprobe           4963 |    6      4962         1     1451        1 |     84991      1391     176492 2.08         116    222453     652174 |    44.08 200/200  yes 
+reverse                  probe             4963 |    6      4962         1     1451        1 |         0         0          0 -          85964         0     339077 |    39.89 200/200  yes 
+reverse                  audit            86434 |    6      4962     81472     1451    24185 |     84991      1391     176492 2.08           0   3922605    8507231 |   249.91 200/200  yes 
+shift-seq (spec)         plain             9175 |    5      9175         0     2737        0 |         0         0          0 -              0         0     367000 |    31.22 200/200      
+shift-seq (spec)         first             9175 |    5      9175         0     2737        0 |         0         0      26161 3.81           0    328740     721901 |    37.69 200/200  yes 
+shift-seq (spec)         lfprobe           9175 |    5      9175         0     2737        0 |      6832      2310      26161 3.81          51    328740     721952 |    37.92 200/200  yes 
+shift-seq (spec)         probe             9175 |    5      9175         0     2737        0 |         0         0          0 -           6947         0     373947 |    32.84 200/200  yes 
+shift-seq (spec)         audit             9175 |    5      9175         0     2737        0 |      6832      2310      26161 3.81           0    328740     721901 |    37.11 200/200  yes 
+rotate-left k            plain           217920 |    6      9589    208331     3045    64303 |         0         0          0 -              0         0    8716800 |   380.47 200/200      
+rotate-left k            first             9778 |    6      9589       189     3045      115 |    208176         0     474215 2.20           0    379500    1244835 |    75.90 200/200  yes 
+rotate-left k            lfprobe           9590 |    6      9589         1     3045        1 |    214976      2724     473295 2.20         346    365820    1223061 |    72.84 200/200  yes 
+rotate-left k            probe             9590 |    6      9589         1     3045        1 |         0         0          0 -         216994         0     600594 |    66.64 200/200  yes 
+rotate-left k            audit           217920 |    6      9589    208331     3045    64303 |    214976      2724     473295 2.20           0   8082060   17272155 |   511.67 200/200  yes 
+map-adjacent +           plain             4791 |    5      4692         0     1283        0 |         0         0          0 -              0         0     188868 |     8.55 200/200      
+map-adjacent +           first             4729 |    5      4692         0     1283        0 |        62         0      13647 3.78           0    154584     356355 |    11.02 200/200  yes 
+map-adjacent +           lfprobe           4729 |    5      4692         0     1283        0 |      3591      1182      13647 3.78          29    154584     356384 |    10.71 200/200  yes 
+map-adjacent +           probe             4729 |    5      4692         0     1283        0 |         0         0          0 -           3660         0     191784 |     8.77 200/200  yes 
+map-adjacent +           audit             4791 |    5      4692         0     1283        0 |      3591      1182      13647 3.78           0    155016     357531 |    11.15 200/200  yes 
+map-adjacent -           plain             4791 |    5      4692         0     1279        0 |         0         0          0 -              0         0     188868 |     8.40 200/200      
+map-adjacent -           first             4729 |    5      4692         0     1279        0 |        62         0      13553 3.76           0    154104     355781 |    11.08 200/200  NO  
+   plain: (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (at xs (+ i 1)) (- 0 (at xs i)))))
+   first: (tabulate (- (len xs) (min (len xs) 1)) (lambda (i prev) (+ (- 0 (at xs i)) (at xs (+ i 1)))))
+map-adjacent -           lfprobe           4729 |    5      4692         0     1279        0 |      3591      1182      13553 3.76          29    154104     355810 |    10.46 200/200  yes 
+map-adjacent -           probe             4729 |    5      4692         0     1279        0 |         0         0          0 -           3816         0     191940 |     9.34 200/200  yes 
+map-adjacent -           audit             4791 |    5      4692         0     1279        0 |      3591      1182      13553 3.76           0    154536     356957 |    11.76 200/200  yes 
+running-sum              plain             4771 |    5      4771         0     1322        0 |         0         0          0 -              0         0     243321 |    18.15 200/200      
+running-sum              first             4771 |    5      4771         0     1322        0 |         0         0      16516 4.63           0    202563     462400 |    21.76 200/200  yes 
+running-sum              lfprobe           4771 |    5      4771         0     1322        0 |      3553      1200      16516 4.63          25    202563     462425 |    21.45 200/200  yes 
+running-sum              probe             4771 |    5      4771         0     1322        0 |         0         0          0 -           3646         0     246967 |    18.49 200/200  yes 
+running-sum              audit             4771 |    5      4771         0     1322        0 |      3553      1200      16516 4.63           0    202563     462400 |    21.71 200/200  yes 
+scan + init a (spec)     plain             9369 |    5      9369         0     2833        0 |         0         0          0 -              0         0     374760 |    32.28 200/200      
+scan + init a (spec)     first             9369 |    5      9369         0     2833        0 |         0         0      27166 3.87           0    340260     742186 |    38.44 200/200  yes 
+scan + init a (spec)     lfprobe           9369 |    5      9369         0     2833        0 |      6984      2358      27166 3.87          39    340260     742225 |    37.82 200/200  yes 
+scan + init a (spec)     probe             9369 |    5      9369         0     2833        0 |         0         0          0 -           7152         0     381912 |    32.79 200/200  yes 
+scan + init a (spec)     audit             9369 |    5      9369         0     2833        0 |      6984      2358      27166 3.87           0    340260     742186 |    38.34 200/200  yes 
+scan 2*acc-x init a      plain           304540 |    7    304540         0    78518        0 |         0         0          0 -              0         0   13095220 |   883.72 200/200      
+scan 2*acc-x init a      first           304540 |    7    304540         0    78518        0 |         0         0     589397 2.58           0  10129131   23813748 |  1053.54 200/200  yes 
+scan 2*acc-x init a      lfprobe         304540 |    7    304540         0    78518        0 |    227831     76436     589397 2.58         273  10129131   23814021 |  1039.14 200/200  yes 
+scan 2*acc-x init a      probe           304540 |    7    304540         0    78518        0 |         0         0          0 -         230291         0   13325511 |   883.74 200/200  yes 
+scan 2*acc-x init a      audit           304540 |    7    304540         0    78518        0 |    227831     76436     589397 2.58           0  10129131   23813748 |  1034.68 200/200  yes 
+positions (spec)         plain                0 |    2         0         0        7        0 |         0         0          0 -              0         0          0 |     0.09 200/200      
+positions (spec)         first                0 |    2         0         0        7        0 |         0         0          0 -              0      1164       1164 |     0.13 200/200  yes 
+positions (spec)         lfprobe              0 |    2         0         0        7        0 |         0         0          0 -              0      1164       1164 |     0.13 200/200  yes 
+positions (spec)         probe                0 |    2         0         0        7        0 |         0         0          0 -              0         0          0 |     0.11 200/200  yes 
+positions (spec)         audit                0 |    2         0         0        7        0 |         0         0          0 -              0      1164       1164 |     0.13 200/200  yes 
+positions-of v           plain             8332 |    2         0       232        7       99 |         0         0          0 -              0         0     105552 |     4.89 200/200      
+positions-of v           first             8101 |    2         0         1        7        1 |         9       222      29817 3.68           0     47628     174681 |     6.79 200/200  yes 
+positions-of v           lfprobe           8101 |    2         0         1        7        1 |      8109       222      29817 3.68          36     47628     174717 |     6.57 200/200  yes 
+positions-of v           probe             8101 |    2         0         1        7        1 |         0         0          0 -           8429         0     105665 |     5.45 200/200  yes 
+positions-of v           audit             8332 |    2         0       232        7       99 |      8109       222      29817 3.68           0     58212     193581 |     7.39 200/200  yes 
+filter x>k               plain             7002 |    2         0       278        7      117 |         0         0          0 -              0         0      94588 |     4.53 200/200      
+filter x>k               first             6730 |    2         0         6        7        3 |        50       222      23310 3.44           0     35130     139428 |     5.44 200/200  yes 
+filter x>k               lfprobe           6725 |    2         0         1        7        1 |      6774       222      23310 3.44          70     34830     138948 |     5.19 200/200  yes 
+filter x>k               probe             6725 |    2         0         1        7        1 |         0         0          0 -           7532         0      88270 |     4.32 200/200  yes 
+filter x>k               audit             7002 |    2         0       278        7      117 |      6774       222      23310 3.44           0     52230     170128 |     6.27 200/200  yes 
+take k                   plain              267 |    2         0       217        7       80 |         0         0          0 -              0         0       8629 |     0.54 200/200      
+take k                   first                2 |    2         0         1        7        1 |       265         0       1383 5.18           0      1215       2647 |     0.25 200/200  yes 
+take k                   lfprobe              2 |    2         0         1        7        1 |       265         0       1383 5.18          49      1215       2696 |     0.25 200/200  yes 
+take k                   probe                2 |    2         0         1        7        1 |         0         0          0 -            345         0        394 |     0.22 200/200  yes 
+take k                   audit              267 |    2         0       217        7       80 |       265         0       1383 5.18           0     10632      20644 |     0.77 200/200  yes 
+zip-add                  plain              350 |    3       300         0      124        0 |         0         0          0 -              0         0      10200 |     0.74 200/200      
+zip-add                  first              301 |    3       300         0      124        0 |        49         0       2199 7.91           0     12216      24027 |     0.85 200/200  yes 
+zip-add                  lfprobe            301 |    3       300         0      124        0 |       267        72       2199 7.91          22     12216      24049 |     0.99 200/200  yes 
+zip-add                  probe              301 |    3       300         0      124        0 |         0         0          0 -            347         0       9959 |     0.81 200/200  yes 
+zip-add                  audit              350 |    3       300         0      124        0 |       267        72       2199 7.91           0     12828      25227 |     1.06 200/200  yes 
+map-adjacent f (spec)    plain          8458580 |    9   3106630   5351851   716812  1589531 |         0         0          0 -              0         0  262214099 | 15480.50 200/200      
+map-adjacent f (spec)    first          3108993 |    9   3106630      2326   716812     1158 |   3996641   1299215    9647651 1.52           0  66771843  172797574 |  9362.45 200/200  yes 
+map-adjacent f (spec)    lfprobe        3106668 |    9   3106630         1   716812        1 |   6384384   2070548    9706425 1.52        3689  66664242  172680361 |  9364.81 200/200  yes 
+map-adjacent f (spec)    probe          3106668 |    9   3106630         1   716812        1 |         0         0          0 -        6479269         0  102785274 |  8196.27 200/200  yes 
+map-adjacent f (spec)    audit          8458580 |    9   3106630   5351851   716812  1589531 |   6384384   2070548    9706425 1.52           0 214490964  486411488 | 19738.07 200/200  yes 
+scan f init a (spec)     plain            14186 |    6     14186         0     5407        0 |         0         0          0 -              0         0     496510 |    79.86 200/200      
+scan f init a (spec)     first            14186 |    6     14186         0     5407        0 |         0         0      44579 4.16           0    568056    1109145 |    90.42 200/200  yes 
+scan f init a (spec)     lfprobe          14186 |    6     14186         0     5407        0 |     10685      3468      44579 4.16          46    568056    1109191 |    90.83 200/200  yes 
+scan f init a (spec)     probe            14186 |    6     14186         0     5407        0 |         0         0          0 -          10983         0     507493 |    81.51 200/200  yes 
+scan f init a (spec)     audit            14186 |    6     14186         0     5407        0 |     10685      3468      44579 4.16           0    568056    1109145 |    92.35 200/200  yes 
+SUMMARY with inversion: first vs plain, 14 tasks (plain cand >= 1): cand 9130508 -> 3490400 (total 2.62x, geo-mean 2.37x); work 290512549 -> 202601408 (total 1.43x, geo-mean 0.93x); ms 17115.9 -> 10759.3 (total 1.59x, geo-mean 1.18x); classes held 2495519 -> 818427 (3.05x); look-ups 11086750; programs changed 1; lost 0; false rejects 0
+SUMMARY with inversion: lfprobe vs plain, 14 tasks (plain cand >= 1): cand 9130508 -> 3487849 (total 2.62x, geo-mean 2.38x); work 290512549 -> 202458014 (total 1.43x, geo-mean 0.93x); ms 17115.9 -> 10743.1 (total 1.59x, geo-mean 1.18x); classes held 2495519 -> 817139 (3.05x); look-ups 11143940; programs changed 0; lost 0; false rejects 0
+SUMMARY with inversion: probe vs plain, 14 tasks (plain cand >= 1): cand 9130508 -> 3487849 (total 2.62x, geo-mean 2.38x); work 290512549 -> 119148787 (total 2.44x, geo-mean 1.93x); ms 17115.9 -> 9381.1 (total 1.82x, geo-mean 1.37x); classes held 2495519 -> 817139 (3.05x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY with inversion: first vs plain, 4 tasks (plain cand >= 20000): cand 9067474 -> 3428307 (total 2.64x, geo-mean 5.69x); work 288434253 -> 198512857 (total 1.45x, geo-mean 2.50x); ms 16926.8 -> 10535.5 (total 1.61x, geo-mean 2.32x); classes held 2477882 -> 801140 (3.09x); look-ups 10888419; programs changed 0; lost 0; false rejects 0
+SUMMARY with inversion: lfprobe vs plain, 4 tasks (plain cand >= 20000): cand 9067474 -> 3425761 (total 2.65x, geo-mean 5.73x); work 288434253 -> 198369617 (total 1.45x, geo-mean 2.52x); ms 16926.8 -> 10520.9 (total 1.61x, geo-mean 2.35x); classes held 2477882 -> 799854 (3.10x); look-ups 10945609; programs changed 0; lost 0; false rejects 0
+SUMMARY with inversion: probe vs plain, 4 tasks (plain cand >= 20000): cand 9067474 -> 3425761 (total 2.65x, geo-mean 5.73x); work 288434253 -> 117050456 (total 2.46x, geo-mean 4.66x); ms 16926.8 -> 9186.5 (total 1.84x, geo-mean 2.65x); classes held 2477882 -> 799854 (3.10x); look-ups 0; programs changed 0; lost 0; false rejects 0
+SUMMARY with inversion: audit vs plain, 14 tasks (plain cand >= 1): cand 9130508 -> 9130508 (total 1.00x, geo-mean 1.00x); work 290512549 -> 540164322 (total 0.54x, geo-mean 0.50x); ms 17115.9 -> 21762.2 (total 0.79x, geo-mean 0.77x); classes held 2495519 -> 2495519 (1.00x); look-ups 11143940; programs changed 0; lost 0; false rejects 0
+
+--- strict filter at the level where inversion succeeds, for the tasks inversion solves (oracle level) ---
+map-adjacent +           plain            level 5 cand     4791 classes     1308 held-out 200/200  SAME
+map-adjacent +           strict q3        level 5 cand      275 classes      115 held-out 200/200  SAME
+map-adjacent +           look-ahead q3    level 5 cand      205 classes       57 held-out 200/200  SAME
+map-adjacent -           plain            level 5 cand     4791 classes     1304 held-out 200/200  SAME
+map-adjacent -           strict q3        level 5 cand      275 classes      115 held-out 200/200  CHANGED
+map-adjacent -           look-ahead q3    level 5 cand      205 classes       57 held-out 200/200  CHANGED
+zip-add                  plain            level 3 cand      350 classes      146 held-out 200/200  SAME
+zip-add                  strict q3        level 3 cand       11 classes       21 held-out 200/200  SAME
+zip-add                  look-ahead q3    level 3 cand       11 classes       29 held-out 200/200  SAME
+
+[e4 finished in 159.6 s]

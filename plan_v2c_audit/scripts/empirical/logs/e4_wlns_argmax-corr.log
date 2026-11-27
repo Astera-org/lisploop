@@ -1,0 +1,23 @@
+E4 target=ARGMAX-CORR max-budget=35000000 bound-add=0 max-depth=2 heuristic-budget=15000 wall-cap=120s regime=wlns (active-grammar=NIL schemas=NIL)
+  prefix COPY           solved=YES work=16748
+  prefix INC-ALL        solved=YES work=31445
+  prefix DBL-ALL        solved=YES work=29409
+  prefix SUM-ALL        solved=YES work=25978
+  prefix LEN-ALL        solved=YES work=34038
+  prefix PRD-ALL        solved=YES work=27984
+  prefix FOLDL          solved=YES work=121367
+  prefix FILTER         solved=YES work=76203
+  prefix MAP-ADJACENT   solved=no  work=350000
+  prefix POSITIONS      solved=no  work=350000
+  prefix SCAN           solved=no  work=350000
+  prefix SHIFT-SEQ      solved=no  work=350000
+  prefix SEQ-CORR       solved=YES work=88066
+  prefix BEST-SHIFT     solved=no  work=350000
+REFERENCE ARGMAX-CORR (battery, whitelist+schemas): 84 bits: (:AT (:BEST-SHIFT :X0 :X1 0) 1)
+TARGET ARGMAX-CORR: inputs=2 rows=3 operators=2 (BEST-SHIFT AT) literals=(0 1) eff-bound=130 bits
+  rung cap=      350000 work=       51952 claim=CANDIDATE          cpu_s=     0.02 wall_s=     0.02 gc_s=   0.00 live_MiB=  104.0 (:NODES 9 :PHASES (:PREPARE 6 :PREPARATION 1 :SEARCH 2) :MAX-DEPTH 1 :DEFERRED 0 :EXPANDABLE 1 :SEARCHING ((0 NIL :BOUND 130 :DONE-BITS 83 :HDR 29 :BODY-SIZE 55 :OPS 2 :INPUTS 2 :SYNTAX 19 :WORK 12021 :REJECTED 7) (1 :LIBRARY :BOUND 130 :DONE-BITS 34 :HDR 34 :BODY-SIZE 1 :OPS 2 :INPUTS 3 :SYNTAX 0 :WORK 0 :REJECTED 0)))
+RESULT ARGMAX-CORR claim=CANDIDATE work=51952 cpu_s=0.02 wall_s=0.02
+  ledger=((:PARENT-VERIFICATION . 369) (:COMPOSITION . 1) (:EXPANSION . 5687) (:CHILD-SEARCH . 12021) (:PREPARATION . 32299) (:SCHEDULING . 1575))
+  PROGRAM (84 bits): (:AT (:BEST-SHIFT :X0 :X1 0) 1)
+  commit/verify ERROR: Unknown knowledge-entry :BEST-SHIFT
+PROCESS rc=0 total_wall_s=3.472039758

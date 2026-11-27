@@ -1,0 +1,10 @@
+E5b kernel=/tmp/claude-1000/-home-tlh24-lisploop/d1a4b558-b777-4749-af5d-51001946d6e1/scratchpad/empirical/repo/v2/ +completion-work+=100000000 raised-work-limit=20000000000
+INT      -/1 body-bound=16 work=       697685 x=  0.00 records=      89 behaviours=     23 rows=162 cpu_s=    0.10 work/s=7241227. witness=(:- :X0 :X1)
+INT      -/1 body-bound=20 work=       832029 x=  1.19 records=     105 behaviours=     25 rows=162 cpu_s=    0.10 work/s=8287141. witness=(:- :X0 :X1)
+INT      -/1 body-bound=22 work=      8910206 x= 10.71 records=     969 behaviours=     70 rows=162 cpu_s=    0.54 work/s=16531240. witness=(:- :X0 :X1)
+INT      -/1 body-bound=24 work=     25879209 x=  2.90 records=    2697 behaviours=    102 rows=162 cpu_s=    1.30 work/s=19877833. witness=(:- :X0 :X1)
+INT      -/1 body-bound=26 work=     25879377 x=  1.00 records=    2697 behaviours=    102 rows=162 cpu_s=    1.34 work/s=19350615. witness=(:- :X0 :X1)
+INT      -/1 body-bound=28 work=     37729529 x=  1.46 records=    3849 behaviours=    114 rows=162 cpu_s=    1.83 work/s=20648811. witness=(:- :X0 :X1)
+INT      -/1 body-bound=30 work=    329234643 x=  8.73 records=   30025 behaviours=    329 rows=162 cpu_s=   19.95 work/s=16505648. witness=(:- :X0 :X1)
+INT      -/1 body-bound=32 work=    329234859 x=  1.00 records=   30025 behaviours=    329 rows=162 cpu_s=   22.29 work/s=14772199. witness=(:- :X0 :X1)
+PROCESS rc=0

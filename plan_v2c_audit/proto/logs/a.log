@@ -1,0 +1,69 @@
+
+=== A. g1 = (+ - * neg); 32 rows, leaves x y z 0 1 2; 90 s, class cap 6000000 ===
+size cand@size    new-cls     cum-cand     cum-cls     new/cand syntactic@size     sec     status
+   1            0           6            0           6 -                         6    0.00 leaves
+   2            6           5            6          11   0.8333                  6    0.00 done
+   3          113          38          119          49   0.3363                114    0.00 done
+   4          218          20          337          69   0.0917                330    0.00 done
+   5         1463         290         1800         359   0.1982               4542    0.00 done
+   6         2150         104         3950         463   0.0484              20526    0.00 done
+   7        15476        2738        19426        3201   0.1769             234906    0.01 done
+   8        19742         640        39168        3841   0.0324            1363074    0.00 done
+   9       169648       27119       208816       30960   0.1599           13992054    0.06 done
+  10       190811        4233       399627       35193   0.0222           94552278    0.07 done
+  11      1888761      283740      2288388      318933   0.1502          910543362    0.80 done
+  12      1905138       30048      4193526      348981   0.0158         6774970362    0.85 done
+  13     21428178     3103781     25621704     3452762   0.1448        62893473198   11.78 done
+  14     19739225      224807     45360929     3677569   0.0114       498026568318   11.58 done
+  15    122387679    12751851    167748608    16429420   0.1042      4530840390186   64.86 time (hash-only)
+exact candidate count of the first incomplete size 15 (from class counts): 248139395
+throughput: 1.86d+6 candidates/s, 5.96d+7 cells/s (90.0 s); 3677569 stored classes at 458. live bytes each; 12751851 hash-only at 28. bytes each
+two-step ratios cand(s)/cand(s-2): 11.1 10.0 11.3 10.4  classes: 10.5 7.1 10.9 7.5  (sizes 11..14)
+growth per unit size (latest two-step ratios): candidates x3.31, classes x3.01; syntactic terms x9.25 (at size 58)
+extrapolation (largest size FULLY enumerable at the measured rate):
+  1 min     time-limited, with dedupe: size 14 (RAM: 1.7 GB all stored, 1.6 GB top size hash-only) | without dedupe: size 10
+  1 hour    time-limited, with dedupe: size 18 (RAM: 221.0 GB all stored, 210.7 GB top size hash-only) | without dedupe: size 11
+  10 hours  time-limited, with dedupe: size 20 (RAM: 2544.7 GB all stored, 2437.0 GB top size hash-only) | without dedupe: size 12
+  memory-limited at 24 GB (top size hash-only): size 16, reached after 267. s (0.07 h)
+
+=== A. g2 = (+ - * neg div mod max min); 32 rows, leaves x y z 0 1 2; 90 s, class cap 6000000 ===
+size cand@size    new-cls     cum-cand     cum-cls     new/cand syntactic@size     sec     status
+   1            0           6            0           6 -                         6    0.00 leaves
+   2            6           5            6          11   0.8333                  6    0.00 done
+   3          257          98          263         109   0.3813                258    0.00 done
+   4          518         158          781         267   0.3050                762    0.00 done
+   5         8565        3388         9346        3655   0.3956              22686    0.00 done
+   6        23520        7761        32866       11416   0.3300             108366    0.01 done
+   7       370641      148300       403507      159716   0.4001            2543946    0.16 done
+   8      1254160      430951      1657667      590667   0.3436           16304658    0.58 done
+   9     18254505     7059376     19912172     7650043   0.3867          325105206    9.05 done (hash-only)
+exact candidate count of the first incomplete size 10 (from class counts): 71782608
+throughput: 2.03d+6 candidates/s, 6.49d+7 cells/s (9.8 s); 590667 stored classes at 452. live bytes each; 7059376 hash-only at 25. bytes each
+two-step ratios cand(s)/cand(s-2): 45.4 43.3 53.3 49.3  classes: 49.1 43.8 55.5 47.6  (sizes 6..9)
+growth per unit size (latest two-step ratios): candidates x7.29, classes x7.17; syntactic terms x13.61 (at size 58)
+extrapolation (largest size FULLY enumerable at the measured rate):
+  1 min     time-limited, with dedupe: size 10 (RAM: 14.6 GB all stored, 4.1 GB top size hash-only) | without dedupe: size  8
+  1 hour    time-limited, with dedupe: size 12 (RAM: 810.1 GB all stored, 207.0 GB top size hash-only) | without dedupe: size 10
+  10 hours  time-limited, with dedupe: size 13 (RAM: 8552.1 GB all stored, 1237.4 GB top size hash-only) | without dedupe: size 11
+  memory-limited at 24 GB (top size hash-only): size 11, reached after 488. s (0.14 h)
+
+=== A. g3 = (+ - * neg div mod max min = < and not if); 32 rows, leaves x y z 0 1 2; 90 s, class cap 6000000 ===
+size cand@size    new-cls     cum-cand     cum-cls     new/cand syntactic@size     sec     status
+   1            0           6            0           6 -                         6    0.00 leaves
+   2            6           5            6          11   0.8333                  6    0.00 done
+   3          329         136          335         147   0.4134                330    0.00 done
+   4          676         203         1011         350   0.3003                978    0.00 done
+   5        11012        4024        12023        4374   0.3654              29166    0.00 done
+   6        31276        9827        43299       14201   0.3142             141918    0.01 done
+   7       481731      168492       525030      182693   0.3498            3291522    0.20 done
+   8      1745426      520788      2270456      703481   0.2984           21769242    0.79 done
+   9     24056722     7758129     26327178     8461610   0.3225          424876758   11.84 done (hash-only)
+exact candidate count of the first incomplete size 10 (from class counts): 101780503
+throughput: 2.05d+6 candidates/s, 6.56d+7 cells/s (12.8 s); 703481 stored classes at 452. live bytes each; 7758129 hash-only at 36. bytes each
+two-step ratios cand(s)/cand(s-2): 46.3 43.7 55.8 49.9  classes: 48.4 41.9 53.0 46.0  (sizes 6..9)
+growth per unit size (latest two-step ratios): candidates x7.35, classes x7.03; syntactic terms x13.72 (at size 58)
+extrapolation (largest size FULLY enumerable at the measured rate):
+  1 min     time-limited, with dedupe: size  9 (RAM: 3.8 GB all stored, 0.6 GB top size hash-only) | without dedupe: size  8
+  1 hour    time-limited, with dedupe: size 12 (RAM: 992.7 GB all stored, 256.7 GB top size hash-only) | without dedupe: size 10
+  10 hours  time-limited, with dedupe: size 13 (RAM: 9734.5 GB all stored, 1693.5 GB top size hash-only) | without dedupe: size 11
+  memory-limited at 24 GB (top size hash-only): size 10, reached after 62. s (0.02 h)

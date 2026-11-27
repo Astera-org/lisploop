@@ -1,0 +1,53 @@
+pool: 24 hand-written lambdas; scored on 41 unary seq->seq operators
+cardinalities of the "content" words on the reviewer's probes: all_nonneg 5 labels (E/P/N0/NEG/M), all_even 4 (E/EV/OD/M), is_sorted 5 (S01/C/ASC/DSC/U)
+
+reviewer's setting (seed 303, stratified probes, NMI < 0.65):
+   selected: ['len_cap6', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)', 'has_zero']
+   scores of all 25, best first:
+      0.874  len_cap6   <- selected
+      0.850  len_cap5
+      0.824  len_cap4
+      0.818  len_mod3
+      0.773  len_cap3
+      0.763  len_mod2
+      0.716  len>3
+      0.687  len>2
+      0.643  len>1
+      0.605  len_eq_3 (junk)
+      0.580  all_even   <- selected
+      0.550  all_nonneg   <- selected
+      0.535  is_sorted   <- selected
+      0.511  max_le_2 (junk)   <- selected
+      0.502  has_zero   <- selected
+      0.479  min_ge_0
+      0.451  sum_sign
+      0.435  head_even (junk)
+      0.366  sum_gt_5 (junk)
+      0.314  sum_mod2
+      0.293  head_eq_1 (junk)
+      0.019  len>0 (is_nonempty)
+      0.000  const_0 (VACUOUS)
+      0.000  len>=0 (VACUOUS)
+
+varying what the reviewer fixed (selected six, in order):
+   seed 303  stratified probes True   NMI < 0.50 : ['len_cap6', 'all_even', 'all_nonneg', 'max_le_2 (junk)', 'has_zero', 'sum_sign']
+   seed 303  stratified probes True   NMI < 0.80 : ['len_cap6', 'len_mod3', 'len_mod2', 'all_even', 'all_nonneg', 'is_sorted']
+   seed 303  stratified probes False  NMI < 0.65 : ['len_cap6', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)', 'has_zero']
+   seed   1  stratified probes True   NMI < 0.65 : ['len_cap6', 'len_mod2', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)']
+   seed   2  stratified probes True   NMI < 0.65 : ['len_cap6', 'len_mod2', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)']
+   seed   3  stratified probes True   NMI < 0.65 : ['len_cap6', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)', 'has_zero']
+   seed   4  stratified probes True   NMI < 0.65 : ['len_cap6', 'all_even', 'all_nonneg', 'is_sorted', 'has_zero', 'max_le_2 (junk)']
+   seed   1  stratified probes False  NMI < 0.65 : ['len_cap6', 'len_mod2', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)']
+   seed   2  stratified probes False  NMI < 0.65 : ['len_cap6', 'len_mod2', 'all_even', 'is_sorted', 'all_nonneg', 'max_le_2 (junk)']
+   seed   3  stratified probes False  NMI < 0.65 : ['len_cap6', 'all_even', 'all_nonneg', 'is_sorted', 'max_le_2 (junk)', 'has_zero']
+   seed   4  stratified probes False  NMI < 0.65 : ['len_cap6', 'all_even', 'is_sorted', 'all_nonneg', 'has_zero', 'max_le_2 (junk)']
+   seed   1  stratified probes False  NMI < 0.50 : ['len_cap6', 'all_even', 'all_nonneg', 'max_le_2 (junk)', 'has_zero', 'head_even (junk)']
+   seed   1  stratified probes False  NMI < 0.80 : ['len_cap6', 'len_mod3', 'len_mod2', 'all_even', 'all_nonneg', 'is_sorted']
+
+how often each candidate is selected over seeds 1..20 (NMI < 0.65):
+   stratified probes True : len_cap6 20, all_even 20, all_nonneg 20, is_sorted 20, max_le_2 (junk) 19, has_zero 18, len_mod2 3
+   stratified probes False: len_cap6 20, all_even 20, all_nonneg 20, is_sorted 20, max_le_2 (junk) 19, has_zero 17, len_mod2 4
+
+real	1m31.848s
+user	0m38.125s
+sys	0m0.036s
