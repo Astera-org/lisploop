@@ -1,71 +1,61 @@
-(in-package #:lisploop)
+(in-package #:lisploop2)
 
-(defun expression-dependencies (expressions)
-  "Portable transitive function snapshots, including calls inside quoted code."
-  (let ((seen (make-hash-table :test #'eq)) (definitions nil))
-    (labels ((visit (expr &optional scope)
-               (walk-typed-ast expr scope
-                 (lambda (node lexical-scope)
-                   (declare (ignore lexical-scope))
-                   (when (operator-p node)
-                        (let* ((name (operator-name node))
-                               (def (and name (find-function-definition name))))
-                          (when (and def (not (gethash name seen)))
-                            (setf (gethash name seen) t)
-                            (push (list name (copy-tree (function-definition-inputs def))
-                                        (copy-tree (function-definition-return-type def))
-                                        (ast->sexp (function-definition-body def))
-                                        (copy-tree (function-definition-oracle-table def))) definitions)
-                            (visit (function-definition-body def) (function-definition-inputs def)))))))))
-      (mapc #'visit expressions))
-    (sort definitions #'string< :key (lambda (d) (symbol-name (first d))))))
+;;; Evidence: three grades, and certificates that lapse.
+;;;
+;;; A class, a law or a solver has one of three grades (plan section 5.5).
+;;;
+;;;   :observed   the same column on one space. Exact for any question about that space, so two
+;;;               terms in one class are interchangeable there. This is where pruning comes from.
+;;;   :tested     the same on several fresh spaces as well. It may be used wherever a mistake
+;;;               costs only time or a missed answer: to order a search or to propose a step.
+;;;   :certified  exhaustive on a finite domain, derived from certified statements, or a declared
+;;;               axiom. Only this may eliminate an alternative for all inputs.
+;;;
+;;; A certificate binds a grade to a statement and to the definitions the statement was checked
+;;; under. It is v1's rule (v1/evidence.lisp): evidence binds to semantics, not to a status flag,
+;;; so a certificate lapses by itself when anything it depends on is defined again.
 
-(defun knowledge-statement-snapshot (entry)
-  "Evidence binds to semantics, not mutable status flags or global counters."
-  (let ((exprs (list (knowledge-entry-expression entry) (knowledge-entry-guard entry)
-                     (knowledge-entry-trigger entry) (knowledge-entry-auxiliary-code entry)))
-        (meta (knowledge-entry-metadata entry)))
-    (list :semantics (list +simulator-version+ +encoding-version+)
-          :kind (knowledge-entry-kind entry) :domain (copy-tree (knowledge-entry-domain entry))
-          :inputs (copy-tree (knowledge-entry-inputs entry))
-          :target (copy-tree (knowledge-entry-target entry))
-          :code (mapcar #'ast->sexp exprs)
-          :context (copy-tree (list (getf meta :operator) (getf meta :position)
-                                   (getf meta :context-map) (getf meta :unique-p)
-                                   (getf meta :necessary-p)))
-          :dependencies (expression-dependencies
-                         (append exprs
-                                 (loop for edge in (knowledge-entry-edges entry)
-                                       when (eq :describes (first edge))
-                                         append (loop for name in (rest edge)
-                                                      when (defined-function-p name) collect (op name)))
-                                 (when (getf meta :operator)
-                                         (list (sexp->ast (getf meta :operator)))))))))
+(defstruct certificate
+  grade         ; :observed, :tested or :certified
+  method        ; how it was established, for example :exhaustive
+  statement     ; the terms the certificate is about
+  dependencies) ; alist from operator name to the version of its definition that was checked
 
-(defun attest-knowledge-entry (entry method obligations)
-  "Attach checked evidence or an explicitly requested trusted axiom."
-  (setf (knowledge-entry-certificate entry)
-        (list :method method :obligations (copy-list obligations)
-              :snapshot (knowledge-statement-snapshot entry)))
-  entry)
+(defun term-operators (term)
+  "The names of the operators that TERM applies, each once."
+  (let ((names '()))
+    (labels ((walk (term)
+               (case (term-kind term)
+                 (:app (pushnew (op-name (term-head term)) names) (mapc #'walk (term-args term)))
+                 (:lam (walk (term-body term))))))
+      (walk term))
+    names))
 
-(defun knowledge-evidence-p (entry obligation methods snapshot)
-  "True when ENTRY's certificate, by one of METHODS, covers OBLIGATION for the statement ENTRY
-makes now. SNAPSHOT is that statement's snapshot, for a caller that has already taken it."
-  (let ((certificate (knowledge-entry-certificate entry)))
-    (and (listp certificate)
-         (member (getf certificate :method) methods)
-         (member obligation (getf certificate :obligations))
-         (equalp (getf certificate :snapshot)
-                 (or snapshot (knowledge-statement-snapshot entry))))))
+(defun attest (grade method &rest terms)
+  "A certificate of GRADE for the statement made of TERMS, under the definitions now in force."
+  (make-certificate
+   :grade grade :method method :statement terms
+   :dependencies (loop for name in (remove-duplicates (mapcan #'term-operators (copy-list terms)))
+                       collect (cons name (definition-version name)))))
 
-(defun knowledge-evidence-current-p (entry obligation &optional snapshot)
-  "A status label alone never authorizes semantic elimination: only checked evidence of
-OBLIGATION (`:exhaustive`, `:pit`, `:ind1`, `:derived`), or an explicitly trusted axiom,
-for ENTRY's present statement does."
-  (knowledge-evidence-p entry obligation '(:exhaustive :pit :ind1 :derived :trusted-axiom) snapshot))
+(defun certificate-current-p (certificate)
+  "True while every operator the statement uses still has the definition it was checked under."
+  (and certificate
+       (loop for (name . version) in (certificate-dependencies certificate)
+             always (eql version (definition-version name)))))
 
-(defun knowledge-evidence-tested-p (entry obligation &optional snapshot)
-  "True when ENTRY carries evidence of OBLIGATION, of any grade, for the statement it makes
-now: checked evidence (`knowledge-evidence-current-p`), or a :sampled certificate."
-  (knowledge-evidence-p entry obligation '(:exhaustive :pit :ind1 :derived :trusted-axiom :sampled) snapshot))
+(defun licenses-elimination-p (certificate)
+  "True when the certificate may be used to rule an alternative out for all inputs: it is
+certified, and it has not lapsed. A tested or observed statement never licenses that."
+  (and (certificate-current-p certificate)
+       (eq :certified (certificate-grade certificate))))
+
+(defun certify-law (law)
+  "Check LAW on every assignment of its variables, and attach a certificate when it holds.
+Returns the verdict of CERTIFY-EQUATION, and its counterexample when the law is refuted."
+  (multiple-value-bind (verdict counterexample) (certify-equation (law-lhs law) (law-rhs law))
+    (cond ((eq verdict :certified)
+           (setf (law-grade law) :certified
+                 (law-certificate law) (attest :certified :exhaustive (law-lhs law) (law-rhs law))))
+          (t (setf (law-grade law) :refuted (law-certificate law) nil)))
+    (values verdict counterexample)))

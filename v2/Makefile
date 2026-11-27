@@ -1,63 +1,54 @@
 SBCL ?= sbcl
-RESULTS_DIR = intermediate_results
-BENCHMARK_SECONDS ?= 300
-BENCHMARK_SOURCES = load.lisp package.lisp ast.lisp knowledge.lisp codec.lisp vm.lisp evidence.lisp persistence.lisp requirements.lisp frame.lisp enumerate.lisp unify.lisp fibers.lisp laws.lisp templates.lisp condense.lisp abstraction.lisp descriptors.lisp relations.lisp synthesize.lisp nogoods.lisp decompose.lisp proposals.lisp consolidate.lisp messages.lisp explain.lisp milestones/load.lisp milestones/corpus.lisp milestones/views.lisp milestones/algebra-discovery.lisp milestones/propagation-search.lisp milestones/dependency-search.lisp benchmark.lisp
+SHELL := /bin/bash
+BASELINES_DIR := ../baselines
+RESULTS_DIR := gates/results
 
-.PHONY: all clean bootstrap test test-kernel test-milestones stage0 probes complexity benchmark benchmark-profile
+.PHONY: all test baselines baselines-full baseline-x1 baseline-x2 baseline-x3 x1 x2 x3 x3-quick gates clean
 
 all: test
 
-bootstrap:
-	$(SBCL) --script bootstrap/build-batteries.lisp
+# The contracts of the store core and of the synthesizer. Under a second.
+test:
+	$(SBCL) --noinform --script tests/run.lisp
 
-test-kernel:
-	$(SBCL) --script tests/run.lisp kernel
+# Regenerate the recorded v1/Stage-0 baseline data files in ../baselines/ (verified by SHA256SUMS).
+baselines:
+	$(MAKE) -C $(BASELINES_DIR)
 
-test-milestones:
-	$(SBCL) --script tests/run.lisp milestones
+baselines-full:
+	$(MAKE) -C $(BASELINES_DIR) full
 
-test: test-kernel test-milestones
+baseline-x1:
+	@$(MAKE) --no-print-directory -C $(BASELINES_DIR) x1
 
-probes:
-	$(SBCL) --dynamic-space-size 4096 --script experiments/probes.lisp
+baseline-x2:
+	@$(MAKE) --no-print-directory -C $(BASELINES_DIR) x2
 
-stage0:
-	$(SBCL) --dynamic-space-size 4096 --script experiments/stage0-audit.lisp
-
-complexity:
-	./measure_complexity.sh
+baseline-x3:
+	@$(MAKE) --no-print-directory -C $(BASELINES_DIR) x3
 
 $(RESULTS_DIR):
 	mkdir -p $@
 
-benchmark: | $(RESULTS_DIR)
-	@set -eu; \
-	for mode in unit batch; do \
-		report='$(RESULTS_DIR)'/benchmark-$$mode.txt; \
-		printf 'v2 kernel, dispatch=%s; three small runs and one large run.\n' "$$mode" > "$$report"; \
-		date -u >> "$$report"; \
-		uname -sm >> "$$report"; \
-		sha256sum $(BENCHMARK_SOURCES) >> "$$report"; \
-		for specification in 'linear 61 3' 'quadratic 70 3' 'quartic 77 1'; do \
-			set -- $$specification; \
-			repetition=1; \
-			while [ "$$repetition" -le "$$3" ]; do \
-				printf 'Benchmark %s: %s at %s bits, run %s/%s -> %s\n' "$$mode" "$$1" "$$2" "$$repetition" "$$3" "$$report"; \
-				printf '\nRun %s/%s\n' "$$repetition" "$$3" >> "$$report"; \
-				$(SBCL) --dynamic-space-size 2048 --script benchmark.lisp search "$$1" "$$2" '$(BENCHMARK_SECONDS)' "$$mode" >> "$$report"; \
-				awk '/^SEARCH / && !/status=:COMPLETE/ { exit 1 }' "$$report" || { \
-					printf 'Benchmark hit a cutoff; see %s\n' "$$report" >&2; exit 1; \
-				}; \
-				repetition=$$((repetition + 1)); \
-			done; \
-		done; \
-	done
-	@printf 'Tariff microbenchmark -> %s/benchmark-meter.txt\n' '$(RESULTS_DIR)'
-	@$(SBCL) --dynamic-space-size 2048 --script benchmark.lisp meter > $(RESULTS_DIR)/benchmark-meter.txt
+# The gates of plan_v2c.md section 11.2. Each compares this kernel with the baseline in
+# ../baselines/ (building it if absent), and writes what it prints to gates/results/.
+x1: baseline-x1 | $(RESULTS_DIR)
+	set -o pipefail; $(SBCL) --noinform --dynamic-space-size 8000 --script gates/x1.lisp | tee $(RESULTS_DIR)/x1.txt
 
-benchmark-profile: | $(RESULTS_DIR)
-	@$(SBCL) --dynamic-space-size 2048 --script benchmark.lisp search quadratic 70 $(BENCHMARK_SECONDS) batch profile > $(RESULTS_DIR)/benchmark-profile.txt
-	@printf 'CPU profile: %s/benchmark-profile.txt\n' '$(RESULTS_DIR)'
+x2: baseline-x2 | $(RESULTS_DIR)
+	set -o pipefail; $(SBCL) --noinform --dynamic-space-size 4000 --script gates/x2.lisp | tee $(RESULTS_DIR)/x2.txt
 
+# About four minutes, and up to 20 GB of heap for the run at a billion cells.
+x3: baseline-x3 | $(RESULTS_DIR)
+	set -o pipefail; $(SBCL) --noinform --dynamic-space-size 20000 --script gates/x3.lisp | tee $(RESULTS_DIR)/x3.txt
+
+# The gate's own run only, without the budget ladder, the ablations and the size-order section.
+x3-quick: baseline-x3
+	$(SBCL) --noinform --dynamic-space-size 20000 --script gates/x3.lisp quick
+
+gates: x1 x2 x3
+
+# Remove gate results and all generated baseline data, logs, and scratch copies.
 clean:
 	rm -rf $(RESULTS_DIR)
+	$(MAKE) -C $(BASELINES_DIR) clean

@@ -1,0 +1,46 @@
+;;;; x2-extras.lisp -- (1) the answer language as enumerated: every candidate term, per domain,
+;;;; written to x2-candidates.txt; (2) the size of the guard language against its fixed 35-bit
+;;;; bound, which explains why the milestone code fails on GF(11) and GF(13).
+(load (merge-pathnames "x2-common.lisp" (make-pathname :name nil :type nil :defaults *load-truename*)))
+(in-package #:lisploop)
+(setf *print-pretty* nil)
+
+(with-open-file (out (merge-pathnames "x2-candidates.txt" cl-user::*x2-here*)
+                     :direction :output :if-exists :supersede)
+  (format out "Every answer term the milestone code enumerates, in enumeration order, with its size.~%")
+  (format out "Language: operators + - * /, variables x0 (known argument k) and x1 (result c), literals as listed, body bound 16 bits.~%")
+  (dolist (domain (list (gf 5) (gf 7) :int))
+    (let* ((values (x2-values domain))
+           (relation (observe-arithmetic-relation domain :+ values))
+           (discovery (discover-arithmetic-solver relation 1 values :literals (x2-literals domain)))
+           (observations (solve-discovery-observations discovery))
+           (inputs (arithmetic-inputs domain))
+           (records (reverse (observation-job-records observations)))
+           (by-shape (make-hash-table :test #'equal)))
+      (format out "~%== ~A: literals ~S; ~D terms; ~D behaviour buckets (terms total on every row, grouped by value vector); header ~D bits ==~%"
+              (domain-name domain) (x2-literals domain) (length records)
+              (length (observation-job-buckets observations)) (header-size inputs domain))
+      (dolist (record records)
+        (let* ((e (observed-expression-expression record))
+               (shape (cond ((var-p e) "variable") ((lit-p e) "literal")
+                            ((every (lambda (arg) (or (var-p arg) (lit-p arg))) (rest e)) "one operator")
+                            (t "two or more operators"))))
+          (incf (gethash shape by-shape 0))
+          (format out "~3D bits  ~A   [~(~A~)]~%" (body-size e inputs) (short e)
+                  (observed-expression-status record))))
+      (format out "   shapes: ~{~A ~D~^, ~}~%"
+              (loop for shape being the hash-keys of by-shape using (hash-value n) append (list shape n)))
+      (format t "~A: ~D candidate terms; shapes ~{~A ~D~^, ~}~%" (domain-name domain) (length records)
+              (loop for shape being the hash-keys of by-shape using (hash-value n) append (list shape n))))))
+
+(format t "~%Guard language: operators = and if, literal 0, the frame's variables, Boolean literals; body bound 35 bits~%")
+(format t "(search-membership-frame, milestones/algebra-discovery.lisp:230-238). Sizes of the guards it must find:~%")
+(dolist (domain (list (gf 2) (gf 3) (gf 5) (gf 7) (gf 11) (gf 13) :int))
+  (let* ((inputs (arithmetic-inputs domain))
+         (inputs3 (arithmetic-inputs domain 3))
+         (nonzero (term `(if (= ,(var 0 domain) 0) nil t)))
+         (equal12 (term `(= ,(var 1 domain) ,(var 2 domain)))))
+    (format t "  ~6A  (if (= x0 0) NIL T): body ~D bits (bound 35: ~A)   (= x1 x2) over three inputs: body ~D bits   literal 0: ~D bits~%"
+            (domain-name domain) (body-size nonzero inputs)
+            (if (<= (body-size nonzero inputs) 35) "fits" "DOES NOT FIT")
+            (body-size equal12 inputs3) (body-size (lit domain 0) inputs))))

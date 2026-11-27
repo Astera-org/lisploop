@@ -1,141 +1,60 @@
-(in-package #:lisploop)
+(in-package #:lisploop2)
 
-(deftest codec-roundtrip-and-boundaries
-  (let* ((inputs '((0 . :int) (1 . :int))) (a (var 0 :int)) (b (var 1 :int)))
-    (check (= 23 (header-size inputs :int)))
-    (check (= 35 (description-size (app (op :+ :int) a b) inputs)))
-    (check (equalp #*100000000001 (subseq (encode-model (app (op :+ :int) a b) inputs) 23)))
-    (loop for n in '(0 1 -1 2 -2 3 -3 4 -4) for size in '(3 6 6 7 7 7 7 10 10) do
-      (check (= size (- (description-size (lit :int n) inputs) 23))))
-    (dolist (n (append '(0 -1 1) (loop for width in '(7 8 31 32 256 257) append
-                                 (list (1- (ash 1 width)) (ash 1 width) (- (ash 1 width))))))
-      (check-codec-roundtrip (lit :int n) inputs))
-    (dolist (expression (list a (app (op :+ :int) a b) (app (op := :int) a b)
-                              (app (op :member :int) a (lit (sequence-type :int) '(-1 0 1)))
-                              (app (op :tuple (tuple-type :int :bool)) a (lit :bool nil))
-                              (app (op :gather :int) (lit (sequence-type :int) '(4 5 6))
-                                   (lit (sequence-type :int) '(2 0 2)))
-                              (app (op :at :int) (lit (sequence-type :int) '(4 5 6)) a)
-                              (app (op :at (tuple-type :int :int))
-                                   (app (op :tuple (tuple-type :int :int)) a b)
-                                   (lit :int 1))
-                              (lit (tuple-type (tuple-type) (sequence-type :bool)) '(nil (t nil)))))
-      (check-codec-roundtrip expression inputs)))
-  (multiple-value-bind (frame oracle) (gf5-fixture)
-    (check-codec-roundtrip oracle (schema-inputs (frame-schema frame)))
-    (check-codec-roundtrip (lookup-model frame) (schema-inputs (frame-schema frame))))
-  (dolist (prime '(2 5 7 257))
-    (check-codec-roundtrip (lit (gf prime) (1- prime)) nil))
-  (check-codec-roundtrip (var 99 :int) '((99 . :int)))
-  (raises (decode-model #*))
-  ;; Reserved expression tag and a retired packet version must be rejected.
-  (let* ((bits (encode-model (lit :int 0) nil)) (header (header-size nil :int)))
-    (setf (subseq bits header (+ header 2)) #*11)
-    (raises (decode-model bits)))
-  (let ((bits (encode-model (lit :int 0))))
-    (setf (aref bits 0) 1)
-    (raises (decode-model bits)))
-  ;; Version 4 used a distinct index type and different type tags.
-  (raises (decode-model #*011001000011))
-  ;; Six type tags occupy codes 0..5; 6..7 are reserved.
-  (dolist (tag '(#*110 #*111))
-    (let* ((bits (encode-model (lit :int 0))) (end (header-size nil :int)))
-      (setf (subseq bits (- end 3) end) tag)
-      (raises (decode-model bits))))
-  ;; Three GF(5) payload bits have unused values 5..7.
-  (let ((bits (encode-model (lit (gf 5) 0) nil)))
-    (setf (subseq bits (- (length bits) 3)) #*111)
-    (raises (decode-model bits))))
+;;; The codec's contract (plan section 9): a term decodes to itself, each term has one code, and
+;;; a code that the encoder would not write is rejected.
 
-(deftest codec-enumerator-complete-tiny-grammars
-  (dolist (domain (list :int (gf 2) (gf 5)))
-    (let* ((inputs (list (cons 0 domain) (cons 1 domain)))
-           (language (make-language domain inputs))
-           (bound (+ (header-size inputs domain) (if (eq domain :int) 12 23)))
-           (leaves (append (list (var 0 domain) (var 1 domain))
-                           (loop for n from (if (eq domain :int) -31 0)
-                                 to (if (eq domain :int) 31 (1- (second domain))) collect (lit domain n))))
-           (reference (remove-if (lambda (expression) (> (description-size expression inputs) bound))
-                                  (loop for count from 0 to (if (eq domain :int) 1 2) append
-                                    (reference-node-trees leaves (language-operators language) count))))
-           (frame (probe-frame domain inputs '((0 0) (0 1) (1 0) (1 1))))
-           (job (start-observation-search (make-observation-scope frame language))))
-      (check (eq :bounded-exhaustion (message-claim (resume-observation-search job bound 1000000))))
-      (check (= (length reference) (length (observation-job-records job))))
-      (check (null (set-exclusive-or reference
-                                     (mapcar #'observed-expression-expression (observation-job-records job))
-                                     :test #'equal)))
-      (dolist (expression reference)
-        (check-codec-roundtrip expression inputs)
-        (check (equal (observed-expression-values (find-observation job expression))
-                       (loop for row in (frame-rows frame) collect
-                         (if (eq domain :int)
-                             (integer-reference-value expression (mapcar #'cons '(0 1) (row-known row)))
-                             (reference-value expression (mapcar #'cons '(0 1) (row-known row))
-                                              (second domain)))))))
-      (when (eq domain :int) (check (= 83 (length reference)))))))
+(defparameter *codec-scope*
+  (list (var 'x :int) (var 'y :int) (var 'xs '(:seq :int)) (var 'b :bool)
+        (var 'f '(:fn (:int :int) :int))))
 
-(deftest codec-literal-ranges-and-vocabulary
-  (let ((header (header-size nil :int)))
-    ;; All magnitudes with <= 10 bits; include code-length gaps and sign boundaries.
-    (loop for payload from 1 to 16 do
-      (let ((expected (loop for n from -511 to 511
-                            when (= (+ header 2 payload) (length (encode-model (lit :int n) nil))) collect n))
-            (actual nil))
-        (dotimes (pass 2)
-          (multiple-value-bind (lo hi) (literal-range :int (+ 2 payload) pass)
-            (loop for n from lo to hi do (push (if (= pass 1) (- n) n) actual))))
-        (check (equal (sort actual #'<) expected)))))
-  (let* ((language (make-language :int nil :operators nil :literals '(0 -1 1)))
-         (job (start-observation-search (make-observation-scope (probe-frame :int nil '(nil)) language)))
-         (bound (description-size (lit :int 1))))
-    (resume-observation-search job (1- bound) 100000)
-    (check (= 1 (length (observation-job-records job))))
-    (resume-observation-search job bound 100000)
-    (check (= 3 (length (observation-job-records job))))))
+(defparameter *codec-terms*
+  '((+ x (* y 2))
+    (if (< x y) (- y x) 0)
+    (if b x -17)
+    (= b (< x 1))
+    (at xs (mod x (length xs)))
+    (try (/ x y) 1000000)
+    (call f x (at xs 0))
+    (tabulate (length xs) (lambda (v0) (+ (at xs v0) x)))
+    (fold 0 (lambda (v0 v1) (+ v0 v1)) xs)
+    (scan x (lambda (v0 v1) (call f v0 v1)) xs)
+    (where (length xs) (lambda (v0) (< y (at xs v0))))
+    (tabulate x (lambda (v0) (fold v0 (lambda (v1 v2) (+ v1 (* v2 v0))) xs)))
+    (tabulate x (lambda (v0) (= v0 y)))))
 
-(deftest structural-tariff-and-print-independence
-  ;; Positional data uses exactly the signed integer payload and value tariff.
-  (check (= 29 (description-size (lit (sequence-type :int) '(0 1 2)))))
-  (check-codec-roundtrip (lit (sequence-type :int) '(-1 0 2)) nil)
-  (check (= 66 (description-size (quotient-model :int '(8 2 9) '(0 1 2 0)))))
-  (check (= 11 (value-work '(0 1 2) (sequence-type :int))))
-  ;; Base: 1 + 11 for each operand; checks: 3 * (1 + max(2,w(i))).
-  (check (= 32 (primitive-cost (op :gather :int) '((0 1 2) (0 1 2)))))
-  (let* ((value (ash 1 256))
-         (expression (app (op :* :int) (lit :int value) (lit :int value)))
-         (size (description-size expression)) (work (syntax-work expression))
-         (run (evaluate expression nil nil)))
-    (check (= 259 (value-work value :int))) ; visit, sign, 257 magnitude bits
-    (check (= (* 257 257) (arithmetic-cost :* :int (list value value))))
-    (let ((*print-base* 2) (*print-pretty* t) (*print-case* :downcase))
-      (check (= size (description-size expression)))
-      (check (= work (syntax-work expression)))
-      (check (equalp run (evaluate expression nil nil)))))
-  ;; A compact description of many empty tuples still incurs work for each visit.
-  (let* ((type (sequence-type (tuple-type)))
-         (few (lit type (list nil))) (many (lit type (make-list 100))))
-    (check (< (- (description-size many) (description-size few))
-               (- (syntax-work many) (syntax-work few))))
-    (check (= 101 (value-work (ast-value many) type))))
-  (let ((expression (lit :int 0)))
-    (check (= 9 (evaluation-work (evaluate expression nil nil))))))
+(defun codec-env () (mapcar (lambda (v) (cons (term-head v) (term-type v))) *codec-scope*))
 
-(deftest schema-header-does-not-add-enumeration-work
-  (let ((counts nil))
-    (dolist (ids '((0 1) (1000000 1000001)))
-      (let* ((inputs (mapcar (lambda (id) (cons id :int)) ids))
-             (language (make-language :int inputs))
-             (scope (make-observation-scope (probe-frame :int inputs '((0 1))) language))
-             (job (start-observation-search scope))
-             (header (header-size inputs :int)))
-        (let ((message (resume-observation-search job header 0)))
-          (check (eq :bounded-exhaustion (message-claim message)))
-          (check (= +encoding-version+ (getf (message-evidence message) :encoding-version)))
-          (check (= +tariff-version+ (getf (message-evidence message) :tariff-version))))
-        (check (null (observation-job-records job)))
-        (resume-observation-search job (+ header 12) 100000)
-        (check (= 83 (length (observation-job-records job))))
-        (push (cdr (assoc :enumeration (ledger-counts (observation-job-ledger job)))) counts)))
-    (check (= (first counts) (second counts)))))
+(deftest test-codec-round-trip
+  (dolist (sexp *codec-terms*)
+    (let* ((term (parse-term sexp (codec-env)))
+           (bits (encode-term term *codec-scope*)))
+      (check (eq term (canonical-term term)) (format nil "~s is written with canonical names" sexp))
+      (check-equal (length bits) (term-bits term *codec-scope*) "the counter and the encoder agree")
+      (check (eq term (decode-term bits (term-type term) *codec-scope*))
+             (format nil "~s does not decode to itself" sexp)))))
 
+(deftest test-codec-canonical
+  (let* ((term (parse-term '(+ x (* y 2)) (codec-env)))
+         (bits (encode-term term *codec-scope*)))
+    ;; a truncated code and a code with trailing bits are both rejected
+    (check (handler-case (progn (decode-term (subseq bits 0 (1- (length bits))) :int *codec-scope*) nil)
+             (error () t)))
+    (check (handler-case (progn (decode-term (concatenate 'simple-bit-vector bits #*0) :int *codec-scope*) nil)
+             (error () t)))
+    ;; a term decoded at the wrong type is rejected
+    (check (handler-case (progn (decode-term bits :bool *codec-scope*) nil) (error () t))))
+  ;; names of bound variables cost nothing, and renaming them gives the canonical term
+  (let ((a (parse-term '(tabulate x (lambda (i) (+ i y))) (codec-env)))
+        (b (parse-term '(tabulate x (lambda (v0) (+ v0 y))) (codec-env))))
+    (check (not (eq a b)))
+    (check (eq b (canonical-term a)))
+    (check-equal (term-bits a *codec-scope*) (term-bits b *codec-scope*)))
+  ;; a larger integer costs more bits, and the cost grows with the logarithm
+  (flet ((bits (n) (term-bits (const n :int) nil)))
+    (check (< (bits 0) (bits 5) (bits 1000) (bits 1000000)))
+    (check (< (bits 1000000) 50)))
+  ;; every integer in a range has its own code
+  (let ((codes (loop for n from -40 to 40 collect (encode-term (const n :int) nil))))
+    (check-equal 81 (length (remove-duplicates codes :test #'equal)))
+    (check (loop for n from -40 to 40 for code in codes
+                 always (eq (const n :int) (decode-term code :int nil))))))

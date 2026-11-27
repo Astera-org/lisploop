@@ -1,0 +1,28 @@
+12a13,16
+> ;;; BASE-X3 INSTRUMENTATION (the only change to this copy): dump each function spec as the bootstrap
+> ;;; registers it, the keys it is synthesized with, the functions already in the library, and the result.
+> (defvar *x3-dump* (open (merge-pathnames "../../../boot-specs.sexp" *load-truename*)
+>                         :direction :output :if-exists :supersede))
+15c19,38
+<   (apply #'synthesize-spec-entry spec :expanders (list (recursion-schema-expander)) keys))
+---
+>   (let* ((lib (or (getf keys :library) *knowledge-library*))
+>          (before (with-knowledge-library (lib)
+>                    (mapcar #'knowledge-entry-id (knowledge-entries-of-kind :function lib))))
+>          (ent (apply #'synthesize-spec-entry spec :expanders (list (recursion-schema-expander)) keys))
+>          (*print-pretty* nil) (*print-right-margin* 1000000))
+>     (format *x3-dump* "~S~%"
+>             (list :id (knowledge-entry-id ent)
+>                   :spec-id (knowledge-entry-id spec)
+>                   :inputs (knowledge-entry-inputs spec)
+>                   :target (knowledge-entry-target spec)
+>                   :rows (knowledge-entry-residual spec)
+>                   :spec-metadata (knowledge-entry-metadata spec)
+>                   :keys (loop for (k v) on keys by #'cddr
+>                               unless (member k '(:library :ledger)) append (list k v))
+>                   :functions-in-library-before before
+>                   :expression (ast->sexp (knowledge-entry-expression ent))
+>                   :bits (knowledge-entry-bits ent)
+>                   :work (knowledge-entry-work ent)))
+>     (finish-output *x3-dump*)
+>     ent))

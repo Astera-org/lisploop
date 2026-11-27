@@ -11,9 +11,12 @@ DOCS = plan_v2.pdf plan_v2b.pdf plan_v2c.pdf plan_v2c_audit.pdf
 SBCL ?= sbcl
 RESULTS_DIR = intermediate_results
 
-.PHONY: all clean
+.PHONY: all baselines clean
 
 all: $(DOCS)
+
+baselines:
+	$(MAKE) -C baselines
 
 figures/%.pdf: figures/%.dot
 	dot -Tpdf $< -o $@
